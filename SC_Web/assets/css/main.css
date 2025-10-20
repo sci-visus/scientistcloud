@@ -1,0 +1,534 @@
+/**
+ * ScientistCloud Data Portal - Main Styles
+ * Modular CSS for the data portal interface
+ */
+
+:root {
+  --bg-color: #121212;
+  --fg-color: #E0E0E0;
+  --panel-bg: rgba(30,30,30,0.8);
+  --panel-border: #333;
+  --toolbar-bg: rgba(30,30,30,0.7);
+  --viewer-bg: #000;
+  --primary-color: #007bff;
+  --success-color: #28a745;
+  --warning-color: #ffc107;
+  --danger-color: #dc3545;
+  --info-color: #17a2b8;
+}
+
+.light-theme {
+  --bg-color: #FFFFFF;
+  --fg-color: #000000;
+  --panel-bg: rgba(240,240,240,0.8);
+  --panel-border: #CCC;
+  --toolbar-bg: rgba(240,240,240,0.7);
+  --viewer-bg: #F0F0F0;
+}
+
+/* Base styles */
+body {
+  margin: 0;
+  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+  background-color: var(--bg-color);
+  color: var(--fg-color);
+  height: 100vh;
+  display: flex;
+  overflow: hidden;
+  transition: background-color 0.3s, color 0.3s;
+}
+
+/* Sidebars */
+.sidebar, .details {
+  transition: width 0.3s, background-color 0.3s, border-color 0.3s;
+  position: relative;
+  overflow: visible;
+  background-color: var(--panel-bg);
+  border: 1px solid var(--panel-border);
+}
+
+.sidebar {
+  width: 250px;
+  border-right: 1px solid var(--panel-border);
+  padding-top: 1rem;
+}
+
+.details {
+  width: 300px;
+  border-left: 1px solid var(--panel-border);
+}
+
+.sidebar.collapsed, .details.collapsed {
+  width: 0;
+}
+
+.sidebar.collapsed > *:not(.collapse-btn), .details.collapsed > *:not(.collapse-btn) {
+  display: none;
+}
+
+.sidebar .logo {
+  display: block;
+  width: 40px;
+  margin: 0 auto 1rem;
+  filter: invert(1);
+}
+
+.sidebar h5, .details h5 {
+  color: var(--fg-color);
+  margin-bottom: 1rem;
+  font-size: 1.25rem;
+  text-align: center;
+}
+
+.sidebar .nav-link {
+  color: var(--fg-color);
+  border-radius: 0.5rem;
+  display: flex;
+  align-items: center;
+  padding: 0.5rem;
+  transition: background-color 0.3s;
+  text-decoration: none;
+}
+
+.sidebar .nav-link:hover {
+  background-color: rgba(60,60,60,0.8);
+  color: var(--fg-color);
+}
+
+.sidebar .nav-link.active {
+  background-color: var(--primary-color);
+  color: white;
+}
+
+.arrow-icon {
+  display: inline-block;
+  transition: transform 0.2s;
+  width: 1em;
+  text-align: center;
+  margin-right: 0.5rem;
+}
+
+.arrow-icon.open {
+  transform: rotate(90deg);
+}
+
+/* Main content area */
+.main {
+  flex-grow: 1;
+  background-color: var(--bg-color);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+/* Viewer toolbar */
+.toolbar-wrapper {
+  width: 80%;
+  margin: 0.5rem auto;
+  display: flex;
+  justify-content: center;
+}
+
+.viewer-toolbar {
+  background-color: var(--toolbar-bg);
+  display: flex;
+  align-items: center;
+  padding: 0.25rem 0.5rem;
+  border-radius: 0.5rem;
+  transition: background-color 0.3s;
+  border: 1px solid var(--panel-border);
+}
+
+.viewer-toolbar label {
+  color: var(--fg-color);
+  margin-right: 0.5rem;
+  font-size: 0.9rem;
+}
+
+.viewer-toolbar .form-select {
+  background-color: var(--panel-bg);
+  color: var(--fg-color);
+  border-color: var(--panel-border);
+  border-radius: 0.5rem;
+  font-size: 0.9rem;
+}
+
+.viewer-toolbar .form-select:focus {
+  border-color: var(--primary-color);
+  box-shadow: 0 0 0 0.2rem rgba(0, 123, 255, 0.25);
+}
+
+.viewer-toolbar .btn-group {
+  margin-left: 1rem;
+}
+
+.viewer-toolbar .btn {
+  color: var(--fg-color);
+  border-color: var(--panel-border);
+  background-color: transparent;
+}
+
+.viewer-toolbar .btn:hover {
+  background-color: rgba(60,60,60,0.8);
+  border-color: var(--primary-color);
+}
+
+/* Viewer content */
+.viewer-container {
+  flex-grow: 1;
+  padding: 1rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--viewer-bg);
+  transition: background 0.3s;
+}
+
+.viewer-container img {
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+  border: 1px solid var(--panel-border);
+  border-radius: 0.5rem;
+}
+
+/* Collapse buttons */
+.collapse-btn {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  background-color: var(--panel-bg);
+  border: 1px solid var(--panel-border);
+  border-radius: 50%;
+  color: var(--fg-color);
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: background-color 0.3s;
+  z-index: 2;
+}
+
+.collapse-btn:hover {
+  background-color: rgba(60,60,60,0.8);
+}
+
+.collapse-btn.left {
+  right: -16px;
+}
+
+.collapse-btn.right {
+  left: -16px;
+}
+
+/* Theme toggle */
+.theme-toggle {
+  position: absolute;
+  bottom: 16px;
+  left: 16px;
+  background: transparent;
+  border: none;
+  color: var(--fg-color);
+  font-size: 1.5rem;
+  cursor: pointer;
+  z-index: 1000;
+  transition: color 0.3s;
+}
+
+.theme-toggle:hover {
+  color: #aaa;
+}
+
+/* Dataset list styles */
+.dataset-section {
+  margin-bottom: 1rem;
+}
+
+.dataset-item {
+  margin-bottom: 0.25rem;
+}
+
+.dataset-link {
+  display: flex;
+  align-items: center;
+  padding: 0.5rem;
+  border-radius: 0.25rem;
+  transition: background-color 0.2s;
+  text-decoration: none;
+  color: var(--fg-color);
+}
+
+.dataset-link:hover {
+  background-color: rgba(255, 255, 255, 0.1);
+  color: var(--fg-color);
+}
+
+.dataset-link.active {
+  background-color: var(--primary-color);
+  color: white;
+}
+
+.dataset-name {
+  flex: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.badge {
+  font-size: 0.75rem;
+  margin-left: 0.5rem;
+}
+
+.folder-group {
+  margin-bottom: 0.5rem;
+}
+
+/* Dashboard styles */
+.dashboard-container {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+.dashboard-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 1rem;
+  border-bottom: 1px solid var(--panel-border);
+  background-color: var(--toolbar-bg);
+}
+
+.dashboard-content {
+  flex: 1;
+  padding: 1rem;
+  overflow: auto;
+}
+
+.dashboard-controls {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.processing-content,
+.unsupported-content,
+.error-content,
+.welcome-content {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 400px;
+}
+
+.welcome-content {
+  align-items: flex-start;
+  padding-top: 2rem;
+}
+
+/* Card styles */
+.card {
+  background-color: var(--panel-bg);
+  border: 1px solid var(--panel-border);
+  border-radius: 0.5rem;
+  margin-bottom: 1rem;
+}
+
+.card-header {
+  background-color: var(--toolbar-bg);
+  border-bottom: 1px solid var(--panel-border);
+  padding: 0.75rem 1rem;
+  border-radius: 0.5rem 0.5rem 0 0;
+}
+
+.card-body {
+  padding: 1rem;
+}
+
+/* Form styles */
+.form-select {
+  background-color: var(--panel-bg);
+  color: var(--fg-color);
+  border-color: var(--panel-border);
+}
+
+.form-select:focus {
+  border-color: var(--primary-color);
+  box-shadow: 0 0 0 0.2rem rgba(0, 123, 255, 0.25);
+}
+
+/* Button styles */
+.btn {
+  border-radius: 0.375rem;
+  transition: all 0.2s;
+}
+
+.btn-primary {
+  background-color: var(--primary-color);
+  border-color: var(--primary-color);
+}
+
+.btn-primary:hover {
+  background-color: #0056b3;
+  border-color: #0056b3;
+}
+
+.btn-outline-primary {
+  color: var(--primary-color);
+  border-color: var(--primary-color);
+}
+
+.btn-outline-primary:hover {
+  background-color: var(--primary-color);
+  border-color: var(--primary-color);
+}
+
+.btn-outline-secondary {
+  color: var(--fg-color);
+  border-color: var(--panel-border);
+}
+
+.btn-outline-secondary:hover {
+  background-color: var(--panel-bg);
+  border-color: var(--primary-color);
+}
+
+/* Alert styles */
+.alert {
+  border-radius: 0.5rem;
+  border: 1px solid transparent;
+  padding: 0.75rem 1rem;
+  margin-bottom: 1rem;
+}
+
+.alert-warning {
+  background-color: rgba(255, 193, 7, 0.1);
+  border-color: var(--warning-color);
+  color: var(--warning-color);
+}
+
+.alert-danger {
+  background-color: rgba(220, 53, 69, 0.1);
+  border-color: var(--danger-color);
+  color: var(--danger-color);
+}
+
+.alert-info {
+  background-color: rgba(23, 162, 184, 0.1);
+  border-color: var(--info-color);
+  color: var(--info-color);
+}
+
+/* Progress styles */
+.progress {
+  background-color: var(--panel-bg);
+  border-radius: 0.25rem;
+  height: 1rem;
+}
+
+.progress-bar {
+  background-color: var(--primary-color);
+  border-radius: 0.25rem;
+}
+
+.progress-bar-striped {
+  background-image: linear-gradient(45deg, rgba(255,255,255,.15) 25%, transparent 25%, transparent 50%, rgba(255,255,255,.15) 50%, rgba(255,255,255,.15) 75%, transparent 75%, transparent);
+}
+
+.progress-bar-animated {
+  animation: progress-bar-stripes 1s linear infinite;
+}
+
+@keyframes progress-bar-stripes {
+  0% { background-position: 1rem 0; }
+  100% { background-position: 0 0; }
+}
+
+/* Spinner styles */
+.spinner-border {
+  display: inline-block;
+  width: 2rem;
+  height: 2rem;
+  border: 0.25em solid currentColor;
+  border-right-color: transparent;
+  border-radius: 50%;
+  animation: spinner-border 0.75s linear infinite;
+}
+
+@keyframes spinner-border {
+  to { transform: rotate(360deg); }
+}
+
+/* List group styles */
+.list-group {
+  border-radius: 0.5rem;
+  overflow: hidden;
+}
+
+.list-group-item {
+  background-color: var(--panel-bg);
+  border: 1px solid var(--panel-border);
+  color: var(--fg-color);
+  padding: 0.75rem 1rem;
+}
+
+.list-group-item:hover {
+  background-color: rgba(60,60,60,0.8);
+}
+
+.list-group-item-action {
+  cursor: pointer;
+}
+
+/* Utility classes */
+.text-center { text-align: center; }
+.text-muted { color: #6c757d; }
+.text-primary { color: var(--primary-color); }
+.text-success { color: var(--success-color); }
+.text-warning { color: var(--warning-color); }
+.text-danger { color: var(--danger-color); }
+.text-info { color: var(--info-color); }
+
+.mt-3 { margin-top: 1rem; }
+.mb-3 { margin-bottom: 1rem; }
+.mb-1 { margin-bottom: 0.25rem; }
+
+.d-grid { display: grid; }
+.gap-2 { gap: 0.5rem; }
+
+/* Responsive design */
+@media (max-width: 768px) {
+  .sidebar {
+    width: 200px;
+  }
+  
+  .details {
+    width: 250px;
+  }
+  
+  .toolbar-wrapper {
+    width: 95%;
+  }
+  
+  .viewer-toolbar {
+    flex-wrap: wrap;
+    gap: 0.5rem;
+  }
+}
+
+@media (max-width: 576px) {
+  .sidebar, .details {
+    width: 0;
+  }
+  
+  .sidebar.collapsed, .details.collapsed {
+    width: 0;
+  }
+  
+  .main {
+    width: 100%;
+  }
+}

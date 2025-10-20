@@ -1,0 +1,219 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Dataset Navigation & Visualization</title>
+  <!-- Bootstrap CSS -->
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+  <!-- FontAwesome Icons -->
+  <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+  <style>
+    :root {
+      --bg-color: #121212;
+      --fg-color: #E0E0E0;
+      --panel-bg: rgba(30,30,30,0.8);
+      --panel-border: #333;
+      --toolbar-bg: rgba(30,30,30,0.7);
+      --viewer-bg: #000;
+    }
+    .light-theme {
+      --bg-color: #FFFFFF;
+      --fg-color: #000000;
+      --panel-bg: rgba(240,240,240,0.8);
+      --panel-border: #CCC;
+      --toolbar-bg: rgba(240,240,240,0.7);
+      --viewer-bg: #F0F0F0;
+    }
+    body {
+      margin: 0;
+      font-family: Arial, sans-serif;
+      background-color: var(--bg-color);
+      color: var(--fg-color);
+      height: 100vh;
+      display: flex;
+      overflow: hidden;
+      transition: background-color 0.3s, color 0.3s;
+    }
+    /* Sidebars */
+    .sidebar, .details {
+      transition: width 0.3s, background-color 0.3s, border-color 0.3s;
+      position: relative;
+      overflow: visible;
+      background-color: var(--panel-bg);
+    }
+    .sidebar {
+      width: 250px;
+      border-right: 1px solid var(--panel-border);
+      padding-top: 1rem;
+    }
+    .details {
+      width: 300px;
+      border-left: 1px solid var(--panel-border);
+    }
+    .sidebar.collapsed, .details.collapsed {
+      width: 0;
+    }
+    .sidebar.collapsed > *:not(.collapse-btn), .details.collapsed > *:not(.collapse-btn) {
+      display: none;
+    }
+    .sidebar .logo {
+      display: block;
+      width: 40px;
+      margin: 0 auto 1rem;
+      filter: invert(1);
+    }
+    .sidebar h5, .details h5 {
+      color: var(--fg-color);
+      margin-bottom: 1rem;
+      font-size: 1.25rem;
+      text-align: center;
+    }
+    .sidebar .nav-link {
+      color: var(--fg-color);
+      border-radius: 0.5rem;
+      display: flex;
+      align-items: center;
+      padding: 0.5rem;
+      transition: background-color 0.3s;
+    }
+    .sidebar .nav-link:hover { background-color: rgba(60,60,60,0.8); }
+    .arrow-icon { display: inline-block; transition: transform 0.2s; width: 1em; text-align: center; margin-right: 0.5rem; }
+    .arrow-icon.open { transform: rotate(90deg); }
+
+    /* Main content area */
+    .main { flex-grow: 1; background-color: var(--bg-color); display: flex; flex-direction: column; overflow: hidden; }
+
+    /* Viewer toolbar */
+    .toolbar-wrapper { width: 80%; margin: 0.5rem auto; display: flex; justify-content: center; }
+    .viewer-toolbar {
+      background-color: var(--toolbar-bg);
+      display: flex;
+      align-items: center;
+      padding: 0.25rem 0.5rem;
+      border-radius: 0.5rem;
+      transition: background-color 0.3s;
+    }
+    .viewer-toolbar label { color: var(--fg-color); margin-right: 0.5rem; font-size: 0.9rem; }
+    .viewer-toolbar .form-select { background-color: var(--panel-bg); color: var(--fg-color); border-color: var(--panel-border); border-radius: 0.5rem; font-size: 0.9rem; }
+    .viewer-toolbar .btn-group { margin-left: 1rem; }
+    .viewer-toolbar .btn { color: var(--fg-color); border-color: var(--panel-border); }
+    .viewer-toolbar .btn:hover { background-color: rgba(60,60,60,0.8); }
+
+    /* Viewer content */
+    .viewer-container { flex-grow: 1; padding: 1rem; display: flex; align-items: center; justify-content: center; background: var(--viewer-bg); transition: background 0.3s; }
+    .viewer-container img { max-width: 100%; max-height: 100%; object-fit: contain; border: 1px solid var(--panel-border); border-radius: 0.5rem; }
+
+    /* Collapse buttons */
+    .collapse-btn { position: absolute; top: 50%; transform: translateY(-50%); background-color: var(--panel-bg); border: 1px solid var(--panel-border); border-radius: 50%; color: var(--fg-color); width: 32px; height: 32px; display: flex; align-items: center; justify-content: center; cursor: pointer; transition: background-color 0.3s; z-index: 2; }
+    .collapse-btn:hover { background-color: rgba(60,60,60,0.8); }
+    .collapse-btn.left { right: -16px; }
+    .collapse-btn.right { left: -16px; }
+
+    /* Theme toggle */
+    .theme-toggle {
+      position: absolute;
+      bottom: 16px;
+      left: 16px;
+      background: transparent;
+      border: none;
+      color: var(--fg-color);
+      font-size: 1.5rem;
+      cursor: pointer;
+      z-index: 1000;
+      transition: color 0.3s;
+    }
+    .theme-toggle:hover { color: #aaa; }
+  </style>
+</head>
+<body>
+  <!-- Left Sidebar -->
+  <aside class="sidebar d-flex flex-column align-items-center" id="folderSidebar">
+    <img src="16522f86-44e0-418e-9a39-4b246601d9a6.png" class="logo" alt="ScientistCloud Logo">
+    <h5>Datasets</h5>
+    <nav class="w-100 panel-content">
+      <a class="nav-link" data-bs-toggle="collapse" data-bs-target="#expList"><span class="arrow-icon" id="arrow-exp">&#9656;</span>Experiments</a>
+      <div class="collapse ps-4 w-100" id="expList">
+        <a class="nav-link" data-type="openvisus">exp1_results.csv</a>
+        <a class="nav-link" data-type="bokeh">exp2_results.csv</a>
+      </div>
+      <a class="nav-link" data-bs-toggle="collapse" data-bs-target="#simList"><span class="arrow-icon" id="arrow-sim">&#9656;</span>Simulations</a>
+      <div class="collapse ps-4 w-100" id="simList">
+        <a class="nav-link" data-type="jupyter">sim1_output.json</a>
+        <a class="nav-link" data-type="plotly">sim2_output.json</a>
+      </div>
+      <a class="nav-link" data-bs-toggle="collapse" data-bs-target="#repList"><span class="arrow-icon" id="arrow-rep">&#9656;</span>Reports</a>
+      <div class="collapse ps-4 w-100" id="repList">
+        <a class="nav-link" data-type="openvisus">report_june.pdf</a>
+        <a class="nav-link" data-type="bokeh">report_july.pdf</a>
+      </div>
+      <a class="nav-link" data-type="jupyter">dataset_v1.csv</a>
+      <a class="nav-link" data-type="plotly">results.json</a>
+    </nav>
+    <button class="collapse-btn left" id="toggleFolder">&#9664;</button>
+    <button class="theme-toggle" id="themeToggle"><i class="fas fa-adjust"></i></button>
+  </aside>
+
+  <!-- Main Content -->
+  <section class="main">
+    <div class="toolbar-wrapper">
+      <div class="viewer-toolbar">
+        <label for="viewerType">Viewer:</label>
+        <select id="viewerType" class="form-select form-select-sm">
+          <option value="openvisus">OpenVisus</option>
+          <option value="bokeh">Bokeh</option>
+          <option value="jupyter">Jupyter notebook</option>
+          <option value="plotly">Plotly</option>
+        </select>
+        <div class="btn-group" role="group" aria-label="Annotation tools">
+          <button type="button" class="btn btn-outline-light"><i class="fas fa-search-plus"></i></button>
+          <button type="button" class="btn btn-outline-light"><i class="fas fa-pen"></i></button>
+          <button type="button" class="btn btn-outline-light"><i class="fas fa-mouse-pointer"></i></button>
+          <button type="button" class="btn btn-outline-light"><i class="fas fa-filter"></i></button>
+        </div>
+      </div>
+    </div>
+    <div class="viewer-container" id="viewerContainer">
+      <img src="https://eos.org/wp-content/uploads/2018/04/ocview-satellite-ocean-color-data-viewer-main.jpg" alt="Oceanic Flow Data">
+    </div>
+  </section>
+
+  <!-- Right Sidebar -->
+  <aside class="details d-flex flex-column px-3 py-3" id="detailSidebar">
+    <h5>Dataset Details</h5>
+    <div class="panel-content">
+      <p><strong>Name:</strong> dataset_v1.csv</p>
+      <p><strong>Size:</strong> 2.4 MB</p>
+      <p><strong>Rows:</strong> 12,345</p>
+      <p><strong>Columns:</strong> 16</p>
+      <p><strong>Last Updated:</strong> 2025-07-15</p>
+      <p><strong>Description:</strong> Experimental measurements from the July 2025 trial.</p>
+    </div>
+    <button class="collapse-btn right" id="toggleDetail">&#9654;</button>
+  </aside>
+
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+  <script>
+    ['exp','sim','rep'].forEach(prefix => {
+      const collapseEl = document.getElementById(prefix+'List');
+      const arrowEl = document.getElementById('arrow-'+prefix);
+      collapseEl.addEventListener('show.bs.collapse', () => arrowEl.classList.add('open'));
+      collapseEl.addEventListener('hide.bs.collapse', () => arrowEl.classList.remove('open'));
+    });
+    document.getElementById('toggleFolder').onclick = () => {
+      const s = document.getElementById('folderSidebar');
+      s.classList.toggle('collapsed');
+      document.getElementById('toggleFolder').innerHTML = s.classList.contains('collapsed') ? '&#9654;' : '&#9664;';
+    };
+    document.getElementById('toggleDetail').onclick = () => {
+      const s = document.getElementById('detailSidebar');
+      s.classList.toggle('collapsed');
+      document.getElementById('toggleDetail').innerHTML = s.classList.contains('collapsed') ? '&#9664;' : '&#9654;';
+    };
+    // Theme toggle
+    document.getElementById('themeToggle').onclick = () => {
+      document.body.classList.toggle('light-theme');
+    };
+  </script>
+</body>
+</html>
