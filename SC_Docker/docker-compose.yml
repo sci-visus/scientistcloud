@@ -7,7 +7,7 @@ services:
   # Data Portal Application
   scientistcloud-portal:
     build:
-      context: ..
+      context: .
       dockerfile: Dockerfile
     container_name: scientistcloud-portal
     ports:

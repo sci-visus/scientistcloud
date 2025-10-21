@@ -22,8 +22,8 @@ COPY --from=composer:latest /usr/bin/composer /usr/bin/composer
 # Enable Apache mod_rewrite
 RUN a2enmod rewrite
 
-# Copy application files
-COPY ../SC_Web/ /var/www/html/
+# Application files will be mounted via volume in docker-compose.yml
+# No need to copy - they're mounted from ../SC_Web/
 
 # Set proper permissions
 RUN chown -R www-data:www-data /var/www/html \
