@@ -70,6 +70,17 @@ session.cookie_httponly = 1\n\
 session.cookie_secure = 0\n\
 session.use_strict_mode = 1' > /usr/local/etc/php/conf.d/custom.ini
 
+# Configure Apache to listen on port 8080
+RUN echo 'Listen 8080\n\
+<VirtualHost *:8080>\n\
+    DocumentRoot /var/www/html\n\
+    ServerName localhost\n\
+    <Directory /var/www/html>\n\
+        AllowOverride All\n\
+        Require all granted\n\
+    </Directory>\n\
+</VirtualHost>' > /etc/apache2/sites-available/000-default.conf
+
 # Create startup script
 RUN echo '#!/bin/bash\n\
 # Start Apache in the background\n\
