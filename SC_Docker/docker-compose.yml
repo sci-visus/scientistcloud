@@ -8,7 +8,7 @@ services:
   scientistcloud-portal:
     build:
       context: ..
-      dockerfile: SC_Docker/Dockerfile
+      dockerfile: Dockerfile
     container_name: scientistcloud-portal
     ports:
       - "8080:8080"  # Portal on different port
