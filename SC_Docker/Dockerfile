@@ -72,9 +72,10 @@ session.use_strict_mode = 1' > /usr/local/etc/php/conf.d/custom.ini
 
 # Configure Apache to listen on port 8080
 RUN echo 'Listen 8080\n\
+ServerName scientistcloud.com\n\
 <VirtualHost *:8080>\n\
     DocumentRoot /var/www/html\n\
-    ServerName localhost\n\
+    ServerName scientistcloud.com\n\
     <Directory /var/www/html>\n\
         AllowOverride All\n\
         Require all granted\n\
