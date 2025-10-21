@@ -66,9 +66,9 @@ SECRET_IV=your-secret-iv
 ```
 
 ### **SSL Certificates:**
-Place your SSL certificates in the `ssl/` directory:
-- `ssl/scientistcloud.com.crt`
-- `ssl/scientistcloud.com.key`
+The portal uses the existing SSL certificates from your VisusDataPortalPrivate system:
+- Certificates are automatically detected from `/home/amy/VisStoreClone/visus-dataportal-private/Docker/certbot/conf/`
+- Portal will be accessible via HTTPS at `https://scientistcloud.com/portal`
 
 ## 📊 Monitoring
 

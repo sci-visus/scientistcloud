@@ -76,7 +76,7 @@ integrate_nginx() {
     print_status "Integrating with existing nginx setup..."
     
     # Check if VisusDataPortalPrivate nginx directory exists
-    VISUS_NGINX_PATH="/Users/amygooch/GIT/VisusDataPortalPrivate/Docker/nginx/conf.d"
+    VISUS_NGINX_PATH="/home/amy/VisStoreClone/visus-dataportal-private/Docker/nginx/conf.d"
     PORTAL_NGINX_PATH="./nginx/portal.conf"
     
     if [ ! -d "$VISUS_NGINX_PATH" ]; then
@@ -135,15 +135,16 @@ check_env() {
 # Check if SSL certificates exist
 check_ssl() {
     print_status "Checking SSL certificates..."
-    if [ ! -f "ssl/scientistcloud.com.crt" ] || [ ! -f "ssl/scientistcloud.com.key" ]; then
-        print_warning "SSL certificates not found in ssl/ directory."
-        print_warning "Please add your SSL certificates:"
-        print_warning "  - ssl/scientistcloud.com.crt"
-        print_warning "  - ssl/scientistcloud.com.key"
-        print_warning "Press Enter to continue (HTTPS will not work without certificates)..."
-        read
+    
+    # Check if VisusDataPortalPrivate has SSL certificates
+    VISUS_SSL_PATH="/home/amy/VisStoreClone/visus-dataportal-private/Docker/certbot/conf"
+    if [ -d "$VISUS_SSL_PATH" ] && [ -f "$VISUS_SSL_PATH/live/scientistcloud.com/fullchain.pem" ]; then
+        print_success "Found existing SSL certificates in VisusDataPortalPrivate"
+        print_success "Portal will use existing SSL certificates via visstore_nginx"
     else
-        print_success "SSL certificates found"
+        print_warning "SSL certificates not found in VisusDataPortalPrivate"
+        print_warning "Portal will be accessible via HTTP only"
+        print_warning "Please ensure your VisusDataPortalPrivate system has SSL configured"
     fi
 }
 

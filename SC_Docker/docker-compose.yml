@@ -17,7 +17,7 @@ services:
       - ./logs:/var/www/html/logs
       - ./config:/var/www/html/config
       # Mount existing system files if needed
-      - /Users/amygooch/GIT/VisusDataPortalPrivate:/var/www/html/existing-system:ro
+      - /home/amy/VisStoreClone/visus-dataportal-private:/var/www/html/existing-system:ro
     environment:
       - APACHE_RUN_USER=www-data
       - APACHE_RUN_GROUP=www-data
