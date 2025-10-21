@@ -36,9 +36,9 @@ docker-compose ps
 
 ### **New Portal Integration:**
 - **scientistcloud-portal**: PHP/Apache application (port 8080)
-- **portal-nginx**: Portal-specific routing (port 8081)
+- **Uses existing visstore_nginx**: Integrates with your existing nginx and SSL
 - **Connects to both systems**: Uses existing databases and services
-- **No conflicts**: Uses different ports and networks
+- **No conflicts**: Uses existing infrastructure
 
 ### **URLs:**
 - **Main Site**: `scientistcloud.com/` → VisusDataPortalPrivate system

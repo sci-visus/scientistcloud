@@ -82,21 +82,8 @@ services:
       - sclib_fastapi
       - sclib_auth
 
-  # Optional: Add a lightweight nginx for portal-specific routing
-  portal-nginx:
-    image: nginx:alpine
-    container_name: scientistcloud-portal-nginx
-    ports:
-      - "8081:80"  # Different port to avoid conflicts
-    volumes:
-      - ./nginx/portal-nginx.conf:/etc/nginx/nginx.conf
-      - ./nginx/conf.d:/etc/nginx/conf.d
-      - ./ssl:/etc/nginx/ssl
-    depends_on:
-      - scientistcloud-portal
-    networks:
-      - docker_visstore_web
-    restart: unless-stopped
+  # Note: Uses existing visstore_nginx from VisusDataPortalPrivate
+  # Portal will be accessible at /portal/ path through existing nginx
 
 networks:
   docker_visstore_web:

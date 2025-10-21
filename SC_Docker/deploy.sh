@@ -71,6 +71,49 @@ check_existing_systems() {
     fi
 }
 
+# Integrate with existing nginx
+integrate_nginx() {
+    print_status "Integrating with existing nginx setup..."
+    
+    # Check if VisusDataPortalPrivate nginx directory exists
+    VISUS_NGINX_PATH="/Users/amygooch/GIT/VisusDataPortalPrivate/Docker/nginx/conf.d"
+    PORTAL_NGINX_PATH="./nginx/portal.conf"
+    
+    if [ ! -d "$VISUS_NGINX_PATH" ]; then
+        print_warning "VisusDataPortalPrivate nginx directory not found: $VISUS_NGINX_PATH"
+        print_warning "Portal will be accessible directly at http://localhost:8080"
+        return
+    fi
+    
+    if [ ! -f "$PORTAL_NGINX_PATH" ]; then
+        print_warning "Portal nginx configuration not found: $PORTAL_NGINX_PATH"
+        print_warning "Portal will be accessible directly at http://localhost:8080"
+        return
+    fi
+    
+    # Copy portal configuration to existing nginx setup
+    print_status "Copying portal configuration to existing nginx setup..."
+    cp "$PORTAL_NGINX_PATH" "$VISUS_NGINX_PATH/portal.conf"
+    
+    if [ $? -eq 0 ]; then
+        print_success "Portal configuration copied to existing nginx setup"
+        
+        # Reload nginx if it's running
+        if docker ps --format "table {{.Names}}" | grep -q "visstore_nginx"; then
+            print_status "Reloading nginx configuration..."
+            docker exec visstore_nginx nginx -s reload
+            if [ $? -eq 0 ]; then
+                print_success "Nginx configuration reloaded successfully"
+            else
+                print_warning "Failed to reload nginx configuration"
+            fi
+        fi
+    else
+        print_warning "Failed to copy portal configuration"
+        print_warning "Portal will be accessible directly at http://localhost:8080"
+    fi
+}
+
 # Check if .env file exists
 check_env() {
     print_status "Checking environment configuration..."
@@ -196,9 +239,9 @@ show_access_info() {
     echo "=========================================="
     echo ""
     echo "Portal Access URLs:"
-    echo "  📱 Portal: http://localhost:8080/test-index.php"
-    echo "  🔧 Health: http://localhost:8080/test-simple.php"
-    echo "  🌐 Nginx: http://localhost:8081/portal/"
+    echo "  📱 Portal: https://scientistcloud.com/portal"
+    echo "  🔧 Health: https://scientistcloud.com/portal/health"
+    echo "  📱 Direct: http://localhost:8080/test-index.php"
     echo ""
     echo "Existing System URLs:"
     echo "  🏠 VisusDataPortalPrivate: http://localhost:3000"
@@ -235,6 +278,7 @@ deploy() {
     start_services
     wait_for_services
     check_health
+    integrate_nginx
     test_integration
     show_access_info
     
