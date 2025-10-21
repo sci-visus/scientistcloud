@@ -1,0 +1,297 @@
+#!/bin/bash
+
+# ScientistCloud Data Portal - Unified Deployment Script
+# Integrates with both VisusDataPortalPrivate and scientistCloudLib systems
+
+set -e  # Exit on any error
+
+echo "🚀 ScientistCloud Data Portal - Unified Deployment"
+echo "=================================================="
+
+# Colors for output
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
+NC='\033[0m' # No Color
+
+# Function to print colored output
+print_status() {
+    echo -e "${BLUE}[INFO]${NC} $1"
+}
+
+print_success() {
+    echo -e "${GREEN}[SUCCESS]${NC} $1"
+}
+
+print_warning() {
+    echo -e "${YELLOW}[WARNING]${NC} $1"
+}
+
+print_error() {
+    echo -e "${RED}[ERROR]${NC} $1"
+}
+
+# Check if Docker is installed
+check_docker() {
+    print_status "Checking Docker installation..."
+    if ! command -v docker &> /dev/null; then
+        print_error "Docker is not installed. Please install Docker first."
+        exit 1
+    fi
+    
+    if ! command -v docker-compose &> /dev/null; then
+        print_error "Docker Compose is not installed. Please install Docker Compose first."
+        exit 1
+    fi
+    
+    print_success "Docker and Docker Compose are installed"
+}
+
+# Check existing systems
+check_existing_systems() {
+    print_status "Checking existing ScientistCloud systems..."
+    
+    # Check VisusDataPortalPrivate system
+    if docker ps --format "table {{.Names}}" | grep -q "visstore"; then
+        print_success "Found VisusDataPortalPrivate containers"
+        docker ps --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}" | grep "visstore"
+    else
+        print_warning "VisusDataPortalPrivate containers not found"
+        print_warning "Make sure your existing system is running first"
+    fi
+    
+    # Check scientistCloudLib system
+    if docker ps --format "table {{.Names}}" | grep -q "sclib"; then
+        print_success "Found scientistCloudLib containers"
+        docker ps --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}" | grep "sclib"
+    else
+        print_warning "scientistCloudLib containers not found"
+        print_warning "Make sure your SCLib system is running first"
+    fi
+}
+
+# Check if .env file exists
+check_env() {
+    print_status "Checking environment configuration..."
+    if [ ! -f ".env" ]; then
+        print_warning ".env file not found. Creating from example..."
+        if [ -f "env.example" ]; then
+            cp env.example .env
+            print_warning "Please edit .env file with your actual values before continuing."
+            print_warning "Press Enter to continue after editing .env file..."
+            read
+        else
+            print_error "env.example file not found. Cannot create .env file."
+            exit 1
+        fi
+    fi
+    print_success "Environment configuration found"
+}
+
+# Check if SSL certificates exist
+check_ssl() {
+    print_status "Checking SSL certificates..."
+    if [ ! -f "ssl/scientistcloud.com.crt" ] || [ ! -f "ssl/scientistcloud.com.key" ]; then
+        print_warning "SSL certificates not found in ssl/ directory."
+        print_warning "Please add your SSL certificates:"
+        print_warning "  - ssl/scientistcloud.com.crt"
+        print_warning "  - ssl/scientistcloud.com.key"
+        print_warning "Press Enter to continue (HTTPS will not work without certificates)..."
+        read
+    else
+        print_success "SSL certificates found"
+    fi
+}
+
+# Build containers
+build_containers() {
+    print_status "Building portal containers..."
+    docker-compose build --no-cache
+    print_success "Portal containers built successfully"
+}
+
+# Start services
+start_services() {
+    print_status "Starting portal services..."
+    docker-compose up -d
+    print_success "Portal services started"
+}
+
+# Wait for services to be ready
+wait_for_services() {
+    print_status "Waiting for services to be ready..."
+    sleep 10
+    
+    # Check if portal is responding
+    for i in {1..30}; do
+        if curl -f http://localhost:8080/test-simple.php &> /dev/null; then
+            print_success "Portal is responding"
+            break
+        fi
+        print_status "Waiting for portal... ($i/30)"
+        sleep 2
+    done
+}
+
+# Check service health
+check_health() {
+    print_status "Checking service health..."
+    
+    # Check container status
+    if docker-compose ps | grep -q "Up"; then
+        print_success "Portal containers are running"
+    else
+        print_error "Some portal containers are not running"
+        docker-compose ps
+        exit 1
+    fi
+    
+    # Check portal health
+    if curl -f http://localhost:8080/test-simple.php &> /dev/null; then
+        print_success "Portal health check passed"
+    else
+        print_error "Portal health check failed"
+        exit 1
+    fi
+}
+
+# Test integration
+test_integration() {
+    print_status "Testing integration with existing systems..."
+    
+    # Test MongoDB connection
+    if curl -f http://localhost:8080/test-simple.php &> /dev/null; then
+        print_success "Portal can connect to existing MongoDB"
+    else
+        print_warning "Portal may not be able to connect to existing MongoDB"
+    fi
+    
+    # Test VisusDataPortalPrivate system connection
+    if curl -f http://localhost:3000 &> /dev/null; then
+        print_success "VisusDataPortalPrivate system is accessible"
+    else
+        print_warning "VisusDataPortalPrivate system may not be accessible"
+    fi
+    
+    # Test scientistCloudLib system connection
+    if curl -f http://localhost:5001 &> /dev/null; then
+        print_success "scientistCloudLib API is accessible"
+    else
+        print_warning "scientistCloudLib API may not be accessible"
+    fi
+    
+    # Test Auth service
+    if curl -f http://localhost:8001 &> /dev/null; then
+        print_success "Auth service is accessible"
+    else
+        print_warning "Auth service may not be accessible"
+    fi
+}
+
+# Display access information
+show_access_info() {
+    echo ""
+    echo "🎉 Unified Integration Deployment Complete!"
+    echo "=========================================="
+    echo ""
+    echo "Portal Access URLs:"
+    echo "  📱 Portal: http://localhost:8080/test-index.php"
+    echo "  🔧 Health: http://localhost:8080/test-simple.php"
+    echo "  🌐 Nginx: http://localhost:8081/portal/"
+    echo ""
+    echo "Existing System URLs:"
+    echo "  🏠 VisusDataPortalPrivate: http://localhost:3000"
+    echo "  🔌 scientistCloudLib API: http://localhost:5001"
+    echo "  🔐 Auth Service: http://localhost:8001"
+    echo "  📊 Plotly: http://localhost:8050"
+    echo "  📈 Bokeh: http://localhost:5006"
+    echo "  🎯 Bokeh Dashboard: http://localhost:5008"
+    echo "  ♟️ Chess Dashboard: http://localhost:5009"
+    echo "  📁 Companion: http://localhost:3020"
+    echo ""
+    echo "Production URLs (after DNS setup):"
+    echo "  🌐 Main Site: https://scientistcloud.com"
+    echo "  📱 Data Portal: https://scientistcloud.com/portal"
+    echo "  🔧 Health: https://scientistcloud.com/portal/health"
+    echo ""
+    echo "Useful Commands:"
+    echo "  📊 View logs: docker-compose logs -f"
+    echo "  🔄 Restart: docker-compose restart"
+    echo "  🛑 Stop: docker-compose down"
+    echo "  🧹 Clean: docker-compose down -v --rmi all"
+    echo ""
+}
+
+# Main deployment function
+deploy() {
+    print_status "Starting unified deployment process..."
+    
+    check_docker
+    check_existing_systems
+    check_env
+    check_ssl
+    build_containers
+    start_services
+    wait_for_services
+    check_health
+    test_integration
+    show_access_info
+    
+    print_success "Unified deployment completed successfully!"
+}
+
+# Handle command line arguments
+case "${1:-deploy}" in
+    "deploy")
+        deploy
+        ;;
+    "stop")
+        print_status "Stopping services..."
+        docker-compose down
+        print_success "Services stopped"
+        ;;
+    "restart")
+        print_status "Restarting services..."
+        docker-compose restart
+        print_success "Services restarted"
+        ;;
+    "logs")
+        print_status "Showing logs..."
+        docker-compose logs -f
+        ;;
+    "status")
+        print_status "Portal service status:"
+        docker-compose ps
+        echo ""
+        print_status "Existing systems status:"
+        docker ps --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}" | grep -E "(visstore|sclib)"
+        ;;
+    "test")
+        print_status "Testing integration..."
+        test_integration
+        ;;
+    "clean")
+        print_status "Cleaning up..."
+        docker-compose down -v --rmi all
+        print_success "Cleanup completed"
+        ;;
+    "help")
+        echo "Usage: $0 [command]"
+        echo ""
+        echo "Commands:"
+        echo "  deploy   - Deploy the portal with unified integration (default)"
+        echo "  stop     - Stop portal services"
+        echo "  restart  - Restart portal services"
+        echo "  logs     - Show portal logs"
+        echo "  status   - Show service status"
+        echo "  test     - Test integration"
+        echo "  clean    - Stop and remove portal containers/images"
+        echo "  help     - Show this help message"
+        ;;
+    *)
+        print_error "Unknown command: $1"
+        echo "Use '$0 help' for available commands"
+        exit 1
+        ;;
+esac

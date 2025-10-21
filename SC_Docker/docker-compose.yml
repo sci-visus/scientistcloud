@@ -1,0 +1,103 @@
+version: '3.8'
+
+# ScientistCloud Data Portal - Unified Integration
+# Works with both VisusDataPortalPrivate and scientistCloudLib systems
+
+services:
+  # Data Portal Application
+  scientistcloud-portal:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: scientistcloud-portal
+    ports:
+      - "8080:8080"  # Portal on different port
+    volumes:
+      - ../SC_Web:/var/www/html
+      - ./logs:/var/www/html/logs
+      - ./config:/var/www/html/config
+      # Mount existing system files if needed
+      - /Users/amygooch/GIT/VisusDataPortalPrivate:/var/www/html/existing-system:ro
+    environment:
+      - APACHE_RUN_USER=www-data
+      - APACHE_RUN_GROUP=www-data
+      - APACHE_LOG_DIR=/var/log/apache2
+      - APACHE_RUN_DIR=/var/run/apache2
+      - APACHE_PID_FILE=/var/run/apache2/apache2.pid
+      - APACHE_LOCK_DIR=/var/lock/apache2
+      
+      # Connect to existing VisusDataPortalPrivate system
+      - MONGO_URL=${MONGO_URL}
+      - DB_NAME=${DB_NAME}
+      - DB_HOST=${DB_HOST}
+      - DB_PASS=${DB_PASS}
+      
+      # Connect to existing Auth0
+      - AUTH0_DOMAIN=${AUTH0_DOMAIN}
+      - AUTHO_CLIENT_ID=${AUTHO_CLIENT_ID}
+      - AUTHO_CLIENT_SECRET=${AUTHO_CLIENT_SECRET}
+      - AUTH0_MANAGEMENT_CLIENT_ID=${AUTH0_MANAGEMENT_CLIENT_ID}
+      - AUTH0_MANAGEMENT_CLIENT_SECRET=${AUTH0_MANAGEMENT_CLIENT_SECRET}
+      
+      # Connect to existing Google OAuth
+      - GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID}
+      - GOOGLE_CLIENT_SECRET=${GOOGLE_CLIENT_SECRET}
+      - AUTH_GOOGLE_CLIENT_ID=${AUTH_GOOGLE_CLIENT_ID}
+      - AUTH_GOOGLE_CLIENT_SECRET=${AUTH_GOOGLE_CLIENT_SECRET}
+      
+      # Security (use existing keys)
+      - SECRET_KEY=${SECRET_KEY}
+      - SECRET_IV=${SECRET_IV}
+      
+      # Server configuration
+      - DEPLOY_SERVER=${DEPLOY_SERVER}
+      - DOMAIN_NAME=${DOMAIN_NAME}
+      
+      # Connect to existing services
+      - EXISTING_SYSTEM_URL=http://visstore_user:3000
+      - EXISTING_API_URL=http://sclib_fastapi:5001
+      - EXISTING_AUTH_URL=http://sclib_auth:8001
+      - EXISTING_PLOTLY_URL=http://visstore_plotly:8050
+      - EXISTING_BOKEH_URL=http://visstore_bokeh:5006
+      - EXISTING_BOKEH_DASHBOARD_URL=http://visstore_bokeh_dashboard:5008
+      - EXISTING_CHESS_DASHBOARD_URL=http://visstore_chess_dashboard:5009
+      - EXISTING_COMPANION_URL=http://visstore_companion:3020
+      
+      # File paths (use existing volumes)
+      - VISUS_DB=${VISUS_DB}
+      - VISUS_DATASETS=${VISUS_DATASETS}
+      - HOME_DIR=${HOME_DIR}
+      
+    networks:
+      - docker_visstore_web
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/test-simple.php"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    depends_on:
+      - visstore_user
+      - sclib_fastapi
+      - sclib_auth
+
+  # Optional: Add a lightweight nginx for portal-specific routing
+  portal-nginx:
+    image: nginx:alpine
+    container_name: scientistcloud-portal-nginx
+    ports:
+      - "8081:80"  # Different port to avoid conflicts
+    volumes:
+      - ./nginx/portal-nginx.conf:/etc/nginx/nginx.conf
+      - ./nginx/conf.d:/etc/nginx/conf.d
+      - ./ssl:/etc/nginx/ssl
+    depends_on:
+      - scientistcloud-portal
+    networks:
+      - docker_visstore_web
+    restart: unless-stopped
+
+networks:
+  docker_visstore_web:
+    external: true
