@@ -17,6 +17,10 @@ This Docker configuration sets up the ScientistCloud Data Portal with integrated
    ```bash
    cp env.template .env
    ```
+   or 
+   ```
+   cp ../../SCLib_TryTest/env.scientistcloud .env
+   ```
 
 2. **Edit .env file** with your configuration values
 

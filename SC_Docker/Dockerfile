@@ -17,13 +17,16 @@ RUN apt-get update && apt-get install -y \
     python3 \
     python3-pip \
     python3-dev \
-    && docker-php-ext-install pdo_mysql mbstring exif pcntl bcmath gd zip
+    && docker-php-ext-install pdo_mysql mbstring exif pcntl bcmath gd zip \
+    && pecl install mongodb \
+    && docker-php-ext-enable mongodb
 
 # Install Composer
 COPY --from=composer:latest /usr/bin/composer /usr/bin/composer
 
 # Install Python dependencies for SCLib
-RUN pip3 install --no-cache-dir \
+# Use --break-system-packages to override externally-managed-environment restriction
+RUN pip3 install --break-system-packages --no-cache-dir \
     pymongo \
     fastapi \
     uvicorn \
