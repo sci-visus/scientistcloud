@@ -1,6 +1,6 @@
 # ScientistCloud Data Portal
 
-A modular web interface for the ScientistCloud data portal that integrates with the scientistCloudLib for MongoDB access and user management.
+A modular web interface for the ScientistCloud data portal that integrates with the scientistCloudLib for data access and user management.
 
 ## Structure
 
@@ -56,7 +56,7 @@ scientistcloud/SC_Web/
 The portal integrates with the scientistCloudLib through:
 
 1. **Configuration**: Uses `SCLib_Config` for database and server settings
-2. **MongoDB Connection**: Uses `SCLib_MongoConnection` for database operations
+2. **Data Access**: Uses SCLib API for all database operations
 3. **Authentication**: Integrates with Auth0 for user management
 4. **Job Processing**: Connects to the job processing system for dataset operations
 
@@ -64,7 +64,7 @@ The portal integrates with the scientistCloudLib through:
 
 The portal uses environment variables and configuration files:
 
-- **Database**: MongoDB connection via scientistCloudLib
+- **Database**: Data access via SCLib API
 - **Authentication**: Auth0 integration
 - **File Storage**: Configurable upload and converted data directories
 - **Viewers**: Support for OpenVisus, Bokeh, Jupyter, Plotly, and VTK
@@ -125,7 +125,7 @@ The portal uses a modular CSS approach with:
 ## Dependencies
 
 - PHP 7.4+
-- MongoDB
+- SCLib API
 - scientistCloudLib
 - Bootstrap 5.3
 - FontAwesome 6.4

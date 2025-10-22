@@ -7,6 +7,7 @@
 require_once(__DIR__ . '/../config.php');
 require_once(__DIR__ . '/auth.php');
 require_once(__DIR__ . '/dataset_manager.php');
+require_once(__DIR__ . '/sclib_client.php');
 
 // Get current user
 $user = getCurrentUser();
@@ -137,16 +138,18 @@ function formatFileSize($bytes) {
     </a>
     <div class="collapse ps-4 w-100" id="sharedDatasets">
         <?php
-        // Get shared datasets
+        // Get shared datasets via SCLib API
         $sharedDatasets = [];
         try {
-            $mongo = getMongoConnection();
-            $db = $mongo->selectDatabase(getDatabaseName());
-            $collection = $db->selectCollection(getCollectionName('datasets'));
+            $sclib = getSCLibClient();
+            $allDatasets = $sclib->getUserDatasets($user['id']);
             
-            $sharedDatasets = $collection->find([
-                'shared_with' => $user['id']
-            ])->toArray();
+            // Filter for shared datasets
+            foreach ($allDatasets as $dataset) {
+                if (in_array($user['id'], $dataset['shared_with'] ?? [])) {
+                    $sharedDatasets[] = $dataset;
+                }
+            }
             
             $sharedDatasets = array_map('formatDataset', $sharedDatasets);
         } catch (Exception $e) {
@@ -182,16 +185,18 @@ function formatFileSize($bytes) {
     </a>
     <div class="collapse ps-4 w-100" id="teamDatasets">
         <?php
-        // Get team datasets
+        // Get team datasets via SCLib API
         $teamDatasets = [];
         try {
-            $mongo = getMongoConnection();
-            $db = $mongo->selectDatabase(getDatabaseName());
-            $collection = $db->selectCollection(getCollectionName('datasets'));
+            $sclib = getSCLibClient();
+            $allDatasets = $sclib->getUserDatasets($user['id']);
             
-            $teamDatasets = $collection->find([
-                'team_id' => $user['team_id']
-            ])->toArray();
+            // Filter for team datasets
+            foreach ($allDatasets as $dataset) {
+                if ($dataset['team_id'] === $user['team_id']) {
+                    $teamDatasets[] = $dataset;
+                }
+            }
             
             $teamDatasets = array_map('formatDataset', $teamDatasets);
         } catch (Exception $e) {

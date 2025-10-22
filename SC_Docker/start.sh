@@ -217,11 +217,11 @@ test_integration() {
         print_warning "Portal configuration test may not be accessible"
     fi
     
-    # Test MongoDB connection
-    if curl -f http://127.0.0.1:8080/test-simple.php &> /dev/null; then
-        print_success "Portal can connect to existing MongoDB"
+    # Test SCLib API connection
+    if curl -f http://127.0.0.1:8080/test-sclib-api.php &> /dev/null; then
+        print_success "Portal can connect to SCLib API"
     else
-        print_warning "Portal may not be able to connect to existing MongoDB"
+        print_warning "Portal may not be able to connect to SCLib API"
     fi
     
     # Test VisusDataPortalPrivate system connection
@@ -339,17 +339,17 @@ case "${1:-start}" in
         print_success "Cleanup completed"
         ;;
     "rebuild")
-        print_status "Rebuilding containers with MongoDB extension fix..."
+        print_status "Rebuilding containers..."
         docker-compose down
         docker-compose build --no-cache
         docker-compose up -d
         print_success "Containers rebuilt successfully"
-        print_status "Testing MongoDB connection..."
+        print_status "Testing SCLib API connection..."
         sleep 10
-        if curl -f http://127.0.0.1:8080/test-mongodb.php &> /dev/null; then
-            print_success "MongoDB connection test passed"
+        if curl -f http://127.0.0.1:8080/test-sclib-api.php &> /dev/null; then
+            print_success "SCLib API connection test passed"
         else
-            print_warning "MongoDB connection test failed - check logs"
+            print_warning "SCLib API connection test failed - check logs"
         fi
         ;;
     "help")
@@ -363,7 +363,7 @@ case "${1:-start}" in
         echo "  status   - Show service status"
         echo "  test     - Test integration"
         echo "  clean    - Stop and remove portal containers/images"
-        echo "  rebuild  - Rebuild containers with MongoDB extension fix"
+        echo "  rebuild  - Rebuild containers"
         echo "  help     - Show this help message"
         ;;
     *)

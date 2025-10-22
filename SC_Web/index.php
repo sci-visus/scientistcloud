@@ -1,7 +1,7 @@
 <?php
 /**
  * ScientistCloud Data Portal - Main Index
- * Integrates with scientistCloudLib for MongoDB access and user management
+ * Integrates with scientistCloudLib for data access and user management
  */
 
 // Include configuration and authentication
