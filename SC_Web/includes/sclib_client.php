@@ -144,11 +144,12 @@ class SCLibClient {
     }
     
     /**
-     * Get user profile
+     * Get user profile - uses existing SCLib Auth service
      */
     public function getUserProfile($userId) {
         try {
-            $response = $this->makeRequest('/api/auth/user', 'GET', null, ['user_id' => $userId]);
+            // Use the existing SCLib Auth service endpoint
+            $response = $this->makeRequest('/api/auth/me', 'GET', null, [], $userId);
             return $response['user'] ?? null;
         } catch (Exception $e) {
             error_log("Failed to get user profile: " . $e->getMessage());
