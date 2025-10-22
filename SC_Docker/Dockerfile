@@ -22,7 +22,8 @@ RUN apt-get update && apt-get install -y \
     && docker-php-ext-install pdo_mysql mbstring exif pcntl bcmath gd zip \
     && pecl install mongodb \
     && docker-php-ext-enable mongodb \
-    && echo "extension=mongodb.so" > /usr/local/etc/php/conf.d/mongodb.ini
+    && echo "extension=mongodb.so" > /usr/local/etc/php/conf.d/mongodb.ini \
+    && echo "extension=mongodb.so" >> /usr/local/etc/php/php.ini
 
 # Install Composer
 COPY --from=composer:latest /usr/bin/composer /usr/bin/composer
@@ -97,6 +98,9 @@ session.use_strict_mode = 1' > /usr/local/etc/php/conf.d/custom.ini
 
 # Verify MongoDB extension is loaded
 RUN php -m | grep -i mongodb || (echo "MongoDB extension not found!" && exit 1)
+
+# Test MongoDB extension functionality
+RUN php -r "if (class_exists('MongoDB\Client')) { echo 'MongoDB\Client class available\n'; } else { echo 'MongoDB\Client class NOT available\n'; exit(1); }"
 
 # Add MongoDB extension to PHP configuration
 RUN echo "extension=mongodb.so" >> /usr/local/etc/php/php.ini

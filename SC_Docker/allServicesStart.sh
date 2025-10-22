@@ -8,7 +8,8 @@ echo "🚀 Starting all ScientistCloud services..."
 echo "📦 Starting SCLib services..."
 if [ -d "~/ScientistCloud2.0/scientistCloudLib/Docker" ]; then
     pushd ~/ScientistCloud2.0/scientistCloudLib/Docker
-    git pull
+    git fetch origin
+    git reset --hard origin/main
     ./start.sh clean
     ./start.sh up
     popd
@@ -20,7 +21,8 @@ fi
 # Start Portal services
 echo "🌐 Starting Portal services..."
 pushd ~/ScientistCloud2.0/scientistcloud/SC_Docker
-git pull
+git fetch origin
+git reset --hard origin/main
 ./start.sh clean
 ./start.sh start
 popd
