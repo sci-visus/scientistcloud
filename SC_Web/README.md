@@ -5,7 +5,7 @@ A modular web interface for the ScientistCloud data portal that integrates with 
 ## Structure
 
 ```
-SC_Dataportal/SC_Web/
+scientistcloud/SC_Web/
 ├── index.php                 # Main entry point
 ├── config.php               # Configuration and scientistCloudLib integration
 ├── login.php                # Authentication page
