@@ -3,7 +3,7 @@
 
 
 pushd ~/ScientistCloud2.0/scientistCloudLib/Docker
-git clean; ./start.sh clean; ./start.sh up
+git pull; ./start.sh clean; ./start.sh up
 popd
 
 pushd ~/ScientistCloud2.0/scientistcloud/SC_Docker
