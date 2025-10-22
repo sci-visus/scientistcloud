@@ -189,7 +189,7 @@ wait_for_services() {
     
     # Check if portal is responding
     for i in {1..30}; do
-        if curl -f http://localhost:8080/test-simple.php &> /dev/null; then
+        if curl -f http://127.0.0.1:8080/test-simple.php &> /dev/null; then
             print_success "Portal is responding"
             break
         fi
@@ -212,7 +212,7 @@ check_health() {
     fi
     
     # Check portal health
-    if curl -f http://localhost:8080/test-simple.php &> /dev/null; then
+    if curl -f http://127.0.0.1:8080/test-simple.php &> /dev/null; then
         print_success "Portal health check passed"
     else
         print_error "Portal health check failed"
@@ -225,14 +225,14 @@ test_integration() {
     print_status "Testing integration with existing systems..."
     
     # Test Portal configuration
-    if curl -f http://localhost:8080/test-config.php &> /dev/null; then
+    if curl -f http://127.0.0.1:8080/test-config.php &> /dev/null; then
         print_success "Portal configuration test accessible"
     else
         print_warning "Portal configuration test may not be accessible"
     fi
     
     # Test MongoDB connection
-    if curl -f http://localhost:8080/test-simple.php &> /dev/null; then
+    if curl -f http://127.0.0.1:8080/test-simple.php &> /dev/null; then
         print_success "Portal can connect to existing MongoDB"
     else
         print_warning "Portal may not be able to connect to existing MongoDB"
@@ -269,7 +269,7 @@ show_access_info() {
     echo "Portal Access URLs:"
     echo "  📱 Portal: https://scientistcloud.com/portal"
     echo "  🔧 Health: https://scientistcloud.com/portal/health"
-    echo "  📱 Direct: http://localhost:8080/test-index.php"
+    echo "  📱 Direct: http://127.0.0.1:8080/test-index.php"
     echo ""
     echo "Existing System URLs:"
     echo "  🏠 VisusDataPortalPrivate: http://localhost:3000"
