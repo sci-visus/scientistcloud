@@ -20,9 +20,9 @@ This Docker configuration sets up the ScientistCloud Data Portal with integrated
 
 2. **Edit .env file** with your configuration values
 
-3. **Build and run:**
+3. **Start the portal:**
    ```bash
-   docker-compose up --build
+   ./start.sh
    ```
 
 4. **Access the portal:**
