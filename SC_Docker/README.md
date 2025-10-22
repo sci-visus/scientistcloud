@@ -1,235 +1,169 @@
-# ScientistCloud Data Portal - Unified Docker Deployment
+# ScientistCloud Data Portal - Docker Setup
 
-This Docker setup allows you to deploy the ScientistCloud Data Portal as an alternative interface on scientistcloud.com, integrating with both your existing VisusDataPortalPrivate and scientistCloudLib systems.
+This Docker configuration sets up the ScientistCloud Data Portal with integrated SCLib support.
 
-## 🚀 Quick Start
+## Features
 
-### 1. **Setup Environment**
-```bash
-cd /Users/amygooch/GIT/ScientistCloud_2.0/SC_Dataportal/SC_Docker
-cp env.example .env
-# Edit .env with your actual values
-```
+- **PHP 8.2** with Apache web server
+- **Python 3** support for SCLib integration
+- **MongoDB** connectivity
+- **Auth0** authentication
+- **Google OAuth** integration
+- **SCLib** job processing system
 
-### 2. **Build and Deploy**
-```bash
-# Build the containers
-docker-compose build
+## Quick Start
 
-# Start the services
-docker-compose up -d
+1. **Copy environment template:**
+   ```bash
+   cp env.template .env
+   ```
 
-# Check status
-docker-compose ps
-```
+2. **Edit .env file** with your configuration values
 
-### 3. **Access the Portal**
-- **Main Site**: https://scientistcloud.com (existing)
-- **Data Portal**: https://scientistcloud.com/portal (new)
-- **Health Check**: https://scientistcloud.com/portal/health
+3. **Build and run:**
+   ```bash
+   docker-compose up --build
+   ```
 
-## 🏗️ Unified Architecture
+4. **Access the portal:**
+   - Portal: http://localhost:8080
+   - Test config: http://localhost:8080/test-config.php
 
-### **Existing Systems:**
-- **VisusDataPortalPrivate**: Main web application, viewers, database
-- **scientistCloudLib**: API, authentication, background services
+## Configuration
 
-### **New Portal Integration:**
-- **scientistcloud-portal**: PHP/Apache application (port 8080)
-- **Uses existing visstore_nginx**: Integrates with your existing nginx and SSL
-- **Connects to both systems**: Uses existing databases and services
-- **No conflicts**: Uses existing infrastructure
+### Environment Variables
 
-### **URLs:**
-- **Main Site**: `scientistcloud.com/` → VisusDataPortalPrivate system
-- **Data Portal**: `scientistcloud.com/portal/` → new portal
-- **API**: `scientistcloud.com/portal/api/` → portal API
+The following environment variables need to be configured in your `.env` file:
 
-## 🔧 Configuration
+#### Database
+- `MONGO_URL`: MongoDB connection string
+- `DB_NAME`: Database name
+- `DB_HOST`: Database host
+- `DB_PASS`: Database password
 
-### **Environment Variables:**
-Edit `.env` file with your actual values:
+#### Authentication
+- `AUTH0_DOMAIN`: Auth0 domain
+- `AUTH0_CLIENT_ID`: Auth0 client ID
+- `AUTH0_CLIENT_SECRET`: Auth0 client secret
+- `AUTH0_MANAGEMENT_CLIENT_ID`: Auth0 management client ID
+- `AUTH0_MANAGEMENT_CLIENT_SECRET`: Auth0 management client secret
 
-```bash
-# Database
-MONGO_URL=mongodb://mongo:27017
-DB_NAME=scientistcloud
+#### Google OAuth
+- `GOOGLE_CLIENT_ID`: Google OAuth client ID
+- `GOOGLE_CLIENT_SECRET`: Google OAuth client secret
+- `AUTH_GOOGLE_CLIENT_ID`: Auth Google client ID
+- `AUTH_GOOGLE_CLIENT_SECRET`: Auth Google client secret
 
-# Authentication
-AUTH0_DOMAIN=your-domain.auth0.com
-AUTH0_CLIENT_ID=your-client-id
-AUTH0_CLIENT_SECRET=your-client-secret
+#### Security
+- `SECRET_KEY`: Application secret key
+- `SECRET_IV`: Application secret IV
 
-# Security
-SECRET_KEY=your-secret-key
-SECRET_IV=your-secret-iv
-```
+#### Server
+- `DEPLOY_SERVER`: Server URL
+- `DOMAIN_NAME`: Domain name
 
-### **SSL Certificates:**
-The portal uses the existing SSL certificates from your VisusDataPortalPrivate system:
-- Certificates are automatically detected from `/home/amy/VisStoreClone/visus-dataportal-private/Docker/certbot/conf/`
-- Portal will be accessible via HTTPS at `https://scientistcloud.com/portal`
+#### File Paths
+- `VISUS_DB`: Visus database path
+- `VISUS_DATASETS`: Visus datasets path
+- `HOME_DIR`: Home directory path
 
-## 📊 Monitoring
-
-### **Health Checks:**
-```bash
-# Check container status
-docker-compose ps
-
-# Check logs
-docker-compose logs scientistcloud-portal
-docker-compose logs mongo
-docker-compose logs nginx
-
-# Check health endpoint
-curl https://scientistcloud.com/portal/health
-```
-
-### **Database Access:**
-```bash
-# Connect to MongoDB
-docker-compose exec mongo mongosh
-
-# Backup database
-docker-compose exec mongo mongodump --out /backup
-
-# Restore database
-docker-compose exec mongo mongorestore /backup
-```
-
-## 🔄 Deployment Workflow
-
-### **Development:**
-```bash
-# Make changes to SC_Web/
-# Rebuild and restart
-docker-compose up --build -d
-```
-
-### **Production:**
-```bash
-# Pull latest changes
-git pull origin main
-
-# Rebuild and restart
-docker-compose up --build -d
-
-# Verify deployment
-curl https://scientistcloud.com/portal/health
-```
-
-## 🛠️ Troubleshooting
-
-### **Common Issues:**
-
-1. **Port Conflicts:**
-   - Portal uses port 8080 (internal)
-   - MongoDB uses port 27018
-   - Nginx uses ports 80/443
-
-2. **SSL Issues:**
-   - Ensure SSL certificates are in `ssl/` directory
-   - Check certificate permissions
-   - Verify certificate validity
-
-3. **Database Connection:**
-   - Check MongoDB container status
-   - Verify connection string in `.env`
-   - Check network connectivity
-
-4. **Application Errors:**
-   - Check application logs: `docker-compose logs scientistcloud-portal`
-   - Verify file permissions
-   - Check PHP configuration
-
-### **Debug Commands:**
-```bash
-# Check all services
-docker-compose ps
-
-# View logs
-docker-compose logs -f
-
-# Access container shell
-docker-compose exec scientistcloud-portal bash
-
-# Check nginx configuration
-docker-compose exec nginx nginx -t
-
-# Restart specific service
-docker-compose restart scientistcloud-portal
-```
-
-## 📁 Directory Structure
+## File Structure
 
 ```
 SC_Docker/
-├── Dockerfile                 # Portal application container
-├── docker-compose.yml         # Service orchestration
-├── nginx/                     # Nginx configuration
-│   ├── nginx.conf
-│   └── conf.d/scientistcloud.conf
-├── mongo-init/               # MongoDB initialization
-│   └── init.js
-├── ssl/                      # SSL certificates
-├── logs/                     # Application logs
-├── config/                   # Configuration files
-└── README.md                 # This file
+├── docker-compose.yml          # Docker Compose configuration
+├── Dockerfile                  # PHP/Python container definition
+├── env.template               # Environment variables template
+├── README.md                  # This file
+└── logs/                      # Application logs (created automatically)
 ```
 
-## 🔐 Security
+## Volumes
 
-### **Security Headers:**
-- X-Frame-Options: DENY
-- X-Content-Type-Options: nosniff
-- X-XSS-Protection: 1; mode=block
-- Strict-Transport-Security: max-age=31536000
+The following volumes are mounted:
 
-### **Rate Limiting:**
-- API endpoints: 10 requests/second
-- Login endpoints: 5 requests/minute
+- `../SC_Web` → `/var/www/html` (Portal web files)
+- `../../scientistCloudLib` → `/var/www/scientistCloudLib` (SCLib system)
+- `./logs` → `/var/www/html/logs` (Application logs)
+- `./config` → `/var/www/html/config` (Configuration files)
 
-### **SSL/TLS:**
-- TLS 1.2+ only
-- Strong cipher suites
-- HSTS enabled
+## Testing
 
-## 🚀 Production Deployment
+1. **Configuration Test:**
+   Visit http://localhost:8080/test-config.php to verify:
+   - SCLib files are accessible
+   - Configuration loads correctly
+   - Environment variables are set
+   - Database connection works
 
-### **Prerequisites:**
-1. Docker and Docker Compose installed
-2. SSL certificates for scientistcloud.com
-3. Environment variables configured
-4. Domain DNS pointing to server
+2. **Simple Test:**
+   Visit http://localhost:8080/test-simple.php for basic PHP functionality
 
-### **Deployment Steps:**
-1. **Clone repository:**
-   ```bash
-   git clone https://github.com/sci-visus/scientistcloud.git
-   cd scientistcloud/SC_Docker
-   ```
+## Troubleshooting
 
-2. **Configure environment:**
-   ```bash
-   cp env.example .env
-   # Edit .env with production values
-   ```
+### Common Issues
 
-3. **Deploy:**
-   ```bash
-   docker-compose up -d
-   ```
+1. **"Failed to open stream" error:**
+   - Check that SCLib files are mounted correctly
+   - Verify paths in config.php
+   - Ensure SCLib_Config.php exists
 
-4. **Verify:**
-   ```bash
-   curl https://scientistcloud.com/portal/health
-   ```
+2. **Database connection errors:**
+   - Verify MongoDB is running
+   - Check MONGO_URL in .env file
+   - Ensure database credentials are correct
 
-## 📞 Support
+3. **Authentication errors:**
+   - Verify Auth0 configuration
+   - Check client IDs and secrets
+   - Ensure Auth0 domain is correct
 
-For issues or questions:
-1. Check container logs: `docker-compose logs`
-2. Verify configuration files
-3. Check network connectivity
-4. Review security settings
+### Logs
+
+Check application logs in the `logs/` directory:
+```bash
+docker-compose logs scientistcloud-portal
+```
+
+## Development
+
+### Adding New Features
+
+1. **PHP Files:** Add to `../SC_Web/`
+2. **SCLib Integration:** Add to `../../scientistCloudLib/`
+3. **Configuration:** Update `config.php`
+
+### Testing Changes
+
+```bash
+# Rebuild container
+docker-compose up --build
+
+# Check logs
+docker-compose logs -f scientistcloud-portal
+```
+
+## Production Deployment
+
+1. **Security:**
+   - Use strong secret keys
+   - Enable HTTPS
+   - Configure proper CORS settings
+
+2. **Performance:**
+   - Adjust PHP memory limits
+   - Configure Apache for production
+   - Set up proper logging
+
+3. **Monitoring:**
+   - Set up health checks
+   - Monitor application logs
+   - Configure alerts
+
+## Support
+
+For issues and questions:
+1. Check the test-config.php page
+2. Review Docker logs
+3. Verify environment configuration
+4. Check SCLib integration status

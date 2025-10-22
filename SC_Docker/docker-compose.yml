@@ -16,6 +16,8 @@ services:
       - ../SC_Web:/var/www/html
       - ./logs:/var/www/html/logs
       - ./config:/var/www/html/config
+      # Mount SCLib files
+      - ../../scientistCloudLib:/var/www/scientistCloudLib
       # Mount existing system files if needed
       #- /home/amy/VisStoreClone/visus-dataportal-private:/var/www/html/existing-system:ro
     environment:

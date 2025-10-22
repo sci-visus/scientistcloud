@@ -10,12 +10,11 @@ ini_set('display_errors', 1);
 
 // Define paths
 define('SC_WEB_ROOT', __DIR__);
-define('SC_LIB_ROOT', dirname(__DIR__) . '/scientistCloudLib');
+define('SC_LIB_ROOT', '/var/www/scientistCloudLib');
 define('SC_CONFIG_PATH', SC_LIB_ROOT . '/SCLib_JobProcessing');
 
-// Include scientistCloudLib
+// Include scientistCloudLib PHP files only
 require_once(SC_CONFIG_PATH . '/SCLib_Config.php');
-require_once(SC_CONFIG_PATH . '/SCLib_MongoConnection.py');
 
 // Initialize configuration
 try {

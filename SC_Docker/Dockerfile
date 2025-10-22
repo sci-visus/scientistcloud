@@ -14,10 +14,26 @@ RUN apt-get update && apt-get install -y \
     libzip-dev \
     zip \
     unzip \
+    python3 \
+    python3-pip \
+    python3-dev \
     && docker-php-ext-install pdo_mysql mbstring exif pcntl bcmath gd zip
 
 # Install Composer
 COPY --from=composer:latest /usr/bin/composer /usr/bin/composer
+
+# Install Python dependencies for SCLib
+RUN pip3 install --no-cache-dir \
+    pymongo \
+    fastapi \
+    uvicorn \
+    python-multipart \
+    python-jose[cryptography] \
+    passlib[bcrypt] \
+    python-dotenv \
+    requests \
+    pydantic \
+    email-validator
 
 # Enable Apache modules
 RUN a2enmod rewrite headers
