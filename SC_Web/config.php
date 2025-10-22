@@ -26,34 +26,34 @@ try {
 }
 
 // Database configuration
-define('DB_NAME', $config->get_database_name());
-define('MONGO_URL', $config->get_mongo_url());
+define('DB_NAME', $config['database_name']);
+define('MONGO_URL', $config['mongo_url']);
 
 // Collection names
-define('COLLECTION_DATASETS', $config->get_collection_name('visstoredatas'));
-define('COLLECTION_USERS', $config->get_collection_name('user_profile'));
-define('COLLECTION_TEAMS', $config->get_collection_name('teams'));
-define('COLLECTION_SHARED', $config->get_collection_name('shared_user'));
+define('COLLECTION_DATASETS', get_collection_name('visstoredatas'));
+define('COLLECTION_USERS', get_collection_name('user_profile'));
+define('COLLECTION_TEAMS', get_collection_name('teams'));
+define('COLLECTION_SHARED', get_collection_name('shared_user'));
 
 // Server configuration
-define('SC_SERVER_URL', $config->server->deploy_server);
-define('SC_DOMAIN', $config->server->domain_name);
+define('SC_SERVER_URL', $config['server']['deploy_server']);
+define('SC_DOMAIN', $config['server']['domain_name']);
 
 // Job processing configuration
-$job_config = $config->get_job_processing_settings();
+$job_config = $config['job_processing'];
 define('JOB_IN_DATA_DIR', $job_config['in_data_dir']);
 define('JOB_OUT_DATA_DIR', $job_config['out_data_dir']);
 define('JOB_SYNC_DATA_DIR', $job_config['sync_data_dir']);
 define('JOB_AUTH_DATA_DIR', $job_config['auth_dir']);
 
 // Authentication configuration
-define('AUTH0_DOMAIN', $config->auth->auth0_domain);
-define('AUTH0_CLIENT_ID', $config->auth->auth0_client_id);
-define('AUTH0_CLIENT_SECRET', $config->auth->auth0_client_secret);
+define('AUTH0_DOMAIN', $config['auth']['auth0_domain']);
+define('AUTH0_CLIENT_ID', $config['auth']['auth0_client_id']);
+define('AUTH0_CLIENT_SECRET', $config['auth']['auth0_client_secret']);
 
 // Security settings
-define('SECRET_KEY', $config->auth->secret_key);
-define('SECRET_IV', $config->auth->secret_iv);
+define('SECRET_KEY', $config['auth']['secret_key']);
+define('SECRET_IV', $config['auth']['secret_iv']);
 
 // Dashboard configuration
 define('DEFAULT_DASHBOARD', 'openvisus');
