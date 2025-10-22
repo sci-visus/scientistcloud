@@ -17,9 +17,12 @@ RUN apt-get update && apt-get install -y \
     python3 \
     python3-pip \
     python3-dev \
+    pkg-config \
+    libssl-dev \
     && docker-php-ext-install pdo_mysql mbstring exif pcntl bcmath gd zip \
     && pecl install mongodb \
-    && docker-php-ext-enable mongodb
+    && docker-php-ext-enable mongodb \
+    && echo "extension=mongodb.so" > /usr/local/etc/php/conf.d/mongodb.ini
 
 # Install Composer
 COPY --from=composer:latest /usr/bin/composer /usr/bin/composer
@@ -88,6 +91,9 @@ date.timezone = UTC\n\
 session.cookie_httponly = 1\n\
 session.cookie_secure = 0\n\
 session.use_strict_mode = 1' > /usr/local/etc/php/conf.d/custom.ini
+
+# Verify MongoDB extension is loaded
+RUN php -m | grep -i mongodb || (echo "MongoDB extension not found!" && exit 1)
 
 # Configure Apache to listen on port 8080
 RUN echo 'Listen 8080\n\

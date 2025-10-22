@@ -352,6 +352,20 @@ case "${1:-start}" in
         docker-compose down -v --rmi all
         print_success "Cleanup completed"
         ;;
+    "rebuild")
+        print_status "Rebuilding containers with MongoDB extension fix..."
+        docker-compose down
+        docker-compose build --no-cache
+        docker-compose up -d
+        print_success "Containers rebuilt successfully"
+        print_status "Testing MongoDB connection..."
+        sleep 10
+        if curl -f http://127.0.0.1:8080/test-mongodb.php &> /dev/null; then
+            print_success "MongoDB connection test passed"
+        else
+            print_warning "MongoDB connection test failed - check logs"
+        fi
+        ;;
     "help")
         echo "Usage: $0 [command]"
         echo ""
@@ -363,6 +377,7 @@ case "${1:-start}" in
         echo "  status   - Show service status"
         echo "  test     - Test integration"
         echo "  clean    - Stop and remove portal containers/images"
+        echo "  rebuild  - Rebuild containers with MongoDB extension fix"
         echo "  help     - Show this help message"
         ;;
     *)
