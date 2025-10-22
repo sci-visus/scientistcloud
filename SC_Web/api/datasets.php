@@ -18,6 +18,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
 require_once(__DIR__ . '/../config.php');
 require_once(__DIR__ . '/../includes/auth.php');
 require_once(__DIR__ . '/../includes/dataset_manager.php');
+require_once(__DIR__ . '/../includes/sclib_client.php');
 
 try {
     // Check authentication

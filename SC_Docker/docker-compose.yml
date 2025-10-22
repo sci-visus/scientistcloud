@@ -65,6 +65,10 @@ services:
       - EXISTING_CHESS_DASHBOARD_URL=http://visstore_chess_dashboard:5009
       - EXISTING_COMPANION_URL=http://visstore_companion:3020
       
+      # SCLib API configuration
+      - SCLIB_API_URL=http://sclib-portal-api:5001
+      - SCLIB_AUTH_URL=http://sclib-auth:8001
+      
       # File paths (use existing volumes)
       - VISUS_DB=${VISUS_DB}
       - VISUS_DATASETS=${VISUS_DATASETS}
@@ -80,6 +84,67 @@ services:
       retries: 3
       start_period: 40s
     # Note: Services are running in external network, no depends_on needed
+
+  # SCLib Portal API Service
+  sclib-portal-api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: sclib-portal-api
+    ports:
+      - "5001:5001"
+    volumes:
+      - ../../scientistCloudLib:/var/www/scientistCloudLib
+    environment:
+      - MONGO_URL=${MONGO_URL}
+      - DB_NAME=${DB_NAME}
+      - SC_SERVER_URL=${SC_SERVER_URL}
+      - SC_DOMAIN=${SC_DOMAIN}
+      - AUTH0_DOMAIN=${AUTH0_DOMAIN}
+      - AUTH0_CLIENT_ID=${AUTH0_CLIENT_ID}
+      - AUTH0_CLIENT_SECRET=${AUTH0_CLIENT_SECRET}
+      - SECRET_KEY=${SECRET_KEY}
+      - SECRET_IV=${SECRET_IV}
+      - SCLIB_AUTH_URL=http://sclib-auth:8001
+    command: ["python3", "/var/www/scientistCloudLib/SCLib_JobProcessing/SCLib_PortalAPI.py"]
+    networks:
+      - docker_visstore_web
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5001/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  # SCLib Auth Service
+  sclib-auth:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: sclib-auth
+    ports:
+      - "8001:8001"
+    volumes:
+      - ../../scientistCloudLib:/var/www/scientistCloudLib
+    environment:
+      - MONGO_URL=${MONGO_URL}
+      - DB_NAME=${DB_NAME}
+      - AUTH0_DOMAIN=${AUTH0_DOMAIN}
+      - AUTH0_CLIENT_ID=${AUTH0_CLIENT_ID}
+      - AUTH0_CLIENT_SECRET=${AUTH0_CLIENT_SECRET}
+      - SECRET_KEY=${SECRET_KEY}
+      - SECRET_IV=${SECRET_IV}
+    command: ["python3", "/var/www/scientistCloudLib/SCLib_Auth/start_auth_server.py"]
+    networks:
+      - docker_visstore_web
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8001/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
 
   # Note: Uses existing visstore_nginx from VisusDataPortalPrivate
   # Portal will be accessible at /portal/ path through existing nginx

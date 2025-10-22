@@ -19,7 +19,7 @@ require_once(SC_CONFIG_PATH . '/SCLib_Config.php');
 // Initialize configuration
 try {
     $config = get_config();
-    $mongo_connection = get_mongo_connection();
+    // No direct MongoDB connection needed - SCLib handles all database operations
 } catch (Exception $e) {
     error_log("Configuration error: " . $e->getMessage());
     die("Configuration error. Please check your environment settings.");
@@ -76,10 +76,10 @@ if (!file_exists(dirname(LOG_FILE))) {
     mkdir(dirname(LOG_FILE), 0755, true);
 }
 
-// Helper functions
+// Helper functions - SCLib handles all database operations
 function getMongoConnection() {
-    global $mongo_connection;
-    return $mongo_connection;
+    // Deprecated - use SCLib API instead
+    throw new Exception("Direct MongoDB access not supported. Use SCLib API instead.");
 }
 
 function getDatabaseName() {

@@ -37,6 +37,8 @@ RUN pip3 install --break-system-packages --no-cache-dir \
     pymongo \
     fastapi \
     uvicorn \
+    flask \
+    flask-cors \
     python-multipart \
     python-jose[cryptography] \
     passlib[bcrypt] \
