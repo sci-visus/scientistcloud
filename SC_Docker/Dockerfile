@@ -27,6 +27,9 @@ RUN apt-get update && apt-get install -y \
 # Install Composer
 COPY --from=composer:latest /usr/bin/composer /usr/bin/composer
 
+# Install MongoDB PHP library via Composer as fallback
+RUN composer require mongodb/mongodb --no-interaction --prefer-dist
+
 # Install Python dependencies for SCLib
 # Use --break-system-packages to override externally-managed-environment restriction
 RUN pip3 install --break-system-packages --no-cache-dir \
@@ -94,6 +97,9 @@ session.use_strict_mode = 1' > /usr/local/etc/php/conf.d/custom.ini
 
 # Verify MongoDB extension is loaded
 RUN php -m | grep -i mongodb || (echo "MongoDB extension not found!" && exit 1)
+
+# Add MongoDB extension to PHP configuration
+RUN echo "extension=mongodb.so" >> /usr/local/etc/php/php.ini
 
 # Configure Apache to listen on port 8080
 RUN echo 'Listen 8080\n\

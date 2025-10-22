@@ -18,6 +18,35 @@ if (extension_loaded('mongodb')) {
 } else {
     echo "❌ MongoDB extension is NOT loaded<br>";
     echo "Available extensions: " . implode(', ', get_loaded_extensions()) . "<br>";
+    
+    // Check if extension file exists
+    $extension_path = "/usr/local/lib/php/extensions/no-debug-non-zts-20220829/mongodb.so";
+    if (file_exists($extension_path)) {
+        echo "MongoDB extension file exists at: $extension_path<br>";
+    } else {
+        echo "MongoDB extension file NOT found at: $extension_path<br>";
+        echo "Looking for extension files...<br>";
+        $ext_dir = "/usr/local/lib/php/extensions/";
+        if (is_dir($ext_dir)) {
+            $dirs = scandir($ext_dir);
+            foreach ($dirs as $dir) {
+                if ($dir != '.' && $dir != '..') {
+                    $mongodb_file = $ext_dir . $dir . "/mongodb.so";
+                    if (file_exists($mongodb_file)) {
+                        echo "Found MongoDB extension at: $mongodb_file<br>";
+                    }
+                }
+            }
+        }
+    }
+    
+    // Check PHP configuration
+    echo "<br>PHP Configuration:<br>";
+    echo "PHP version: " . phpversion() . "<br>";
+    echo "PHP SAPI: " . php_sapi_name() . "<br>";
+    echo "Configuration file: " . php_ini_loaded_file() . "<br>";
+    echo "Additional ini files: " . implode(', ', php_ini_scanned_files()) . "<br>";
+    
     exit(1);
 }
 
