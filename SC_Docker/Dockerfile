@@ -19,17 +19,12 @@ RUN apt-get update && apt-get install -y \
     python3-dev \
     pkg-config \
     libssl-dev \
-    && docker-php-ext-install pdo_mysql mbstring exif pcntl bcmath gd zip \
-    && pecl install mongodb \
-    && docker-php-ext-enable mongodb \
-    && echo "extension=mongodb.so" > /usr/local/etc/php/conf.d/mongodb.ini \
-    && echo "extension=mongodb.so" >> /usr/local/etc/php/php.ini
+    && docker-php-ext-install pdo_mysql mbstring exif pcntl bcmath gd zip
 
 # Install Composer
 COPY --from=composer:latest /usr/bin/composer /usr/bin/composer
 
-# Install MongoDB PHP library via Composer as fallback
-RUN composer require mongodb/mongodb --no-interaction --prefer-dist
+# No MongoDB dependencies needed - using SCLib API for all database operations
 
 # Install Python dependencies for SCLib
 # Use --break-system-packages to override externally-managed-environment restriction
@@ -98,14 +93,8 @@ session.cookie_httponly = 1\n\
 session.cookie_secure = 0\n\
 session.use_strict_mode = 1' > /usr/local/etc/php/conf.d/custom.ini
 
-# Verify MongoDB extension is loaded
-RUN php -m | grep -i mongodb || (echo "MongoDB extension not found!" && exit 1)
-
-# Test MongoDB extension functionality
-RUN php -r "if (class_exists('MongoDB\Client')) { echo 'MongoDB\Client class available\n'; } else { echo 'MongoDB\Client class NOT available\n'; exit(1); }"
-
-# Add MongoDB extension to PHP configuration
-RUN echo "extension=mongodb.so" >> /usr/local/etc/php/php.ini
+# Verify SCLib API connectivity (no MongoDB dependencies needed)
+RUN echo "Portal configured to use SCLib API - no direct database access"
 
 # Configure Apache to listen on port 8080
 RUN echo 'Listen 8080\n\

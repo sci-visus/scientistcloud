@@ -25,9 +25,9 @@ try {
     die("Configuration error. Please check your environment settings.");
 }
 
-// Database configuration
+// Database configuration - handled by SCLib API
 define('DB_NAME', $config['database_name']);
-define('MONGO_URL', $config['mongo_url']);
+define('MONGO_URL', $config['mongo_url']); // Not used directly - SCLib handles this
 
 // Collection names
 define('COLLECTION_DATASETS', get_collection_name('visstoredatas'));
