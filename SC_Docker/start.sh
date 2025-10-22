@@ -91,27 +91,13 @@ integrate_nginx() {
         return
     fi
     
-    # Copy portal configuration to existing nginx setup
-    print_status "Copying portal configuration to existing nginx setup..."
-    cp "$PORTAL_NGINX_PATH" "$VISUS_NGINX_PATH/portal.conf"
+    # Remove any existing problematic portal.conf file
+    print_status "Removing any existing problematic portal configuration..."
+    docker exec visstore_nginx rm -f /etc/nginx/conf.d/portal.conf 2>/dev/null || true
     
-    if [ $? -eq 0 ]; then
-        print_success "Portal configuration copied to existing nginx setup"
-        
-        # Reload nginx if it's running
-        if docker ps --format "table {{.Names}}" | grep -q "visstore_nginx"; then
-            print_status "Reloading nginx configuration..."
-            docker exec visstore_nginx nginx -s reload
-            if [ $? -eq 0 ]; then
-                print_success "Nginx configuration reloaded successfully"
-            else
-                print_warning "Failed to reload nginx configuration"
-            fi
-        fi
-    else
-        print_warning "Failed to copy portal configuration"
-        print_warning "Portal will be accessible directly at http://localhost:8080"
-    fi
+    print_success "Portal configuration cleanup completed"
+    print_warning "Portal will be accessible directly at http://127.0.0.1:8080"
+    print_warning "For nginx integration, use the setup_ssl.sh script which embeds the configuration properly"
 }
 
 # Check if .env file exists
