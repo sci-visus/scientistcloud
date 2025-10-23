@@ -1,11 +1,27 @@
 <?php
 /**
  * Login Page for ScientistCloud Data Portal
- * Handles user authentication
+ * Handles user authentication via Auth0
  */
 
+// Start session VERY FIRST
+if (session_status() !== PHP_SESSION_ACTIVE) {
+    session_start();
+}
+
+// Load configuration and Auth0 initialization
 require_once(__DIR__ . '/config.php');
+require_once(__DIR__ . '/config_auth0.php'); // Setup SDK
 require_once(__DIR__ . '/includes/auth.php');
+
+global $auth0;
+
+if (!isset($_SESSION['CREATED'])) {
+    $_SESSION['CREATED'] = time();
+} else if (time() - $_SESSION['CREATED'] > 1600) {
+    session_regenerate_id(true);
+    $_SESSION['CREATED'] = time();
+}
 
 // Check if user is already authenticated
 if (isAuthenticated()) {
@@ -13,20 +29,18 @@ if (isAuthenticated()) {
     exit;
 }
 
-// Handle login form submission
-if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    $email = $_POST['email'] ?? '';
-    $password = $_POST['password'] ?? '';
-    
-    if (empty($email) || empty($password)) {
-        $error = 'Please enter both email and password';
-    } else {
-        // TODO: Implement actual authentication
-        // For now, we'll just redirect to the main page
-        // In a real implementation, you would validate credentials here
-        header('Location: index.php');
-        exit;
-    }
+// Trigger Auth0 login; will redirect if not logged in
+if (!$auth0->getUser()) {
+    $loginUrl = $auth0->login(
+        SC_SERVER_URL . '/auth/callback.php',
+        [
+            'prompt' => 'consent',
+            'access_type' => 'offline',
+            'scope' => 'openid profile email offline_access https://www.googleapis.com/auth/drive'
+        ]
+    );
+    header('Location: ' . $loginUrl);
+    exit;
 }
 ?>
 <!DOCTYPE html>
@@ -55,6 +69,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             padding: 2rem;
             width: 100%;
             max-width: 400px;
+            text-align: center;
         }
         
         .login-header {
@@ -73,43 +88,25 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             margin-bottom: 0;
         }
         
-        .form-floating {
-            margin-bottom: 1rem;
+        .spinner {
+            width: 3rem;
+            height: 3rem;
+            border: 0.3rem solid #f3f3f3;
+            border-top: 0.3rem solid #667eea;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 1rem;
         }
         
-        .btn-login {
-            width: 100%;
-            padding: 0.75rem;
-            font-size: 1.1rem;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            border: none;
-            border-radius: 0.5rem;
-            color: white;
-            transition: transform 0.2s;
-        }
-        
-        .btn-login:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.2);
-        }
-        
-        .alert {
-            border-radius: 0.5rem;
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
         }
         
         .login-footer {
             text-align: center;
             margin-top: 2rem;
             color: #666;
-        }
-        
-        .login-footer a {
-            color: #667eea;
-            text-decoration: none;
-        }
-        
-        .login-footer a:hover {
-            text-decoration: underline;
         }
     </style>
 </head>
@@ -120,31 +117,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             <p>Data Portal Login</p>
         </div>
         
-        <?php if (isset($error)): ?>
-            <div class="alert alert-danger" role="alert">
-                <i class="fas fa-exclamation-circle"></i> <?php echo htmlspecialchars($error); ?>
-            </div>
-        <?php endif; ?>
-        
-        <form method="POST" action="">
-            <div class="form-floating">
-                <input type="email" class="form-control" id="email" name="email" placeholder="Email" required>
-                <label for="email"><i class="fas fa-envelope"></i> Email</label>
-            </div>
-            
-            <div class="form-floating">
-                <input type="password" class="form-control" id="password" name="password" placeholder="Password" required>
-                <label for="password"><i class="fas fa-lock"></i> Password</label>
-            </div>
-            
-            <button type="submit" class="btn btn-login">
-                <i class="fas fa-sign-in-alt"></i> Sign In
-            </button>
-        </form>
+        <div class="spinner"></div>
+        <p>Redirecting to secure login...</p>
+        <p class="text-muted">You will be redirected to Auth0 for authentication.</p>
         
         <div class="login-footer">
-            <p>Don't have an account? <a href="register.php">Sign up</a></p>
-            <p><a href="forgot-password.php">Forgot your password?</a></p>
+            <p>If you are not redirected automatically, <a href="#" onclick="window.location.reload()">click here</a></p>
         </div>
     </div>
     

@@ -11,6 +11,13 @@ require_once(__DIR__ . '/sclib_client.php');
  * Get current authenticated user
  */
 function getCurrentUser() {
+    // First try to authenticate from Auth0 session
+    $user = authenticateUserFromSession();
+    if ($user) {
+        return $user;
+    }
+    
+    // Fallback to legacy session check
     if (!isset($_SESSION['user_id'])) {
         return null;
     }
@@ -74,6 +81,46 @@ function authenticateUser($auth0_token) {
         
     } catch (Exception $e) {
         logMessage('ERROR', 'Authentication failed', ['error' => $e->getMessage()]);
+        return false;
+    }
+}
+
+/**
+ * Authenticate user with Auth0 session
+ */
+function authenticateUserFromSession() {
+    try {
+        // Check if we have Auth0 session data
+        if (!isset($_SESSION['user_id']) || !isset($_SESSION['user_email'])) {
+            return false;
+        }
+        
+        $userId = $_SESSION['user_id'];
+        $userEmail = $_SESSION['user_email'];
+        
+        // Get user profile from SCLib
+        $sclib = getSCLibClient();
+        $user = $sclib->getUserProfile($userId);
+        
+        if (!$user) {
+            // Try to get user by email as fallback
+            $user = $sclib->getUserProfileByEmail($userEmail);
+            if (!$user) {
+                return false;
+            }
+        }
+        
+        return [
+            'id' => $user['id'],
+            'email' => $user['email'],
+            'name' => $user['name'],
+            'preferred_dashboard' => $user['preferences']['preferred_dashboard'] ?? DEFAULT_DASHBOARD,
+            'team_id' => $user['team_id'],
+            'permissions' => $user['permissions'] ?? ['read', 'upload']
+        ];
+        
+    } catch (Exception $e) {
+        logMessage('ERROR', 'Session authentication failed', ['error' => $e->getMessage()]);
         return false;
     }
 }
@@ -149,8 +196,39 @@ function isAuthenticated() {
  * Logout user
  */
 function logoutUser() {
+    // Clear all session variables
+    $_SESSION = array();
+    
+    // Destroy the session cookie
+    if (ini_get("session.use_cookies")) {
+        $params = session_get_cookie_params();
+        setcookie(session_name(), '', time() - 42000,
+            $params["path"], $params["domain"],
+            $params["secure"], $params["httponly"]
+        );
+    }
+    
+    // Destroy the session
     session_destroy();
+    
+    // Start a new session
     session_start();
+}
+
+/**
+ * Logout user with Auth0
+ */
+function logoutUserWithAuth0() {
+    // Clear session first
+    logoutUser();
+    
+    // Redirect to Auth0 logout
+    require_once(__DIR__ . '/../config_auth0.php');
+    global $auth0;
+    
+    $logoutUrl = $auth0->logout(SC_SERVER_URL . '/login.php');
+    header('Location: ' . $logoutUrl);
+    exit;
 }
 
 /**
