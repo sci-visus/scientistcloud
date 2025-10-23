@@ -24,6 +24,9 @@ RUN apt-get update && apt-get install -y \
 # Install Composer
 COPY --from=composer:latest /usr/bin/composer /usr/bin/composer
 
+# Install PHP dependencies for Auth0 (PSR-17 HTTP Factory)
+RUN composer global require psr/http-factory-implementation guzzlehttp/psr7
+
 # No MongoDB dependencies needed - using SCLib API for all database operations
 
 # Install Python dependencies for SCLib
