@@ -118,7 +118,13 @@ RUN echo '#!/bin/bash\n\
 # Install composer dependencies if composer.json exists\n\
 if [ -f /var/www/html/composer.json ]; then\n\
     echo "Installing composer dependencies..."\n\
-    cd /var/www/html && composer install --no-dev --optimize-autoloader\n\
+    cd /var/www/html\n\
+    composer install --no-dev --optimize-autoloader\n\
+    echo "Composer dependencies installed successfully"\n\
+    ls -la vendor/ | head -10\n\
+else\n\
+    echo "composer.json not found at /var/www/html/composer.json"\n\
+    ls -la /var/www/html/\n\
 fi\n\
 \n\
 # Start Apache in the background\n\
