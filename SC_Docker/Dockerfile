@@ -27,6 +27,10 @@ COPY --from=composer:latest /usr/bin/composer /usr/bin/composer
 # Install PHP dependencies for Auth0 (PSR-17 HTTP Factory)
 RUN composer global require psr/http-factory-implementation guzzlehttp/psr7
 
+# Also install locally in the web directory for better compatibility
+WORKDIR /var/www/html
+RUN composer install --no-dev --optimize-autoloader
+
 # No MongoDB dependencies needed - using SCLib API for all database operations
 
 # Install Python dependencies for SCLib

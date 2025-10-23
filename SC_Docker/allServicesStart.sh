@@ -4,6 +4,21 @@
 
 echo "🚀 Starting all ScientistCloud services..."
 
+#Start Update SCLib_TryTest
+echo "📦 Update SCLib_TryTest and copy env.scientistcloud to SCLib and SC Website..."
+if [ -d "~/ScientistCloud2.0/SCLib_TryTest/" ]; then
+    pushd ~/ScientistCloud2.0/SCLib_TryTest/
+    git fetch origin
+    git reset --hard origin/main
+    cp env.scientistcloud ~/ScientistCloud2.0/scientistCloudLib/Docker/.env
+    cp env.scientistcloud ~/ScientistCloud2.0/scientistcloud/SC_Docker/.env
+    popd
+    echo "✅ SCLib services started"
+else
+    echo "⚠️ SCLib Docker directory not found, skipping..."
+fi
+
+
 # Start SCLib services first
 echo "📦 Starting SCLib services..."
 if [ -d "~/ScientistCloud2.0/scientistCloudLib/Docker" ]; then
