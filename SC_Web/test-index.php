@@ -7,8 +7,38 @@
 // Include test configuration
 require_once(__DIR__ . '/test-config.php');
 
-// Get user information
+// Include auth module for user functions
+require_once(__DIR__ . '/includes/auth.php');
+
+// Get user information (with fallback for test mode)
 $user = getCurrentUser();
+if (!$user) {
+    // Mock user for testing
+    $user = [
+        'id' => 'test-user-123',
+        'email' => 'test@scientistcloud.com',
+        'name' => 'Test User',
+        'preferred_dashboard' => 'openvisus',
+        'permissions' => ['read', 'upload']
+    ];
+}
+
+// Mock functions for testing
+if (!function_exists('getUserDatasets')) {
+    function getUserDatasets($userId) {
+        return [
+            ['id' => 'dataset-1', 'name' => 'Test Dataset 1', 'type' => 'nexus'],
+            ['id' => 'dataset-2', 'name' => 'Test Dataset 2', 'type' => 'hdf5']
+        ];
+    }
+}
+
+if (!function_exists('getUserPreferredDashboard')) {
+    function getUserPreferredDashboard($userId) {
+        return 'openvisus';
+    }
+}
+
 $datasets = getUserDatasets($user['id']);
 $preferredDashboard = getUserPreferredDashboard($user['id']);
 
