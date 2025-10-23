@@ -60,6 +60,11 @@ if (!isset($auth0)) {
         $config->setHttpClient(new \GuzzleHttp\Client());
     }
     
+    // Alternative: Use PSR-18 discovery if Guzzle not available
+    if (!class_exists('GuzzleHttp\Client') && class_exists('Http\Discovery\HttpClientDiscovery')) {
+        $config->setHttpClient(\Http\Discovery\HttpClientDiscovery::find());
+    }
+    
     $auth0 = new Auth0($config);
 }
 ?>
