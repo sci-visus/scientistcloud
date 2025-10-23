@@ -51,9 +51,13 @@ if (!isset($auth0)) {
          persistRefreshToken: true
      );
     
-    // Explicitly set HTTP factory if available
+    // Explicitly set HTTP factory and client if available
     if (class_exists('GuzzleHttp\Psr7\HttpFactory')) {
         $config->setHttpRequestFactory(new \GuzzleHttp\Psr7\HttpFactory());
+    }
+    
+    if (class_exists('GuzzleHttp\Client')) {
+        $config->setHttpClient(new \GuzzleHttp\Client());
     }
     
     $auth0 = new Auth0($config);
