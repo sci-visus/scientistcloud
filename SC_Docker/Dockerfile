@@ -27,10 +27,7 @@ COPY --from=composer:latest /usr/bin/composer /usr/bin/composer
 # Install PHP dependencies for Auth0 (PSR-17 HTTP Factory)
 RUN composer global require psr/http-factory-implementation guzzlehttp/psr7
 
-# Copy composer.json first, then install dependencies
-COPY ../SC_Web/composer.json /var/www/html/composer.json
-WORKDIR /var/www/html
-RUN composer install --no-dev --optimize-autoloader
+# Install dependencies after volume mount (will be handled in start script)
 
 # No MongoDB dependencies needed - using SCLib API for all database operations
 
@@ -118,6 +115,12 @@ ServerName scientistcloud.com\n\
 
 # Create startup script
 RUN echo '#!/bin/bash\n\
+# Install composer dependencies if composer.json exists\n\
+if [ -f /var/www/html/composer.json ]; then\n\
+    echo "Installing composer dependencies..."\n\
+    cd /var/www/html && composer install --no-dev --optimize-autoloader\n\
+fi\n\
+\n\
 # Start Apache in the background\n\
 apache2-foreground &\n\
 \n\
