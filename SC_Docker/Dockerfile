@@ -27,10 +27,11 @@ COPY --from=composer:latest /usr/bin/composer /usr/bin/composer
 # Install PHP dependencies for Auth0 (PSR-17 HTTP Factory and PSR-18 HTTP Client)
 RUN composer global require psr/http-factory-implementation guzzlehttp/psr7 guzzlehttp/guzzle
 
-# Copy composer.json and install dependencies during build
-COPY SC_Web/composer.json /tmp/composer.json
-RUN cd /tmp && composer install --no-dev --optimize-autoloader
-RUN cp -r /tmp/vendor /var/www/html/ 2>/dev/null || true
+# Install dependencies during build (composer.json will be available via volume mount)
+RUN mkdir -p /tmp/deps && cd /tmp/deps && \
+    echo '{"require":{"php":">=8.0","auth0/auth0-php":"^8.17","guzzlehttp/guzzle":"^7.0","guzzlehttp/psr7":"^2.0"}}' > composer.json && \
+    composer install --no-dev --optimize-autoloader && \
+    cp -r vendor /var/www/html/ 2>/dev/null || true
 
 # No MongoDB dependencies needed - using SCLib API for all database operations
 
