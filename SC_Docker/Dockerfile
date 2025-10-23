@@ -27,9 +27,9 @@ COPY --from=composer:latest /usr/bin/composer /usr/bin/composer
 # Install PHP dependencies for Auth0 (PSR-17 HTTP Factory and PSR-18 HTTP Client)
 RUN composer global require psr/http-factory-implementation guzzlehttp/psr7 guzzlehttp/guzzle
 
-# Install dependencies during build (composer.json will be available via volume mount)
+# Install dependencies during build with explicit implementations
 RUN mkdir -p /tmp/deps && cd /tmp/deps && \
-    echo '{"require":{"php":">=8.0","auth0/auth0-php":"^8.17","guzzlehttp/guzzle":"^7.0","guzzlehttp/psr7":"^2.0"}}' > composer.json && \
+    echo '{"require":{"php":">=8.0","auth0/auth0-php":"^8.17","guzzlehttp/guzzle":"^7.0","guzzlehttp/psr7":"^2.0","psr/http-factory-implementation":"^1.0","psr/http-client-implementation":"^1.0"}}' > composer.json && \
     composer install --no-dev --optimize-autoloader && \
     cp -r vendor /var/www/html/ 2>/dev/null || true
 
