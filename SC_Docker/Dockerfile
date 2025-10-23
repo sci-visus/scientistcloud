@@ -24,10 +24,13 @@ RUN apt-get update && apt-get install -y \
 # Install Composer
 COPY --from=composer:latest /usr/bin/composer /usr/bin/composer
 
-# Install PHP dependencies for Auth0 (PSR-17 HTTP Factory)
-RUN composer global require psr/http-factory-implementation guzzlehttp/psr7
+# Install PHP dependencies for Auth0 (PSR-17 HTTP Factory and PSR-18 HTTP Client)
+RUN composer global require psr/http-factory-implementation guzzlehttp/psr7 guzzlehttp/guzzle
 
-# Install dependencies after volume mount (will be handled in start script)
+# Copy composer.json and install dependencies during build
+COPY SC_Web/composer.json /tmp/composer.json
+RUN cd /tmp && composer install --no-dev --optimize-autoloader
+RUN cp -r /tmp/vendor /var/www/html/ 2>/dev/null || true
 
 # No MongoDB dependencies needed - using SCLib API for all database operations
 
@@ -115,16 +118,20 @@ ServerName scientistcloud.com\n\
 
 # Create startup script
 RUN echo '#!/bin/bash\n\
-# Install composer dependencies if composer.json exists\n\
-if [ -f /var/www/html/composer.json ]; then\n\
-    echo "Installing composer dependencies..."\n\
-    cd /var/www/html\n\
-    composer install --no-dev --optimize-autoloader\n\
-    echo "Composer dependencies installed successfully"\n\
-    ls -la vendor/ | head -10\n\
+# Ensure dependencies are available\n\
+if [ ! -d /var/www/html/vendor ] || [ ! -f /var/www/html/vendor/autoload.php ]; then\n\
+    echo "Installing missing dependencies..."\n\
+    if [ -f /var/www/html/composer.json ]; then\n\
+        cd /var/www/html\n\
+        composer install --no-dev --optimize-autoloader\n\
+        echo "Dependencies installed successfully"\n\
+    else\n\
+        echo "Installing global dependencies..."\n\
+        composer global require guzzlehttp/guzzle:^7.0\n\
+        echo "Global dependencies installed"\n\
+    fi\n\
 else\n\
-    echo "composer.json not found at /var/www/html/composer.json"\n\
-    ls -la /var/www/html/\n\
+    echo "Dependencies already available"\n\
 fi\n\
 \n\
 # Start Apache in the background\n\
