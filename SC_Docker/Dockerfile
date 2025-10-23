@@ -27,7 +27,8 @@ COPY --from=composer:latest /usr/bin/composer /usr/bin/composer
 # Install PHP dependencies for Auth0 (PSR-17 HTTP Factory)
 RUN composer global require psr/http-factory-implementation guzzlehttp/psr7
 
-# Also install locally in the web directory for better compatibility
+# Copy composer.json first, then install dependencies
+COPY ../SC_Web/composer.json /var/www/html/composer.json
 WORKDIR /var/www/html
 RUN composer install --no-dev --optimize-autoloader
 
