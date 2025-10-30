@@ -56,6 +56,22 @@ else
     echo "⚠️ VisusDataPortalPrivate Docker directory not found, skipping..."
 fi
 
+# Setup portal nginx configuration after all services are running
+echo "🔧 Setting up portal nginx configuration..."
+if [ -d "~/VisStoreClone/visus-dataportal-private/Docker" ]; then
+    pushd ~/VisStoreClone/visus-dataportal-private/Docker
+    if [ -f "./setup_portal_nginx.sh" ]; then
+        ./setup_portal_nginx.sh
+        echo "✅ Portal nginx configuration updated"
+    else
+        echo "⚠️ setup_portal_nginx.sh not found, portal routes may not work"
+        echo "   You can manually run: cd ~/VisStoreClone/visus-dataportal-private/Docker && ./setup_ssl.sh"
+    fi
+    popd
+else
+    echo "⚠️ VisusDataPortalPrivate Docker directory not found, skipping portal config..."
+fi
+
 echo "🎉 All services startup complete!"
 echo ""
 echo "Service URLs:"
