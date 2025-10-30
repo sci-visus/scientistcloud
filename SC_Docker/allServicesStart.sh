@@ -1,6 +1,7 @@
 #!/bin/bash
 
 # For ScientistCloud 2.0, we need to start all the services in the correct order
+source ~/ScientistCloud2.0/SCLib_TryTest/env.scientistcloud 
 
 echo "🚀 Starting all ScientistCloud services..."
 
