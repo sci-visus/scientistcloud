@@ -37,33 +37,64 @@ $auth0_domain = getEnvVar('AUTH0_DOMAIN', AUTH0_DOMAIN);
 use Auth0\SDK\Configuration\SdkConfiguration;
 
 if (!isset($auth0)) {
-     $config = new SdkConfiguration(
-         strategy: SdkConfiguration::STRATEGY_REGULAR,  // <- Use REGULAR for stateful login flows
-         domain: $auth0_domain,
-         clientId: $auth0_client_id,
-         clientSecret: $auth0_client_secret,
-         redirectUri: SC_SERVER_URL . '/auth/callback.php',
-         audience: [SC_SERVER_URL],   // Your API audience
-         scope: ['openid', 'profile', 'email', 'offline_access', 'https://www.googleapis.com/auth/drive'],  // scopes as array
-         cookieSecret: SECRET_KEY,  // must be a secure random string
-         persistIdToken: true,
-         persistAccessToken: true,
-         persistRefreshToken: true
-     );
+    // Explicitly create HTTP factories before SdkConfiguration construction
+    // This prevents the "Could not find a PSR-17 compatible request factory" error
+    $httpRequestFactory = null;
+    $httpResponseFactory = null;
+    $httpStreamFactory = null;
+    $httpClient = null;
     
-    // Explicitly set HTTP factory and client if available
-    if (class_exists('GuzzleHttp\Psr7\HttpFactory')) {
-        $config->setHttpRequestFactory(new \GuzzleHttp\Psr7\HttpFactory());
+    // Try to use Guzzle HTTP factories (PSR-17 compatible)
+    if (class_exists('\GuzzleHttp\Psr7\HttpFactory')) {
+        $httpFactory = new \GuzzleHttp\Psr7\HttpFactory();
+        $httpRequestFactory = $httpFactory;
+        $httpResponseFactory = $httpFactory;
+        $httpStreamFactory = $httpFactory;
     }
     
-    if (class_exists('GuzzleHttp\Client')) {
-        $config->setHttpClient(new \GuzzleHttp\Client());
+    // Try to use Guzzle HTTP client (PSR-18 compatible)
+    if (class_exists('\GuzzleHttp\Client')) {
+        $httpClient = new \GuzzleHttp\Client();
     }
     
-    // Alternative: Use PSR-18 discovery if Guzzle not available
-    if (!class_exists('GuzzleHttp\Client') && class_exists('Http\Discovery\HttpClientDiscovery')) {
-        $config->setHttpClient(\Http\Discovery\HttpClientDiscovery::find());
+    // If Guzzle is not available, try PSR discovery
+    if (!$httpRequestFactory && class_exists('\Psr\Discovery\HttpFactoryDiscovery')) {
+        try {
+            $httpRequestFactory = \Psr\Discovery\HttpFactoryDiscovery::findRequestFactory();
+            $httpResponseFactory = \Psr\Discovery\HttpFactoryDiscovery::findResponseFactory();
+            $httpStreamFactory = \Psr\Discovery\HttpFactoryDiscovery::findStreamFactory();
+        } catch (\Exception $e) {
+            error_log("PSR-17 factory discovery failed: " . $e->getMessage());
+        }
     }
+    
+    if (!$httpClient && class_exists('\Psr\Discovery\HttpClientDiscovery')) {
+        try {
+            $httpClient = \Psr\Discovery\HttpClientDiscovery::find();
+        } catch (\Exception $e) {
+            error_log("PSR-18 client discovery failed: " . $e->getMessage());
+        }
+    }
+    
+    // Create SdkConfiguration with explicit HTTP factories passed to constructor
+    // This prevents the setupStateFactories() from trying to discover them (which fails)
+    $config = new SdkConfiguration(
+        strategy: SdkConfiguration::STRATEGY_REGULAR,
+        domain: $auth0_domain,
+        clientId: $auth0_client_id,
+        clientSecret: $auth0_client_secret,
+        redirectUri: SC_SERVER_URL . '/auth/callback.php',
+        audience: [SC_SERVER_URL],
+        scope: ['openid', 'profile', 'email', 'offline_access', 'https://www.googleapis.com/auth/drive'],
+        cookieSecret: SECRET_KEY,
+        persistIdToken: true,
+        persistAccessToken: true,
+        persistRefreshToken: true,
+        httpRequestFactory: $httpRequestFactory,
+        httpResponseFactory: $httpResponseFactory,
+        httpStreamFactory: $httpStreamFactory,
+        httpClient: $httpClient
+    );
     
     $auth0 = new Auth0($config);
 }

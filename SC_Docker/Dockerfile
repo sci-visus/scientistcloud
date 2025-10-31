@@ -157,7 +157,7 @@ fi\n\
 \n\
 # Verify PSR-17 factory discovery works\n\
 echo "🔍 Verifying PSR-17 factory..."\n\
-php -r "require '\''vendor/autoload.php'\''; try { \\\$discovery = new \\Psr\\Discovery\\HttpFactoryDiscovery(); \\\$factory = \\\$discovery->findRequestFactory(); echo \"✅ PSR-17 factory found: \" . get_class(\\\$factory) . \"\\n\"; } catch (Exception \\\$e) { echo \"❌ PSR-17 factory error: \" . \\\$e->getMessage() . \"\\n\"; exit(1); }" || {\n\
+php -r "require 'vendor/autoload.php'; try { \$discovery = new \Psr\Discovery\HttpFactoryDiscovery(); \$factory = \$discovery->findRequestFactory(); echo \"✅ PSR-17 factory found: \" . get_class(\$factory) . \"\\n\"; } catch (Exception \$e) { echo \"❌ PSR-17 factory error: \" . \$e->getMessage() . \"\\n\"; exit(1); }" || {\n\
     echo "⚠️ PSR-17 factory verification failed, but continuing..."\n\
     echo "   This might cause Auth0 SDK issues. Check that guzzlehttp/guzzle and php-http/discovery are installed."\n\
 }\n\
