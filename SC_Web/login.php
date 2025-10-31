@@ -29,17 +29,37 @@ if (isAuthenticated()) {
     exit;
 }
 
-// Trigger Auth0 login; will redirect if not logged in
-if (!$auth0->getUser()) {
-    $loginUrl = $auth0->login(
-        SC_SERVER_URL . '/portal/auth/callback.php',
-        [
-            'prompt' => 'consent',
-            'access_type' => 'offline',
-            'scope' => 'openid profile email offline_access https://www.googleapis.com/auth/drive'
-        ]
-    );
-    header('Location: ' . $loginUrl);
+// Always redirect to Auth0 login (don't check getUser first, as it might be empty after callback)
+// Check if we're coming back from Auth0 callback (has code parameter)
+if (!isset($_GET['code'])) {
+    // Not coming from callback, redirect to Auth0
+    try {
+        $loginUrl = $auth0->login(
+            SC_SERVER_URL . '/portal/auth/callback.php',
+            [
+                'prompt' => 'consent',
+                'access_type' => 'offline',
+                'scope' => 'openid profile email offline_access https://www.googleapis.com/auth/drive'
+            ]
+        );
+        
+        if ($loginUrl) {
+            header('Location: ' . $loginUrl);
+            exit;
+        } else {
+            error_log("Auth0 login() returned empty URL");
+            throw new Exception("Failed to generate Auth0 login URL");
+        }
+    } catch (Exception $e) {
+        error_log("Auth0 login error: " . $e->getMessage());
+        echo "<h2>Login Error</h2><p>Failed to redirect to Auth0: " . htmlspecialchars($e->getMessage()) . "</p>";
+        echo "<p><a href='/portal/login.php'>Try again</a></p>";
+        exit;
+    }
+} else {
+    // We have a code parameter, might be from Auth0 callback
+    // Redirect to callback handler
+    header('Location: /portal/auth/callback.php?' . $_SERVER['QUERY_STRING']);
     exit;
 }
 ?>
