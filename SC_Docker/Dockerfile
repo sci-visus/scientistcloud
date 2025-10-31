@@ -125,28 +125,45 @@ ServerName scientistcloud.com\n\
 RUN echo '#!/bin/bash\n\
 set -e\n\
 \n\
-# Ensure dependencies are available\n\
-if [ ! -d /var/www/html/vendor ] || [ ! -f /var/www/html/vendor/autoload.php ]; then\n\
-    echo "Installing missing dependencies..."\n\
-    cd /var/www/html\n\
-    if [ -f composer.json ]; then\n\
-        composer install --no-dev --optimize-autoloader --no-interaction\n\
-        echo "Dependencies installed successfully"\n\
+echo "🚀 Starting ScientistCloud Portal..."\n\
+\n\
+# Always check and ensure dependencies are properly installed\n\
+cd /var/www/html\n\
+\n\
+if [ -f composer.json ]; then\n\
+    echo "📦 Checking dependencies..."\n\
+    \n\
+    # Check if autoload exists and if key packages are installed\n\
+    if [ ! -f vendor/autoload.php ] || [ ! -d vendor/guzzlehttp ] || [ ! -d vendor/php-http ]; then\n\
+        echo "📥 Installing/updating dependencies from composer.json..."\n\
+        composer install --no-dev --optimize-autoloader --no-interaction --prefer-dist\n\
+        echo "✅ Dependencies installed"\n\
     else\n\
-        echo "ERROR: composer.json not found"\n\
-        echo "Creating minimal composer.json with required dependencies..."\n\
-        echo '"'"'{"require":{"php":">=8.0","auth0/auth0-php":"^8.17","guzzlehttp/guzzle":"^7.0","guzzlehttp/psr7":"^2.0"}}'"'"' > composer.json\n\
-        composer install --no-dev --optimize-autoloader --no-interaction\n\
-        echo "Minimal dependencies installed"\n\
+        echo "📋 Dependencies found, updating autoload..."\n\
+        composer dump-autoload --optimize --no-interaction 2>/dev/null || true\n\
+    fi\n\
+    \n\
+    # Verify critical packages exist\n\
+    if [ ! -d vendor/auth0 ] || [ ! -d vendor/guzzlehttp/guzzle ]; then\n\
+        echo "⚠️ Missing critical packages, forcing reinstall..."\n\
+        composer install --no-dev --optimize-autoloader --no-interaction --prefer-dist\n\
     fi\n\
 else\n\
-    echo "Dependencies already available"\n\
+    echo "⚠️ composer.json not found, creating minimal one..."\n\
+    echo '"'"'{"require":{"php":">=8.0","auth0/auth0-php":"^8.17","guzzlehttp/guzzle":"^7.0","guzzlehttp/psr7":"^2.0","php-http/discovery":"^1.19"},"config":{"optimize-autoloader":true,"sort-packages":true},"minimum-stability":"stable","prefer-stable":true}'"'"' > composer.json\n\
+    composer install --no-dev --optimize-autoloader --no-interaction --prefer-dist\n\
+    echo "✅ Minimal dependencies installed"\n\
 fi\n\
 \n\
-# Verify PSR-17 factory is available\n\
-if ! php -r "require '\''/var/www/html/vendor/autoload.php'\''; \\\$discovery = new \\Psr\\Discovery\\HttpFactoryDiscovery(); try { \\\$factory = \\\$discovery->findRequestFactory(); echo \"PSR-17 factory found: \" . get_class(\\\$factory); } catch (Exception \\\$e) { echo \"ERROR: \" . \\\$e->getMessage(); exit(1); }" 2>/dev/null; then\n\
-    echo "WARNING: PSR-17 factory verification failed, but continuing..."\n\
-fi\n\
+# Verify PSR-17 factory discovery works\n\
+echo "🔍 Verifying PSR-17 factory..."\n\
+php -r "require '\''vendor/autoload.php'\''; try { \\\$discovery = new \\Psr\\Discovery\\HttpFactoryDiscovery(); \\\$factory = \\\$discovery->findRequestFactory(); echo \"✅ PSR-17 factory found: \" . get_class(\\\$factory) . \"\\n\"; } catch (Exception \\\$e) { echo \"❌ PSR-17 factory error: \" . \\\$e->getMessage() . \"\\n\"; exit(1); }" || {\n\
+    echo "⚠️ PSR-17 factory verification failed, but continuing..."\n\
+    echo "   This might cause Auth0 SDK issues. Check that guzzlehttp/guzzle and php-http/discovery are installed."\n\
+}\n\
+\n\
+echo "✅ Startup checks complete"\n\
+echo "🌐 Starting Apache..."\n\
 \n\
 # Start Apache in the foreground\n\
 exec apache2-foreground' > /start.sh && chmod +x /start.sh
