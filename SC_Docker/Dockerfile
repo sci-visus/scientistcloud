@@ -24,24 +24,18 @@ RUN apt-get update && apt-get install -y \
 # Install Composer
 COPY --from=composer:latest /usr/bin/composer /usr/bin/composer
 
-# Copy composer.json first (for dependency caching)
-COPY SC_Web/composer.json /var/www/html/composer.json
-COPY SC_Web/composer.lock /var/www/html/composer.lock 2>/dev/null || true
-
 # Install PHP dependencies for Auth0 (PSR-17 HTTP Factory and PSR-18 HTTP Client)
 # Install Guzzle HTTP which provides PSR-17 factories globally as backup
 RUN composer global require guzzlehttp/guzzle:^7.0 guzzlehttp/psr7:^2.0 php-http/discovery:^1.19 || true
 
-# Install project dependencies from composer.json
-# Note: SC_Web directory is mounted as volume, but we copy composer.json for build-time install
+# Create a minimal composer.json for build-time dependency installation
+# Note: SC_Web directory (with full composer.json) will be mounted as volume at runtime
+RUN echo '{"require":{"php":">=8.0","auth0/auth0-php":"^8.17","guzzlehttp/guzzle":"^7.0","guzzlehttp/psr7":"^2.0","php-http/discovery":"^1.19"},"config":{"optimize-autoloader":true,"sort-packages":true},"minimum-stability":"stable","prefer-stable":true}' > /var/www/html/composer.json
+
+# Install dependencies during build (these will be available even if volume overwrites vendor)
+# The vendor directory in the volume will be used at runtime if it exists
 RUN cd /var/www/html && \
-    if [ -f composer.json ]; then \
-        composer install --no-dev --optimize-autoloader --no-interaction; \
-    else \
-        echo "Creating composer.json with required dependencies..." && \
-        echo '{"require":{"php":">=8.0","auth0/auth0-php":"^8.17","guzzlehttp/guzzle":"^7.0","guzzlehttp/psr7":"^2.0","php-http/discovery":"^1.19"},"config":{"optimize-autoloader":true,"sort-packages":true},"minimum-stability":"stable","prefer-stable":true}' > composer.json && \
-        composer install --no-dev --optimize-autoloader --no-interaction; \
-    fi
+    composer install --no-dev --optimize-autoloader --no-interaction
 
 # No MongoDB dependencies needed - using SCLib API for all database operations
 
