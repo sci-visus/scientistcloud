@@ -1,5 +1,5 @@
 #!/bin/bash
-HOME = /home/amy
+ 
 # For ScientistCloud 2.0, we need to start all the services in the correct order
 # Source environment variables first
 ENV_FILE="$HOME/ScientistCloud2.0/SCLib_TryTest/env.scientistcloud"

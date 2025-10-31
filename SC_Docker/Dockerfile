@@ -24,14 +24,24 @@ RUN apt-get update && apt-get install -y \
 # Install Composer
 COPY --from=composer:latest /usr/bin/composer /usr/bin/composer
 
-# Install PHP dependencies for Auth0 (PSR-17 HTTP Factory and PSR-18 HTTP Client)
-RUN composer global require psr/http-factory-implementation guzzlehttp/psr7 guzzlehttp/guzzle
+# Copy composer.json first (for dependency caching)
+COPY SC_Web/composer.json /var/www/html/composer.json
+COPY SC_Web/composer.lock /var/www/html/composer.lock 2>/dev/null || true
 
-# Install dependencies during build with explicit implementations
-RUN mkdir -p /tmp/deps && cd /tmp/deps && \
-    echo '{"require":{"php":">=8.0","auth0/auth0-php":"^8.17","guzzlehttp/guzzle":"^7.0","guzzlehttp/psr7":"^2.0","psr/http-factory-implementation":"^1.0","psr/http-client-implementation":"^1.0"}}' > composer.json && \
-    composer install --no-dev --optimize-autoloader && \
-    cp -r vendor /var/www/html/ 2>/dev/null || true
+# Install PHP dependencies for Auth0 (PSR-17 HTTP Factory and PSR-18 HTTP Client)
+# Install Guzzle HTTP which provides PSR-17 factories globally as backup
+RUN composer global require guzzlehttp/guzzle:^7.0 guzzlehttp/psr7:^2.0 php-http/discovery:^1.19 || true
+
+# Install project dependencies from composer.json
+# Note: SC_Web directory is mounted as volume, but we copy composer.json for build-time install
+RUN cd /var/www/html && \
+    if [ -f composer.json ]; then \
+        composer install --no-dev --optimize-autoloader --no-interaction; \
+    else \
+        echo "Creating composer.json with required dependencies..." && \
+        echo '{"require":{"php":">=8.0","auth0/auth0-php":"^8.17","guzzlehttp/guzzle":"^7.0","guzzlehttp/psr7":"^2.0","php-http/discovery":"^1.19"},"config":{"optimize-autoloader":true,"sort-packages":true},"minimum-stability":"stable","prefer-stable":true}' > composer.json && \
+        composer install --no-dev --optimize-autoloader --no-interaction; \
+    fi
 
 # No MongoDB dependencies needed - using SCLib API for all database operations
 
@@ -119,27 +129,33 @@ ServerName scientistcloud.com\n\
 
 # Create startup script
 RUN echo '#!/bin/bash\n\
+set -e\n\
+\n\
 # Ensure dependencies are available\n\
 if [ ! -d /var/www/html/vendor ] || [ ! -f /var/www/html/vendor/autoload.php ]; then\n\
     echo "Installing missing dependencies..."\n\
-    if [ -f /var/www/html/composer.json ]; then\n\
-        cd /var/www/html\n\
-        composer install --no-dev --optimize-autoloader\n\
+    cd /var/www/html\n\
+    if [ -f composer.json ]; then\n\
+        composer install --no-dev --optimize-autoloader --no-interaction\n\
         echo "Dependencies installed successfully"\n\
     else\n\
-        echo "Installing global dependencies..."\n\
-        composer global require guzzlehttp/guzzle:^7.0\n\
-        echo "Global dependencies installed"\n\
+        echo "ERROR: composer.json not found"\n\
+        echo "Creating minimal composer.json with required dependencies..."\n\
+        echo '"'"'{"require":{"php":">=8.0","auth0/auth0-php":"^8.17","guzzlehttp/guzzle":"^7.0","guzzlehttp/psr7":"^2.0"}}'"'"' > composer.json\n\
+        composer install --no-dev --optimize-autoloader --no-interaction\n\
+        echo "Minimal dependencies installed"\n\
     fi\n\
 else\n\
     echo "Dependencies already available"\n\
 fi\n\
 \n\
-# Start Apache in the background\n\
-apache2-foreground &\n\
+# Verify PSR-17 factory is available\n\
+if ! php -r "require '\''/var/www/html/vendor/autoload.php'\''; \\\$discovery = new \\Psr\\Discovery\\HttpFactoryDiscovery(); try { \\\$factory = \\\$discovery->findRequestFactory(); echo \"PSR-17 factory found: \" . get_class(\\\$factory); } catch (Exception \\\$e) { echo \"ERROR: \" . \\\$e->getMessage(); exit(1); }" 2>/dev/null; then\n\
+    echo "WARNING: PSR-17 factory verification failed, but continuing..."\n\
+fi\n\
 \n\
-# Keep container running\n\
-wait' > /start.sh && chmod +x /start.sh
+# Start Apache in the foreground\n\
+exec apache2-foreground' > /start.sh && chmod +x /start.sh
 
 # Expose port 8080 (different from main site)
 EXPOSE 8080
