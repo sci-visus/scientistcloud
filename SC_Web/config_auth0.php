@@ -125,7 +125,7 @@ if (!isset($auth0)) {
         domain: $auth0_domain,
         clientId: $auth0_client_id,
         clientSecret: $auth0_client_secret,
-        redirectUri: SC_SERVER_URL . '/auth/callback.php',
+        redirectUri: SC_SERVER_URL . '/portal/auth/callback.php',
         audience: $audience,  // null if not using API access, or [AUTH0_AUDIENCE] if API exists
         scope: ['openid', 'profile', 'email', 'offline_access', 'https://www.googleapis.com/auth/drive'],
         cookieSecret: SECRET_KEY,

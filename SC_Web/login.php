@@ -25,14 +25,14 @@ if (!isset($_SESSION['CREATED'])) {
 
 // Check if user is already authenticated
 if (isAuthenticated()) {
-    header('Location: index.php');
+    header('Location: /portal/index.php');
     exit;
 }
 
 // Trigger Auth0 login; will redirect if not logged in
 if (!$auth0->getUser()) {
     $loginUrl = $auth0->login(
-        SC_SERVER_URL . '/auth/callback.php',
+        SC_SERVER_URL . '/portal/auth/callback.php',
         [
             'prompt' => 'consent',
             'access_type' => 'offline',

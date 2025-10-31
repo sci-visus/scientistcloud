@@ -88,14 +88,14 @@ try {
         throw new Exception("Authentication service error: " . $e->getMessage());
     }
 
-    // Redirect to main application
-    header('Location: /index.php');
+    // Redirect to main application (portal)
+    header('Location: /portal/index.php');
     exit;
     
 } catch (Exception $e) {
     logMessage('ERROR', 'Auth0 callback error', ['error' => $e->getMessage()]);
     echo "<h2>Login Error</h2><p>There was a problem signing you in. Please try again.</p>";
     echo "<p>Error: " . htmlspecialchars($e->getMessage()) . "</p>";
-    echo "<p><a href='/login.php'>Try again</a></p>";
+    echo "<p><a href='/portal/login.php'>Try again</a></p>";
 }
 ?>
