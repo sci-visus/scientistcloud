@@ -144,16 +144,61 @@ class SCLibClient {
     }
     
     /**
-     * Get user profile - uses existing SCLib Auth service
+     * Get user profile by user ID - uses existing SCLib Auth service
      */
     public function getUserProfile($userId) {
         try {
             // Use the existing SCLib Auth service endpoint
-            $response = $this->makeRequest('/api/auth/me', 'GET', null, [], $userId);
+            $response = $this->makeRequest('/api/auth/me', 'GET', null, ['user_id' => $userId]);
             return $response['user'] ?? null;
         } catch (Exception $e) {
             error_log("Failed to get user profile: " . $e->getMessage());
             return null;
+        }
+    }
+    
+    /**
+     * Get user profile by email
+     */
+    public function getUserProfileByEmail($email) {
+        try {
+            $response = $this->makeRequest('/api/auth/user-by-email', 'GET', null, ['email' => $email]);
+            return $response['user'] ?? null;
+        } catch (Exception $e) {
+            error_log("Failed to get user profile by email: " . $e->getMessage());
+            return null;
+        }
+    }
+    
+    /**
+     * Create new user
+     */
+    public function createUser($userData) {
+        try {
+            $response = $this->makeRequest('/api/auth/create-user', 'POST', $userData);
+            if (isset($response['success']) && $response['success']) {
+                return [
+                    'success' => true,
+                    'user_id' => $response['user_id'] ?? $response['user']['id'] ?? null
+                ];
+            }
+            return ['success' => false, 'error' => $response['error'] ?? 'Unknown error'];
+        } catch (Exception $e) {
+            error_log("Failed to create user: " . $e->getMessage());
+            return ['success' => false, 'error' => $e->getMessage()];
+        }
+    }
+    
+    /**
+     * Update user's last login time
+     */
+    public function updateUserLastLogin($userId) {
+        try {
+            $response = $this->makeRequest("/api/auth/user/$userId/update-last-login", 'POST');
+            return $response['success'] ?? false;
+        } catch (Exception $e) {
+            error_log("Failed to update user last login: " . $e->getMessage());
+            return false;
         }
     }
     

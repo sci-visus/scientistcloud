@@ -73,7 +73,8 @@ define('LOG_FILE', SC_WEB_ROOT . '/logs/app.log');
 
 // Create logs directory if it doesn't exist
 if (!file_exists(dirname(LOG_FILE))) {
-    mkdir(dirname(LOG_FILE), 0755, true);
+    mkdir(dirname(LOG_FILE), 0775, true);
+    chmod(dirname(LOG_FILE), 0775);
 }
 
 // Helper functions - SCLib handles all database operations
