@@ -45,36 +45,70 @@ if (!isset($auth0)) {
     $httpStreamFactory = null;
     $httpClient = null;
     
-    // Try to use Guzzle HTTP factories (PSR-17 compatible)
-    if (class_exists('\GuzzleHttp\Psr7\HttpFactory')) {
-        $httpFactory = new \GuzzleHttp\Psr7\HttpFactory();
-        $httpRequestFactory = $httpFactory;
-        $httpResponseFactory = $httpFactory;
-        $httpStreamFactory = $httpFactory;
+    // Try multiple methods to find HTTP factories
+    
+    // Method 1: Try Guzzle HTTP factories (PSR-17 compatible) - guzzlehttp/psr7 v2.x
+    if (class_exists('GuzzleHttp\Psr7\HttpFactory')) {
+        try {
+            $httpFactory = new \GuzzleHttp\Psr7\HttpFactory();
+            $httpRequestFactory = $httpFactory;
+            $httpResponseFactory = $httpFactory;
+            $httpStreamFactory = $httpFactory;
+            error_log("✅ Using GuzzleHttp\Psr7\HttpFactory");
+        } catch (\Exception $e) {
+            error_log("Failed to create GuzzleHttp\Psr7\HttpFactory: " . $e->getMessage());
+        }
     }
     
-    // Try to use Guzzle HTTP client (PSR-18 compatible)
-    if (class_exists('\GuzzleHttp\Client')) {
-        $httpClient = new \GuzzleHttp\Client();
+    // Method 2: Try using php-http/discovery (should work if packages are installed)
+    if (!$httpRequestFactory && class_exists('Http\Discovery\Psr17Factory')) {
+        try {
+            $httpFactory = new \Http\Discovery\Psr17Factory();
+            $httpRequestFactory = $httpFactory;
+            $httpResponseFactory = $httpFactory;
+            $httpStreamFactory = $httpFactory;
+            error_log("✅ Using Http\Discovery\Psr17Factory");
+        } catch (\Exception $e) {
+            error_log("Failed to create Http\Discovery\Psr17Factory: " . $e->getMessage());
+        }
     }
     
-    // If Guzzle is not available, try PSR discovery
-    if (!$httpRequestFactory && class_exists('\Psr\Discovery\HttpFactoryDiscovery')) {
+    // Method 3: Try PSR discovery (psr-discovery/http-factory-implementations)
+    if (!$httpRequestFactory && class_exists('Psr\Discovery\HttpFactoryDiscovery')) {
         try {
             $httpRequestFactory = \Psr\Discovery\HttpFactoryDiscovery::findRequestFactory();
             $httpResponseFactory = \Psr\Discovery\HttpFactoryDiscovery::findResponseFactory();
             $httpStreamFactory = \Psr\Discovery\HttpFactoryDiscovery::findStreamFactory();
+            error_log("✅ Using PSR Discovery factories");
         } catch (\Exception $e) {
             error_log("PSR-17 factory discovery failed: " . $e->getMessage());
         }
     }
     
-    if (!$httpClient && class_exists('\Psr\Discovery\HttpClientDiscovery')) {
+    // Try to use Guzzle HTTP client (PSR-18 compatible)
+    if (class_exists('GuzzleHttp\Client')) {
+        try {
+            $httpClient = new \GuzzleHttp\Client();
+            error_log("✅ Using GuzzleHttp\Client");
+        } catch (\Exception $e) {
+            error_log("Failed to create GuzzleHttp\Client: " . $e->getMessage());
+        }
+    }
+    
+    if (!$httpClient && class_exists('Psr\Discovery\HttpClientDiscovery')) {
         try {
             $httpClient = \Psr\Discovery\HttpClientDiscovery::find();
+            error_log("✅ Using PSR Discovery HTTP client");
         } catch (\Exception $e) {
             error_log("PSR-18 client discovery failed: " . $e->getMessage());
         }
+    }
+    
+    // Final check - if factories are still null, log warning
+    if (!$httpRequestFactory) {
+        error_log("❌ WARNING: Could not find any PSR-17 HTTP factory implementation!");
+        error_log("   Checked: GuzzleHttp\Psr7\HttpFactory, Http\Discovery\Psr17Factory, PSR Discovery");
+        error_log("   Make sure guzzlehttp/guzzle and guzzlehttp/psr7 are installed: composer install");
     }
     
     // Determine audience - use AUTH0_AUDIENCE if set, otherwise null (for simple auth without API access)
