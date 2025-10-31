@@ -33,6 +33,7 @@ function getEnvVar($name, $default = null) {
 $auth0_client_id = getEnvVar('AUTH0_CLIENT_ID', AUTH0_CLIENT_ID);
 $auth0_client_secret = getEnvVar('AUTH0_CLIENT_SECRET', AUTH0_CLIENT_SECRET);
 $auth0_domain = getEnvVar('AUTH0_DOMAIN', AUTH0_DOMAIN);
+$auth0_audience = getEnvVar('AUTH0_AUDIENCE', null);
 
 use Auth0\SDK\Configuration\SdkConfiguration;
 
@@ -76,6 +77,13 @@ if (!isset($auth0)) {
         }
     }
     
+    // Determine audience - use AUTH0_AUDIENCE if set, otherwise null (for simple auth without API access)
+    // Only set audience if AUTH0_AUDIENCE is explicitly configured, as Auth0 requires the API to exist
+    $audience = null;
+    if ($auth0_audience && !empty($auth0_audience)) {
+        $audience = [$auth0_audience];
+    }
+    
     // Create SdkConfiguration with explicit HTTP factories passed to constructor
     // This prevents the setupStateFactories() from trying to discover them (which fails)
     $config = new SdkConfiguration(
@@ -84,7 +92,7 @@ if (!isset($auth0)) {
         clientId: $auth0_client_id,
         clientSecret: $auth0_client_secret,
         redirectUri: SC_SERVER_URL . '/auth/callback.php',
-        audience: [SC_SERVER_URL],
+        audience: $audience,  // null if not using API access, or [AUTH0_AUDIENCE] if API exists
         scope: ['openid', 'profile', 'email', 'offline_access', 'https://www.googleapis.com/auth/drive'],
         cookieSecret: SECRET_KEY,
         persistIdToken: true,
