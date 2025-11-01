@@ -71,3 +71,4 @@ else
     echo "Or if setup_portal_nginx.sh doesn't exist, add portal config manually to nginx/conf.d/default.conf"
     exit 1
 fi
+

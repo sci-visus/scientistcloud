@@ -33,60 +33,29 @@ try {
         'name' => $user_name
     ]);
 
-    // Use SCLib to handle user authentication and profile management
-    try {
-        $sclib = getSCLibClient();
-        
-        // Check if user exists in SCLib system
-        $existingUser = $sclib->getUserProfileByEmail($user_email);
-        
-        if (!$existingUser) {
-            // Create new user in SCLib system
-            $newUser = [
-                'email' => $user_email,
-                'name' => $user_name,
-                'auth0_id' => $userInfo['sub'] ?? null,
-                'preferences' => [
-                    'preferred_dashboard' => DEFAULT_DASHBOARD
-                ],
-                'permissions' => ['read', 'upload'],
-                'created_at' => date('Y-m-d H:i:s'),
-                'last_logged_in' => date('Y-m-d H:i:s')
-            ];
-            
-            $userResult = $sclib->createUser($newUser);
-            if (!$userResult['success']) {
-                throw new Exception("Failed to create user in SCLib: " . $userResult['error']);
-            }
-            
-            $userId = $userResult['user_id'];
-            logMessage('INFO', 'New user created', ['user_id' => $userId, 'email' => $user_email]);
-        } else {
-            // Update existing user's last login
-            $userId = $existingUser['id'];
-            $sclib->updateUserLastLogin($userId);
-            logMessage('INFO', 'Existing user logged in', ['user_id' => $userId, 'email' => $user_email]);
-        }
-        
-        // Set session variables for ScientistCloud
-        $_SESSION['user_id'] = $userId;
-        $_SESSION['user_email'] = $user_email;
-        $_SESSION['user_name'] = $user_name;
-        $_SESSION['auth0_id'] = $userInfo['sub'] ?? null;
-        
-        // Store Auth0 tokens for API access
-        $_SESSION['auth0_access_token'] = $_SESSION['access_token'];
-        if ($refresh_token) {
-            $_SESSION['auth0_refresh_token'] = $refresh_token;
-        }
-        
-    } catch (Exception $e) {
-        logMessage('ERROR', 'SCLib authentication failed', [
-            'email' => $user_email,
-            'error' => $e->getMessage()
-        ]);
-        throw new Exception("Authentication service error: " . $e->getMessage());
+    // Generate a user ID from email (consistent ID generation)
+    $userId = 'user_' . str_replace(['@', '.'], '_', $user_email);
+    
+    // Set session variables for ScientistCloud
+    // Note: User profile will be created/updated by SCLib when needed
+    // For now, we store Auth0 user info in session
+    $_SESSION['user_id'] = $userId;
+    $_SESSION['user_email'] = $user_email;
+    $_SESSION['user_name'] = $user_name;
+    $_SESSION['auth0_id'] = $userInfo['sub'] ?? null;
+    $_SESSION['auth0_user_info'] = $userInfo; // Store full Auth0 user info
+    
+    // Store Auth0 tokens for API access
+    $_SESSION['auth0_access_token'] = $_SESSION['access_token'];
+    if ($refresh_token) {
+        $_SESSION['auth0_refresh_token'] = $refresh_token;
     }
+    
+    logMessage('INFO', 'User authenticated via Auth0', [
+        'user_id' => $userId,
+        'email' => $user_email,
+        'name' => $user_name
+    ]);
 
     // Redirect to main application (portal)
     header('Location: /portal/index.php');

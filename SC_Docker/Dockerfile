@@ -65,9 +65,10 @@ RUN a2enmod rewrite headers
 RUN chown -R www-data:www-data /var/www/html \
     && chmod -R 755 /var/www/html
 
-# Create logs directory
+# Create logs directory with proper permissions
 RUN mkdir -p /var/www/html/logs \
-    && chown -R www-data:www-data /var/www/html/logs
+    && chown -R www-data:www-data /var/www/html/logs \
+    && chmod -R 775 /var/www/html/logs
 
 # Configure Apache
 RUN echo '<VirtualHost *:80>\n\
