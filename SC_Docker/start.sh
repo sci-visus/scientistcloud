@@ -382,6 +382,9 @@ case "${1:-start}" in
         docker-compose build --no-cache
         docker-compose up -d
         print_success "Containers rebuilt successfully"
+        print_status "Installing dependencies..."
+        sleep 5
+        install_dependencies
         print_status "Testing SCLib API connection..."
         sleep 10
         if curl -f http://127.0.0.1:8080/test-sclib-api.php &> /dev/null; then
@@ -389,6 +392,11 @@ case "${1:-start}" in
         else
             print_warning "SCLib API connection test failed - check logs"
         fi
+        ;;
+    "install-deps")
+        print_status "Installing PHP dependencies..."
+        install_dependencies
+        print_success "Dependency installation completed"
         ;;
     "help")
         echo "Usage: $0 [command]"
@@ -402,6 +410,7 @@ case "${1:-start}" in
         echo "  test     - Test integration"
         echo "  clean    - Stop and remove portal containers/images"
         echo "  rebuild  - Rebuild containers"
+        echo "  install-deps - Install/update PHP dependencies in container"
         echo "  help     - Show this help message"
         ;;
     *)
