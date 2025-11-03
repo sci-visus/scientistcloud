@@ -284,4 +284,17 @@ function getSCLibClient() {
     return $sclib_client;
 }
 
+/**
+ * Get SCLib client for authentication endpoints (port 8001)
+ */
+function getSCLibAuthClient() {
+    static $auth_client = null;
+    if ($auth_client === null) {
+        // Auth endpoints use SCLIB_AUTH_URL (port 8001)
+        $auth_url = getenv('SCLIB_AUTH_URL') ?: getenv('EXISTING_AUTH_URL') ?: 'http://localhost:8001';
+        $auth_client = new SCLibClient($auth_url);
+    }
+    return $auth_client;
+}
+
 ?>

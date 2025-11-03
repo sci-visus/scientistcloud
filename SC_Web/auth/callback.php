@@ -5,7 +5,7 @@ if (session_status() === PHP_SESSION_NONE) {
 }
 
 require_once(__DIR__ . '/../config_auth0.php'); // Setup SDK
-require_once(__DIR__ . '/../includes/sclib_client.php');
+require_once(__DIR__ . '/../includes/sclib_client.php'); // Includes getSCLibAuthClient()
 
 global $auth0;
 
@@ -39,13 +39,14 @@ try {
     
     // Create or update user in SCLib using user_profile collection
     try {
-        $sclib = getSCLibClient();
+        // Use auth client for auth endpoints (port 8001)
+        $sclib = getSCLibAuthClient();
         
         // Check if API is accessible before attempting to create user
-        logMessage('INFO', 'Checking SCLib API health', ['email' => $user_email]);
+        logMessage('INFO', 'Checking SCLib Auth API health', ['email' => $user_email]);
         $healthCheck = $sclib->healthCheck();
         if (!$healthCheck) {
-            logMessage('WARNING', 'SCLib API health check failed', ['email' => $user_email]);
+            logMessage('WARNING', 'SCLib Auth API health check failed', ['email' => $user_email]);
             // Continue anyway - might be temporary
         }
         

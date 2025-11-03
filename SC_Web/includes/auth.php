@@ -23,7 +23,8 @@ function getCurrentUser() {
         }
         
         try {
-            $sclib = getSCLibClient();
+            // Use auth client for auth endpoints (port 8001)
+            $sclib = getSCLibAuthClient();
             $user = $sclib->getUserProfileByEmail($_SESSION['user_email']);
         
         if ($user) {
@@ -49,8 +50,8 @@ function getCurrentUser() {
  */
 function authenticateUser($auth0_token) {
     try {
-        // Validate Auth0 token using SCLib
-        $sclib = getSCLibClient();
+        // Validate Auth0 token using SCLib Auth API (port 8001)
+        $sclib = getSCLibAuthClient();
         $authResult = $sclib->validateAuthToken($auth0_token);
         
         if (!$authResult['success'] || !$authResult['valid']) {
@@ -115,8 +116,8 @@ function authenticateUserFromSession() {
         
         $userEmail = $_SESSION['user_email'];
         
-        // Get user profile from SCLib using email (primary identifier)
-        $sclib = getSCLibClient();
+        // Get user profile from SCLib Auth API using email (primary identifier)
+        $sclib = getSCLibAuthClient();
         $user = $sclib->getUserProfileByEmail($userEmail);
         
         if (!$user) {
@@ -143,15 +144,10 @@ function authenticateUserFromSession() {
  */
 function getUserByEmail($email) {
     try {
-        // SCLib should provide an endpoint to get user by email
-        // For now, we'll use a mock implementation
-        $sclib = getSCLibClient();
-        
-        // TODO: Implement get user by email in SCLib API
-        // This would be a new endpoint: /api/auth/user-by-email?email=...
-        
-        // For now, return null to indicate user not found
-        return null;
+        // SCLib Auth API provides endpoint to get user by email
+        $sclib = getSCLibAuthClient();
+        $user = $sclib->getUserProfileByEmail($email);
+        return $user;
         
     } catch (Exception $e) {
         logMessage('ERROR', 'Failed to get user by email', ['email' => $email, 'error' => $e->getMessage()]);
