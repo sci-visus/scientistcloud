@@ -5,8 +5,14 @@
  */
 
 // Set error reporting
+// In production, don't display errors to prevent headers being sent
+// Errors will still be logged, but won't output to browser
 error_reporting(E_ALL);
-ini_set('display_errors', 1);
+// Only display errors if we're in a development environment
+// Check for a DEV environment variable or set this appropriately for production
+ini_set('display_errors', getenv('PHP_DISPLAY_ERRORS') === '1' ? 1 : 0);
+ini_set('log_errors', 1);
+ini_set('error_log', __DIR__ . '/logs/php_errors.log');
 
 // Define paths
 define('SC_WEB_ROOT', __DIR__);
@@ -72,13 +78,20 @@ define('LOG_LEVEL', 'INFO');
 define('LOG_FILE', SC_WEB_ROOT . '/logs/app.log');
 
 // Create logs directory if it doesn't exist
+// Note: Suppress warnings to prevent "headers already sent" errors
 if (!file_exists(dirname(LOG_FILE))) {
-    mkdir(dirname(LOG_FILE), 0775, true);
-    chmod(dirname(LOG_FILE), 0775);
+    @mkdir(dirname(LOG_FILE), 0775, true);
+    @chmod(dirname(LOG_FILE), 0775);
 }
-// Ensure logs directory is writable
+// Ensure logs directory is writable (suppress errors if permission denied)
 if (file_exists(dirname(LOG_FILE))) {
-    chmod(dirname(LOG_FILE), 0777); // Make writable by web server
+    // Try to make writable, but don't fail if permissions are restricted
+    @chmod(dirname(LOG_FILE), 0777);
+    // If chmod failed, at least ensure the directory exists and log it
+    if (!is_writable(dirname(LOG_FILE))) {
+        // Log to error_log instead of outputting warning
+        error_log("Warning: Cannot set permissions on logs directory: " . dirname(LOG_FILE));
+    }
 }
 
 // Helper functions - SCLib handles all database operations
