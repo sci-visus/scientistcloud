@@ -44,21 +44,39 @@ class SCLibClient {
         
         $response = curl_exec($ch);
         $http_code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-        $error = curl_error($ch);
+        $curl_error = curl_error($ch);
+        $curl_errno = curl_errno($ch);
         curl_close($ch);
         
-        if ($error) {
-            throw new Exception("cURL error: " . $error);
+        // Log request details for debugging
+        error_log("API Request: $method $url");
+        error_log("HTTP Code: $http_code");
+        if ($curl_error) {
+            error_log("cURL Error: $curl_error (errno: $curl_errno)");
+        }
+        if ($response) {
+            error_log("Response (first 500 chars): " . substr($response, 0, 500));
+        }
+        
+        if ($curl_error) {
+            throw new Exception("cURL error: $curl_error");
+        }
+        
+        // Handle empty response
+        if (empty($response)) {
+            throw new Exception("Empty response from API (HTTP $http_code)");
         }
         
         $decoded_response = json_decode($response, true);
         if (json_last_error() !== JSON_ERROR_NONE) {
-            throw new Exception("Invalid JSON response: " . json_last_error_msg());
+            error_log("JSON decode error: " . json_last_error_msg());
+            error_log("Raw response: " . $response);
+            throw new Exception("Invalid JSON response: " . json_last_error_msg() . " (HTTP $http_code)");
         }
         
         if ($http_code >= 400) {
-            $error_message = $decoded_response['error'] ?? 'Unknown error';
-            throw new Exception("API error ($http_code): " . $error_message);
+            $error_message = $decoded_response['detail'] ?? $decoded_response['error'] ?? $decoded_response['message'] ?? 'Unknown error';
+            throw new Exception("API error ($http_code): $error_message");
         }
         
         return $decoded_response;
@@ -69,11 +87,19 @@ class SCLibClient {
      */
     public function healthCheck() {
         try {
-            $response = $this->makeRequest('/api/health');
-            return $response['status'] === 'healthy';
+            // Try /health endpoint first (FastAPI standard)
+            $response = $this->makeRequest('/health');
+            return isset($response['status']) && $response['status'] === 'healthy';
         } catch (Exception $e) {
             error_log("SCLib health check failed: " . $e->getMessage());
-            return false;
+            // Try alternative endpoint
+            try {
+                $response = $this->makeRequest('/api/health');
+                return isset($response['status']) && $response['status'] === 'healthy';
+            } catch (Exception $e2) {
+                error_log("SCLib health check (alternative) failed: " . $e2->getMessage());
+                return false;
+            }
         }
     }
     
@@ -176,7 +202,14 @@ class SCLibClient {
      */
     public function createUser($userData) {
         try {
+            $url = $this->api_base_url . '/api/auth/create-user';
+            error_log("Creating user at: $url");
+            error_log("User data: " . json_encode($userData));
+            
             $response = $this->makeRequest('/api/auth/create-user', 'POST', $userData);
+            
+            error_log("Create user response: " . json_encode($response));
+            
             if (isset($response['success']) && $response['success']) {
                 return [
                     'success' => true,
@@ -186,6 +219,8 @@ class SCLibClient {
             return ['success' => false, 'error' => $response['error'] ?? 'Unknown error'];
         } catch (Exception $e) {
             error_log("Failed to create user: " . $e->getMessage());
+            error_log("API base URL: " . $this->api_base_url);
+            error_log("Full URL would be: " . $this->api_base_url . '/api/auth/create-user');
             return ['success' => false, 'error' => $e->getMessage()];
         }
     }

@@ -181,26 +181,55 @@ if (!isset($auth0)) {
                 $composerCmd = file_exists('/usr/bin/composer') ? '/usr/bin/composer' : '/usr/local/bin/composer';
                 $workDir = escapeshellarg(__DIR__);
                 
-                // First, ensure all dependencies including Guzzle sub-dependencies are installed
-                $installCmd = "cd $workDir && " . 
-                             escapeshellarg($composerCmd) . 
-                             " install --no-dev --optimize-autoloader --no-interaction --prefer-dist 2>&1";
+                // First, update composer.json to ensure promises is included
+                $composerJsonPath = __DIR__ . '/composer.json';
+                if (file_exists($composerJsonPath)) {
+                    $composerJson = json_decode(file_get_contents($composerJsonPath), true);
+                    if (!isset($composerJson['require']['guzzlehttp/promises'])) {
+                        error_log("📝 Adding guzzlehttp/promises to composer.json...");
+                        $composerJson['require']['guzzlehttp/promises'] = '^2.0';
+                        file_put_contents($composerJsonPath, json_encode($composerJson, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
+                    }
+                }
                 
-                error_log("Running: $installCmd");
+                // Update composer to ensure all dependencies are resolved
+                $updateCmd = "cd $workDir && " . 
+                            escapeshellarg($composerCmd) . 
+                            " update --no-dev --optimize-autoloader --no-interaction --prefer-dist 2>&1";
+                
+                error_log("Running: $updateCmd");
                 $output = [];
                 $returnCode = 0;
-                exec($installCmd, $output, $returnCode);
+                exec($updateCmd, $output, $returnCode);
                 
-                $installOutput = implode("\n", $output);
-                error_log("Composer install output:\n" . $installOutput);
+                $updateOutput = implode("\n", $output);
+                error_log("Composer update output:\n" . $updateOutput);
                 
-                if ($returnCode === 0) {
+                // If update failed or didn't install, try install
+                if ($returnCode !== 0 || !file_exists(__DIR__ . '/vendor/guzzlehttp/promises')) {
+                    $installCmd = "cd $workDir && " . 
+                                 escapeshellarg($composerCmd) . 
+                                 " install --no-dev --optimize-autoloader --no-interaction --prefer-dist 2>&1";
+                    
+                    error_log("Running install as fallback: $installCmd");
+                    exec($installCmd, $output, $returnCode);
+                    $installOutput = implode("\n", $output);
+                    error_log("Composer install output:\n" . $installOutput);
+                }
+                
+                if ($returnCode === 0 || file_exists(__DIR__ . '/vendor/guzzlehttp/promises')) {
                     // Regenerate autoloader to ensure all classes are properly mapped
                     $dumpCmd = "cd $workDir && " . 
                               escapeshellarg($composerCmd) . 
                               " dump-autoload --optimize --no-interaction 2>&1";
                     exec($dumpCmd, $dumpOutput, $dumpReturnCode);
                     error_log("Composer dump-autoload output:\n" . implode("\n", $dumpOutput));
+                    
+                    // Verify promises is installed
+                    $promisesPath = __DIR__ . '/vendor/guzzlehttp/promises';
+                    $traitPath = __DIR__ . '/vendor/guzzlehttp/guzzle/src/ClientTrait.php';
+                    error_log("Checking dependencies - promises: " . (is_dir($promisesPath) ? 'exists' : 'missing') . 
+                              ", ClientTrait: " . (file_exists($traitPath) ? 'exists' : 'missing'));
                     
                     error_log("✅ Automatic dependency installation succeeded!");
                     
@@ -216,7 +245,7 @@ if (!isset($auth0)) {
                         require_once __DIR__ . '/vendor/autoload.php';
                         
                         // Wait a moment for filesystem to sync
-                        usleep(100000); // 100ms
+                        usleep(200000); // 200ms
                         
                         // Try to load Guzzle again after installation
                         if (class_exists('\GuzzleHttp\Client', true)) {
@@ -225,23 +254,15 @@ if (!isset($auth0)) {
                             // Success! Continue without throwing error
                             goto skip_error;
                         } else {
-                            // Check if ClientTrait exists (it's a dependency)
-                            $traitPath = __DIR__ . '/vendor/guzzlehttp/guzzle/src/ClientTrait.php';
-                            error_log("Checking ClientTrait: " . (file_exists($traitPath) ? 'exists' : 'missing'));
-                            
-                            // Try installing with update to ensure all dependencies
-                            $updateCmd = "cd $workDir && " . 
-                                        escapeshellarg($composerCmd) . 
-                                        " update guzzlehttp/guzzle --no-dev --optimize-autoloader --no-interaction --prefer-dist 2>&1";
-                            exec($updateCmd, $updateOutput, $updateReturnCode);
-                            error_log("Composer update output:\n" . implode("\n", $updateOutput));
-                            
-                            // Reload autoloader again
-                            require_once __DIR__ . '/vendor/autoload.php';
-                            if (class_exists('\GuzzleHttp\Client', true)) {
-                                $httpClient = new \GuzzleHttp\Client();
-                                error_log("✅ GuzzleHttp\Client loaded after update");
-                                goto skip_error;
+                            error_log("⚠️ GuzzleHttp\Client still not loadable after installation");
+                            // Try to manually require the trait file
+                            if (file_exists($traitPath)) {
+                                require_once $traitPath;
+                                if (class_exists('\GuzzleHttp\Client', true)) {
+                                    $httpClient = new \GuzzleHttp\Client();
+                                    error_log("✅ GuzzleHttp\Client loaded after manual trait load");
+                                    goto skip_error;
+                                }
                             }
                         }
                     }

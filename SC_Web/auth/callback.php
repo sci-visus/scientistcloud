@@ -41,6 +41,14 @@ try {
     try {
         $sclib = getSCLibClient();
         
+        // Check if API is accessible before attempting to create user
+        logMessage('INFO', 'Checking SCLib API health', ['email' => $user_email]);
+        $healthCheck = $sclib->healthCheck();
+        if (!$healthCheck) {
+            logMessage('WARNING', 'SCLib API health check failed', ['email' => $user_email]);
+            // Continue anyway - might be temporary
+        }
+        
         // Prepare user data for SCLib
         $userData = [
             'email' => $user_email,
@@ -51,6 +59,8 @@ try {
             'email_verified' => $userInfo['email_verified'] ?? false,
             'auth0_metadata' => $userInfo
         ];
+        
+        logMessage('INFO', 'Attempting to create user in SCLib', ['email' => $user_email]);
         
         // Create or update user in SCLib
         $createResult = $sclib->createUser($userData);

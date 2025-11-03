@@ -168,10 +168,48 @@ start_services() {
     print_success "Portal services started"
 }
 
+# Install PHP dependencies in container
+install_dependencies() {
+    print_status "Installing PHP dependencies in portal container..."
+    
+    # Wait for container to be fully started
+    sleep 5
+    
+    # Check if container is running
+    if ! docker ps --format "{{.Names}}" | grep -q "scientistcloud-portal"; then
+        print_warning "Portal container not found, skipping dependency installation"
+        return
+    fi
+    
+    # Install/update dependencies
+    print_status "Running composer update..."
+    if docker exec scientistcloud-portal bash -c "cd /var/www/html && composer update --no-dev --optimize-autoloader --no-interaction --prefer-dist 2>&1"; then
+        print_success "Dependencies updated successfully"
+    else
+        print_warning "Composer update failed, trying install..."
+        if docker exec scientistcloud-portal bash -c "cd /var/www/html && composer install --no-dev --optimize-autoloader --no-interaction --prefer-dist 2>&1"; then
+            print_success "Dependencies installed successfully"
+        else
+            print_warning "Composer install also failed - dependencies may be missing"
+        fi
+    fi
+    
+    # Regenerate autoloader
+    print_status "Regenerating autoloader..."
+    if docker exec scientistcloud-portal bash -c "cd /var/www/html && composer dump-autoload --optimize --no-interaction 2>&1"; then
+        print_success "Autoloader regenerated"
+    else
+        print_warning "Autoloader regeneration failed"
+    fi
+}
+
 # Wait for services to be ready
 wait_for_services() {
     print_status "Waiting for services to be ready..."
     sleep 10
+    
+    # Install dependencies after container starts
+    install_dependencies
     
     # Check if portal is responding
     for i in {1..30}; do
