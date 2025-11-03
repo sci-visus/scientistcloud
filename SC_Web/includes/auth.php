@@ -95,7 +95,22 @@ function authenticateUserFromSession() {
     try {
         // Check if we have Auth0 session data - email is primary identifier
         if (!isset($_SESSION['user_email'])) {
-            return false;
+            return null;
+        }
+        
+        // If we have session data from callback, create a minimal user object
+        // This avoids API calls during the redirect loop
+        if (isset($_SESSION['user_email']) && isset($_SESSION['user_id']) && isset($_SESSION['user_name'])) {
+            // Return user from session if we have all required data
+            // This allows the callback redirect to work even if API is slow
+            return [
+                'id' => $_SESSION['user_id'],
+                'email' => $_SESSION['user_email'],
+                'name' => $_SESSION['user_name'],
+                'preferred_dashboard' => $_SESSION['preferred_dashboard'] ?? DEFAULT_DASHBOARD,
+                'team_id' => $_SESSION['team_id'] ?? null,
+                'permissions' => $_SESSION['permissions'] ?? ['read', 'upload']
+            ];
         }
         
         $userEmail = $_SESSION['user_email'];
