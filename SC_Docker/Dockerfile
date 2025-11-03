@@ -134,19 +134,56 @@ cd /var/www/html\n\
 if [ -f composer.json ]; then\n\
     echo "📦 Checking dependencies..."\n\
     \n\
+    # Ensure allow-plugins config exists to avoid prompts\n\
+    if [ -f composer.json ]; then\n\
+        if ! grep -q '"'"'allow-plugins'"'"' composer.json; then\n\
+            echo "📝 Adding allow-plugins config to composer.json..."\n\
+            # Use jq if available, otherwise use sed/awk\n\
+            if command -v jq >/dev/null 2>&1; then\n\
+                tmp=$(mktemp)\n\
+                jq '"'"'.config.allow-plugins = {"php-http/discovery": true}'"'"' composer.json > "$tmp" && mv "$tmp" composer.json\n\
+            else\n\
+                # Fallback: use sed to add allow-plugins after config section\n\
+                sed -i '"'"'/\"config\":/,/}/ s/}/,"allow-plugins":{"php-http\/discovery":true}}/'"'"' composer.json 2>/dev/null || {\n\
+                    # If sed fails, create a Python script to do it properly\n\
+                    python3 << '"'"'PYEOF'"'"'\n\
+import json\n\
+with open("composer.json", "r") as f:\n\
+    data = json.load(f)\n\
+if "config" not in data:\n\
+    data["config"] = {}\n\
+if "allow-plugins" not in data["config"]:\n\
+    data["config"]["allow-plugins"] = {"php-http/discovery": True}\n\
+with open("composer.json", "w") as f:\n\
+    json.dump(data, f, indent=4)\n\
+PYEOF\n\
+                }\n\
+            fi\n\
+        fi\n\
+    fi\n\
+    \n\
     # Check if autoload exists and if key packages are installed\n\
     if [ ! -f vendor/autoload.php ] || [ ! -d vendor/guzzlehttp ] || [ ! -d vendor/php-http ]; then\n\
         echo "📥 Installing/updating dependencies from composer.json..."\n\
         composer install --no-dev --optimize-autoloader --no-interaction --prefer-dist\n\
         echo "✅ Dependencies installed"\n\
     else\n\
-        echo "📋 Dependencies found, updating autoload..."\n\
-        composer dump-autoload --optimize --no-interaction 2>/dev/null || true\n\
+        echo "📋 Dependencies found, checking if all required packages exist..."\n\
+        # Check for critical packages individually\n\
+        if [ ! -d vendor/guzzlehttp/guzzle ] || [ ! -d vendor/auth0 ]; then\n\
+            echo "⚠️ Some critical packages missing, reinstalling..."\n\
+            composer install --no-dev --optimize-autoloader --no-interaction --prefer-dist\n\
+        else\n\
+            echo "✅ All critical packages found"\n\
+            composer dump-autoload --optimize --no-interaction 2>/dev/null || true\n\
+        fi\n\
     fi\n\
     \n\
-    # Verify critical packages exist\n\
-    if [ ! -d vendor/auth0 ] || [ ! -d vendor/guzzlehttp/guzzle ]; then\n\
-        echo "⚠️ Missing critical packages, forcing reinstall..."\n\
+    # Final verification - ensure Guzzle HTTP client is actually available\n\
+    if [ ! -d vendor/guzzlehttp/guzzle ]; then\n\
+        echo "❌ CRITICAL: guzzlehttp/guzzle not found after installation attempt!"\n\
+        echo "   Forcing complete reinstall..."\n\
+        rm -rf vendor/ composer.lock 2>/dev/null || true\n\
         composer install --no-dev --optimize-autoloader --no-interaction --prefer-dist\n\
     fi\n\
 else\n\
