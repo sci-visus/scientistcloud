@@ -18,8 +18,15 @@ if (session_status() == PHP_SESSION_NONE) {
 // Get user information
 $user = getCurrentUser();
 if (!$user) {
+    // Clear any stale session data that might cause loops
+    if (isset($_SESSION['user_email'])) {
+        unset($_SESSION['user_email']);
+        unset($_SESSION['user_id']);
+        unset($_SESSION['user_name']);
+    }
+    
     // Redirect to login if not authenticated
-    header('Location: login.php');
+    header('Location: /portal/login.php');
     exit;
 }
 

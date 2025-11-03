@@ -188,7 +188,19 @@ function hasPermission($permission) {
  */
 function isAuthenticated() {
     // Use email as primary identifier for authentication
-    return isset($_SESSION['user_email']) && !empty($_SESSION['user_email']);
+    if (!isset($_SESSION['user_email']) || empty($_SESSION['user_email'])) {
+        return false;
+    }
+    
+    // Verify user actually exists - don't just check session
+    // This prevents redirect loops when session exists but user doesn't
+    try {
+        $user = getCurrentUser();
+        return $user !== null;
+    } catch (Exception $e) {
+        error_log("isAuthenticated check failed: " . $e->getMessage());
+        return false;
+    }
 }
 
 /**

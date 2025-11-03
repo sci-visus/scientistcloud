@@ -24,7 +24,9 @@ if (!isset($_SESSION['CREATED'])) {
 }
 
 // Check if user is already authenticated
+// isAuthenticated() now verifies getCurrentUser(), so this should be safe
 if (isAuthenticated()) {
+    // User is authenticated, redirect to index
     header('Location: /portal/index.php');
     exit;
 }
