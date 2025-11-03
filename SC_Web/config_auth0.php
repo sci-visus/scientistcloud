@@ -130,27 +130,53 @@ if (!isset($auth0)) {
     
     // Final check - if HTTP client is still null, we MUST have one for Auth0 SDK
     if (!$httpClient) {
+        // Check if we're in Docker and if composer dependencies might need installation
+        $isDocker = file_exists('/.dockerenv') || getenv('APACHE_RUN_USER') !== false;
+        $composerJsonExists = file_exists(__DIR__ . '/composer.json');
+        $vendorAutoloadExists = file_exists(__DIR__ . '/vendor/autoload.php');
+        $guzzleDirExists = is_dir(__DIR__ . '/vendor/guzzlehttp/guzzle');
+        
         $errorMsg = "FATAL ERROR: Could not find any PSR-18 HTTP client implementation!\n";
         $errorMsg .= "Auth0 SDK requires a PSR-18 compatible HTTP client.\n";
         $errorMsg .= "Checked: GuzzleHttp\\Client, Http\\Discovery\\HttpClientDiscovery, PSR Discovery\n";
         $errorMsg .= "\n";
-        $errorMsg .= "Solution: Install guzzlehttp/guzzle\n";
-        $errorMsg .= "  Run in /var/www/html: composer require guzzlehttp/guzzle\n";
-        $errorMsg .= "  Or ensure it's installed: composer install\n";
+        $errorMsg .= "Diagnostics:\n";
+        $errorMsg .= "  - Running in Docker: " . ($isDocker ? "Yes" : "No") . "\n";
+        $errorMsg .= "  - composer.json exists: " . ($composerJsonExists ? "Yes" : "No") . "\n";
+        $errorMsg .= "  - vendor/autoload.php exists: " . ($vendorAutoloadExists ? "Yes" : "No") . "\n";
+        $errorMsg .= "  - vendor/guzzlehttp/guzzle exists: " . ($guzzleDirExists ? "Yes" : "No") . "\n";
         $errorMsg .= "\n";
-        $errorMsg .= "If composer is not available, check:\n";
-        $errorMsg .= "  - Is vendor/autoload.php loading properly?\n";
-        $errorMsg .= "  - Is guzzlehttp/guzzle actually installed in vendor/?\n";
-        $errorMsg .= "  - Check composer.json and run: composer update";
+        $errorMsg .= "Solution:\n";
+        
+        if ($isDocker && $composerJsonExists && !$guzzleDirExists) {
+            // In Docker and composer.json exists but dependencies not installed
+            $errorMsg .= "  Run inside the container:\n";
+            $errorMsg .= "    docker exec -it scientistcloud-portal composer install --no-dev --optimize-autoloader\n";
+            $errorMsg .= "  Or restart the container (startup script should install dependencies automatically)\n";
+        } else if ($composerJsonExists) {
+            $errorMsg .= "  Run in " . __DIR__ . ":\n";
+            $errorMsg .= "    composer install --no-dev --optimize-autoloader\n";
+            $errorMsg .= "    OR\n";
+            $errorMsg .= "    composer require guzzlehttp/guzzle:^7.0\n";
+        } else {
+            $errorMsg .= "  composer.json is missing - dependencies cannot be installed automatically\n";
+            $errorMsg .= "  Please ensure composer.json exists in " . __DIR__ . "\n";
+        }
         
         error_log($errorMsg);
         
-        // Throw a user-friendly error instead of letting Auth0 SDK throw cryptic error
-        throw new \RuntimeException(
-            "Auth0 initialization failed: PSR-18 HTTP client not found. " .
-            "Please install guzzlehttp/guzzle: composer require guzzlehttp/guzzle " .
-            "or run composer install in " . __DIR__
-        );
+        // Throw a user-friendly error with actionable steps
+        $userMessage = "Auth0 initialization failed: PSR-18 HTTP client not found. ";
+        if ($isDocker && $composerJsonExists && !$guzzleDirExists) {
+            $userMessage .= "Docker container detected but dependencies not installed. " .
+                           "Run: docker exec -it scientistcloud-portal composer install --no-dev --optimize-autoloader";
+        } else if ($composerJsonExists) {
+            $userMessage .= "Please install dependencies: composer install --no-dev --optimize-autoloader in " . __DIR__;
+        } else {
+            $userMessage .= "composer.json not found. Please ensure composer.json exists and run: composer install";
+        }
+        
+        throw new \RuntimeException($userMessage);
     }
     
     // Determine audience - use AUTH0_AUDIENCE if set, otherwise null (for simple auth without API access)
