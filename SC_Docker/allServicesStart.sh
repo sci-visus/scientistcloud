@@ -1,6 +1,17 @@
 #!/bin/bash
  
 # For ScientistCloud 2.0, we need to start all the services in the correct order
+# Usage: ./allServicesStart.sh [--skip-main|--portal-only]
+#   --skip-main or --portal-only: Skip starting VisusDataPortalPrivate services
+
+# Parse command line arguments
+SKIP_MAIN_SERVICES=false
+
+if [[ "$1" == "--skip-main" ]] || [[ "$1" == "--portal-only" ]]; then
+    SKIP_MAIN_SERVICES=true
+    echo "📋 Skipping VisusDataPortalPrivate services (portal-only mode)"
+fi
+
 # Source environment variables first
 ENV_FILE="$HOME/ScientistCloud2.0/SCLib_TryTest/env.scientistcloud"
 if [ -f "$ENV_FILE" ]; then
@@ -110,58 +121,74 @@ if [ -z "$VISUS_DOCKER_PATH" ] || [ ! -d "$VISUS_DOCKER_PATH" ]; then
     fi
 fi
 
-# Start main VisusDataPortalPrivate services
-echo "🏠 Starting main VisusDataPortalPrivate services..."
-if [ -n "$VISUS_DOCKER_PATH" ] && [ -d "$VISUS_DOCKER_PATH" ]; then
-    echo "   Using Docker directory: $VISUS_DOCKER_PATH"
-    pushd "$VISUS_DOCKER_PATH"
-    if [ -f "./sync_with_github.sh" ]; then
-        ./sync_with_github.sh
+# Start main VisusDataPortalPrivate services (unless skipped)
+if [ "$SKIP_MAIN_SERVICES" = false ]; then
+    echo "🏠 Starting main VisusDataPortalPrivate services..."
+    if [ -n "$VISUS_DOCKER_PATH" ] && [ -d "$VISUS_DOCKER_PATH" ]; then
+        echo "   Using Docker directory: $VISUS_DOCKER_PATH"
+        pushd "$VISUS_DOCKER_PATH"
+        if [ -f "./sync_with_github.sh" ]; then
+            ./sync_with_github.sh
+        fi
+        if [ -f "./scientistCloud_docker_start_fresh.sh" ]; then
+            ./scientistCloud_docker_start_fresh.sh
+        fi
+        if [ -f "./setup_ssl.sh" ]; then
+            ./setup_ssl.sh
+        fi
+        popd
+        echo "✅ Main services started"
+    else
+        echo "❌ VisusDataPortalPrivate Docker directory not found"
+        echo "   Searched for:"
+        echo "     - VISUS_DOCKER environment variable"
+        echo "     - VISUS_CODE/Docker environment variable"
+        echo "     - Common paths: ~/VisStoreClone, ~/VisStoreCode, ~/visus-dataportal-private"
+        echo "     - From running nginx container"
+        echo ""
+        echo "   To fix: Set VISUS_DOCKER or VISUS_CODE in env.scientistcloud file"
+        echo "   Or use --skip-main or --portal-only flag to skip main services"
+        exit 1
     fi
-    if [ -f "./scientistCloud_docker_start_fresh.sh" ]; then
-        ./scientistCloud_docker_start_fresh.sh
-    fi
-    if [ -f "./setup_ssl.sh" ]; then
-        ./setup_ssl.sh
-    fi
-    popd
-    echo "✅ Main services started"
 else
-    echo "❌ VisusDataPortalPrivate Docker directory not found"
-    echo "   Searched for:"
-    echo "     - VISUS_DOCKER environment variable"
-    echo "     - VISUS_CODE/Docker environment variable"
-    echo "     - Common paths: ~/VisStoreClone, ~/VisStoreCode, ~/visus-dataportal-private"
-    echo "     - From running nginx container"
-    echo ""
-    echo "   To fix: Set VISUS_DOCKER or VISUS_CODE in env.scientistcloud file"
-    exit 1
+    echo "⏭️  Skipping main VisusDataPortalPrivate services (portal-only mode)"
 fi
 
 # Setup portal nginx configuration after all services are running
-echo "🔧 Setting up portal nginx configuration..."
-if [ -n "$VISUS_DOCKER_PATH" ] && [ -d "$VISUS_DOCKER_PATH" ]; then
-    pushd "$VISUS_DOCKER_PATH"
-    if [ -f "./setup_portal_nginx.sh" ]; then
-        ./setup_portal_nginx.sh
-        echo "✅ Portal nginx configuration updated"
-    else
-        echo "⚠️ setup_portal_nginx.sh not found"
-        echo "   Portal routes may not work. Please ensure setup_portal_nginx.sh exists in $VISUS_DOCKER_PATH"
-        # setup_ssl.sh should have called setup_portal_config at the end, but verify
-        if docker ps --format "{{.Names}}" | grep -q "scientistcloud-portal"; then
-            echo "   Portal container is running, but nginx config may be missing portal routes"
+# Only try if we have the VisusDataPortalPrivate path (even if we skipped starting services)
+if [ "$SKIP_MAIN_SERVICES" = false ] || [ -n "$VISUS_DOCKER_PATH" ]; then
+    echo "🔧 Setting up portal nginx configuration..."
+    if [ -n "$VISUS_DOCKER_PATH" ] && [ -d "$VISUS_DOCKER_PATH" ]; then
+        pushd "$VISUS_DOCKER_PATH"
+        if [ -f "./setup_portal_nginx.sh" ]; then
+            ./setup_portal_nginx.sh
+            echo "✅ Portal nginx configuration updated"
+        else
+            echo "⚠️ setup_portal_nginx.sh not found"
+            echo "   Portal routes may not work. Please ensure setup_portal_nginx.sh exists in $VISUS_DOCKER_PATH"
+            # setup_ssl.sh should have called setup_portal_config at the end, but verify
+            if docker ps --format "{{.Names}}" | grep -q "scientistcloud-portal"; then
+                echo "   Portal container is running, but nginx config may be missing portal routes"
+            fi
         fi
+        popd
+    else
+        echo "⚠️ Cannot setup portal nginx configuration - Docker directory not found"
+        echo "   Portal may still work if nginx is already configured, but routes may need manual setup"
     fi
-    popd
 else
-    echo "❌ Cannot setup portal nginx configuration - Docker directory not found"
-    exit 1
+    echo "⏭️  Skipping portal nginx configuration (no VisusDataPortalPrivate path found)"
 fi
 
 echo "🎉 All services startup complete!"
 echo ""
 echo "Service URLs:"
 echo "  🌐 Portal: https://scientistcloud.com/portal/"
-echo "  🏠 Main Site: https://scientistcloud.com/"
+if [ "$SKIP_MAIN_SERVICES" = false ]; then
+    echo "  🏠 Main Site: https://scientistcloud.com/"
+fi
 echo "  🔧 Health: https://scientistcloud.com/portal/health"
+echo ""
+if [ "$SKIP_MAIN_SERVICES" = true ]; then
+    echo "ℹ️  Note: Main VisusDataPortalPrivate services were skipped (portal-only mode)"
+fi
