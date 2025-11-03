@@ -68,7 +68,6 @@ services:
       # SCLib API configuration - using existing SCLib services
       - SCLIB_API_URL=http://sclib_fastapi:5001
       - SCLIB_AUTH_URL=http://sclib_auth:8001
-      - EXISTING_AUTH_URL=http://sclib_auth:8001
       
       # File paths (use existing volumes)
       - VISUS_DB=${VISUS_DB}
