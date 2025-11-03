@@ -171,3 +171,8 @@ For issues and questions:
 2. Review Docker logs
 3. Verify environment configuration
 4. Check SCLib integration status
+
+
+## Errors:
+
+docker exec -it scientistcloud-portal bash -c "cd /var/www/html && composer update guzzlehttp/guzzle --no-dev --optimize-autoloader && composer dump-autoload --optimize"

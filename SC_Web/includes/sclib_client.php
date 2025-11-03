@@ -240,8 +240,9 @@ $sclib_client = null;
 function getSCLibClient() {
     global $sclib_client;
     if ($sclib_client === null) {
-        // Get API URL from configuration
-        $api_url = getenv('SCLIB_API_URL') ?: 'http://localhost:5001';
+        // Get API URL from configuration - prioritize AUTH_URL for auth endpoints
+        // Auth endpoints use SCLIB_AUTH_URL (port 8001), other endpoints use SCLIB_API_URL (port 5001)
+        $api_url = getenv('SCLIB_AUTH_URL') ?: getenv('EXISTING_AUTH_URL') ?: getenv('SCLIB_API_URL') ?: 'http://localhost:8001';
         $sclib_client = new SCLibClient($api_url);
     }
     return $sclib_client;

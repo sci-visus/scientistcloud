@@ -144,7 +144,19 @@ function logMessage($level, $message, $context = []) {
     
     $logEntry .= PHP_EOL;
     
-    file_put_contents(LOG_FILE, $logEntry, FILE_APPEND | LOCK_EX);
+    // Try to write to log file, but don't fail if permission denied
+    $logDir = dirname(LOG_FILE);
+    if (!is_dir($logDir)) {
+        @mkdir($logDir, 0777, true);
+        @chmod($logDir, 0777);
+    }
+    
+    if (is_writable($logDir)) {
+        @file_put_contents(LOG_FILE, $logEntry, FILE_APPEND | LOCK_EX);
+    } else {
+        // Fallback to PHP error_log if file write fails
+        error_log("[$level] $message " . (!empty($context) ? json_encode($context) : ''));
+    }
 }
 
 function getConfig() {

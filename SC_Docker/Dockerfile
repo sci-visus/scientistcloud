@@ -30,7 +30,7 @@ RUN composer global require guzzlehttp/guzzle:^7.0 guzzlehttp/psr7:^2.0 php-http
 
 # Create a minimal composer.json for build-time dependency installation
 # Note: SC_Web directory (with full composer.json) will be mounted as volume at runtime
-RUN echo '{"require":{"php":">=8.0","auth0/auth0-php":"^8.17","guzzlehttp/guzzle":"^7.0","guzzlehttp/psr7":"^2.0","php-http/discovery":"^1.19"},"config":{"optimize-autoloader":true,"sort-packages":true,"allow-plugins":{"php-http/discovery":true}},"minimum-stability":"stable","prefer-stable":true}' > /var/www/html/composer.json
+RUN echo '{"require":{"php":">=8.0","auth0/auth0-php":"^8.17","guzzlehttp/guzzle":"^7.0","guzzlehttp/psr7":"^2.0","guzzlehttp/promises":"^2.0","php-http/discovery":"^1.19"},"config":{"optimize-autoloader":true,"sort-packages":true,"allow-plugins":{"php-http/discovery":true}},"minimum-stability":"stable","prefer-stable":true}' > /var/www/html/composer.json
 
 # Install dependencies during build (these will be available even if volume overwrites vendor)
 # The vendor directory in the volume will be used at runtime if it exists
@@ -188,7 +188,7 @@ PYEOF\n\
     fi\n\
 else\n\
     echo "⚠️ composer.json not found, creating minimal one..."\n\
-    echo '"'"'{"require":{"php":">=8.0","auth0/auth0-php":"^8.17","guzzlehttp/guzzle":"^7.0","guzzlehttp/psr7":"^2.0","php-http/discovery":"^1.19"},"config":{"optimize-autoloader":true,"sort-packages":true,"allow-plugins":{"php-http/discovery":true}},"minimum-stability":"stable","prefer-stable":true}'"'"' > composer.json\n\
+    echo '"'"'{"require":{"php":">=8.0","auth0/auth0-php":"^8.17","guzzlehttp/guzzle":"^7.0","guzzlehttp/psr7":"^2.0","guzzlehttp/promises":"^2.0","php-http/discovery":"^1.19"},"config":{"optimize-autoloader":true,"sort-packages":true,"allow-plugins":{"php-http/discovery":true}},"minimum-stability":"stable","prefer-stable":true}'"'"' > composer.json\n\
     composer install --no-dev --optimize-autoloader --no-interaction --prefer-dist\n\
     echo "✅ Minimal dependencies installed"\n\
 fi\n\
@@ -199,6 +199,12 @@ cd /var/www/html && php -r "require '"'"'vendor/autoload.php'"'"'; try { \$disco
     echo "⚠️ PSR-17 factory verification failed, but continuing..."\n\
     echo "   This might cause Auth0 SDK issues. Check that guzzlehttp/guzzle and php-http/discovery are installed."\n\
 }\n\
+\n\
+# Ensure logs directory exists and is writable\n\
+echo "📁 Ensuring logs directory is writable..."\n\
+mkdir -p /var/www/html/logs\n\
+chmod 777 /var/www/html/logs 2>/dev/null || chmod 775 /var/www/html/logs 2>/dev/null || true\n\
+chown -R www-data:www-data /var/www/html/logs 2>/dev/null || true\n\
 \n\
 echo "✅ Startup checks complete"\n\
 echo "🌐 Starting Apache..."\n\

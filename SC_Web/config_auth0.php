@@ -179,7 +179,10 @@ if (!isset($auth0)) {
             error_log("🔧 Attempting automatic dependency installation...");
             try {
                 $composerCmd = file_exists('/usr/bin/composer') ? '/usr/bin/composer' : '/usr/local/bin/composer';
-                $installCmd = "cd " . escapeshellarg(__DIR__) . " && " . 
+                $workDir = escapeshellarg(__DIR__);
+                
+                // First, ensure all dependencies including Guzzle sub-dependencies are installed
+                $installCmd = "cd $workDir && " . 
                              escapeshellarg($composerCmd) . 
                              " install --no-dev --optimize-autoloader --no-interaction --prefer-dist 2>&1";
                 
@@ -192,16 +195,54 @@ if (!isset($auth0)) {
                 error_log("Composer install output:\n" . $installOutput);
                 
                 if ($returnCode === 0) {
+                    // Regenerate autoloader to ensure all classes are properly mapped
+                    $dumpCmd = "cd $workDir && " . 
+                              escapeshellarg($composerCmd) . 
+                              " dump-autoload --optimize --no-interaction 2>&1";
+                    exec($dumpCmd, $dumpOutput, $dumpReturnCode);
+                    error_log("Composer dump-autoload output:\n" . implode("\n", $dumpOutput));
+                    
                     error_log("✅ Automatic dependency installation succeeded!");
                     
-                    // Try to load Guzzle again after installation
+                    // Clear any opcode cache that might be holding old class definitions
+                    if (function_exists('opcache_reset')) {
+                        opcache_reset();
+                    }
+                    
+                    // Reload the autoloader
                     if (file_exists(__DIR__ . '/vendor/autoload.php')) {
+                        // Unset any existing autoloader
+                        spl_autoload_unregister('spl_autoload');
                         require_once __DIR__ . '/vendor/autoload.php';
+                        
+                        // Wait a moment for filesystem to sync
+                        usleep(100000); // 100ms
+                        
+                        // Try to load Guzzle again after installation
                         if (class_exists('\GuzzleHttp\Client', true)) {
                             $httpClient = new \GuzzleHttp\Client();
                             error_log("✅ GuzzleHttp\Client loaded after auto-installation");
                             // Success! Continue without throwing error
                             goto skip_error;
+                        } else {
+                            // Check if ClientTrait exists (it's a dependency)
+                            $traitPath = __DIR__ . '/vendor/guzzlehttp/guzzle/src/ClientTrait.php';
+                            error_log("Checking ClientTrait: " . (file_exists($traitPath) ? 'exists' : 'missing'));
+                            
+                            // Try installing with update to ensure all dependencies
+                            $updateCmd = "cd $workDir && " . 
+                                        escapeshellarg($composerCmd) . 
+                                        " update guzzlehttp/guzzle --no-dev --optimize-autoloader --no-interaction --prefer-dist 2>&1";
+                            exec($updateCmd, $updateOutput, $updateReturnCode);
+                            error_log("Composer update output:\n" . implode("\n", $updateOutput));
+                            
+                            // Reload autoloader again
+                            require_once __DIR__ . '/vendor/autoload.php';
+                            if (class_exists('\GuzzleHttp\Client', true)) {
+                                $httpClient = new \GuzzleHttp\Client();
+                                error_log("✅ GuzzleHttp\Client loaded after update");
+                                goto skip_error;
+                            }
                         }
                     }
                     error_log("⚠️ Installation succeeded but Guzzle still not loadable");
