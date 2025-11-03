@@ -86,15 +86,32 @@ if (!isset($auth0)) {
     }
     
     // Try to use Guzzle HTTP client (PSR-18 compatible)
-    if (class_exists('GuzzleHttp\Client')) {
-        try {
+    // Try creating it directly - autoloader will load the class if it's installed
+    try {
+        // Check if Guzzle is available (class_exists will trigger autoload)
+        if (class_exists('\GuzzleHttp\Client', true)) {
             $httpClient = new \GuzzleHttp\Client();
             error_log("✅ Using GuzzleHttp\Client");
+        }
+    } catch (\Error $e) {
+        // Class not found or fatal error
+        error_log("GuzzleHttp\Client not available: " . $e->getMessage());
+    } catch (\Exception $e) {
+        // Other exception
+        error_log("Failed to create GuzzleHttp\Client: " . $e->getMessage());
+    }
+    
+    // Try php-http/discovery HTTP client
+    if (!$httpClient && class_exists('Http\Discovery\HttpClientDiscovery')) {
+        try {
+            $httpClient = \Http\Discovery\HttpClientDiscovery::find();
+            error_log("✅ Using Http\Discovery\HttpClientDiscovery");
         } catch (\Exception $e) {
-            error_log("Failed to create GuzzleHttp\Client: " . $e->getMessage());
+            error_log("Http\Discovery HTTP client discovery failed: " . $e->getMessage());
         }
     }
     
+    // Try PSR Discovery HTTP client
     if (!$httpClient && class_exists('Psr\Discovery\HttpClientDiscovery')) {
         try {
             $httpClient = \Psr\Discovery\HttpClientDiscovery::find();
@@ -111,6 +128,31 @@ if (!isset($auth0)) {
         error_log("   Make sure guzzlehttp/guzzle and guzzlehttp/psr7 are installed: composer install");
     }
     
+    // Final check - if HTTP client is still null, we MUST have one for Auth0 SDK
+    if (!$httpClient) {
+        $errorMsg = "FATAL ERROR: Could not find any PSR-18 HTTP client implementation!\n";
+        $errorMsg .= "Auth0 SDK requires a PSR-18 compatible HTTP client.\n";
+        $errorMsg .= "Checked: GuzzleHttp\\Client, Http\\Discovery\\HttpClientDiscovery, PSR Discovery\n";
+        $errorMsg .= "\n";
+        $errorMsg .= "Solution: Install guzzlehttp/guzzle\n";
+        $errorMsg .= "  Run in /var/www/html: composer require guzzlehttp/guzzle\n";
+        $errorMsg .= "  Or ensure it's installed: composer install\n";
+        $errorMsg .= "\n";
+        $errorMsg .= "If composer is not available, check:\n";
+        $errorMsg .= "  - Is vendor/autoload.php loading properly?\n";
+        $errorMsg .= "  - Is guzzlehttp/guzzle actually installed in vendor/?\n";
+        $errorMsg .= "  - Check composer.json and run: composer update";
+        
+        error_log($errorMsg);
+        
+        // Throw a user-friendly error instead of letting Auth0 SDK throw cryptic error
+        throw new \RuntimeException(
+            "Auth0 initialization failed: PSR-18 HTTP client not found. " .
+            "Please install guzzlehttp/guzzle: composer require guzzlehttp/guzzle " .
+            "or run composer install in " . __DIR__
+        );
+    }
+    
     // Determine audience - use AUTH0_AUDIENCE if set, otherwise null (for simple auth without API access)
     // Only set audience if AUTH0_AUDIENCE is explicitly configured, as Auth0 requires the API to exist
     $audience = null;
@@ -118,7 +160,7 @@ if (!isset($auth0)) {
         $audience = [$auth0_audience];
     }
     
-    // Create SdkConfiguration with explicit HTTP factories passed to constructor
+    // Create SdkConfiguration with explicit HTTP factories and client passed to constructor
     // This prevents the setupStateFactories() from trying to discover them (which fails)
     $config = new SdkConfiguration(
         strategy: SdkConfiguration::STRATEGY_REGULAR,
@@ -135,7 +177,7 @@ if (!isset($auth0)) {
         httpRequestFactory: $httpRequestFactory,
         httpResponseFactory: $httpResponseFactory,
         httpStreamFactory: $httpStreamFactory,
-        httpClient: $httpClient
+        httpClient: $httpClient  // Must not be null - checked above
     );
     
     $auth0 = new Auth0($config);
