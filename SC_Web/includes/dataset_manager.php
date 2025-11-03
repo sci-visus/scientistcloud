@@ -268,4 +268,59 @@ function getDatasetStats($userId) {
         ];
     }
 }
+
+/**
+ * Get all datasets for a user (my, shared, team) - uses SCLib API
+ * Similar to old portal's getFullDatasets() function
+ * 
+ * @param string $userEmail User's email address
+ * @return array [my_datasets, shared_datasets, team_datasets]
+ */
+function getAllDatasetsByEmail($userEmail) {
+    try {
+        $sclib = getSCLibClient();
+        
+        // Use the new SCLib Dataset Management API endpoint
+        // The endpoint should be at /api/v1/datasets/by-user?user_email={email}
+        try {
+            $response = $sclib->makeRequest('/api/v1/datasets/by-user', 'GET', null, ['user_email' => $userEmail]);
+        } catch (Exception $e) {
+            // If endpoint doesn't exist, fall back to basic list
+            logMessage('WARNING', 'Dataset by-user endpoint not available, trying basic list', ['error' => $e->getMessage()]);
+            $response = $sclib->makeRequest('/api/v1/datasets', 'GET', null, ['user_email' => $userEmail]);
+            // Transform basic list response to organized format
+            if (isset($response['success']) && $response['success']) {
+                return [
+                    'my' => $response['datasets'] ?? [],
+                    'shared' => [],
+                    'team' => []
+                ];
+            }
+            throw $e;
+        }
+        
+        if (isset($response['success']) && $response['success']) {
+            return $response['datasets'] ?? [
+                'my' => [],
+                'shared' => [],
+                'team' => []
+            ];
+        }
+        
+        logMessage('WARNING', 'SCLib API returned unsuccessful response', ['response' => $response]);
+        return [
+            'my' => [],
+            'shared' => [],
+            'team' => []
+        ];
+        
+    } catch (Exception $e) {
+        logMessage('ERROR', 'Failed to get all datasets from SCLib API', ['user_email' => $userEmail, 'error' => $e->getMessage()]);
+        return [
+            'my' => [],
+            'shared' => [],
+            'team' => []
+        ];
+    }
+}
 ?>

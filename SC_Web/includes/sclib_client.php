@@ -16,7 +16,7 @@ class SCLibClient {
     /**
      * Make HTTP request to SCLib API
      */
-    private function makeRequest($endpoint, $method = 'GET', $data = null, $params = []) {
+    public function makeRequest($endpoint, $method = 'GET', $data = null, $params = []) {
         $url = $this->api_base_url . $endpoint;
         
         // Add query parameters
@@ -275,9 +275,10 @@ $sclib_client = null;
 function getSCLibClient() {
     global $sclib_client;
     if ($sclib_client === null) {
-        // Get API URL from configuration - prioritize AUTH_URL for auth endpoints
-        // Auth endpoints use SCLIB_AUTH_URL (port 8001), other endpoints use SCLIB_API_URL (port 5001)
-        $api_url = getenv('SCLIB_AUTH_URL') ?: getenv('EXISTING_AUTH_URL') ?: getenv('SCLIB_API_URL') ?: 'http://localhost:8001';
+        // Get API URL from configuration
+        // Dataset management endpoints use SCLIB_API_URL (port 5001) or SCLIB_DATASET_URL
+        // Auth endpoints use SCLIB_AUTH_URL (port 8001)
+        $api_url = getenv('SCLIB_DATASET_URL') ?: getenv('SCLIB_API_URL') ?: getenv('EXISTING_AUTH_URL') ?: 'http://localhost:5001';
         $sclib_client = new SCLibClient($api_url);
     }
     return $sclib_client;
