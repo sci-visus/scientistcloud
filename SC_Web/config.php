@@ -76,6 +76,10 @@ if (!file_exists(dirname(LOG_FILE))) {
     mkdir(dirname(LOG_FILE), 0775, true);
     chmod(dirname(LOG_FILE), 0775);
 }
+// Ensure logs directory is writable
+if (file_exists(dirname(LOG_FILE))) {
+    chmod(dirname(LOG_FILE), 0777); // Make writable by web server
+}
 
 // Helper functions - SCLib handles all database operations
 function getMongoConnection() {

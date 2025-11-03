@@ -35,14 +35,59 @@ try {
 
     // Generate a user ID from email (consistent ID generation)
     $userId = 'user_' . str_replace(['@', '.'], '_', $user_email);
+    $auth0_sub = $userInfo['sub'] ?? $userId;
+    
+    // Create or update user in SCLib using user_profile collection
+    try {
+        $sclib = getSCLibClient();
+        
+        // Prepare user data for SCLib
+        $userData = [
+            'email' => $user_email,
+            'name' => $user_name,
+            'auth0_id' => $auth0_sub,
+            'sub' => $auth0_sub,
+            'picture' => $userInfo['picture'] ?? null,
+            'email_verified' => $userInfo['email_verified'] ?? false,
+            'auth0_metadata' => $userInfo
+        ];
+        
+        // Create or update user in SCLib
+        $createResult = $sclib->createUser($userData);
+        
+        if (!$createResult || !isset($createResult['success']) || !$createResult['success']) {
+            $errorMsg = $createResult['error'] ?? 'Unknown error';
+            logMessage('ERROR', 'Failed to create user in SCLib', [
+                'email' => $user_email,
+                'error' => $errorMsg
+            ]);
+            throw new Exception("Failed to create user in SCLib: " . $errorMsg);
+        }
+        
+        logMessage('INFO', 'User created/updated in SCLib', [
+            'email' => $user_email,
+            'user_id' => $createResult['user_id'] ?? $userId
+        ]);
+        
+        // Use the user_id from SCLib if provided
+        if (isset($createResult['user_id'])) {
+            $userId = $createResult['user_id'];
+        }
+        
+    } catch (Exception $e) {
+        logMessage('ERROR', 'SCLib user creation error', [
+            'email' => $user_email,
+            'error' => $e->getMessage()
+        ]);
+        // Re-throw to show error to user
+        throw new Exception("Authentication service error: " . $e->getMessage());
+    }
     
     // Set session variables for ScientistCloud
-    // Note: User profile will be created/updated by SCLib when needed
-    // For now, we store Auth0 user info in session
     $_SESSION['user_id'] = $userId;
     $_SESSION['user_email'] = $user_email;
     $_SESSION['user_name'] = $user_name;
-    $_SESSION['auth0_id'] = $userInfo['sub'] ?? null;
+    $_SESSION['auth0_id'] = $auth0_sub;
     $_SESSION['auth0_user_info'] = $userInfo; // Store full Auth0 user info
     
     // Store Auth0 tokens for API access

@@ -144,12 +144,13 @@ class SCLibClient {
     }
     
     /**
-     * Get user profile by user ID - uses existing SCLib Auth service
+     * Get user profile by email - uses existing SCLib Auth service
+     * Note: email is the primary identifier for authentication
      */
-    public function getUserProfile($userId) {
+    public function getUserProfile($email) {
         try {
-            // Use the existing SCLib Auth service endpoint
-            $response = $this->makeRequest('/api/auth/me', 'GET', null, ['user_id' => $userId]);
+            // Use the user-by-email endpoint since email is primary identifier
+            $response = $this->makeRequest('/api/auth/user-by-email', 'GET', null, ['email' => $email]);
             return $response['user'] ?? null;
         } catch (Exception $e) {
             error_log("Failed to get user profile: " . $e->getMessage());
@@ -190,11 +191,13 @@ class SCLibClient {
     }
     
     /**
-     * Update user's last login time
+     * Update user's last login time - uses email as identifier
      */
-    public function updateUserLastLogin($userId) {
+    public function updateUserLastLogin($email) {
         try {
-            $response = $this->makeRequest("/api/auth/user/$userId/update-last-login", 'POST');
+            // URL encode email to handle special characters
+            $encodedEmail = urlencode($email);
+            $response = $this->makeRequest("/api/auth/user/$encodedEmail/update-last-login", 'POST');
             return $response['success'] ?? false;
         } catch (Exception $e) {
             error_log("Failed to update user last login: " . $e->getMessage());

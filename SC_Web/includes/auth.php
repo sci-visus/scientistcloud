@@ -17,14 +17,14 @@ function getCurrentUser() {
         return $user;
     }
     
-    // Fallback to legacy session check
-    if (!isset($_SESSION['user_id'])) {
-        return null;
-    }
-    
-    try {
-        $sclib = getSCLibClient();
-        $user = $sclib->getUserProfile($_SESSION['user_id']);
+        // Fallback to legacy session check - use email as primary identifier
+        if (!isset($_SESSION['user_email'])) {
+            return null;
+        }
+        
+        try {
+            $sclib = getSCLibClient();
+            $user = $sclib->getUserProfileByEmail($_SESSION['user_email']);
         
         if ($user) {
             return [
@@ -57,10 +57,13 @@ function authenticateUser($auth0_token) {
             return false;
         }
         
-        $userId = $authResult['user_id'];
+        $userEmail = $authResult['email'] ?? null;
+        if (!$userEmail) {
+            return false;
+        }
         
-        // Get user profile from SCLib
-        $user = $sclib->getUserProfile($userId);
+        // Get user profile from SCLib using email (primary identifier)
+        $user = $sclib->getUserProfileByEmail($userEmail);
         if (!$user) {
             return false;
         }
@@ -90,24 +93,19 @@ function authenticateUser($auth0_token) {
  */
 function authenticateUserFromSession() {
     try {
-        // Check if we have Auth0 session data
-        if (!isset($_SESSION['user_id']) || !isset($_SESSION['user_email'])) {
+        // Check if we have Auth0 session data - email is primary identifier
+        if (!isset($_SESSION['user_email'])) {
             return false;
         }
         
-        $userId = $_SESSION['user_id'];
         $userEmail = $_SESSION['user_email'];
         
-        // Get user profile from SCLib
+        // Get user profile from SCLib using email (primary identifier)
         $sclib = getSCLibClient();
-        $user = $sclib->getUserProfile($userId);
+        $user = $sclib->getUserProfileByEmail($userEmail);
         
         if (!$user) {
-            // Try to get user by email as fallback
-            $user = $sclib->getUserProfileByEmail($userEmail);
-            if (!$user) {
-                return false;
-            }
+            return false;
         }
         
         return [
@@ -189,7 +187,8 @@ function hasPermission($permission) {
  * Check if user is authenticated
  */
 function isAuthenticated() {
-    return isset($_SESSION['user_id']) && !empty($_SESSION['user_id']);
+    // Use email as primary identifier for authentication
+    return isset($_SESSION['user_email']) && !empty($_SESSION['user_email']);
 }
 
 /**
