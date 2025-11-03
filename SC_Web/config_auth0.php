@@ -86,19 +86,43 @@ if (!isset($auth0)) {
     }
     
     // Try to use Guzzle HTTP client (PSR-18 compatible)
-    // Try creating it directly - autoloader will load the class if it's installed
-    try {
-        // Check if Guzzle is available (class_exists will trigger autoload)
-        if (class_exists('\GuzzleHttp\Client', true)) {
-            $httpClient = new \GuzzleHttp\Client();
-            error_log("✅ Using GuzzleHttp\Client");
+    // Check if vendor directory and Guzzle actually exist before trying to use it
+    $guzzlePath = __DIR__ . '/vendor/guzzlehttp/guzzle/src/Client.php';
+    $vendorAutoload = __DIR__ . '/vendor/autoload.php';
+    
+    if (file_exists($vendorAutoload) && file_exists($guzzlePath)) {
+        // Files exist, try to load via autoloader
+        try {
+            // Ensure autoloader is loaded
+            if (!class_exists('\Composer\Autoload\ClassLoader', false)) {
+                require_once $vendorAutoload;
+            }
+            
+            // Check if Guzzle is available (class_exists will trigger autoload)
+            if (class_exists('\GuzzleHttp\Client', true)) {
+                $httpClient = new \GuzzleHttp\Client();
+                error_log("✅ Using GuzzleHttp\Client");
+            } else {
+                error_log("⚠️ Guzzle files exist but class not found - autoloader may need refresh");
+                // Try to manually require the class file
+                if (file_exists($guzzlePath)) {
+                    require_once $guzzlePath;
+                    $httpClient = new \GuzzleHttp\Client();
+                    error_log("✅ Using GuzzleHttp\Client (manually loaded)");
+                }
+            }
+        } catch (\Error $e) {
+            // Class not found or fatal error
+            error_log("GuzzleHttp\Client not available: " . $e->getMessage());
+            error_log("   Guzzle path exists: " . (file_exists($guzzlePath) ? 'Yes' : 'No'));
+            error_log("   Vendor autoload exists: " . (file_exists($vendorAutoload) ? 'Yes' : 'No'));
+        } catch (\Exception $e) {
+            // Other exception
+            error_log("Failed to create GuzzleHttp\Client: " . $e->getMessage());
         }
-    } catch (\Error $e) {
-        // Class not found or fatal error
-        error_log("GuzzleHttp\Client not available: " . $e->getMessage());
-    } catch (\Exception $e) {
-        // Other exception
-        error_log("Failed to create GuzzleHttp\Client: " . $e->getMessage());
+    } else {
+        error_log("⚠️ Guzzle not found - vendor path: " . (file_exists($vendorAutoload) ? 'exists' : 'missing') . 
+                  ", guzzle path: " . (file_exists($guzzlePath) ? 'exists' : 'missing'));
     }
     
     // Try php-http/discovery HTTP client
@@ -128,13 +152,14 @@ if (!isset($auth0)) {
         error_log("   Make sure guzzlehttp/guzzle and guzzlehttp/psr7 are installed: composer install");
     }
     
-    // Final check - if HTTP client is still null, we MUST have one for Auth0 SDK
+    // Final check - if HTTP client is still null, try to auto-install dependencies in Docker
     if (!$httpClient) {
         // Check if we're in Docker and if composer dependencies might need installation
         $isDocker = file_exists('/.dockerenv') || getenv('APACHE_RUN_USER') !== false;
         $composerJsonExists = file_exists(__DIR__ . '/composer.json');
         $vendorAutoloadExists = file_exists(__DIR__ . '/vendor/autoload.php');
         $guzzleDirExists = is_dir(__DIR__ . '/vendor/guzzlehttp/guzzle');
+        $composerExists = file_exists('/usr/bin/composer') || file_exists('/usr/local/bin/composer');
         
         $errorMsg = "FATAL ERROR: Could not find any PSR-18 HTTP client implementation!\n";
         $errorMsg .= "Auth0 SDK requires a PSR-18 compatible HTTP client.\n";
@@ -145,6 +170,49 @@ if (!isset($auth0)) {
         $errorMsg .= "  - composer.json exists: " . ($composerJsonExists ? "Yes" : "No") . "\n";
         $errorMsg .= "  - vendor/autoload.php exists: " . ($vendorAutoloadExists ? "Yes" : "No") . "\n";
         $errorMsg .= "  - vendor/guzzlehttp/guzzle exists: " . ($guzzleDirExists ? "Yes" : "No") . "\n";
+        $errorMsg .= "  - composer binary exists: " . ($composerExists ? "Yes" : "No") . "\n";
+        
+        error_log($errorMsg);
+        
+        // Try auto-installation in Docker environment if composer is available
+        if ($isDocker && $composerJsonExists && !$guzzleDirExists && $composerExists) {
+            error_log("🔧 Attempting automatic dependency installation...");
+            try {
+                $composerCmd = file_exists('/usr/bin/composer') ? '/usr/bin/composer' : '/usr/local/bin/composer';
+                $installCmd = "cd " . escapeshellarg(__DIR__) . " && " . 
+                             escapeshellarg($composerCmd) . 
+                             " install --no-dev --optimize-autoloader --no-interaction --prefer-dist 2>&1";
+                
+                error_log("Running: $installCmd");
+                $output = [];
+                $returnCode = 0;
+                exec($installCmd, $output, $returnCode);
+                
+                $installOutput = implode("\n", $output);
+                error_log("Composer install output:\n" . $installOutput);
+                
+                if ($returnCode === 0) {
+                    error_log("✅ Automatic dependency installation succeeded!");
+                    
+                    // Try to load Guzzle again after installation
+                    if (file_exists(__DIR__ . '/vendor/autoload.php')) {
+                        require_once __DIR__ . '/vendor/autoload.php';
+                        if (class_exists('\GuzzleHttp\Client', true)) {
+                            $httpClient = new \GuzzleHttp\Client();
+                            error_log("✅ GuzzleHttp\Client loaded after auto-installation");
+                            // Success! Continue without throwing error
+                            goto skip_error;
+                        }
+                    }
+                    error_log("⚠️ Installation succeeded but Guzzle still not loadable");
+                } else {
+                    error_log("❌ Automatic dependency installation failed with return code: $returnCode");
+                }
+            } catch (\Exception $e) {
+                error_log("❌ Automatic dependency installation exception: " . $e->getMessage());
+            }
+        }
+        
         $errorMsg .= "\n";
         $errorMsg .= "Solution:\n";
         
@@ -177,6 +245,8 @@ if (!isset($auth0)) {
         }
         
         throw new \RuntimeException($userMessage);
+        
+        skip_error: // Label to skip error if auto-installation succeeded
     }
     
     // Determine audience - use AUTH0_AUDIENCE if set, otherwise null (for simple auth without API access)

@@ -42,8 +42,23 @@ define('COLLECTION_TEAMS', get_collection_name('teams'));
 define('COLLECTION_SHARED', get_collection_name('shared_user'));
 
 // Server configuration
-define('SC_SERVER_URL', $config['server']['deploy_server']);
-define('SC_DOMAIN', $config['server']['domain_name']);
+// Ensure deploy_server has .com if it's missing (fix for Auth0 callback URL)
+$deployServer = $config['server']['deploy_server'];
+if (strpos($deployServer, 'scientistcloud') !== false && strpos($deployServer, 'scientistcloud.com') === false) {
+    // Replace https://scientistcloud with https://scientistcloud.com
+    $deployServer = str_replace('https://scientistcloud', 'https://scientistcloud.com', $deployServer);
+    $deployServer = str_replace('http://scientistcloud', 'http://scientistcloud.com', $deployServer);
+    error_log("Fixed DEPLOY_SERVER URL: " . $config['server']['deploy_server'] . " -> " . $deployServer);
+}
+define('SC_SERVER_URL', $deployServer);
+
+// Ensure domain_name has .com if it's missing
+$domainName = $config['server']['domain_name'];
+if (strpos($domainName, 'scientistcloud') !== false && strpos($domainName, 'scientistcloud.com') === false) {
+    $domainName = str_replace('scientistcloud', 'scientistcloud.com', $domainName);
+    error_log("Fixed DOMAIN_NAME: " . $config['server']['domain_name'] . " -> " . $domainName);
+}
+define('SC_DOMAIN', $domainName);
 
 // Job processing configuration
 $job_config = $config['job_processing'];
