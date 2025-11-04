@@ -154,9 +154,46 @@ if docker ps --format "{{.Names}}" | grep -q "visstore_nginx"; then
         echo "⚠️  Nginx container is not in running state (status: $NGINX_STATUS)"
         echo "   Checking nginx error logs..."
         docker logs visstore_nginx --tail 20 2>&1 | grep -E "(error|Error|ERROR|fatal|Fatal)" | tail -5 || echo "   (no obvious errors in recent logs)"
-        echo "   Skipping nginx reload - configurations were copied and will be active when nginx starts"
-        echo "   To manually test: docker exec visstore_nginx nginx -t"
-        echo "   To manually reload: docker exec visstore_nginx nginx -s reload"
+        
+        # If container is restarting, try to restart it after cleaning up old configs
+        if [ "$NGINX_STATUS" = "restarting" ]; then
+            echo "   Container is restarting - attempting to fix and restart..."
+            echo "   Stopping nginx container to clear restart loop..."
+            docker stop visstore_nginx 2>/dev/null || true
+            sleep 2
+            
+            # Test config before starting
+            echo "   Testing nginx configuration..."
+            if docker run --rm -v "$VISUS_DOCKER_PATH/nginx:/etc/nginx:ro" nginx:alpine nginx -t 2>&1 | grep -q "syntax is ok"; then
+                echo "   ✅ Configuration test passed - starting nginx container..."
+                docker start visstore_nginx 2>/dev/null || true
+                sleep 3
+                
+                # Wait again for running state
+                WAIT_COUNT=0
+                while [ $WAIT_COUNT -lt 15 ]; do
+                    NGINX_STATUS=$(docker inspect --format='{{.State.Status}}' visstore_nginx 2>/dev/null || echo "not-found")
+                    if [ "$NGINX_STATUS" = "running" ]; then
+                        echo "   ✅ Nginx container is now running"
+                        # Try reload now
+                        if docker exec visstore_nginx nginx -t 2>&1 | grep -q "syntax is ok"; then
+                            docker exec visstore_nginx nginx -s reload
+                            echo "✅ Nginx reloaded with dashboard configurations"
+                        fi
+                        break
+                    fi
+                    sleep 1
+                    WAIT_COUNT=$((WAIT_COUNT + 1))
+                done
+            else
+                echo "   ❌ Configuration test failed - cannot start nginx"
+                echo "   Check nginx configs and fix errors before starting"
+            fi
+        else
+            echo "   Skipping nginx reload - configurations were copied and will be active when nginx starts"
+            echo "   To manually test: docker exec visstore_nginx nginx -t"
+            echo "   To manually reload: docker exec visstore_nginx nginx -s reload"
+        fi
     else
         echo "   Testing nginx configuration..."
         NGINX_TEST_OUTPUT=$(docker exec visstore_nginx nginx -t 2>&1)
