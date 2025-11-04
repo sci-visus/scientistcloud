@@ -138,16 +138,25 @@ if docker ps --format "{{.Names}}" | grep -q "visstore_nginx"; then
     
     if [ "$NGINX_STATUS" != "running" ]; then
         echo "⚠️  Nginx container is not in running state (status: $NGINX_STATUS)"
-        echo "   Skipping nginx reload - configurations will be active when nginx starts"
+        echo "   Checking nginx error logs..."
+        docker logs visstore_nginx --tail 20 2>&1 | grep -E "(error|Error|ERROR|fatal|Fatal)" | tail -5 || echo "   (no obvious errors in recent logs)"
+        echo "   Skipping nginx reload - configurations were copied and will be active when nginx starts"
+        echo "   To manually test: docker exec visstore_nginx nginx -t"
+        echo "   To manually reload: docker exec visstore_nginx nginx -s reload"
     else
-        if docker exec visstore_nginx nginx -t 2>&1; then
+        echo "   Testing nginx configuration..."
+        NGINX_TEST_OUTPUT=$(docker exec visstore_nginx nginx -t 2>&1)
+        NGINX_TEST_EXIT=$?
+        if [ $NGINX_TEST_EXIT -eq 0 ]; then
             docker exec visstore_nginx nginx -s reload
             echo "✅ Nginx reloaded with dashboard configurations"
         else
             echo "❌ Nginx configuration test failed"
-            echo "   Run 'docker exec visstore_nginx nginx -t' to see the error"
+            echo "   Error output:"
+            echo "$NGINX_TEST_OUTPUT" | sed 's/^/      /'
             echo "   Configurations were copied but nginx reload was skipped"
-            exit 1
+            echo "   Fix the errors above and run: docker exec visstore_nginx nginx -s reload"
+            # Don't exit with error - allow setup to continue
         fi
     fi
 else

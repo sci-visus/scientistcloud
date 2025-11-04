@@ -112,14 +112,19 @@ fi
 echo ""
 
 # Step 2: Generate nginx configuration
+# Use same naming logic as generate_nginx_config.sh (remove trailing _dashboard to avoid double)
+DASHBOARD_NAME_LOWER=$(echo "$DASHBOARD_NAME" | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9]/_/g')
+DASHBOARD_NAME_LOWER=$(echo "$DASHBOARD_NAME_LOWER" | sed 's/_dashboard$//')
+NGINX_CONFIG_NAME="${DASHBOARD_NAME_LOWER}_dashboard.conf"
+
 # First, try to find existing nginx config
 NGINX_CONFIG=""
 POSSIBLE_NGINX_PATHS=(
-    "$SCRIPT_DIR/../SC_Docker/nginx/conf.d/${DASHBOARD_NAME}_dashboard.conf"
-    "$SCRIPT_DIR/../../SC_Docker/nginx/conf.d/${DASHBOARD_NAME}_dashboard.conf"
-    "$SCRIPT_DIR/../../../scientistcloud/SC_Docker/nginx/conf.d/${DASHBOARD_NAME}_dashboard.conf"
-    "$SCRIPT_DIR/../nginx/conf.d/${DASHBOARD_NAME}_dashboard.conf"
-    "/Users/amygooch/GIT/ScientistCloud_2.0/scientistcloud/SC_Docker/nginx/conf.d/${DASHBOARD_NAME}_dashboard.conf"
+    "$SCRIPT_DIR/../SC_Docker/nginx/conf.d/${NGINX_CONFIG_NAME}"
+    "$SCRIPT_DIR/../../SC_Docker/nginx/conf.d/${NGINX_CONFIG_NAME}"
+    "$SCRIPT_DIR/../../../scientistcloud/SC_Docker/nginx/conf.d/${NGINX_CONFIG_NAME}"
+    "$SCRIPT_DIR/../nginx/conf.d/${NGINX_CONFIG_NAME}"
+    "/Users/amygooch/GIT/ScientistCloud_2.0/scientistcloud/SC_Docker/nginx/conf.d/${NGINX_CONFIG_NAME}"
 )
 
 for path in "${POSSIBLE_NGINX_PATHS[@]}"; do
