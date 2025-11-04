@@ -417,11 +417,11 @@ function formatFileSize(bytes) {
     if (bytes == 0) return '0 B';
     
     const units = ['B', 'KB', 'MB', 'GB', 'TB'];
-    const bytes = Math.max(bytes, 0);
-    const pow = Math.floor((bytes ? Math.log(bytes) : 0) / Math.log(1024));
-    const pow = Math.min(pow, units.length - 1);
+    bytes = Math.max(bytes, 0);
+    let pow = Math.floor((bytes ? Math.log(bytes) : 0) / Math.log(1024));
+    pow = Math.min(pow, units.length - 1);
     
-    const bytes = bytes / Math.pow(1024, pow);
+    bytes = bytes / Math.pow(1024, pow);
     
     return Math.round(bytes * 100) / 100 + ' ' + units[pow];
 }
