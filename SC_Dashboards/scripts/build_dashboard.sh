@@ -41,7 +41,16 @@ DASHBOARD_NAME="$1"
 TAG="${2:-latest}"
 
 # Flat structure: {name}.json in dashboards directory
+# Try exact name first, then try lowercase/underscore variants
 CONFIG_FILE="$DASHBOARDS_DIR/${DASHBOARD_NAME}.json"
+if [ ! -f "$CONFIG_FILE" ]; then
+    # Try lowercase with underscores (e.g., 4D_Dashboard -> 4d_dashboard)
+    DASHBOARD_NAME_LOWER=$(echo "$DASHBOARD_NAME" | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9]/_/g')
+    CONFIG_FILE="$DASHBOARDS_DIR/${DASHBOARD_NAME_LOWER}.json"
+    if [ -f "$CONFIG_FILE" ]; then
+        DASHBOARD_NAME="$DASHBOARD_NAME_LOWER"
+    fi
+fi
 DASHBOARD_DIR="$DASHBOARDS_DIR"
 DOCKERFILE="$DASHBOARDS_DIR/${DASHBOARD_NAME}.Dockerfile"
 
@@ -58,8 +67,13 @@ fi
 # Load configuration
 BASE_IMAGE=$(jq -r '.base_image' "$CONFIG_FILE")
 BASE_IMAGE_TAG=$(jq -r '.base_image_tag // "latest"' "$CONFIG_FILE")
-IMAGE_NAME="${DASHBOARD_NAME}_dashboard"
+IMAGE_NAME=$(echo "$DASHBOARD_NAME" | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9]/_/g')
 BUILD_ARGS=$(jq -r '.build_args // {} | to_entries | map("--build-arg \(.key)=\(.value)") | join(" ")' "$CONFIG_FILE")
+
+# Handle empty BUILD_ARGS (jq returns empty string if no build_args)
+if [ -z "$BUILD_ARGS" ] || [ "$BUILD_ARGS" = "null" ]; then
+    BUILD_ARGS=""
+fi
 
 # Build Docker image
 echo "Building dashboard image: $IMAGE_NAME:$TAG"
@@ -107,11 +121,18 @@ else
 fi
 
 # Build image
-docker build \
-    -f "$BUILD_CONTEXT/Dockerfile" \
-    -t "$IMAGE_NAME:$TAG" \
-    $BUILD_ARGS \
-    "$BUILD_CONTEXT"
+if [ -n "$BUILD_ARGS" ]; then
+    docker build \
+        -f "$BUILD_CONTEXT/Dockerfile" \
+        -t "${IMAGE_NAME}:${TAG}" \
+        $BUILD_ARGS \
+        "$BUILD_CONTEXT"
+else
+    docker build \
+        -f "$BUILD_CONTEXT/Dockerfile" \
+        -t "${IMAGE_NAME}:${TAG}" \
+        "$BUILD_CONTEXT"
+fi
 
 echo "✅ Built dashboard image: $IMAGE_NAME:$TAG"
 

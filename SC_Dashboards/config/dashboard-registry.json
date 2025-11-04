@@ -29,7 +29,7 @@
       "enabled": true,
       "port": 8052,
       "nginx_path": "/dashboard/4d",
-      "config_file": "../dashboards/4D_Dashboard.json"
+      "config_file": "../dashboards/4d_dashboard.json"
     },
     "Magicscan": {
       "name": "Magicscan",
@@ -37,7 +37,7 @@
       "enabled": true,
       "port": 8053,
       "nginx_path": "/dashboard/magicscan",
-      "config_file": "../dashboards/Magicscan.json"
+      "config_file": "../dashboards/magicscan.json"
     },
     "OpenVisusSlice": {
       "name": "OpenVisusSlice",

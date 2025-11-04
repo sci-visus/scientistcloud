@@ -71,11 +71,25 @@ if [ -z "$DASHBOARD_NAME" ]; then
 fi
 
 # Check if dashboard config exists
+# Try exact name first, then try lowercase/underscore variants
 CONFIG_FILE="$DASHBOARDS_DIR/${DASHBOARD_NAME}.json"
 if [ ! -f "$CONFIG_FILE" ]; then
-    echo -e "${RED}Error: Dashboard configuration not found: $CONFIG_FILE${NC}"
-    echo "Please create the dashboard.json file first or run add_dashboard.sh"
-    exit 1
+    # Try lowercase with underscores (e.g., 4D_Dashboard -> 4d_dashboard)
+    DASHBOARD_NAME_LOWER=$(echo "$DASHBOARD_NAME" | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9]/_/g')
+    CONFIG_FILE="$DASHBOARDS_DIR/${DASHBOARD_NAME_LOWER}.json"
+    if [ ! -f "$CONFIG_FILE" ]; then
+        # Try original lowercase without transformation
+        CONFIG_FILE="$DASHBOARDS_DIR/${DASHBOARD_NAME}.json"
+        echo -e "${RED}Error: Dashboard configuration not found: $CONFIG_FILE${NC}"
+        echo "   Tried: $DASHBOARDS_DIR/${DASHBOARD_NAME}.json"
+        echo "   Tried: $DASHBOARDS_DIR/${DASHBOARD_NAME_LOWER}.json"
+        echo "Please create the dashboard.json file first or run add_dashboard.sh"
+        exit 1
+    else
+        # Found it with lowercase name, update DASHBOARD_NAME for rest of script
+        echo -e "${YELLOW}⚠️  Found config with lowercase name: ${DASHBOARD_NAME_LOWER}.json${NC}"
+        DASHBOARD_NAME="$DASHBOARD_NAME_LOWER"
+    fi
 fi
 
 echo -e "${BLUE}=== Initializing Dashboard: $DASHBOARD_NAME ===${NC}"

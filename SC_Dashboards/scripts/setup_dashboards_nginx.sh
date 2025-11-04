@@ -90,7 +90,14 @@ if [ -z "$DASHBOARDS" ]; then
 fi
 
 while IFS= read -r DASHBOARD_NAME; do
+    # Try exact name first
     DASHBOARD_CONFIG="$DASHBOARD_NGINX_CONF_DIR/${DASHBOARD_NAME}_dashboard.conf"
+    
+    # If not found, try lowercase/underscore variant (e.g., 4D_Dashboard -> 4d_dashboard)
+    if [ ! -f "$DASHBOARD_CONFIG" ]; then
+        DASHBOARD_NAME_LOWER=$(echo "$DASHBOARD_NAME" | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9]/_/g')
+        DASHBOARD_CONFIG="$DASHBOARD_NGINX_CONF_DIR/${DASHBOARD_NAME_LOWER}_dashboard.conf"
+    fi
     
     if [ -f "$DASHBOARD_CONFIG" ]; then
         cp "$DASHBOARD_CONFIG" "$MAIN_NGINX_CONF_DIR/${DASHBOARD_NAME}_dashboard.conf"
@@ -98,6 +105,8 @@ while IFS= read -r DASHBOARD_NAME; do
         COPIED_COUNT=$((COPIED_COUNT + 1))
     else
         echo "   ⚠️  Config not found: ${DASHBOARD_NAME}_dashboard.conf"
+        echo "      Tried: ${DASHBOARD_NAME}_dashboard.conf"
+        echo "      Tried: ${DASHBOARD_NAME_LOWER}_dashboard.conf"
         echo "      Run: ./scripts/generate_nginx_config.sh $DASHBOARD_NAME"
     fi
 done <<< "$DASHBOARDS"

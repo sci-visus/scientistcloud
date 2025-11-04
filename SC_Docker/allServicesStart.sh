@@ -155,29 +155,27 @@ else
 fi
 
 # Setup portal nginx configuration after all services are running
-# Only try if we have the VisusDataPortalPrivate path (even if we skipped starting services)
-if [ "$SKIP_MAIN_SERVICES" = false ] || [ -n "$VISUS_DOCKER_PATH" ]; then
+# Portal is part of ScientistCloud 2.0, so we should set it up even if main services are skipped
+# We just need the VisusDataPortalPrivate path to copy nginx configs to the main nginx
+if [ -n "$VISUS_DOCKER_PATH" ] && [ -d "$VISUS_DOCKER_PATH" ]; then
     echo "🔧 Setting up portal nginx configuration..."
-    if [ -n "$VISUS_DOCKER_PATH" ] && [ -d "$VISUS_DOCKER_PATH" ]; then
-        pushd "$VISUS_DOCKER_PATH"
-        if [ -f "./setup_portal_nginx.sh" ]; then
-            ./setup_portal_nginx.sh
-            echo "✅ Portal nginx configuration updated"
-        else
-            echo "⚠️ setup_portal_nginx.sh not found"
-            echo "   Portal routes may not work. Please ensure setup_portal_nginx.sh exists in $VISUS_DOCKER_PATH"
-            # setup_ssl.sh should have called setup_portal_config at the end, but verify
-            if docker ps --format "{{.Names}}" | grep -q "scientistcloud-portal"; then
-                echo "   Portal container is running, but nginx config may be missing portal routes"
-            fi
-        fi
-        popd
+    pushd "$VISUS_DOCKER_PATH"
+    if [ -f "./setup_portal_nginx.sh" ]; then
+        ./setup_portal_nginx.sh
+        echo "✅ Portal nginx configuration updated"
     else
-        echo "⚠️ Cannot setup portal nginx configuration - Docker directory not found"
-        echo "   Portal may still work if nginx is already configured, but routes may need manual setup"
+        echo "⚠️ setup_portal_nginx.sh not found"
+        echo "   Portal routes may not work. Please ensure setup_portal_nginx.sh exists in $VISUS_DOCKER_PATH"
+        # setup_ssl.sh should have called setup_portal_config at the end, but verify
+        if docker ps --format "{{.Names}}" | grep -q "scientistcloud-portal"; then
+            echo "   Portal container is running, but nginx config may be missing portal routes"
+        fi
     fi
+    popd
 else
-    echo "⏭️  Skipping portal nginx configuration (no VisusDataPortalPrivate path found)"
+    echo "⚠️ Cannot setup portal nginx configuration - Docker directory not found"
+    echo "   Portal may still work if nginx is already configured, but routes may need manual setup"
+    echo "   To fix: Set VISUS_DOCKER or VISUS_CODE in env.scientistcloud file"
 fi
 
 # Setup and build dashboards
@@ -213,6 +211,7 @@ if [ -d "$DASHBOARDS_DIR" ]; then
     ./scripts/generate_docker_compose.sh --output ../SC_Docker/dashboards-docker-compose.yml 2>&1 | tail -1 || echo "   ⚠️  Failed to generate docker-compose entries"
     
     # Setup dashboard nginx configurations
+    # Dashboards are part of ScientistCloud 2.0, so we should set them up even if main services are skipped
     # New dashboards use separate .conf files in conf.d/ (different from old embedded configs)
     if [ -n "$VISUS_DOCKER_PATH" ] && [ -d "$VISUS_DOCKER_PATH" ]; then
         echo "   Setting up dashboard nginx configurations..."
@@ -221,6 +220,7 @@ if [ -d "$DASHBOARDS_DIR" ]; then
         ./scripts/setup_dashboards_nginx.sh "$VISUS_DOCKER_PATH" 2>&1 | grep -E "(✅|⚠️|❌|Error)" || true
     else
         echo "   ⚠️  Skipping dashboard nginx setup (no VisusDataPortalPrivate path found)"
+        echo "   To fix: Set VISUS_DOCKER or VISUS_CODE in env.scientistcloud file"
     fi
     
     popd
