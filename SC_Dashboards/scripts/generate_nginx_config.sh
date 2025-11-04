@@ -91,20 +91,36 @@ sed -e "s|{{DASHBOARD_NAME}}|$DASHBOARD_NAME|g" \
 
 # Handle conditional sections
 # Note: macOS sed requires -i with extension, Linux doesn't - use .bak for compatibility
+# We need to be careful not to delete the closing server block brace
+
 if [ -n "$HEALTH_CHECK_PATH" ]; then
-    sed -i.bak 's|{{#if HEALTH_CHECK_PATH}}|#|g; s|{{/if}}||g' "$OUTPUT_FILE"
+    # Keep the health check section - just remove the conditional markers
+    sed -i.bak 's|{{#if HEALTH_CHECK_PATH}}||g; s|{{/if}}||g' "$OUTPUT_FILE"
     rm -f "$OUTPUT_FILE.bak"
 else
-    sed -i.bak -e '/{{#if HEALTH_CHECK_PATH}}/,/{{\/if}}/d' "$OUTPUT_FILE"
+    # Delete the health check section (lines with the conditional markers)
+    # Use escaped braces for the pattern matching
+    sed -i.bak '/{{#if HEALTH_CHECK_PATH}}/,/{{/if}}/d' "$OUTPUT_FILE"
     rm -f "$OUTPUT_FILE.bak"
 fi
 
 if [ "$ENABLE_CORS" = "true" ]; then
-    sed -i.bak 's|{{#if ENABLE_CORS}}|#|g; s|{{/if}}||g' "$OUTPUT_FILE"
+    # Keep the CORS section - just remove the conditional markers
+    sed -i.bak 's|{{#if ENABLE_CORS}}||g; s|{{/if}}||g' "$OUTPUT_FILE"
     rm -f "$OUTPUT_FILE.bak"
 else
-    sed -i.bak -e '/{{#if ENABLE_CORS}}/,/{{\/if}}/d' "$OUTPUT_FILE"
+    # Delete the CORS section (lines with the conditional markers)
+    # Use escaped braces for the pattern matching
+    sed -i.bak '/{{#if ENABLE_CORS}}/,/{{/if}}/d' "$OUTPUT_FILE"
     rm -f "$OUTPUT_FILE.bak"
+fi
+
+# Verify the file ends with a closing brace for the server block
+# If it doesn't, add it (safety check)
+if ! tail -1 "$OUTPUT_FILE" | grep -qE '^[[:space:]]*}[[:space:]]*$'; then
+    echo "" >> "$OUTPUT_FILE"
+    echo "}" >> "$OUTPUT_FILE"
+    echo "   ⚠️  Added missing closing brace for server block"
 fi
 
 echo "✅ Generated nginx configuration: $OUTPUT_FILE"
