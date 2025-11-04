@@ -164,10 +164,11 @@ function getConfig() {
     return $config;
 }
 
-// Initialize session
-if (session_status() == PHP_SESSION_NONE) {
-    session_start();
-}
+// Don't start session in config.php - let individual pages handle it
+// This prevents headers from being sent before pages can control output
+// if (session_status() == PHP_SESSION_NONE) {
+//     session_start();
+// }
 
 // Set timezone
 date_default_timezone_set('UTC');
@@ -176,8 +177,15 @@ date_default_timezone_set('UTC');
 ini_set('memory_limit', '2G');
 ini_set('max_execution_time', 300);
 
-// CORS headers for API requests
-if (isset($_SERVER['HTTP_ORIGIN'])) {
+// CORS headers for API requests only (not for regular page requests)
+// Only output CORS headers if this is an API endpoint request
+$isApiRequest = (
+    strpos($_SERVER['REQUEST_URI'] ?? '', '/api/') !== false ||
+    strpos($_SERVER['SCRIPT_NAME'] ?? '', '/api/') !== false ||
+    isset($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_REQUESTED_WITH']) === 'xmlhttprequest'
+);
+
+if ($isApiRequest && isset($_SERVER['HTTP_ORIGIN'])) {
     header("Access-Control-Allow-Origin: {$_SERVER['HTTP_ORIGIN']}");
     header('Access-Control-Allow-Credentials: true');
     header('Access-Control-Max-Age: 86400');
@@ -192,4 +200,3 @@ if (isset($_SERVER['HTTP_ORIGIN'])) {
 //         header("Access-Control-Allow-Headers: {$_SERVER['HTTP_ACCESS_CONTROL_REQUEST_HEADERS']}");
 //     exit(0);
 // }
-// Note: No closing ?> tag to prevent any whitespace after the file from being output
