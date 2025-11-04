@@ -73,6 +73,54 @@ echo "📋 Setting up dashboard nginx configurations..."
 echo "   Source: $DASHBOARD_NGINX_CONF_DIR"
 echo "   Target: $MAIN_NGINX_CONF_DIR"
 
+# Check nginx status first - if restarting, stop it to break the loop
+if docker ps --format "{{.Names}}" | grep -q "visstore_nginx"; then
+    NGINX_STATUS=$(docker inspect --format='{{.State.Status}}' visstore_nginx 2>/dev/null || echo "not-found")
+    if [ "$NGINX_STATUS" = "restarting" ]; then
+        echo "⚠️  Nginx container is restarting (likely due to bad configs)"
+        echo "   Stopping nginx to break restart loop..."
+        docker stop visstore_nginx 2>/dev/null || true
+        sleep 2
+        echo "   ✅ Nginx stopped"
+    fi
+fi
+
+# Clean up old/conflicting config files BEFORE copying new ones
+# This prevents nginx from picking up bad configs during restart
+echo "   Cleaning up old dashboard configs..."
+REMOVED_COUNT=0
+
+if [ -d "$MAIN_NGINX_CONF_DIR" ]; then
+    # Remove files without server blocks (old format that causes errors)
+    while IFS= read -r OLD_CONFIG; do
+        if [ -f "$OLD_CONFIG" ]; then
+            # Check if file doesn't start with a server block
+            if ! grep -q "^server {" "$OLD_CONFIG" 2>/dev/null; then
+                echo "   🗑️  Removing old format config (no server block): $(basename "$OLD_CONFIG")"
+                rm -f "$OLD_CONFIG" 2>/dev/null || true
+                REMOVED_COUNT=$((REMOVED_COUNT + 1))
+            fi
+        fi
+    done < <(find "$MAIN_NGINX_CONF_DIR" -maxdepth 1 -name "*_dashboard.conf" -o -name "*Dashboard*.conf" 2>/dev/null || true)
+    
+    # Remove uppercase duplicates (e.g., 3DPlotly_dashboard.conf) if lowercase versions exist
+    for config_file in "$MAIN_NGINX_CONF_DIR"/*_dashboard.conf; do
+        if [ -f "$config_file" ]; then
+            basename_config=$(basename "$config_file")
+            lowercase_basename=$(echo "$basename_config" | tr '[:upper:]' '[:lower:]')
+            if [ "$basename_config" != "$lowercase_basename" ] && [ -f "$MAIN_NGINX_CONF_DIR/$lowercase_basename" ]; then
+                echo "   🗑️  Removing uppercase duplicate: $basename_config (lowercase version exists)"
+                rm -f "$config_file" 2>/dev/null || true
+                REMOVED_COUNT=$((REMOVED_COUNT + 1))
+            fi
+        fi
+    done
+fi
+
+if [ $REMOVED_COUNT -gt 0 ]; then
+    echo "   ✅ Removed $REMOVED_COUNT old/duplicate config file(s)"
+fi
+
 # Load dashboard registry
 REGISTRY_FILE="$CONFIG_DIR/dashboard-registry.json"
 if [ ! -f "$REGISTRY_FILE" ]; then
@@ -119,100 +167,48 @@ done <<< "$DASHBOARDS"
 
 echo "✅ Copied $COPIED_COUNT dashboard nginx configuration(s)"
 
-# Remove old dashboard config files that might cause conflicts
-# Look for old format files (without server blocks or with wrong naming)
-echo "   Cleaning up old dashboard configs..."
-OLD_CONFIGS=$(find "$MAIN_NGINX_CONF_DIR" -name "*_dashboard.conf" -o -name "*Dashboard*.conf" 2>/dev/null | grep -v "^$MAIN_NGINX_CONF_DIR" || true)
-if [ -n "$OLD_CONFIGS" ]; then
-    while IFS= read -r OLD_CONFIG; do
-        # Check if file exists and doesn't have a server block
-        if [ -f "$OLD_CONFIG" ] && ! grep -q "^server {" "$OLD_CONFIG" 2>/dev/null; then
-            echo "   🗑️  Removing old format config: $(basename "$OLD_CONFIG")"
-            rm -f "$OLD_CONFIG" 2>/dev/null || true
-        fi
-    done <<< "$OLD_CONFIGS"
-fi
-
-# Reload nginx if running
-if docker ps --format "{{.Names}}" | grep -q "visstore_nginx"; then
-    echo "🔄 Reloading nginx..."
+# Now test and start/reload nginx
+# First, test the configuration using a temporary container (before touching the real one)
+echo "   Testing nginx configuration..."
+if docker run --rm -v "$VISUS_DOCKER_PATH/nginx:/etc/nginx:ro" nginx:alpine nginx -t 2>&1 | grep -q "syntax is ok"; then
+    echo "   ✅ Configuration test passed"
     
-    # Wait for nginx container to be fully running (not restarting)
-    echo "   Waiting for nginx container to be ready..."
-    MAX_WAIT=30
-    WAIT_COUNT=0
-    while [ $WAIT_COUNT -lt $MAX_WAIT ]; do
+    # Check if nginx container exists
+    if docker ps -a --format "{{.Names}}" | grep -q "visstore_nginx"; then
+        # Container exists - check if it's running
         NGINX_STATUS=$(docker inspect --format='{{.State.Status}}' visstore_nginx 2>/dev/null || echo "not-found")
-        if [ "$NGINX_STATUS" = "running" ]; then
-            break
-        fi
-        sleep 1
-        WAIT_COUNT=$((WAIT_COUNT + 1))
-    done
-    
-    if [ "$NGINX_STATUS" != "running" ]; then
-        echo "⚠️  Nginx container is not in running state (status: $NGINX_STATUS)"
-        echo "   Checking nginx error logs..."
-        docker logs visstore_nginx --tail 20 2>&1 | grep -E "(error|Error|ERROR|fatal|Fatal)" | tail -5 || echo "   (no obvious errors in recent logs)"
         
-        # If container is restarting, try to restart it after cleaning up old configs
-        if [ "$NGINX_STATUS" = "restarting" ]; then
-            echo "   Container is restarting - attempting to fix and restart..."
-            echo "   Stopping nginx container to clear restart loop..."
-            docker stop visstore_nginx 2>/dev/null || true
-            sleep 2
-            
-            # Test config before starting
-            echo "   Testing nginx configuration..."
-            if docker run --rm -v "$VISUS_DOCKER_PATH/nginx:/etc/nginx:ro" nginx:alpine nginx -t 2>&1 | grep -q "syntax is ok"; then
-                echo "   ✅ Configuration test passed - starting nginx container..."
-                docker start visstore_nginx 2>/dev/null || true
-                sleep 3
-                
-                # Wait again for running state
-                WAIT_COUNT=0
-                while [ $WAIT_COUNT -lt 15 ]; do
-                    NGINX_STATUS=$(docker inspect --format='{{.State.Status}}' visstore_nginx 2>/dev/null || echo "not-found")
-                    if [ "$NGINX_STATUS" = "running" ]; then
-                        echo "   ✅ Nginx container is now running"
-                        # Try reload now
-                        if docker exec visstore_nginx nginx -t 2>&1 | grep -q "syntax is ok"; then
-                            docker exec visstore_nginx nginx -s reload
-                            echo "✅ Nginx reloaded with dashboard configurations"
-                        fi
-                        break
-                    fi
-                    sleep 1
-                    WAIT_COUNT=$((WAIT_COUNT + 1))
-                done
-            else
-                echo "   ❌ Configuration test failed - cannot start nginx"
-                echo "   Check nginx configs and fix errors before starting"
-            fi
-        else
-            echo "   Skipping nginx reload - configurations were copied and will be active when nginx starts"
-            echo "   To manually test: docker exec visstore_nginx nginx -t"
-            echo "   To manually reload: docker exec visstore_nginx nginx -s reload"
-        fi
-    else
-        echo "   Testing nginx configuration..."
-        NGINX_TEST_OUTPUT=$(docker exec visstore_nginx nginx -t 2>&1)
-        NGINX_TEST_EXIT=$?
-        if [ $NGINX_TEST_EXIT -eq 0 ]; then
+        if [ "$NGINX_STATUS" = "running" ]; then
+            # Container is running - reload it
+            echo "🔄 Reloading nginx..."
             docker exec visstore_nginx nginx -s reload
             echo "✅ Nginx reloaded with dashboard configurations"
         else
-            echo "❌ Nginx configuration test failed"
-            echo "   Error output:"
-            echo "$NGINX_TEST_OUTPUT" | sed 's/^/      /'
-            echo "   Configurations were copied but nginx reload was skipped"
-            echo "   Fix the errors above and run: docker exec visstore_nginx nginx -s reload"
-            # Don't exit with error - allow setup to continue
+            # Container exists but not running - start it
+            echo "🔄 Starting nginx container..."
+            docker start visstore_nginx 2>/dev/null || true
+            sleep 3
+            
+            # Verify it started
+            NGINX_STATUS=$(docker inspect --format='{{.State.Status}}' visstore_nginx 2>/dev/null || echo "not-found")
+            if [ "$NGINX_STATUS" = "running" ]; then
+                echo "✅ Nginx container started successfully"
+            else
+                echo "⚠️  Nginx container status: $NGINX_STATUS"
+                echo "   Check logs: docker logs visstore_nginx"
+            fi
         fi
+    else
+        echo "ℹ️  Nginx container not found - configurations will be active when nginx starts"
     fi
 else
-    echo "⚠️  Nginx container (visstore_nginx) not found"
-    echo "   Configurations will be active when nginx starts"
+    echo "❌ Nginx configuration test failed"
+    echo "   Error details:"
+    docker run --rm -v "$VISUS_DOCKER_PATH/nginx:/etc/nginx:ro" nginx:alpine nginx -t 2>&1 | sed 's/^/      /'
+    echo ""
+    echo "   Configurations were copied but nginx cannot start/reload"
+    echo "   Fix the errors above before starting nginx"
+    exit 1
 fi
 
 echo ""
