@@ -1,16 +1,27 @@
 #!/bin/bash
  
 # For ScientistCloud 2.0, we need to start all the services in the correct order
-# Usage: ./allServicesStart.sh [--skip-main|--portal-only]
+# Usage: ./allServicesStart.sh [OPTIONS]
 #   --skip-main or --portal-only: Skip starting VisusDataPortalPrivate services
+#   --dashboards-only or --only-dashboards: Only run dashboard setup (skip all other services)
 
 # Parse command line arguments
 SKIP_MAIN_SERVICES=false
+DASHBOARDS_ONLY=false
 
-if [[ "$1" == "--skip-main" ]] || [[ "$1" == "--portal-only" ]]; then
-    SKIP_MAIN_SERVICES=true
-    echo "📋 Skipping VisusDataPortalPrivate services (portal-only mode)"
-fi
+for arg in "$@"; do
+    case $arg in
+        --skip-main|--portal-only)
+            SKIP_MAIN_SERVICES=true
+            echo "📋 Skipping VisusDataPortalPrivate services (portal-only mode)"
+            ;;
+        --dashboards-only|--only-dashboards)
+            DASHBOARDS_ONLY=true
+            SKIP_MAIN_SERVICES=true
+            echo "📊 Running dashboards only (skipping all other services)"
+            ;;
+    esac
+done
 
 # Source environment variables first
 ENV_FILE="$HOME/ScientistCloud2.0/SCLib_TryTest/env.scientistcloud"
@@ -25,55 +36,60 @@ else
     echo "   Continuing without custom environment variables..."
 fi
 
-echo "🚀 Starting all ScientistCloud services..."
+if [ "$DASHBOARDS_ONLY" = false ]; then
+    echo "🚀 Starting all ScientistCloud services..."
 
-# Start Update SCLib_TryTest
-echo "📦 Update SCLib_TryTest and copy env.scientistcloud to SCLib and SC Website..."
-SCLIB_TRYTEST_DIR="$HOME/ScientistCloud2.0/SCLib_TryTest"
-if [ -d "$SCLIB_TRYTEST_DIR" ]; then
-    pushd "$SCLIB_TRYTEST_DIR"
-    git fetch origin
-    git reset --hard origin/main
-    cp env.scientistcloud "$HOME/ScientistCloud2.0/scientistCloudLib/Docker/.env"
-    cp env.scientistcloud "$HOME/ScientistCloud2.0/scientistcloud/SC_Docker/.env"
-    popd
-    echo "✅ Environment files copied"
+    # Start Update SCLib_TryTest
+    echo "📦 Update SCLib_TryTest and copy env.scientistcloud to SCLib and SC Website..."
+    SCLIB_TRYTEST_DIR="$HOME/ScientistCloud2.0/SCLib_TryTest"
+    if [ -d "$SCLIB_TRYTEST_DIR" ]; then
+        pushd "$SCLIB_TRYTEST_DIR"
+        git fetch origin
+        git reset --hard origin/main
+        cp env.scientistcloud "$HOME/ScientistCloud2.0/scientistCloudLib/Docker/.env"
+        cp env.scientistcloud "$HOME/ScientistCloud2.0/scientistcloud/SC_Docker/.env"
+        popd
+        echo "✅ Environment files copied"
+    else
+        echo "⚠️ SCLib_TryTest directory not found: $SCLIB_TRYTEST_DIR"
+    fi
+
+    # Start SCLib services first
+    echo "📦 Starting SCLib services..."
+    SCLIB_DOCKER_DIR="$HOME/ScientistCloud2.0/scientistCloudLib/Docker"
+    if [ -d "$SCLIB_DOCKER_DIR" ]; then
+        pushd "$SCLIB_DOCKER_DIR"
+        git fetch origin
+        git reset --hard origin/main
+        ./start.sh clean
+        ./start.sh up
+        popd
+        echo "✅ SCLib services started"
+    else
+        echo "⚠️ SCLib Docker directory not found: $SCLIB_DOCKER_DIR"
+    fi
+
+    # Start Portal services
+    echo "🌐 Starting Portal services..."
+    PORTAL_DOCKER_DIR="$HOME/ScientistCloud2.0/scientistcloud/SC_Docker"
+    if [ -d "$PORTAL_DOCKER_DIR" ]; then
+        pushd "$PORTAL_DOCKER_DIR"
+        git fetch origin
+        git reset --hard origin/main
+        ./start.sh clean
+        ./start.sh start
+        popd
+        echo "✅ Portal services started"
+    else
+        echo "❌ Portal Docker directory not found: $PORTAL_DOCKER_DIR"
+        exit 1
+    fi
 else
-    echo "⚠️ SCLib_TryTest directory not found: $SCLIB_TRYTEST_DIR"
+    echo "📊 Dashboards-only mode: Skipping SCLib and Portal services"
+    echo "   (Only running dashboard setup)"
 fi
 
-# Start SCLib services first
-echo "📦 Starting SCLib services..."
-SCLIB_DOCKER_DIR="$HOME/ScientistCloud2.0/scientistCloudLib/Docker"
-if [ -d "$SCLIB_DOCKER_DIR" ]; then
-    pushd "$SCLIB_DOCKER_DIR"
-    git fetch origin
-    git reset --hard origin/main
-    ./start.sh clean
-    ./start.sh up
-    popd
-    echo "✅ SCLib services started"
-else
-    echo "⚠️ SCLib Docker directory not found: $SCLIB_DOCKER_DIR"
-fi
-
-# Start Portal services
-echo "🌐 Starting Portal services..."
-PORTAL_DOCKER_DIR="$HOME/ScientistCloud2.0/scientistcloud/SC_Docker"
-if [ -d "$PORTAL_DOCKER_DIR" ]; then
-    pushd "$PORTAL_DOCKER_DIR"
-    git fetch origin
-    git reset --hard origin/main
-    ./start.sh clean
-    ./start.sh start
-    popd
-    echo "✅ Portal services started"
-else
-    echo "❌ Portal Docker directory not found: $PORTAL_DOCKER_DIR"
-    exit 1
-fi
-
-# Find VisusDataPortalPrivate Docker directory
+# Find VisusDataPortalPrivate Docker directory (needed for nginx configs even in dashboards-only mode)
 # Priority: 1) VISUS_DOCKER env var, 2) VISUS_CODE env var + /Docker, 3) Common paths, 4) Detect from container
 VISUS_DOCKER_PATH=""
 
@@ -156,26 +172,30 @@ fi
 
 # Setup portal nginx configuration after all services are running
 # Portal is part of ScientistCloud 2.0, so we should set it up even if main services are skipped
-# We just need the VisusDataPortalPrivate path to copy nginx configs to the main nginx
-if [ -n "$VISUS_DOCKER_PATH" ] && [ -d "$VISUS_DOCKER_PATH" ]; then
-    echo "🔧 Setting up portal nginx configuration..."
-    pushd "$VISUS_DOCKER_PATH"
-    if [ -f "./setup_portal_nginx.sh" ]; then
-        ./setup_portal_nginx.sh
-        echo "✅ Portal nginx configuration updated"
-    else
-        echo "⚠️ setup_portal_nginx.sh not found"
-        echo "   Portal routes may not work. Please ensure setup_portal_nginx.sh exists in $VISUS_DOCKER_PATH"
-        # setup_ssl.sh should have called setup_portal_config at the end, but verify
-        if docker ps --format "{{.Names}}" | grep -q "scientistcloud-portal"; then
-            echo "   Portal container is running, but nginx config may be missing portal routes"
+# Skip in dashboards-only mode since we're not starting portal services
+if [ "$DASHBOARDS_ONLY" = false ]; then
+    if [ -n "$VISUS_DOCKER_PATH" ] && [ -d "$VISUS_DOCKER_PATH" ]; then
+        echo "🔧 Setting up portal nginx configuration..."
+        pushd "$VISUS_DOCKER_PATH"
+        if [ -f "./setup_portal_nginx.sh" ]; then
+            ./setup_portal_nginx.sh
+            echo "✅ Portal nginx configuration updated"
+        else
+            echo "⚠️ setup_portal_nginx.sh not found"
+            echo "   Portal routes may not work. Please ensure setup_portal_nginx.sh exists in $VISUS_DOCKER_PATH"
+            # setup_ssl.sh should have called setup_portal_config at the end, but verify
+            if docker ps --format "{{.Names}}" | grep -q "scientistcloud-portal"; then
+                echo "   Portal container is running, but nginx config may be missing portal routes"
+            fi
         fi
+        popd
+    else
+        echo "⚠️ Cannot setup portal nginx configuration - Docker directory not found"
+        echo "   Portal may still work if nginx is already configured, but routes may need manual setup"
+        echo "   To fix: Set VISUS_DOCKER or VISUS_CODE in env.scientistcloud file"
     fi
-    popd
 else
-    echo "⚠️ Cannot setup portal nginx configuration - Docker directory not found"
-    echo "   Portal may still work if nginx is already configured, but routes may need manual setup"
-    echo "   To fix: Set VISUS_DOCKER or VISUS_CODE in env.scientistcloud file"
+    echo "⏭️  Skipping portal nginx setup (dashboards-only mode)"
 fi
 
 # Setup and build dashboards
@@ -230,14 +250,19 @@ else
     echo "   Skipping dashboard setup"
 fi
 
-echo "🎉 All services startup complete!"
-echo ""
-echo "Service URLs:"
-echo "  🌐 Portal: https://scientistcloud.com/portal/"
-if [ "$SKIP_MAIN_SERVICES" = false ]; then
-    echo "  🏠 Main Site: https://scientistcloud.com/"
+if [ "$DASHBOARDS_ONLY" = true ]; then
+    echo "🎉 Dashboard setup complete!"
+else
+    echo "🎉 All services startup complete!"
+    echo ""
+    echo "Service URLs:"
+    echo "  🌐 Portal: https://scientistcloud.com/portal/"
+    if [ "$SKIP_MAIN_SERVICES" = false ]; then
+        echo "  🏠 Main Site: https://scientistcloud.com/"
+    fi
+    echo "  🔧 Health: https://scientistcloud.com/portal/health"
 fi
-echo "  🔧 Health: https://scientistcloud.com/portal/health"
+
 if [ -d "$DASHBOARDS_DIR" ]; then
     echo ""
     echo "📊 Dashboard URLs:"
@@ -248,7 +273,10 @@ if [ -d "$DASHBOARDS_DIR" ]; then
         done <<< "$DASHBOARDS"
     fi
 fi
-echo ""
-if [ "$SKIP_MAIN_SERVICES" = true ]; then
-    echo "ℹ️  Note: Main VisusDataPortalPrivate services were skipped (portal-only mode)"
+
+if [ "$DASHBOARDS_ONLY" = false ]; then
+    echo ""
+    if [ "$SKIP_MAIN_SERVICES" = true ]; then
+        echo "ℹ️  Note: Main VisusDataPortalPrivate services were skipped (portal-only mode)"
+    fi
 fi
