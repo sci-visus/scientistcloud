@@ -140,6 +140,21 @@ if [ ! -f "$BUILD_CONTEXT/requirements.txt" ]; then
     touch "$BUILD_CONTEXT/requirements.txt"
 fi
 
+# Verify requirements.txt exists and log its contents for debugging
+if [ -f "$BUILD_CONTEXT/requirements.txt" ]; then
+    REQUIREMENTS_SIZE=$(wc -l < "$BUILD_CONTEXT/requirements.txt" 2>/dev/null || echo "0")
+    echo "📄 Created requirements.txt in build context ($REQUIREMENTS_SIZE lines)"
+    if [ "$REQUIREMENTS_SIZE" -gt 0 ]; then
+        echo "   First few lines:"
+        head -3 "$BUILD_CONTEXT/requirements.txt" | sed 's/^/      /' || true
+    else
+        echo "   (empty file - will skip pip install)"
+    fi
+else
+    echo "❌ ERROR: requirements.txt not created in build context!"
+    exit 1
+fi
+
 # Copy shared utilities
 if [ -n "$SCLIB_DASHBOARDS_DIR" ] && [ -d "$SCLIB_DASHBOARDS_DIR" ]; then
     mkdir -p "$BUILD_CONTEXT/SCLib_Dashboards"
@@ -149,11 +164,16 @@ fi
 # Copy Dockerfile
 if [ -f "$DOCKERFILE" ]; then
     cp "$DOCKERFILE" "$BUILD_CONTEXT/Dockerfile"
+    echo "📋 Copied Dockerfile to build context"
 else
     echo "Error: Dockerfile not found: $DOCKERFILE"
     echo "   Run: ./scripts/generate_dockerfile.sh $DASHBOARD_NAME"
     exit 1
 fi
+
+# List build context contents for debugging
+echo "📦 Build context contents:"
+ls -la "$BUILD_CONTEXT" | grep -E "(requirements|Dockerfile|\.py|\.ipynb)" | sed 's/^/   /' || true
 
 # Build image
 if [ -n "$BUILD_ARGS" ]; then
