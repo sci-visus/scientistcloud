@@ -2,17 +2,16 @@
 # Generated from dashboard.json configuration
 # DO NOT EDIT MANUALLY - Regenerate using scripts/generate_nginx_config.sh
 #
-# NOTE: This file should be included in the main nginx server block
-# OR if included at http level, it provides a complete server block
+# NOTE: Files in conf.d/ are included at http level, so they need complete server blocks.
+# This server block will merge with the main server block using the same server_name.
 
 server {
-    listen 80;
     listen 443 ssl http2;
-    server_name _;
+    listen 80;
+    server_name ${DOMAIN_NAME};
     
-    # SSL configuration (if using HTTPS)
-    # SSL certs are typically configured in main nginx config
-    # This assumes they're inherited from main config or provided via includes
+    # SSL configuration (inherited from main nginx config or environment)
+    # SSL certs should be configured in the main nginx config
     
     # Dashboard proxy configuration
     location {{NGINX_PATH}} {

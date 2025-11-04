@@ -119,6 +119,20 @@ done <<< "$DASHBOARDS"
 
 echo "✅ Copied $COPIED_COUNT dashboard nginx configuration(s)"
 
+# Remove old dashboard config files that might cause conflicts
+# Look for old format files (without server blocks or with wrong naming)
+echo "   Cleaning up old dashboard configs..."
+OLD_CONFIGS=$(find "$MAIN_NGINX_CONF_DIR" -name "*_dashboard.conf" -o -name "*Dashboard*.conf" 2>/dev/null | grep -v "^$MAIN_NGINX_CONF_DIR" || true)
+if [ -n "$OLD_CONFIGS" ]; then
+    while IFS= read -r OLD_CONFIG; do
+        # Check if file exists and doesn't have a server block
+        if [ -f "$OLD_CONFIG" ] && ! grep -q "^server {" "$OLD_CONFIG" 2>/dev/null; then
+            echo "   🗑️  Removing old format config: $(basename "$OLD_CONFIG")"
+            rm -f "$OLD_CONFIG" 2>/dev/null || true
+        fi
+    done <<< "$OLD_CONFIGS"
+fi
+
 # Reload nginx if running
 if docker ps --format "{{.Names}}" | grep -q "visstore_nginx"; then
     echo "🔄 Reloading nginx..."

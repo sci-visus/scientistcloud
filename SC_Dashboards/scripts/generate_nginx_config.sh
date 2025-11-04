@@ -58,6 +58,15 @@ DASHBOARD_NAME_LOWER=$(echo "$DASHBOARD_NAME" | tr '[:upper:]' '[:lower:]' | sed
 # (e.g., "4D_Dashboard" -> "4d_dashboard" -> remove "_dashboard" -> "4d" -> "4d_dashboard.conf")
 DASHBOARD_NAME_LOWER=$(echo "$DASHBOARD_NAME_LOWER" | sed 's/_dashboard$//')
 
+# Get domain name from environment or use default
+DOMAIN_NAME="${DOMAIN_NAME:-${DEPLOY_SERVER#https://}}"
+DOMAIN_NAME="${DOMAIN_NAME#http://}"
+DOMAIN_NAME="${DOMAIN_NAME%/}"
+if [ -z "$DOMAIN_NAME" ] || [ "$DOMAIN_NAME" = "${DOMAIN_NAME#*.}" ]; then
+    # Fallback to default if not set or invalid
+    DOMAIN_NAME="scientistcloud.com"
+fi
+
 # Determine output file
 OUTPUT_NAME="${DASHBOARD_NAME_LOWER}_dashboard.conf"
 if [ -n "$2" ]; then
@@ -77,6 +86,7 @@ sed -e "s|{{DASHBOARD_NAME}}|$DASHBOARD_NAME|g" \
     -e "s|{{DASHBOARD_PORT}}|$DASHBOARD_PORT|g" \
     -e "s|{{HEALTH_CHECK_PATH}}|$HEALTH_CHECK_PATH|g" \
     -e "s|{{ENABLE_CORS}}|$ENABLE_CORS|g" \
+    -e "s|\${DOMAIN_NAME}|$DOMAIN_NAME|g" \
     "$TEMPLATE_FILE" > "$OUTPUT_FILE"
 
 # Handle conditional sections
