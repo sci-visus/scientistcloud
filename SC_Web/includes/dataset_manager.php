@@ -305,29 +305,38 @@ function getDatasetStats($userId) {
  */
 function getAllDatasetsByEmail($userEmail) {
     try {
+        logMessage('INFO', 'Getting datasets for user', ['user_email' => $userEmail]);
+        
         $sclib = getSCLibClient();
         
         // Use the new SCLib Dataset Management API endpoint
         // The endpoint should be at /api/v1/datasets/by-user?user_email={email}
         try {
+            logMessage('INFO', 'Calling SCLib API endpoint', ['endpoint' => '/api/v1/datasets/by-user', 'user_email' => $userEmail]);
             $response = $sclib->makeRequest('/api/v1/datasets/by-user', 'GET', null, ['user_email' => $userEmail]);
+            logMessage('INFO', 'SCLib API response received', ['response_keys' => array_keys($response), 'has_success' => isset($response['success'])]);
         } catch (Exception $e) {
             // If endpoint doesn't exist, fall back to basic list
-            logMessage('WARNING', 'Dataset by-user endpoint not available, trying basic list', ['error' => $e->getMessage()]);
-            $response = $sclib->makeRequest('/api/v1/datasets', 'GET', null, ['user_email' => $userEmail]);
-            // Transform basic list response to organized format
-            if (isset($response['success']) && $response['success']) {
-                $datasets = $response['datasets'] ?? [];
-                // Format each dataset
-                $formattedDatasets = [];
-                foreach ($datasets as $dataset) {
-                    $formattedDatasets[] = formatDataset($dataset);
+            logMessage('WARNING', 'Dataset by-user endpoint not available, trying basic list', ['error' => $e->getMessage(), 'trace' => $e->getTraceAsString()]);
+            try {
+                $response = $sclib->makeRequest('/api/v1/datasets', 'GET', null, ['user_email' => $userEmail]);
+                // Transform basic list response to organized format
+                if (isset($response['success']) && $response['success']) {
+                    $datasets = $response['datasets'] ?? [];
+                    logMessage('INFO', 'Using fallback endpoint, found datasets', ['count' => count($datasets)]);
+                    // Format each dataset
+                    $formattedDatasets = [];
+                    foreach ($datasets as $dataset) {
+                        $formattedDatasets[] = formatDataset($dataset);
+                    }
+                    return [
+                        'my' => $formattedDatasets,
+                        'shared' => [],
+                        'team' => []
+                    ];
                 }
-                return [
-                    'my' => $formattedDatasets,
-                    'shared' => [],
-                    'team' => []
-                ];
+            } catch (Exception $e2) {
+                logMessage('ERROR', 'Fallback endpoint also failed', ['error' => $e2->getMessage()]);
             }
             throw $e;
         }
@@ -338,6 +347,12 @@ function getAllDatasetsByEmail($userEmail) {
                 'shared' => [],
                 'team' => []
             ];
+            
+            logMessage('INFO', 'Processing datasets from API', [
+                'my_count' => isset($datasets['my']) && is_array($datasets['my']) ? count($datasets['my']) : 0,
+                'shared_count' => isset($datasets['shared']) && is_array($datasets['shared']) ? count($datasets['shared']) : 0,
+                'team_count' => isset($datasets['team']) && is_array($datasets['team']) ? count($datasets['team']) : 0
+            ]);
             
             // Format datasets for each category
             $formatted = [
@@ -367,10 +382,16 @@ function getAllDatasetsByEmail($userEmail) {
                 }
             }
             
+            logMessage('INFO', 'Formatted datasets', [
+                'my_count' => count($formatted['my']),
+                'shared_count' => count($formatted['shared']),
+                'team_count' => count($formatted['team'])
+            ]);
+            
             return $formatted;
         }
         
-        logMessage('WARNING', 'SCLib API returned unsuccessful response', ['response' => $response]);
+        logMessage('WARNING', 'SCLib API returned unsuccessful response', ['response' => $response, 'response_keys' => array_keys($response)]);
         return [
             'my' => [],
             'shared' => [],
@@ -378,7 +399,11 @@ function getAllDatasetsByEmail($userEmail) {
         ];
         
     } catch (Exception $e) {
-        logMessage('ERROR', 'Failed to get all datasets from SCLib API', ['user_email' => $userEmail, 'error' => $e->getMessage()]);
+        logMessage('ERROR', 'Failed to get all datasets from SCLib API', [
+            'user_email' => $userEmail, 
+            'error' => $e->getMessage(),
+            'trace' => $e->getTraceAsString()
+        ]);
         return [
             'my' => [],
             'shared' => [],
