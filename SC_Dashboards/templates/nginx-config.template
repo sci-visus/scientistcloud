@@ -1,44 +1,57 @@
 # Nginx configuration for {{DASHBOARD_NAME}} dashboard
 # Generated from dashboard.json configuration
 # DO NOT EDIT MANUALLY - Regenerate using scripts/generate_nginx_config.sh
+#
+# NOTE: This file should be included in the main nginx server block
+# OR if included at http level, it provides a complete server block
 
-# Dashboard proxy configuration
-location {{NGINX_PATH}} {
-    proxy_pass http://dashboard_{{DASHBOARD_NAME_LOWER}}:{{DASHBOARD_PORT}};
-    proxy_set_header Host $host;
-    proxy_set_header X-Real-IP $remote_addr;
-    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-    proxy_set_header X-Forwarded-Proto $scheme;
+server {
+    listen 80;
+    listen 443 ssl http2;
+    server_name _;
     
-    # WebSocket support (for Dash, Bokeh, etc.)
-    proxy_http_version 1.1;
-    proxy_set_header Upgrade $http_upgrade;
-    proxy_set_header Connection "upgrade";
+    # SSL configuration (if using HTTPS)
+    # SSL certs are typically configured in main nginx config
+    # This assumes they're inherited from main config or provided via includes
     
-    # Timeouts for long-running requests
-    proxy_read_timeout 300s;
-    proxy_connect_timeout 300s;
-    proxy_send_timeout 300s;
+    # Dashboard proxy configuration
+    location {{NGINX_PATH}} {
+        proxy_pass http://dashboard_{{DASHBOARD_NAME_LOWER}}:{{DASHBOARD_PORT}};
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        
+        # WebSocket support (for Dash, Bokeh, etc.)
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+        
+        # Timeouts for long-running requests
+        proxy_read_timeout 300s;
+        proxy_connect_timeout 300s;
+        proxy_send_timeout 300s;
+        
+        # Buffer settings
+        proxy_buffer_size 128k;
+        proxy_buffers 4 256k;
+        proxy_busy_buffers_size 256k;
+        
+        # CORS headers (if needed)
+        {{#if ENABLE_CORS}}
+        add_header Access-Control-Allow-Origin *;
+        add_header Access-Control-Allow-Methods "GET, POST, OPTIONS";
+        add_header Access-Control-Allow-Headers "Content-Type, Authorization";
+        {{/if}}
+    }
     
-    # Buffer settings
-    proxy_buffer_size 128k;
-    proxy_buffers 4 256k;
-    proxy_busy_buffers_size 256k;
-    
-    # CORS headers (if needed)
-    {{#if ENABLE_CORS}}
-    add_header Access-Control-Allow-Origin *;
-    add_header Access-Control-Allow-Methods "GET, POST, OPTIONS";
-    add_header Access-Control-Allow-Headers "Content-Type, Authorization";
+    # Health check endpoint (if specified)
+    {{#if HEALTH_CHECK_PATH}}
+    location {{NGINX_PATH}}{{HEALTH_CHECK_PATH}} {
+        proxy_pass http://dashboard_{{DASHBOARD_NAME_LOWER}}:{{DASHBOARD_PORT}}{{HEALTH_CHECK_PATH}};
+        proxy_set_header Host $host;
+        access_log off;
+    }
     {{/if}}
 }
-
-# Health check endpoint (if specified)
-{{#if HEALTH_CHECK_PATH}}
-location {{NGINX_PATH}}{{HEALTH_CHECK_PATH}} {
-    proxy_pass http://dashboard_{{DASHBOARD_NAME_LOWER}}:{{DASHBOARD_PORT}}{{HEALTH_CHECK_PATH}};
-    proxy_set_header Host $host;
-    access_log off;
-}
-{{/if}}
 
