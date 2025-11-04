@@ -65,6 +65,16 @@ function setupEventListeners() {
     const themeToggle = document.getElementById('themeToggle');
     if (themeToggle) {
         themeToggle.addEventListener('click', toggleTheme);
+        console.log('Theme toggle button event listener attached');
+        
+        // Set initial icon based on current theme
+        if (AppState.theme === 'light') {
+            themeToggle.innerHTML = '<i class="fas fa-moon"></i>'; // Moon icon for light mode
+        } else {
+            themeToggle.innerHTML = '<i class="fas fa-sun"></i>'; // Sun icon for dark mode
+        }
+    } else {
+        console.warn('Theme toggle button not found!');
     }
     
     // Dataset selection
@@ -147,9 +157,21 @@ function toggleDetails() {
  * Toggle theme
  */
 function toggleTheme() {
+    console.log('toggleTheme called, current theme:', AppState.theme);
+    
     AppState.theme = AppState.theme === 'dark' ? 'light' : 'dark';
     document.body.classList.toggle('light-theme');
     localStorage.setItem('theme', AppState.theme);
+    
+    // Update button icon/state if needed
+    const themeToggle = document.getElementById('themeToggle');
+    if (themeToggle) {
+        if (AppState.theme === 'light') {
+            themeToggle.innerHTML = '<i class="fas fa-moon"></i>'; // Moon icon for light mode (switch to dark)
+        } else {
+            themeToggle.innerHTML = '<i class="fas fa-sun"></i>'; // Sun icon for dark mode (switch to light)
+        }
+    }
     
     console.log('Theme changed to:', AppState.theme);
 }
