@@ -5,12 +5,7 @@
 FROM visstore-bokeh-dashboard-base:latest
 
 # Build arguments
-#
-#
 ARG D_GIT_TOKEN
-
-
-
 ARG DEPLOY_SERVER
 ARG DOMAIN_NAME
 

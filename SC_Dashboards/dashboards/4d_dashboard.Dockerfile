@@ -4,24 +4,8 @@
 
 FROM visstore-4d-dashboard-base:latest
 
-# Metadata
-LABEL maintainer="ScientistCloud Team"
-LABEL dashboard.name="4d_dashboard"
-LABEL dashboard.version="1.0.0"
-LABEL dashboard.type="bokeh"
-
-# Environment Variables
-ENV PYTHONUNBUFFERED=True \
-    TZ=America/Chicago \
-    DASHBOARD_NAME=4d_dashboard \
-    DASHBOARD_PORT=8052
-
 # Build arguments
 ARG D_GIT_TOKEN
-ARG INSTALL_HOME=/home/ViSOAR
-ARG SC_DASHBOARDS_DIR=/app/SCLib_Dashboards
-
-# Build arguments
 ARG DEPLOY_SERVER
 ARG DOMAIN_NAME
 
@@ -32,23 +16,29 @@ ENV DOMAIN_NAME=${DOMAIN_NAME}
 # Echo build information
 RUN echo "DEPLOY SERVER: ${DEPLOY_SERVER}"
 
-# Set working directory
-WORKDIR ${INSTALL_HOME}/dataportal
+# Copy application code
+ENV APP_HOME=/app
+WORKDIR $APP_HOME
 
 # Copy shared dashboard utilities from SCLib_Dashboards
-# These are mounted/copied from scientistCloudLib/SCLib_Dashboards
-COPY COPY /Users/amygooch/GIT/ScientistCloud_2.0/scientistCloudLib/SCLib_Dashboards/mongo_connection.py /Users/amygooch/GIT/ScientistCloud_2.0/scientistCloudLib/SCLib_Dashboards/mongo_connection.py
-COPY /Users/amygooch/GIT/ScientistCloud_2.0/scientistCloudLib/SCLib_Dashboards/utils_bokeh_mongodb.py /Users/amygooch/GIT/ScientistCloud_2.0/scientistCloudLib/SCLib_Dashboards/utils_bokeh_mongodb.py
-COPY /Users/amygooch/GIT/ScientistCloud_2.0/scientistCloudLib/SCLib_Dashboards/utils_bokeh_dashboard.py /Users/amygooch/GIT/ScientistCloud_2.0/scientistCloudLib/SCLib_Dashboards/utils_bokeh_dashboard.py
-COPY /Users/amygooch/GIT/ScientistCloud_2.0/scientistCloudLib/SCLib_Dashboards/utils_bokeh_auth.py /Users/amygooch/GIT/ScientistCloud_2.0/scientistCloudLib/SCLib_Dashboards/utils_bokeh_auth.py
-COPY /Users/amygooch/GIT/ScientistCloud_2.0/scientistCloudLib/SCLib_Dashboards/utils_bokeh_param.py /Users/amygooch/GIT/ScientistCloud_2.0/scientistCloudLib/SCLib_Dashboards/utils_bokeh_param.py
-COPY /Users/amygooch/GIT/ScientistCloud_2.0/scientistCloudLib/SCLib_Dashboards/process_4dnexus.py /Users/amygooch/GIT/ScientistCloud_2.0/scientistCloudLib/SCLib_Dashboards/process_4dnexus.py
+# Copy shared utility: mongo_connection.py
+COPY SCLib_Dashboards/mongo_connection.py ./mongo_connection.py
+# Copy shared utility: utils_bokeh_mongodb.py
+COPY SCLib_Dashboards/utils_bokeh_mongodb.py ./utils_bokeh_mongodb.py
+# Copy shared utility: utils_bokeh_dashboard.py
+COPY SCLib_Dashboards/utils_bokeh_dashboard.py ./utils_bokeh_dashboard.py
+# Copy shared utility: utils_bokeh_auth.py
+COPY SCLib_Dashboards/utils_bokeh_auth.py ./utils_bokeh_auth.py
+# Copy shared utility: utils_bokeh_param.py
+COPY SCLib_Dashboards/utils_bokeh_param.py ./utils_bokeh_param.py
+# Copy shared utility: process_4dnexus.py
+COPY SCLib_Dashboards/process_4dnexus.py ./process_4dnexus.py
 
 
-# Copy dashboard-specific files
-COPY 4d_dashboard/4d_dashboard.py ./4d_dashboard.py
+# Copy dashboard-specific files (flat structure)
+COPY 4d_dashboard.py ./
 #
-COPY 4d_dashboard/requirements.txt ./requirements.txt
+COPY requirements.txt ./requirements.txt
 
 
 # Install dashboard-specific requirements
@@ -56,28 +46,23 @@ COPY 4d_dashboard/requirements.txt ./requirements.txt
 RUN python3 -m pip install --no-cache-dir -r requirements.txt
 
 
-{{#if ADDITIONAL_REQUIREMENTS}}
+#
 # Install additional requirements
 RUN python3 -m pip install --no-cache-dir bokeh==3.8.0 panel jupyter boto3 scikit-image bokeh[server] tornado>=6.1 markupsafe>=2.0 six>=1.16 packaging>=21.0 pyyaml>=5.4 python-dateutil>=2.8 babel>=2.9 click>=8.0 pillow>=8.0
 
 
 # Set environment variables from configuration
-{{#each ENVIRONMENT_VARIABLES}}
-ENV {{@key}}={{this}}
-{{/each}}
+
 
 # Expose dashboard port
 EXPOSE 8052
 
 # Health check (if specified)
-{{#if HEALTH_CHECK_PATH}}
+#
 HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
   CMD curl -f http://localhost:8052/health || exit 1
 
 
 # Run dashboard entry point
-# Generic Python application
-#CMD ["python", "4d_dashboard.py"]
-CMD ["sh", "-c", "cd /app && python3 -m bokeh serve ./4d_dashboard.py --allow-websocket-origin=${DOMAIN_NAME} --port=8052 --address=0.0.0.0 --use-xheaders --session-token-expiration=86400"]
-
+CMD ["sh", "-c", "python3 -m bokeh serve ./4d_dashboard.py --allow-websocket-origin=${DOMAIN_NAME} --allow-websocket-origin=127.0.0.1 --allow-websocket-origin=0.0.0.0 --port=8052 --address=0.0.0.0 --use-xheaders --session-token-expiration=86400"]
 

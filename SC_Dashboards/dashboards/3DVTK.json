@@ -3,7 +3,7 @@
   "display_name": "3D VTK Dashboard",
   "description": "Interactive 3D visualization using VTK",
   "version": "1.0.0",
-  "type": "dash",
+  "type": "bokeh",
   "entry_point": "3DVTK.py",
   "entry_point_type": "python",
   "port": 8051,

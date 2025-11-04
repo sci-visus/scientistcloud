@@ -177,18 +177,12 @@ fi
 
 # Handle BUILD_ARGS (if any)
 if [ -n "$BUILD_ARGS" ]; then
-    BUILD_ARGS_SECTION=""
+    # Add BUILD_ARGS before DEPLOY_SERVER
     for arg in $BUILD_ARGS; do
-        BUILD_ARGS_SECTION="${BUILD_ARGS_SECTION}ARG ${arg}\n"
+        sed -i.bak "/^ARG DEPLOY_SERVER$/i\\
+ARG ${arg}\\
+" "$OUTPUT_FILE"
     done
-    # Replace the BUILD_ARGS block with actual ARG lines
-    sed -i.bak "s|{{#if BUILD_ARGS}}|#|g; s|{{#each BUILD_ARGS}}|#|g; s|{{/each}}||g; s|{{/if}}||g" "$OUTPUT_FILE"
-    # Insert BUILD_ARGS after the comment
-    sed -i.bak "/^# Build arguments$/a\\
-${BUILD_ARGS_SECTION}" "$OUTPUT_FILE"
-    rm -f "$OUTPUT_FILE.bak"
-else
-    sed -i.bak '/{{#if BUILD_ARGS}}/,/{{/if}}/d' "$OUTPUT_FILE"
     rm -f "$OUTPUT_FILE.bak"
 fi
 
