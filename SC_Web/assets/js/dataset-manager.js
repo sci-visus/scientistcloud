@@ -180,11 +180,12 @@ class DatasetManager {
      * Render a dataset group
      */
     renderDatasetGroup(title, datasets, id) {
-        if (datasets.length === 0) {
+        if (!datasets || datasets.length === 0) {
+            console.log(`No datasets to render for ${title} (id: ${id})`);
             return `
                 <div class="dataset-section">
                     <a class="nav-link" data-bs-toggle="collapse" data-bs-target="#${id}">
-                        <span class="arrow-icon" id="arrow-${id}">&#9656;</span>${title}
+                        <span class="arrow-icon" id="arrow-${id}">&#9656;</span>${title} (0)
                     </a>
                     <div class="collapse ps-4 w-100" id="${id}">
                         <p class="text-muted">No datasets found.</p>
@@ -196,12 +197,16 @@ class DatasetManager {
         let html = `
             <div class="dataset-section">
                 <a class="nav-link" data-bs-toggle="collapse" data-bs-target="#${id}">
-                    <span class="arrow-icon" id="arrow-${id}">&#9656;</span>${title}
+                    <span class="arrow-icon" id="arrow-${id}">&#9656;</span>${title} (${datasets.length})
                 </a>
-                <div class="collapse ps-4 w-100" id="${id}">
+                <div class="collapse show ps-4 w-100" id="${id}">
         `;
 
-        datasets.forEach(dataset => {
+        datasets.forEach((dataset, index) => {
+            if (!dataset) {
+                console.warn(`Dataset at index ${index} is null or undefined`);
+                return;
+            }
             html += this.renderDatasetItem(dataset);
         });
 
@@ -217,19 +222,31 @@ class DatasetManager {
      * Render a single dataset item
      */
     renderDatasetItem(dataset) {
-        const statusColor = this.getStatusColor(dataset.status);
-        const fileIcon = this.getFileIcon(dataset.sensor);
+        // Defensive checks for required fields
+        if (!dataset) {
+            console.error('renderDatasetItem: dataset is null or undefined');
+            return '';
+        }
+        
+        const datasetId = dataset.id || dataset.uuid || 'unknown';
+        const datasetName = dataset.name || 'Unnamed Dataset';
+        const datasetUuid = dataset.uuid || dataset.id || '';
+        const status = dataset.status || 'unknown';
+        const sensor = dataset.sensor || 'Unknown';
+        
+        const statusColor = this.getStatusColor(status);
+        const fileIcon = this.getFileIcon(sensor);
         
         return `
-            <div class="dataset-item" data-dataset-id="${dataset.id}">
+            <div class="dataset-item" data-dataset-id="${datasetId}">
                 <a class="nav-link dataset-link" href="javascript:void(0)" 
-                   data-dataset-id="${dataset.id}"
-                   data-dataset-name="${dataset.name}"
-                   data-dataset-uuid="${dataset.uuid}"
+                   data-dataset-id="${datasetId}"
+                   data-dataset-name="${datasetName}"
+                   data-dataset-uuid="${datasetUuid}"
                    data-dataset-server="${dataset.google_drive_link ? 'true' : 'false'}">
                     <i class="${fileIcon} me-2"></i>
-                    <span class="dataset-name">${dataset.name}</span>
-                    <span class="badge bg-${statusColor} ms-2">${dataset.status}</span>
+                    <span class="dataset-name">${datasetName}</span>
+                    <span class="badge bg-${statusColor} ms-2">${status}</span>
                 </a>
             </div>
         `;

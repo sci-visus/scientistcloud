@@ -122,6 +122,12 @@ try {
             'email' => $user['email']
         ]
     ];
+    
+    // Log response summary for debugging
+    error_log("Datasets API response: my=" . count($allDatasets['my']) . 
+              ", shared=" . count($allDatasets['shared']) . 
+              ", team=" . count($allDatasets['team']) . 
+              ", total=" . (count($allDatasets['my']) + count($allDatasets['shared']) + count($allDatasets['team'])));
 
     // Check for any unexpected output before JSON
     $output = ob_get_contents();
