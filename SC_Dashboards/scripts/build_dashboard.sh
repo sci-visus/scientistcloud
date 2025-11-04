@@ -1,0 +1,117 @@
+#!/bin/bash
+# Build a dashboard Docker image
+# Usage: ./build_dashboard.sh <dashboard_name> [tag]
+
+set -e
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+DASHBOARDS_DIR="$(cd "$SCRIPT_DIR/../dashboards" && pwd)"
+
+# Try multiple possible paths for SCLib_Dashboards
+SCLIB_DASHBOARDS_DIR=""
+POSSIBLE_PATHS=(
+    "$SCRIPT_DIR/../../scientistCloudLib/SCLib_Dashboards"
+    "$SCRIPT_DIR/../../../scientistCloudLib/SCLib_Dashboards"
+    "/Users/amygooch/GIT/ScientistCloud_2.0/scientistCloudLib/SCLib_Dashboards"
+    "$(cd "$SCRIPT_DIR/../.." && pwd)/scientistCloudLib/SCLib_Dashboards"
+)
+
+for path in "${POSSIBLE_PATHS[@]}"; do
+    if [ -d "$path" ]; then
+        SCLIB_DASHBOARDS_DIR="$(cd "$path" && pwd)"
+        break
+    fi
+done
+
+if [ -z "$SCLIB_DASHBOARDS_DIR" ]; then
+    echo "Warning: SCLib_Dashboards directory not found. Shared utilities will not be copied."
+    echo "   Tried paths:"
+    for path in "${POSSIBLE_PATHS[@]}"; do
+        echo "     - $path"
+    done
+    SCLIB_DASHBOARDS_DIR=""
+fi
+
+if [ -z "$1" ]; then
+    echo "Usage: $0 <dashboard_name> [tag]"
+    exit 1
+fi
+
+DASHBOARD_NAME="$1"
+TAG="${2:-latest}"
+
+# Flat structure: {name}.json in dashboards directory
+CONFIG_FILE="$DASHBOARDS_DIR/${DASHBOARD_NAME}.json"
+DASHBOARD_DIR="$DASHBOARDS_DIR"
+DOCKERFILE="$DASHBOARDS_DIR/${DASHBOARD_NAME}.Dockerfile"
+
+if [ ! -f "$CONFIG_FILE" ]; then
+    echo "Error: Dashboard configuration not found: $CONFIG_FILE"
+    exit 1
+fi
+
+if [ ! -f "$DOCKERFILE" ]; then
+    echo "Generating Dockerfile first..."
+    "$SCRIPT_DIR/generate_dockerfile.sh" "$DASHBOARD_NAME"
+fi
+
+# Load configuration
+BASE_IMAGE=$(jq -r '.base_image' "$CONFIG_FILE")
+BASE_IMAGE_TAG=$(jq -r '.base_image_tag // "latest"' "$CONFIG_FILE")
+IMAGE_NAME="${DASHBOARD_NAME}_dashboard"
+BUILD_ARGS=$(jq -r '.build_args // {} | to_entries | map("--build-arg \(.key)=\(.value)") | join(" ")' "$CONFIG_FILE")
+
+# Build Docker image
+echo "Building dashboard image: $IMAGE_NAME:$TAG"
+echo "Base image: $BASE_IMAGE:$BASE_IMAGE_TAG"
+
+# Build context includes dashboard directory and shared utilities
+BUILD_CONTEXT=$(mktemp -d)
+trap "rm -rf $BUILD_CONTEXT" EXIT
+
+# Copy dashboard files (flat structure)
+ENTRY_POINT=$(jq -r '.entry_point' "$CONFIG_FILE")
+REQUIREMENTS_FILE=$(jq -r '.requirements_file // empty' "$CONFIG_FILE")
+
+# Copy entry point
+if [ -f "$DASHBOARDS_DIR/$ENTRY_POINT" ]; then
+    cp "$DASHBOARDS_DIR/$ENTRY_POINT" "$BUILD_CONTEXT/$ENTRY_POINT"
+elif [ -f "$DASHBOARDS_DIR/${DASHBOARD_NAME}.py" ]; then
+    cp "$DASHBOARDS_DIR/${DASHBOARD_NAME}.py" "$BUILD_CONTEXT/${DASHBOARD_NAME}.py"
+    ENTRY_POINT="${DASHBOARD_NAME}.py"
+elif [ -f "$DASHBOARDS_DIR/${DASHBOARD_NAME}.ipynb" ]; then
+    cp "$DASHBOARDS_DIR/${DASHBOARD_NAME}.ipynb" "$BUILD_CONTEXT/${DASHBOARD_NAME}.ipynb"
+    ENTRY_POINT="${DASHBOARD_NAME}.ipynb"
+fi
+
+# Copy requirements if exists
+if [ -n "$REQUIREMENTS_FILE" ] && [ -f "$DASHBOARDS_DIR/$REQUIREMENTS_FILE" ]; then
+    cp "$DASHBOARDS_DIR/$REQUIREMENTS_FILE" "$BUILD_CONTEXT/requirements.txt"
+elif [ -f "$DASHBOARDS_DIR/${DASHBOARD_NAME}_requirements.txt" ]; then
+    cp "$DASHBOARDS_DIR/${DASHBOARD_NAME}_requirements.txt" "$BUILD_CONTEXT/requirements.txt"
+fi
+
+# Copy shared utilities
+if [ -n "$SCLIB_DASHBOARDS_DIR" ] && [ -d "$SCLIB_DASHBOARDS_DIR" ]; then
+    mkdir -p "$BUILD_CONTEXT/SCLib_Dashboards"
+    cp -r "$SCLIB_DASHBOARDS_DIR"/* "$BUILD_CONTEXT/SCLib_Dashboards/" 2>/dev/null || true
+fi
+
+# Copy Dockerfile
+if [ -f "$DOCKERFILE" ]; then
+    cp "$DOCKERFILE" "$BUILD_CONTEXT/Dockerfile"
+else
+    echo "Error: Dockerfile not found: $DOCKERFILE"
+    echo "   Run: ./scripts/generate_dockerfile.sh $DASHBOARD_NAME"
+    exit 1
+fi
+
+# Build image
+docker build \
+    -f "$BUILD_CONTEXT/Dockerfile" \
+    -t "$IMAGE_NAME:$TAG" \
+    $BUILD_ARGS \
+    "$BUILD_CONTEXT"
+
+echo "✅ Built dashboard image: $IMAGE_NAME:$TAG"
+

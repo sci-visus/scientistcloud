@@ -1,0 +1,55 @@
+# Dockerfile template for ScientistCloud Dashboard
+# Generated from dashboard.json configuration
+# DO NOT EDIT MANUALLY - Regenerate using scripts/generate_dockerfile.sh
+
+FROM {{BASE_IMAGE}}:{{BASE_IMAGE_TAG}}
+
+# Build arguments
+ARG DEPLOY_SERVER
+ARG DOMAIN_NAME
+
+# Environment Variables (inherited from base image)
+ENV DEPLOY_SERVER=${DEPLOY_SERVER}
+ENV DOMAIN_NAME=${DOMAIN_NAME}
+
+# Echo build information
+RUN echo "DEPLOY SERVER: ${DEPLOY_SERVER}"
+
+# Copy application code
+ENV APP_HOME=/app
+WORKDIR $APP_HOME
+
+# Copy shared dashboard utilities from SCLib_Dashboards
+{{SHARED_UTILITIES_SECTION}}
+
+# Copy dashboard-specific files (flat structure)
+COPY {{ENTRY_POINT}} ./
+{{#if REQUIREMENTS_FILE}}
+COPY {{REQUIREMENTS_FILE}} ./requirements.txt
+{{/if}}
+
+# Install dashboard-specific requirements
+{{#if REQUIREMENTS_FILE}}
+RUN python3 -m pip install --no-cache-dir -r requirements.txt
+{{/if}}
+
+{{#if ADDITIONAL_REQUIREMENTS}}
+# Install additional requirements
+RUN python3 -m pip install --no-cache-dir {{ADDITIONAL_REQUIREMENTS}}
+{{/if}}
+
+# Set environment variables from configuration
+{{ENVIRONMENT_VARIABLES_SECTION}}
+
+# Expose dashboard port
+EXPOSE {{DASHBOARD_PORT}}
+
+# Health check (if specified)
+{{#if HEALTH_CHECK_PATH}}
+HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
+  CMD curl -f http://localhost:{{DASHBOARD_PORT}}{{HEALTH_CHECK_PATH}} || exit 1
+{{/if}}
+
+# Run dashboard entry point
+{{CMD_SECTION}}
+

@@ -6,51 +6,106 @@
 class ViewerManager {
     constructor() {
         this.currentViewer = null;
-        this.viewers = {
+        this.viewers = {}; // Will be loaded from API
+        this.defaultViewers = {
             'openvisus': {
                 name: 'OpenVisus Explorer',
                 type: 'openvisus',
                 url_template: '/viewer/openvisus.php?dataset={uuid}&server={server}',
                 supported_formats: ['tiff', 'hdf5', 'nexus'],
                 description: 'Interactive 3D volume rendering with OpenVisus'
-            },
-            'bokeh': {
-                name: 'Bokeh Dashboard',
-                type: 'bokeh',
-                url_template: '/viewer/bokeh.php?dataset={uuid}&server={server}',
-                supported_formats: ['tiff', 'hdf5', 'csv', 'json'],
-                description: 'Interactive data visualization with Bokeh'
-            },
-            'jupyter': {
-                name: 'Jupyter Notebook',
-                type: 'jupyter',
-                url_template: '/viewer/jupyter.php?dataset={uuid}&server={server}',
-                supported_formats: ['tiff', 'hdf5', 'csv', 'json', 'nexus'],
-                description: 'Interactive data analysis with Jupyter'
-            },
-            'plotly': {
-                name: 'Plotly Dashboard',
-                type: 'plotly',
-                url_template: '/viewer/plotly.php?dataset={uuid}&server={server}',
-                supported_formats: ['tiff', 'hdf5', 'csv', 'json'],
-                description: 'Interactive 3D plotting with Plotly'
-            },
-            'vtk': {
-                name: 'VTK Explorer',
-                type: 'vtk',
-                url_template: '/viewer/vtk.php?dataset={uuid}&server={server}',
-                supported_formats: ['tiff', 'hdf5', 'nexus'],
-                description: '3D visualization with VTK'
             }
         };
         this.initialize();
+    }
+    
+    /**
+     * Load dashboards from API
+     */
+    async loadDashboards() {
+        try {
+            const response = await fetch('/portal/api/dashboards.php');
+            
+            if (!response.ok) {
+                console.warn('Failed to load dashboards from API, using defaults');
+                this.viewers = this.defaultViewers;
+                this.populateViewerSelector();
+                return;
+            }
+            
+            const data = await response.json();
+            
+            if (data.success && data.dashboards) {
+                // Convert API response to viewer format
+                this.viewers = {};
+                data.dashboards.forEach(dashboard => {
+                    if (dashboard.enabled) {
+                        this.viewers[dashboard.id] = {
+                            name: dashboard.display_name || dashboard.name,
+                            type: dashboard.type || dashboard.id,
+                            url_template: dashboard.url_template || dashboard.nginx_path + '?dataset={uuid}&server={server}',
+                            supported_formats: [], // Will be determined from dataset type
+                            description: dashboard.description || dashboard.display_name,
+                            nginx_path: dashboard.nginx_path,
+                            port: dashboard.port
+                        };
+                    }
+                });
+                
+                // Merge with default viewers (for backward compatibility)
+                this.viewers = { ...this.defaultViewers, ...this.viewers };
+                
+                console.log('Loaded dashboards from API:', Object.keys(this.viewers).length);
+            } else {
+                console.warn('Invalid dashboard API response, using defaults');
+                this.viewers = this.defaultViewers;
+            }
+            
+            this.populateViewerSelector();
+            
+        } catch (error) {
+            console.error('Error loading dashboards:', error);
+            // Fallback to default viewers
+            this.viewers = this.defaultViewers;
+            this.populateViewerSelector();
+        }
+    }
+    
+    /**
+     * Populate viewer selector dropdown
+     */
+    populateViewerSelector() {
+        const viewerType = document.getElementById('viewerType');
+        if (!viewerType) {
+            console.warn('Viewer selector not found');
+            return;
+        }
+        
+        // Clear existing options (except first empty one if exists)
+        viewerType.innerHTML = '';
+        
+        // Add options from loaded viewers
+        Object.values(this.viewers).forEach(viewer => {
+            const option = document.createElement('option');
+            option.value = viewer.type;
+            option.textContent = viewer.name;
+            viewerType.appendChild(option);
+        });
+        
+        // Set default viewer if available
+        if (viewerType.options.length > 0) {
+            viewerType.value = viewerType.options[0].value;
+        }
+        
+        console.log('Populated viewer selector with', viewerType.options.length, 'dashboards');
     }
 
     /**
      * Initialize the viewer manager
      */
-    initialize() {
+    async initialize() {
         this.setupEventListeners();
+        await this.loadDashboards(); // Load dashboards from API first
         this.loadViewerSettings();
     }
 

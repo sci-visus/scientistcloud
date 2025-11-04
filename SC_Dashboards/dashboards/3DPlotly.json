@@ -1,0 +1,47 @@
+{
+  "name": "3DPlotly",
+  "display_name": "3D Plotly Dashboard",
+  "description": "Interactive 3D visualization using Plotly and Dash",
+  "version": "1.0.0",
+  "type": "dash",
+  "entry_point": "3DPlotly.py",
+  "entry_point_type": "python",
+  "port": 8050,
+  "base_image": "visstore-plotly-dashboard-base",
+  "base_image_tag": "latest",
+  "requirements_file": "requirements.txt",
+  "additional_requirements": [
+    "versioneer[toml]",
+    "Cython",
+    "pandas",
+    "bokeh==3.8.0",
+    "dash",
+    "dash-bootstrap-components",
+    "dash_vtk",
+    "vtk",
+    "dash-vtk"
+  ],
+  "shared_utilities": [
+    "mongo_connection.py",
+    "utils_bokeh_mongodb.py",
+    "utils_bokeh_dashboard.py",
+    "utils_bokeh_auth.py",
+    "utils_bokeh_param.py"
+  ],
+  "environment_variables": {
+    "SECRET_KEY": "${SECRET_KEY}",
+    "DEPLOY_SERVER": "${DEPLOY_SERVER}",
+    "DB_NAME": "${DB_NAME}",
+    "MONGO_URL": "${MONGO_URL}"
+  },
+  "nginx_path": "/dashboard/plotly",
+  "health_check_path": "/health",
+  "build_args": {
+    "D_GIT_TOKEN": "${D_GIT_TOKEN}"
+  },
+  "volume_mounts": [],
+  "exposed_ports": [8050],
+  "depends_on": [],
+  "enabled": true
+}
+

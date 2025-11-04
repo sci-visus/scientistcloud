@@ -1,0 +1,150 @@
+# Dashboard Services - Auto-generated from dashboard-registry.json
+# DO NOT EDIT MANUALLY - Regenerate using scripts/generate_docker_compose.sh
+# Generated: Tue Nov  4 13:15:26 CST 2025
+
+  # 3D Plotly Dashboard
+  3dplotly:
+    container_name: dashboard_3dplotly
+    platform: linux/amd64
+    image: 3dplotly:latest
+    build:
+      context: /Users/amygooch/GIT/ScientistCloud_2.0/scientistcloud/SC_Dashboards/dashboards
+      dockerfile: 3DPlotly.Dockerfile
+      args:
+        D_GIT_TOKEN: ${D_GIT_TOKEN}
+    environment:
+      - SECRET_KEY=${SECRET_KEY}
+      - DEPLOY_SERVER=${DEPLOY_SERVER}
+      - DB_NAME=${DB_NAME}
+      - MONGO_URL=${MONGO_URL}
+    networks:
+      - docker_visstore_web
+    restart: unless-stopped
+    volumes:
+      - ${VISUS_DB}:/mnt/visus_db
+      - ${VISUS_DATASETS}:/mnt/visus_datasets
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8050/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    init: true
+
+  # 3D VTK Dashboard
+  3dvtk:
+    container_name: dashboard_3dvtk
+    platform: linux/amd64
+    image: 3dvtk:latest
+    build:
+      context: /Users/amygooch/GIT/ScientistCloud_2.0/scientistcloud/SC_Dashboards/dashboards
+      dockerfile: 3DVTK.Dockerfile
+      args:
+        D_GIT_TOKEN: ${D_GIT_TOKEN}
+    environment:
+      - SECRET_KEY=${SECRET_KEY}
+      - DEPLOY_SERVER=${DEPLOY_SERVER}
+      - DB_NAME=${DB_NAME}
+      - MONGO_URL=${MONGO_URL}
+    networks:
+      - docker_visstore_web
+    restart: unless-stopped
+    volumes:
+      - ${VISUS_DB}:/mnt/visus_db
+      - ${VISUS_DATASETS}:/mnt/visus_datasets
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8051/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    init: true
+
+  # 4D Dashboard
+  4d_dashboard:
+    container_name: dashboard_4d_dashboard
+    platform: linux/amd64
+    image: 4d_dashboard:latest
+    build:
+      context: /Users/amygooch/GIT/ScientistCloud_2.0/scientistcloud/SC_Dashboards/dashboards
+      dockerfile: 4D_Dashboard.Dockerfile
+      args:
+        D_GIT_TOKEN: ${D_GIT_TOKEN}
+    environment:
+      - SECRET_KEY=${SECRET_KEY}
+      - DEPLOY_SERVER=${DEPLOY_SERVER}
+      - DB_NAME=${DB_NAME}
+      - MONGO_URL=${MONGO_URL}
+    networks:
+      - docker_visstore_web
+    restart: unless-stopped
+    volumes:
+      - ${VISUS_DB}:/mnt/visus_db
+      - ${VISUS_DATASETS}:/mnt/visus_datasets
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8052/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    init: true
+
+  # MagicScan Dashboard
+  magicscan:
+    container_name: dashboard_magicscan
+    platform: linux/amd64
+    image: magicscan:latest
+    build:
+      context: /Users/amygooch/GIT/ScientistCloud_2.0/scientistcloud/SC_Dashboards/dashboards
+      dockerfile: Magicscan.Dockerfile
+      args:
+        D_GIT_TOKEN: ${D_GIT_TOKEN}
+    environment:
+      - SECRET_KEY=${SECRET_KEY}
+      - DEPLOY_SERVER=${DEPLOY_SERVER}
+      - DB_NAME=${DB_NAME}
+      - MONGO_URL=${MONGO_URL}
+    networks:
+      - docker_visstore_web
+    restart: unless-stopped
+    volumes:
+      - ${VISUS_DB}:/mnt/visus_db
+      - ${VISUS_DATASETS}:/mnt/visus_datasets
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8053/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    init: true
+
+  # OpenVisus Slice Explorer
+  openvisusslice:
+    container_name: dashboard_openvisusslice
+    platform: linux/amd64
+    image: openvisusslice:latest
+    build:
+      context: /Users/amygooch/GIT/ScientistCloud_2.0/scientistcloud/SC_Dashboards/dashboards
+      dockerfile: OpenVisusSlice.Dockerfile
+      args:
+        D_GIT_TOKEN: ${D_GIT_TOKEN}
+    environment:
+      - SECRET_KEY=${SECRET_KEY}
+      - DEPLOY_SERVER=${DEPLOY_SERVER}
+      - DB_NAME=${DB_NAME}
+      - MONGO_URL=${MONGO_URL}
+    networks:
+      - docker_visstore_web
+    restart: unless-stopped
+    volumes:
+      - ${VISUS_DB}:/mnt/visus_db
+      - ${VISUS_DATASETS}:/mnt/visus_datasets
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8054/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    init: true
+
+

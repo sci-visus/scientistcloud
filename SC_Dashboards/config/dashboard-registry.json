@@ -1,0 +1,52 @@
+{
+  "version": "1.0.0",
+  "last_updated": "2025-11-04",
+  "port_range": {
+    "start": 8050,
+    "end": 8999,
+    "next_available": 8050
+  },
+  "dashboards": {
+    "3DPlotly": {
+      "name": "3DPlotly",
+      "display_name": "3D Plotly Dashboard",
+      "enabled": true,
+      "port": 8050,
+      "nginx_path": "/dashboard/plotly",
+      "config_file": "../dashboards/3DPlotly.json"
+    },
+    "3DVTK": {
+      "name": "3DVTK",
+      "display_name": "3D VTK Dashboard",
+      "enabled": true,
+      "port": 8051,
+      "nginx_path": "/dashboard/vtk",
+      "config_file": "../dashboards/3DVTK.json"
+    },
+    "4D_Dashboard": {
+      "name": "4D_Dashboard",
+      "display_name": "4D Dashboard",
+      "enabled": true,
+      "port": 8052,
+      "nginx_path": "/dashboard/4d",
+      "config_file": "../dashboards/4D_Dashboard.json"
+    },
+    "Magicscan": {
+      "name": "Magicscan",
+      "display_name": "MagicScan Dashboard",
+      "enabled": true,
+      "port": 8053,
+      "nginx_path": "/dashboard/magicscan",
+      "config_file": "../dashboards/Magicscan.json"
+    },
+    "OpenVisusSlice": {
+      "name": "OpenVisusSlice",
+      "display_name": "OpenVisus Slice Explorer",
+      "enabled": true,
+      "port": 8054,
+      "nginx_path": "/dashboard/openvisus",
+      "config_file": "../dashboards/OpenVisusSlice.json"
+    }
+  }
+}
+

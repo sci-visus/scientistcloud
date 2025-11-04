@@ -48,7 +48,7 @@ body {
 }
 
 .sidebar {
-  width: 250px;
+  width: 500px;
   border-right: 1px solid var(--panel-border);
   padding-top: 1rem;
 }
@@ -502,7 +502,7 @@ body {
 /* Responsive design */
 @media (max-width: 768px) {
   .sidebar {
-    width: 200px;
+    width: 400px;
   }
   
   .details {

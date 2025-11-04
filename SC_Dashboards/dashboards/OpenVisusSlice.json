@@ -1,0 +1,54 @@
+{
+  "name": "OpenVisusSlice",
+  "display_name": "OpenVisus Slice Dashboard",
+  "description": "Interactive OpenVisusSlice visualization using OpenVisus",
+  "version": "1.0.0",
+  "type": "bokeh",
+  "entry_point": "OpenVisusSlice.py",
+  "entry_point_type": "python",
+  "port": 8054,
+  "base_image": "visstore-bokeh-dashboard-base",
+  "base_image_tag": "latest",
+  "requirements_file": "requirements.txt",
+  "additional_requirements": [
+    "bokeh==3.8.0",
+    "panel",
+    "jupyter",
+    "boto3",
+    "scikit-image",
+    "bokeh[server]",
+    "tornado>=6.1",
+    "markupsafe>=2.0",
+    "six>=1.16",
+    "packaging>=21.0",
+    "pyyaml>=5.4",
+    "python-dateutil>=2.8",
+    "babel>=2.9",
+    "click>=8.0",
+    "pillow>=8.0",  
+    "openvisuspy"
+  ],
+  "shared_utilities": [
+    "mongo_connection.py",
+    "utils_bokeh_mongodb.py",
+    "utils_bokeh_dashboard.py",
+    "utils_bokeh_auth.py",
+    "utils_bokeh_param.py"
+  ],
+  "environment_variables": {
+    "SECRET_KEY": "${SECRET_KEY}",
+    "DEPLOY_SERVER": "${DEPLOY_SERVER}",
+    "DB_NAME": "${DB_NAME}",
+    "MONGO_URL": "${MONGO_URL}"
+  },
+  "nginx_path": "/dashboard/openvisusslice",
+  "health_check_path": "/health",
+  "build_args": {
+    "D_GIT_TOKEN": "${D_GIT_TOKEN}"
+  },
+  "volume_mounts": [],
+  "exposed_ports": [8054],
+  "depends_on": [],
+  "enabled": true
+}
+

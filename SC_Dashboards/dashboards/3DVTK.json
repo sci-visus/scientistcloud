@@ -1,0 +1,43 @@
+{
+  "name": "3DPlotly",
+  "display_name": "3D VTK Dashboard",
+  "description": "Interactive 3D visualization using VTK",
+  "version": "1.0.0",
+  "type": "dash",
+  "entry_point": "3DVTK.py",
+  "entry_point_type": "python",
+  "port": 8051,
+  "base_image": "visstore-bokeh-dashboard-base",
+  "base_image_tag": "latest",
+  "requirements_file": "requirements.txt",
+  "additional_requirements": [
+    "pyvista>=0.44.0",
+    "vtk>=9.3.0",
+    "panel>=1.3.0",
+    "numpy>=1.21.0",
+    "matplotlib>=3.5.0"
+  ],
+  "shared_utilities": [
+    "mongo_connection.py",
+    "utils_bokeh_mongodb.py",
+    "utils_bokeh_dashboard.py",
+    "utils_bokeh_auth.py",
+    "utils_bokeh_param.py"
+  ],
+  "environment_variables": {
+    "SECRET_KEY": "${SECRET_KEY}",
+    "DEPLOY_SERVER": "${DEPLOY_SERVER}",
+    "DB_NAME": "${DB_NAME}",
+    "MONGO_URL": "${MONGO_URL}"
+  },
+  "nginx_path": "/dashboard/vtk",
+  "health_check_path": "/health",
+  "build_args": {
+    "D_GIT_TOKEN": "${D_GIT_TOKEN}"
+  },
+  "volume_mounts": [],
+  "exposed_ports": [8051],
+  "depends_on": [],
+  "enabled": true
+}
+

@@ -1,0 +1,2568 @@
+#!/usr/bin/env python3
+"""
+4D Dashboard with Dataset Selectors
+Clean version with ratio selector functionality
+"""
+
+import numpy as np
+import h5py
+from bokeh.io import curdoc
+import re
+import time
+from bokeh.layouts import column, row
+from bokeh.models import (
+    Button,
+    ColumnDataSource,
+    Div, 
+    Select, 
+    Slider,
+    TextInput, 
+    RadioButtonGroup,
+    Toggle
+)
+from bokeh.plotting import figure
+from process_4dnexus import Process4dNexus
+
+from utils_bokeh_dashboard import initialize_dashboard
+from utils_bokeh_mongodb import cleanup_mongodb
+from utils_bokeh_auth import authenticate_user
+from utils_bokeh_param import parse_url_parameters, setup_directory_paths
+
+# //////////////////////////////////////////////////////////////////////////
+# Global variables for local testing and loading parameters from the URL 
+import os
+DOMAIN_NAME = os.getenv('DOMAIN_NAME', '')
+DATA_IS_LOCAL = (DOMAIN_NAME == 'localhost' or DOMAIN_NAME == '' or DOMAIN_NAME is None)
+ 
+local_base_dir = f"/Users/amygooch/GIT/SCI/DATA/waxs/pil5/"
+# base_dir = f"/Users/amygooch/GIT/SCI/DATA/waxs/pil5/"
+# save_dir = f"/Users/amygooch/GIT/SCI/DATA/waxs/pil5/"
+# nexus_filename    = f"/Users/amygooch/GIT/SCI/DATA/waxs/pil5/mi_sic_0p33mm_002_PIL5_saxs_structured.nxs"
+# mmap_filename     = f"/Users/amygooch/GIT/SCI/DATA/waxs/pil5/mi_sic_0p33mm_002_PIL5_saxs_structured.float32.dat"
+
+local_base_dir = f"/Users/amygooch/GIT/SCI/DATA/waxs/pil11/"
+# base_dir = f"/Users/amygooch/GIT/SCI/DATA/waxs/pil11/"
+# save_dir = f"/Users/amygooch/GIT/SCI/DATA/waxs/pil11/"
+# nexus_filename    = f"/Users/amygooch/GIT/SCI/DATA/waxs/pil11/mi_sic_0p33mm_002_PIL9_PIL11_structured.nxs"
+# mmap_filename     = f"/Users/amygooch/GIT/SCI/DATA/waxs/pil11/mi_sic_0p33mm_002_PIL9_PIL11_structured.float32.dat"
+# cake = True
+# azimuthal = False
+
+# Select configuration based on filename and conditions
+# if nexus_filename.endswith("PIL5_saxs_structured.nxs") and cake:
+#     volume_path = "saxs_cake/data/I"
+#     x_coords_path = "map_mi_sic_0p33mm_002/data/samx"
+#     y_coords_path = "map_mi_sic_0p33mm_002/data/samz"
+#     presample_path = "map_mi_sic_0p33mm_002/scalar_data/presample_intensity"
+#     postsample_path = "map_mi_sic_0p33mm_002/scalar_data/postsample_intensity"
+# elif nexus_filename.endswith("PIL9_PIL11_structured.nxs") and cake:
+#     # Default for PIL9_PIL11 - can be customized below
+#     volume_path = "saxs_cake/data/I"
+#     x_coords_path = "map_mi_sic_0p33mm_002/data/samx"
+#     y_coords_path = "map_mi_sic_0p33mm_002/data/samz"
+#     presample_path = "map_mi_sic_0p33mm_002/scalar_data/presample_intensity"
+#     postsample_path = "map_mi_sic_0p33mm_002/scalar_data/postsample_intensity"
+
+# elif nexus_filename.endswith("PIL5_saxs_structured.nxs") and azimuthal:
+#     volume_path = "waxs_azimuthal/data/I"
+#     x_coords_path = "map_mi_sic_0p33mm_002/data/samx"
+#     y_coords_path = "map_mi_sic_0p33mm_002/data/samz"
+#     # probe_x_coords_path = "waxs_azimuthal/data/q_A^-1"
+#     # probe_y_coords_path = "waxs_azimuthal/data/chi_deg"
+#     presample_path = "map_mi_sic_0p33mm_002/scalar_data/presample_intensity"
+#     postsample_path = "map_mi_sic_0p33mm_002/scalar_data/postsample_intensity"
+# else:
+#     # Default configuration
+#     volume_path = "map_mi_sic_0p33mm_002/data/PIL11"
+#     x_coords_path = "map_mi_sic_0p33mm_002/data/samx"
+#     y_coords_path = "map_mi_sic_0p33mm_002/data/samz"
+#     presample_path = "map_mi_sic_0p33mm_002/scalar_data/presample_intensity"
+#     postsample_path = "map_mi_sic_0p33mm_002/scalar_data/postsample_intensity"
+
+#local_base_dir = f'/Users/amygooch/GIT/SCI/DATA/4D_From_V'
+
+# JWT secret key
+sec_key = os.getenv('SECRET_KEY')
+
+# Global variables
+uuid = None
+server = None
+save_dir = None
+base_dir = None
+is_authorized = False
+user_email = None
+client = None
+db = None
+mymongodb = None
+collection = None
+collection1 = None
+team_collection = None
+
+status_div = None
+status_messages = []  # Collect status messages instead of adding them as separate roots
+realtime_status_div = None  # Real-time status display
+DATA_IS_LOCAL = True
+
+#//////////////////////////////////////////////////////////////////////////
+
+def add_status_message(message):
+    """Add a status message to the collection"""
+    global status_messages
+    status_messages.append(message)
+    print(f"📝 {message}")
+
+def create_status_display():
+    """Create a single status display with all collected messages"""
+    global status_messages
+    if not status_messages:
+        return None
+    
+    status_text = "<h3>Status Messages:</h3><ul>"
+    for msg in status_messages:
+        status_text += f"<li>{msg}</li>"
+    status_text += "</ul>"
+    
+    return column(Div(text=status_text))
+
+ 
+
+# //////////////////////////////////////////////////////////////////////////
+def create_tmp_dashboard(process_4dnexus):
+    """Create initial dashboard with dataset selectors only."""
+    global status_display
+    # Create status display
+    status_display = create_status_display()
+    
+    # Get dataset choices from process_4dnexus
+    datasets_2d = process_4dnexus.get_datasets_by_dimension(2)
+    datasets_3d = process_4dnexus.get_datasets_by_dimension(3)
+    datasets_4d = process_4dnexus.get_datasets_by_dimension(4)
+    datasets_1d = process_4dnexus.get_datasets_by_dimension(1)
+
+    css_style = Div(text="""
+                <style>
+                h3 {
+                    color: #5716e5 !important;
+                }
+                </style>
+                """)
+
+    
+    # Create choices for selectors with size information
+    plot1_h5_choices = [f"{dataset['path']} {dataset['shape']}" for dataset in datasets_2d]
+    plot2_h5_choices = [f"{dataset['path']} {dataset['shape']}" for dataset in datasets_4d + datasets_3d]
+    coord_choices = [f"{dataset['path']} {dataset['shape']}" for dataset in datasets_1d]
+    
+    # Helper function to find a choice by path prefix
+    def find_choice_by_path(choices, path_prefix):
+        """Find the first choice that starts with the given path"""
+        for choice in choices:
+            if choice.startswith(path_prefix):
+                return choice
+        return None
+    
+    # Set default values - find matching choices with shapes
+    default_numerator = find_choice_by_path(plot1_h5_choices, "map_mi_sic_0p33mm_002/scalar_data/postsample_intensity") or (plot1_h5_choices[0] if plot1_h5_choices else "No 2D datasets")
+    default_denominator = find_choice_by_path(plot1_h5_choices, "map_mi_sic_0p33mm_002/scalar_data/presample_intensity") or (plot1_h5_choices[1] if len(plot1_h5_choices) > 1 else plot1_h5_choices[0] if plot1_h5_choices else "No 2D datasets")
+    default_plot2 = find_choice_by_path(plot2_h5_choices, "map_mi_sic_0p33mm_002/data/PIL11") or (plot2_h5_choices[0] if plot2_h5_choices else "No 3D/4D datasets")
+    default_map_x = find_choice_by_path(coord_choices, "map_mi_sic_0p33mm_002/data/samx") or "Use Default"
+    default_map_y = find_choice_by_path(coord_choices, "map_mi_sic_0p33mm_002/data/samz") or "Use Default"
+    
+    # Create mode selector for Plot1
+    plot1_mode_selector = RadioButtonGroup(
+        labels=["Single Dataset", "Ratio (Numerator/Denominator)"],
+        active=1,
+        width=400
+    )
+
+    # Create single dataset selector for Plot1
+    plot1_h5_selector = Select(
+        title="Plot1 Dataset (2D):",
+        value=plot1_h5_choices[0] if plot1_h5_choices else "No 2D datasets",
+        options=plot1_h5_choices if plot1_h5_choices else ["No 2D datasets"],
+        width=300
+    )
+    
+    # Create ratio selectors for Plot1
+    plot1_h5_selector_numerator = Select(
+        title="Plot1 Numerator (2D):",
+        value=default_numerator,
+        options=plot1_h5_choices if plot1_h5_choices else ["No 2D datasets"],
+        width=300
+    )
+    
+    plot1_h5_selector_denominator = Select(
+        title="Plot1 Denominator (2D):",
+        value=default_denominator,
+        options=plot1_h5_choices if plot1_h5_choices else ["No 2D datasets"],
+        width=300
+    )
+
+
+    # Optional Plot1B controls
+    enable_plot1b_toggle = Toggle(label="Enable Plot1B (duplicate map)", active=False, width=250)
+    plot1b_h5_selector_numerator = Select(
+        title="Plot1B Numerator (2D):",
+        value=default_numerator,
+        options=plot1_h5_choices if plot1_h5_choices else ["No 2D datasets"],
+        width=300
+    )
+    plot1b_h5_selector_denominator = Select(
+        title="Plot1B Denominator (2D):",
+        value=default_denominator,
+        options=plot1_h5_choices if plot1_h5_choices else ["No 2D datasets"],
+        width=300
+    )
+    plot1b_h5_selector_numerator.visible = False
+    plot1b_h5_selector_denominator.visible = False
+    def on_enable_plot1b(attr, old, new):
+        plot1b_h5_selector_numerator.visible = new
+        plot1b_h5_selector_denominator.visible = new
+    enable_plot1b_toggle.on_change("active", on_enable_plot1b)
+
+    # Optional Plot2B controls
+    enable_plot2b_toggle = Toggle(label="Enable Plot2B (duplicate probe)", active=False, width=250)
+    plot2b_h5_selector = Select(
+        title="Plot2B Dataset (3D/4D):",
+        value=default_plot2,
+        options=plot2_h5_choices if plot2_h5_choices else ["No 3D/4D datasets"],
+        width=300
+    )
+    plot2b_h5_selector.visible = False
+    def on_enable_plot2b(attr, old, new):
+        plot2b_h5_selector.visible = new
+    enable_plot2b_toggle.on_change("active", on_enable_plot2b)
+
+    plot2_h5_selector = Select(
+        title="Plot2 Dataset (3D/4D):",
+        value=default_plot2,
+        options=plot2_h5_choices if plot2_h5_choices else ["No 3D/4D datasets"],
+        width=300
+    )
+    
+    # Create coordinate selectors (optional) - all populated with 1D datasets
+    map_x_coords_selector = Select(
+        title="Map X Coordinates (1D):",
+        value=default_map_x,
+        options=["Use Default"] + coord_choices,
+        width=300
+    )
+    
+    map_y_coords_selector = Select(
+        title="Map Y Coordinates (1D):",
+        value=default_map_y,
+        options=["Use Default"] + coord_choices,
+        width=300
+    )
+    
+    probe_x_coords_selector = Select(
+        title="Probe X Coordinates (1D):",
+        value="Use Default",
+        options=["Use Default"] + coord_choices,
+        width=300
+    )
+    
+    probe_y_coords_selector = Select(
+        title="Probe Y Coordinates (1D):",
+        value="Use Default",
+        options=["Use Default"] + coord_choices,
+        width=300
+    )
+    
+    
+    # Create placeholder plots that will be populated after user selection
+    plot1_placeholder = Div(text="<h3>Plot1: Select a 2D dataset above and click 'Initialize Plots'</h3>", width=400, height=300)
+    plot2_placeholder = Div(text="<h3>Plot2: Select a 3D/4D dataset above and click 'Initialize Plots'</h3>", width=400, height=300)
+    plot3_placeholder = Div(text="<h3>Plot3: Will be created after plot initialization</h3>", width=400, height=300)
+   
+    # Create a button to initialize plots after selection
+    initialize_plots_button = Button(label="Initialize Plots", button_type="primary")
+   
+    # Helper function to extract dataset path from selection (removes shape info)
+    def extract_dataset_path(selection_with_shape):
+        """Extract just the dataset path from 'path shape' format."""
+        if selection_with_shape in ["No 2D datasets", "No 3D/4D datasets", "Use Default"]:
+            return selection_with_shape
+        
+        # Find the last occurrence of ' (' to separate path from shape
+        # Shape format is like: "path (shape1, shape2, shape3, shape4)"
+        last_paren = selection_with_shape.rfind(' (')
+        if last_paren != -1:
+            return selection_with_shape[:last_paren]
+        else:
+            # Fallback: if no shape found, return as-is
+            return selection_with_shape
+
+    def initialize_plots_callback(process_4dnexus):
+        """Callback for when user clicks 'Initialize Plots' button."""
+        print("Initializing plots with selected datasets...")
+        
+        # Get the selected datasets
+        plot2_selection = plot2_h5_selector.value
+        plot2_path = extract_dataset_path(plot2_selection)
+        
+        if plot2_path == "No 3D/4D datasets":
+            print("Please select valid datasets before initializing plots")
+            return
+        else:
+            process_4dnexus.volume_picked = plot2_path
+
+        try:
+            # Determine Plot1 selection based on mode
+            if plot1_mode_selector.active == 0:  # Single dataset mode
+                plot1_selection = plot1_h5_selector.value
+                plot1_path = extract_dataset_path(plot1_selection)
+                if plot1_path == "No 2D datasets":
+                    print("Please select valid datasets before initializing plots")
+                    return
+                print(f"Plot1 mode: Single dataset - {plot1_path}")
+                # Set single dataset
+                
+                process_4dnexus.presample_picked = None  # No ratio calculation
+                process_4dnexus.postsample_picked = None
+            else:  # Ratio mode
+                numerator_selection = plot1_h5_selector_numerator.value
+                denominator_selection = plot1_h5_selector_denominator.value
+                numerator_path = extract_dataset_path(numerator_selection)
+                denominator_path = extract_dataset_path(denominator_selection)
+                if numerator_path == "No 2D datasets" or denominator_path == "No 2D datasets":
+                    print("Please select valid datasets for numerator and denominator")
+                    return
+                print(f"Plot1 mode: Ratio - {numerator_path} / {denominator_path}")
+                # Set ratio datasets
+                process_4dnexus.presample_picked = numerator_path
+                process_4dnexus.postsample_picked = denominator_path
+            
+            # Optional Plot1B (ratio-only duplicate)
+            if enable_plot1b_toggle.active:
+                numerator_b_selection = plot1b_h5_selector_numerator.value
+                denominator_b_selection = plot1b_h5_selector_denominator.value
+                numerator_b_path = extract_dataset_path(numerator_b_selection)
+                denominator_b_path = extract_dataset_path(denominator_b_selection)
+                if numerator_b_path != "No 2D datasets" and denominator_b_path != "No 2D datasets":
+                    process_4dnexus.presample_picked_b = numerator_b_path
+                    process_4dnexus.postsample_picked_b = denominator_b_path
+                    print(f"  Plot1B: {numerator_b_path} / {denominator_b_path}")
+                else:
+                    process_4dnexus.presample_picked_b = None
+                    process_4dnexus.postsample_picked_b = None
+            else:
+                process_4dnexus.presample_picked_b = None
+                process_4dnexus.postsample_picked_b = None
+
+            # Set coordinate datasets based on user selection
+            map_x_coords_selection = map_x_coords_selector.value
+            map_y_coords_selection = map_y_coords_selector.value
+            probe_x_coords_selection = probe_x_coords_selector.value
+            probe_y_coords_selection = probe_y_coords_selector.value
+            
+            map_x_coords = extract_dataset_path(map_x_coords_selection)
+            map_y_coords = extract_dataset_path(map_y_coords_selection)
+            probe_x_coords = extract_dataset_path(probe_x_coords_selection)
+            probe_y_coords = extract_dataset_path(probe_y_coords_selection)
+            
+            # Set map coordinates
+            if map_x_coords != "Use Default":
+                process_4dnexus.x_coords_picked = map_x_coords
+            else:
+                process_4dnexus.x_coords_picked = "map_mi_sic_0p33mm_002/data/samx"
+                
+            if map_y_coords != "Use Default":
+                process_4dnexus.y_coords_picked = map_y_coords
+            else:
+                process_4dnexus.y_coords_picked = "map_mi_sic_0p33mm_002/data/samz"
+            
+            # Store probe coordinates for later use (if needed)
+            process_4dnexus.probe_x_coords_picked = probe_x_coords if probe_x_coords != "Use Default" else None
+            process_4dnexus.probe_y_coords_picked = probe_y_coords if probe_y_coords != "Use Default" else None
+            
+            # Optional Plot2B (duplicate volume)
+            if enable_plot2b_toggle.active:
+                plot2b_selection = plot2b_h5_selector.value
+                plot2b_path = extract_dataset_path(plot2b_selection)
+                if plot2b_path != "No 3D/4D datasets":
+                    process_4dnexus.volume_picked_b = plot2b_path
+                    print(f"  Plot2B: {plot2b_path}")
+                else:
+                    process_4dnexus.volume_picked_b = None
+            else:
+                process_4dnexus.volume_picked_b = None
+
+            print(f"Successfully initialized plots with:")
+            if plot1_mode_selector.active == 0:
+                print(f"  Plot1: {plot1_path} (single dataset)")
+            else:
+                print(f"  Plot1: {numerator_path} / {denominator_path} (ratio)")
+            print(f"  Plot2: {plot2_path}")
+            print(f"  Map X coords: {map_x_coords}")
+            print(f"  Map Y coords: {map_y_coords}")
+            print(f"  Probe X coords: {probe_x_coords}")
+            print(f"  Probe Y coords: {probe_y_coords}")
+            
+            # Immediately show a lightweight loading view, then build dashboard next tick
+            from bokeh.io import curdoc as _curdoc
+            loading = column(Div(text="<h3>Loading full dashboard...</h3>"))
+            _curdoc().clear()
+            _curdoc().add_root(loading)
+
+            def _build_and_swap():
+                try:
+                    full_dashboard = create_dashboard(process_4dnexus)
+                    _curdoc().clear()
+                    _curdoc().add_root(full_dashboard)
+                finally:
+                    # After render, kick off background memmap caching
+                    try:
+                        process_4dnexus.create_memmap_cache_background()
+                        if getattr(process_4dnexus, 'volume_picked', None):
+                            process_4dnexus.create_memmap_cache_background_for(process_4dnexus.volume_picked)
+                        if getattr(process_4dnexus, 'volume_picked_b', None):
+                            process_4dnexus.create_memmap_cache_background_for(process_4dnexus.volume_picked_b)
+                    except Exception as e_mem:
+                        print(f"Warning: failed to start background memmap caching: {e_mem}")
+
+            _curdoc().add_next_tick_callback(_build_and_swap)
+            
+        except Exception as e:
+            print(f"Error initializing plots: {e}")
+    
+    # Add callback for mode selector to show/hide appropriate selectors
+    def on_mode_change(attr, old, new):
+        """Show/hide selectors based on mode selection"""
+        if new == 0:  # Single dataset mode
+            plot1_h5_selector.visible = True
+            plot1_h5_selector_numerator.visible = False
+            plot1_h5_selector_denominator.visible = False
+        else:  # Ratio mode
+            plot1_h5_selector.visible = False
+            plot1_h5_selector_numerator.visible = True
+            plot1_h5_selector_denominator.visible = True
+    
+    plot1_mode_selector.on_change("active", on_mode_change)
+    
+    # Set initial visibility
+    on_mode_change("active", 0, 0)  # Initialize with single dataset mode
+    
+    # Add callback for initialize button
+    initialize_plots_button.on_click(lambda: initialize_plots_callback(process_4dnexus))
+    
+        #Set defaults 
+    plot1_h5_selector.visible = False
+    plot1_h5_selector_numerator.visible = True
+    plot1_h5_selector_denominator.visible = True
+
+    return column(
+        css_style,
+        # Dataset selection section
+        Div(text="<h2>4D Dashboard - Dataset Selection</h2>"),
+        
+        # Plot1 mode selection
+        Div(text="<h3>Plot1 Configuration:</h3>"),
+        plot1_mode_selector,
+        Div(text="<br>"),
+        
+        # Plot1 selectors (conditional based on mode)
+        row(
+            column(plot1_h5_selector, width=300, name="single_dataset_selector"),
+            column(plot1_h5_selector_numerator, width=300, name="numerator_selector"),
+            column(plot1_h5_selector_denominator, width=300, name="denominator_selector"),
+            column(plot2_h5_selector, width=300),
+            sizing_mode="stretch_width"
+        ),
+
+        # Optional duplicates
+        Div(text="<h3>Optional Duplicates:</h3>"),
+        row(
+            column(enable_plot1b_toggle, plot1b_h5_selector_numerator, plot1b_h5_selector_denominator, width=320),
+            column(enable_plot2b_toggle, plot2b_h5_selector, width=320),
+        ),
+        
+        # Coordinate selectors
+        Div(text="<h3>Coordinate Configuration (Optional):</h3>"),
+        row(
+            column(map_x_coords_selector, width=300),
+            column(map_y_coords_selector, width=300),
+            column(probe_x_coords_selector, width=300),
+            column(probe_y_coords_selector, width=300),
+            sizing_mode="stretch_width"
+        ),
+        column(initialize_plots_button, width=200),
+        Div(text="<hr>"),
+        
+        # Plot area (placeholders initially)
+        # row(
+        #     column(plot1_placeholder, sizing_mode="stretch_both"),
+        #     column(plot2_placeholder, sizing_mode="stretch_both"),
+        #     column(plot3_placeholder, sizing_mode="stretch_both"),
+		# 		sizing_mode="stretch_both",
+		# 	),
+        row(status_display, sizing_mode="stretch_both"),
+		sizing_mode="stretch_both"
+    )
+
+# //////////////////////////////////////////////////////////////////////////
+def update_1d_plot(volume, x_index, y_index, source2, plot2, process_4dnexus=None):
+    """Update 1D plot for 3D volume datasets"""
+    try:
+        print(f"📊 Updating 1D plot for 3D volume at position ({x_index}, {y_index})")
+        
+        # For 3D volume: volume[x_index, y_index, :] gives us the 1D data
+        if len(volume.shape) == 3:
+            # Extract 1D data slice
+            plot_data_1d = volume[x_index, y_index, :]
+            
+            # Use probe coordinates if available, otherwise use indices
+            if process_4dnexus and hasattr(process_4dnexus, 'probe_x_coords_picked') and process_4dnexus.probe_x_coords_picked:
+                try:
+                    probe_coords = process_4dnexus.load_probe_coordinates()
+                    if probe_coords is not None and len(probe_coords) == len(plot_data_1d):
+                        x_coords_1d = probe_coords
+                        print(f"Using probe coordinates for update: {len(probe_coords)} points")
+                    else:
+                        x_coords_1d = np.arange(len(plot_data_1d))
+                        print(f"Probe coordinates not available for update, using indices")
+                except:
+                    x_coords_1d = np.arange(len(plot_data_1d))
+                    print(f"Failed to load probe coordinates for update, using indices")
+            else:
+                x_coords_1d = np.arange(len(plot_data_1d))
+                print(f"No probe coordinates for update, using indices")
+            
+            # Update the 1D data source
+            source2.data = {
+                'x': x_coords_1d,
+                'y': plot_data_1d
+            }
+            
+            # Update the plot ranges to fit the new data
+            plot2.x_range.start = x_coords_1d.min()
+            plot2.x_range.end = x_coords_1d.max()
+            plot2.y_range.start = plot_data_1d.min()
+            plot2.y_range.end = plot_data_1d.max()
+            
+            print(f"✅ 1D plot updated with {len(plot_data_1d)} points")
+            print(f"   1D data range: {plot_data_1d.min():.3f} to {plot_data_1d.max():.3f}")
+            print(f"   X coordinate range: {x_coords_1d.min():.3f} to {x_coords_1d.max():.3f}")
+            
+        else:
+            print("❌ update_1d_plot called but volume is not 3D")
+            
+    except Exception as e:
+        print(f"❌ Error in update_1d_plot: {str(e)}")
+
+# //////////////////////////////////////////////////////////////////////////
+# Lightweight reusable plot classes to allow multiple instances of map/probe plots
+class MapPlot:
+    def __init__(self, x_coords, y_coords, image_2d, title="Plot1 - Map View"):
+        from bokeh.plotting import figure
+        from bokeh.models import ColumnDataSource
+        import numpy as np
+
+        # Build figure
+        self.figure = figure(
+            title=title,
+            x_range=(float(np.min(x_coords)), float(np.max(x_coords))),
+            y_range=(float(np.min(y_coords)), float(np.max(y_coords))),
+            tools="pan,wheel_zoom,box_zoom,reset,tap",
+        )
+
+        # Populate source
+        self.source = ColumnDataSource(
+            data={
+                "image": [image_2d],
+                "x": [float(np.min(x_coords))],
+                "y": [float(np.min(y_coords))],
+                "dw": [float(np.max(x_coords) - np.min(x_coords))],
+                "dh": [float(np.max(y_coords) - np.min(y_coords))],
+            }
+        )
+
+    def get_components(self):
+        return self.figure, self.source
+
+
+class ProbePlot:
+    def __init__(self, volume, process_4dnexus=None, title_1d="Plot2 - 1D Probe View", title_2d="Plot2 - 2D Probe View"):
+        from bokeh.plotting import figure
+        from bokeh.models import ColumnDataSource
+        import numpy as np
+
+        self.is_3d = len(volume.shape) == 3
+        if self.is_3d:
+            initial_slice_1d = volume[volume.shape[0]//2, volume.shape[1]//2, :]
+            # Try probe coordinates
+            if process_4dnexus and getattr(process_4dnexus, 'probe_x_coords_picked', None):
+                try:
+                    probe_coords = process_4dnexus.load_probe_coordinates()
+                    if probe_coords is not None and len(probe_coords) == len(initial_slice_1d):
+                        x_coords_1d = probe_coords
+                        x_label = f"Probe Coordinate ({process_4dnexus.probe_x_coords_picked.split('/')[-1]})"
+                    else:
+                        x_coords_1d = np.arange(len(initial_slice_1d))
+                        x_label = "Probe Index"
+                except Exception:
+                    x_coords_1d = np.arange(len(initial_slice_1d))
+                    x_label = "Probe Index"
+            else:
+                x_coords_1d = np.arange(len(initial_slice_1d))
+                x_label = "Probe Index"
+
+            self.figure = figure(
+                title=title_1d,
+                tools="pan,wheel_zoom,box_zoom,reset,tap",
+                x_range=(float(np.min(x_coords_1d)), float(np.max(x_coords_1d))),
+                y_range=(float(np.min(initial_slice_1d)), float(np.max(initial_slice_1d))),
+            )
+            self.figure.xaxis.axis_label = x_label
+            self.figure.yaxis.axis_label = "Intensity"
+            self.source = ColumnDataSource(data={"x": x_coords_1d, "y": initial_slice_1d})
+        else:
+            # 4D: make a 2D image from center slice
+            initial_slice = volume[volume.shape[0]//2, volume.shape[1]//2, :, :]
+            self.figure = figure(
+                title=title_2d,
+                tools="pan,wheel_zoom,box_zoom,reset,tap",
+                x_range=(0, volume.shape[2]),
+                y_range=(0, volume.shape[3]),
+                match_aspect=True,
+            )
+            self.source = ColumnDataSource(
+                data={
+                    "image": [initial_slice],
+                    "x": [0],
+                    "y": [0],
+                    "dw": [volume.shape[2]],
+                    "dh": [volume.shape[3]],
+                }
+            )
+
+    def get_components(self):
+        return self.figure, self.source
+
+
+def create_dashboard(process_4dnexus):
+    global status_display
+    try:
+        t0 = time.time()
+        print("[TIMING] create_dashboard(): start")
+        # Load the data first
+        volume, presample, postsample, x_coords, y_coords, preview = process_4dnexus.load_nexus_data()
+        print(f"[TIMING] after load_nexus_data: {time.time()-t0:.3f}s")
+        
+        print(f"Successfully loaded data:")
+        print(f"  Volume shape: {volume.shape}")
+        print(f"  X coords shape: {x_coords.shape}")
+        print(f"  Y coords shape: {y_coords.shape}")
+        print(f"  Preview shape: {preview.shape}")
+        
+        # Start background memmap cache creation (deferred to after initial render)
+        
+        # Check if volume is 3D (for 1D probe plot) or 4D (for 2D probe plot)
+        is_3d_volume = len(volume.shape) == 3
+        print(f"  Volume dimensionality: {'3D (1D probe plot)' if is_3d_volume else '4D (2D probe plot)'}")
+        
+        # Import additional Bokeh components needed for the full dashboard
+        from bokeh.models import (
+            Slider, Toggle, TapTool, CustomJS, HoverTool, 
+            ColorBar, LinearColorMapper, LogColorMapper, TextInput
+        )
+        from bokeh.transform import linear_cmap
+        import matplotlib.colors as colors
+        t1 = time.time()
+        print(f"[TIMING] after imports: {t1-t0:.3f}s")
+        
+        # Color palettes
+        palettes = [
+            "Viridis256", "Plasma256", "Inferno256", "Magma256", 
+            "Cividis256", "Turbo256", "Greys256", "Blues256"
+        ]
+        
+        # Rectangle class for selection areas
+        class Rectangle:
+            def __init__(self, min_x=0, min_y=0, max_x=0, max_y=0):
+                self.min_x = min_x
+                self.min_y = min_y
+                self.max_x = max_x
+                self.max_y = max_y
+                self.h1line = None
+                self.h2line = None
+                self.v1line = None
+                self.v2line = None
+
+            def swap_if_needed(self):
+                # For 3D volumes, we don't want to swap min/max automatically
+                # because we're setting them independently (min via shift+click, max via ctrl+click/double-click)
+                # Only swap for 4D volumes where we have proper rectangle selection
+                if not is_3d_volume:
+                    if self.min_x > self.max_x:
+                        self.min_x, self.max_x = self.max_x, self.min_x
+                    if self.min_y > self.max_y:
+                        self.min_y, self.max_y = self.max_y, self.min_y
+
+            def set(self, min_x=None, min_y=None, max_x=None, max_y=None):
+                if min_x != None:
+                    self.min_x = min_x
+                if min_y != None:
+                    self.min_y = min_y
+                if max_x != None:
+                    self.max_x = max_x
+                if max_y != None:
+                    self.max_y = max_y
+                self.swap_if_needed()
+
+            # Initialize rectangles for selection areas
+        rect1 = Rectangle(0, 0, volume.shape[0] - 1, volume.shape[1] - 1)  # X,Y
+        if is_3d_volume:
+            # For 3D volume: rect2 represents the 1D probe dimension
+            rect2 = Rectangle(0, 0, volume.shape[2] - 1, volume.shape[2] - 1)  # 1D probe
+        else:
+            # For 4D volume: rect2 represents Z,Y dimensions
+            rect2 = Rectangle(0, 0, volume.shape[2] - 1, volume.shape[3] - 1)  # Z,Y
+        rect3 = Rectangle(0, 0, volume.shape[0] - 1, volume.shape[1] - 1)  # X,Y
+
+        # Set probe positions to middle of the data range
+        x_index = volume.shape[0] // 2
+        y_index = volume.shape[1] // 2
+
+        # Create tick arrays for axis labels
+        dx, dy = 15, 15
+        x_ticks, my_xticks = [], []
+        for i in range(0, len(x_coords), dx):
+            x_ticks.append(x_coords[i])
+            my_xticks.append(f"{x_coords[i]:.1f}")
+
+        y_ticks, my_yticks = [], []
+        for i in range(0, len(y_coords), dy):
+            y_ticks.append(y_coords[i])
+            my_yticks.append(f"{y_coords[i]:.1f}")
+
+        # Create Plot1 (Map view) using reusable class
+        map_plot = MapPlot(x_coords, y_coords, preview, title="Plot1 - Map View")
+        plot1, source1 = map_plot.get_components()
+        plot1.xaxis.ticker = x_ticks
+        plot1.yaxis.ticker = y_ticks
+        plot1.xaxis.major_label_overrides = dict(zip(x_ticks, my_xticks))
+        plot1.yaxis.major_label_overrides = dict(zip(y_ticks, my_yticks))
+        plot1.xaxis.axis_label = "X Position"
+        plot1.yaxis.axis_label = "Y Position"
+        print(f"[TIMING] plot1 built: {time.time()-t0:.3f}s")
+
+        # Create Plot2 (Probe view) - show actual volume slice
+        # Create Plot2 (Probe view) using reusable class
+        probe_plot = ProbePlot(volume, process_4dnexus)
+        plot2, source2 = probe_plot.get_components()
+        # Capture initial slices for defaults and overlays
+        initial_slice = None
+        initial_slice_1d = None
+        if not is_3d_volume:
+            try:
+                if isinstance(source2.data, dict) and 'image' in source2.data and len(source2.data['image']) > 0:
+                    initial_slice = source2.data['image'][0]
+            except Exception:
+                initial_slice = None
+        else:
+            try:
+                if isinstance(source2.data, dict) and 'y' in source2.data and len(source2.data['y']) > 0:
+                    import numpy as _np
+                    initial_slice_1d = _np.asarray(source2.data['y'])
+            except Exception:
+                initial_slice_1d = None
+        if len(volume.shape) == 3:
+            range_overlay_source = ColumnDataSource(data={"x": [], "y": [], "width": [], "height": []})
+        print(f"[TIMING] plot2 built: {time.time()-t0:.3f}s")
+
+        # Create Plot3 (Additional view) - works for both 3D and 4D volumes
+        plot3 = figure(
+            title="Plot3 - Additional View",
+            tools="pan,wheel_zoom,box_zoom,reset,tap",
+            x_range=(x_coords.min(), x_coords.max()),
+            y_range=(y_coords.min(), y_coords.max()),
+        )
+
+        plot3.x_range.start = x_coords.min()
+        plot3.x_range.end = x_coords.max()
+        plot3.y_range.start = y_coords.min()
+        plot3.y_range.end = y_coords.max()
+        plot3.xaxis.ticker = x_ticks
+        plot3.yaxis.ticker = y_ticks
+        plot3.xaxis.major_label_overrides = dict(zip(x_ticks, my_xticks))
+        plot3.yaxis.major_label_overrides = dict(zip(y_ticks, my_yticks))
+        plot3.xaxis.axis_label = "X Position"
+        plot3.yaxis.axis_label = "Y Position"
+        print(f"[TIMING] plot3 built: {time.time()-t0:.3f}s")
+
+        # Create an empty source3; Plot3 will be populated on demand via Compute Plot3
+        source3 = ColumnDataSource(
+            data={
+                "image": [],
+                "x": [],
+                "y": [],
+                "dw": [],
+                "dh": [],
+            }
+        )
+        print(f"[TIMING] source3 built: {time.time()-t0:.3f}s")
+
+        # Optionally create Plot1B below Plot1 if specified
+        plot1b = None
+        if getattr(process_4dnexus, 'presample_picked_b', None) and getattr(process_4dnexus, 'postsample_picked_b', None):
+            try:
+                presample_b = process_4dnexus.load_dataset_by_path(process_4dnexus.presample_picked_b)
+                postsample_b = process_4dnexus.load_dataset_by_path(process_4dnexus.postsample_picked_b)
+                if presample_b is not None and postsample_b is not None:
+                    epsilon = 1e-10
+                    presample_b = np.where(presample_b == 0, epsilon, presample_b)
+                    postsample_b = np.where(postsample_b == 0, epsilon, postsample_b)
+                    presample_b = presample_b.reshape(len(x_coords), len(y_coords))
+                    postsample_b = postsample_b.reshape(len(x_coords), len(y_coords))
+                    preview_b = presample_b / postsample_b
+                    preview_b = np.nan_to_num(preview_b, nan=0.0, posinf=1.0, neginf=0.0).astype(np.float32)
+                    if np.max(preview_b) > np.min(preview_b):
+                        preview_b = (preview_b - np.min(preview_b)) / (np.max(preview_b) - np.min(preview_b))
+                    map_plot_b = MapPlot(x_coords, y_coords, preview_b, title="Plot1B - Map View")
+                    plot1b, source1b = map_plot_b.get_components()
+                    plot1b.xaxis.ticker = x_ticks
+                    plot1b.yaxis.ticker = y_ticks
+                    plot1b.xaxis.major_label_overrides = dict(zip(x_ticks, my_xticks))
+                    plot1b.yaxis.major_label_overrides = dict(zip(y_ticks, my_yticks))
+                    plot1b.xaxis.axis_label = "X Position"
+                    plot1b.yaxis.axis_label = "Y Position"
+            except Exception as e:
+                print(f"Failed to build Plot1B: {e}")
+
+        print(f"[TIMING] preview b built: {time.time()-t0:.3f}s")
+
+        # Optionally create Plot2B below Plot2 if specified
+        plot2b = None
+        rect2b = None
+        if getattr(process_4dnexus, 'volume_picked_b', None):
+            try:
+                # Use the already-open HDF5 dataset reference when available
+                volume_b = getattr(process_4dnexus, 'volume_dataset_b', None)
+                if volume_b is not None:
+                    probe_plot_b = ProbePlot(volume_b, process_4dnexus, title_1d="Plot2B - 1D Probe View", title_2d="Plot2B - 2D Probe View")
+                    plot2b, source2b = probe_plot_b.get_components()
+                    # Initialize independent selection rectangle for Plot2B
+                    if len(volume_b.shape) == 3:
+                        rect2b = Rectangle(0, 0, volume_b.shape[2] - 1, volume_b.shape[2] - 1)
+                    else:
+                        rect2b = Rectangle(0, 0, volume_b.shape[2] - 1, volume_b.shape[3] - 1)
+                else:
+                    print("WARNING: volume_dataset_b not available; skipping Plot2B initial build")
+            except Exception as e:
+                print(f"Failed to build Plot2B: {e}")
+
+        print(f"[TIMING] plot2b built: {time.time()-t0:.3f}s")
+
+        # Color mappers will be created after range variables are defined
+
+        def create_colorbar(color_mapper, title):
+            return ColorBar(
+                color_mapper=color_mapper,
+                title=title,
+                title_text_font_size="12px",
+                title_text_align="center",
+                title_standoff=10,
+                major_label_text_font_size="10px",
+                major_tick_line_color="black",
+                major_tick_line_width=1,
+                minor_tick_line_color="black",
+                minor_tick_line_width=1,
+                bar_line_color="black",
+                bar_line_width=1,
+                location=(0, 0),
+                orientation="horizontal",
+            )
+
+        # Image renderers and colorbars will be created after color mappers are defined
+
+        # Create sliders
+        x_min = x_coords.min()
+        x_max = x_coords.max()
+        x_start = min(x_min, x_max)
+        x_end = max(x_min, x_max)
+        x_value = x_start + (x_end - x_start) / 2
+        x_slider = Slider(
+            title="X", start=x_start, end=x_end, value=x_value, step=0.01, width=400
+        )
+
+        y_min = y_coords.min()
+        y_max = y_coords.max()
+        y_start = min(y_min, y_max)
+        y_end = max(y_min, y_max)
+        y_value = y_start + (y_end - y_start) / 2
+        y_slider = Slider(
+            title="Y", start=y_start, end=y_end, value=y_value, step=0.01, width=400
+        )
+
+            # Create color scale selectors
+        map1_color_scale_selector = RadioButtonGroup(
+            labels=["Linear", "Log"], active=0, width=200
+        )
+        map2_color_scale_selector = RadioButtonGroup(
+            labels=["Linear", "Log"], active=0, width=200
+        )
+
+        # Create palette selector
+        palette_selector = Select(
+            title="Color Palette:", value="Viridis256", options=palettes, width=200
+        )
+
+        # Create color range controls with actual data ranges
+        map_min_val = float(preview.min())
+        map_max_val = float(preview.max())
+        print(f"Map data range: {map_min_val:.3f} to {map_max_val:.3f}")
+        
+        range1_min_input = TextInput(
+            title="Map Range Min:", value=str(map_min_val), width=120
+        )
+        range1_max_input = TextInput(
+            title="Map Range Max:", value=str(map_max_val), width=120
+        )
+
+        print(f"[TIMING] other sliders built: {time.time()-t0:.3f}s")
+
+        # Create range inputs for Plot2 based on volume dimensionality
+        if is_3d_volume:
+            # For 1D plots, use the initial 1D slice data
+            range2_min_input = TextInput(
+                title="Probe Range Min:", value=str(np.min(initial_slice_1d)), width=120
+            )
+            range2_max_input = TextInput(
+                title="Probe Range Max:", value=str(np.max(initial_slice_1d)), width=120
+            )
+        else:
+            # For 2D plots, use the initial 2D slice data
+            init_min = str(np.min(initial_slice)) if initial_slice is not None else "0"
+            init_max = str(np.max(initial_slice)) if initial_slice is not None else "1"
+            range2_min_input = TextInput(title="Probe Range Min:", value=init_min, width=120)
+            range2_max_input = TextInput(title="Probe Range Max:", value=init_max, width=120)
+
+        print(f"[TIMING] range 2 min/max built: {time.time()-t0:.3f}s")
+
+        # If Plot2B is a 2D probe, add its own range inputs
+        range2b_min_input = None
+        range2b_max_input = None
+        if 'plot2b' in locals() and plot2b is not None and 'source2b' in locals() and isinstance(source2b.data, dict) and 'image' in source2b.data:
+            try:
+                img_b = source2b.data["image"][0]
+                range2b_min_input = TextInput(
+                    title="Probe2B Range Min:", value=str(float(np.min(img_b))), width=120
+                )
+                range2b_max_input = TextInput(
+                    title="Probe2B Range Max:", value=str(float(np.max(img_b))), width=120
+                )
+            except Exception:
+                pass
+
+        print(f"[TIMING] range 2b min/max built: {time.time()-t0:.3f}s")
+
+        # Create range inputs for Plot3 (summed data)
+        # Initialize with zeros since Plot3 starts empty
+        range3_min_input = TextInput(
+            title="Plot3 Range Min:", value="0", width=120
+        )
+        range3_max_input = TextInput(
+            title="Plot3 Range Max:", value="100", width=120
+        )
+
+        # Create color mappers with actual data ranges (independent per plot)
+        color_mapper1a = LinearColorMapper(
+            palette="Viridis256", low=map_min_val, high=map_max_val
+        )
+        
+        # Create color mapper for Plot2 (only for 2D plots)
+        if is_3d_volume:
+            # For 1D plots, we don't need a color mapper
+            color_mapper2a = None
+        else:
+            # For 2D plots, create color mapper based on initial slice
+            color_mapper2a = LinearColorMapper(
+                palette="Viridis256", low=np.min(initial_slice), high=np.max(initial_slice)
+            )
+            
+        # Create color mapper for Plot3 (works for both 3D and 4D volumes)
+        color_mapper3 = LinearColorMapper(palette="Viridis256", low=1, high=100)
+
+        # Create colorbars
+        colorbar1 = create_colorbar(color_mapper1a, "Plot1 Intensity")
+        
+        # Only create colorbar for Plot2 if it's a 2D plot
+        if is_3d_volume:
+            colorbar2 = None  # No colorbar for 1D plots
+        else:
+            colorbar2 = create_colorbar(color_mapper2a, "Plot2 Intensity")
+            
+        # Create colorbar for Plot3 (works for both 3D and 4D volumes)
+        colorbar3 = create_colorbar(color_mapper3, "Plot3 Intensity")
+
+        print(f"[TIMING] colorbars built: {time.time()-t0:.3f}s")
+
+        # Add image renderers
+        image_renderer1 = plot1.image(
+            "image", source=source1, x="x", y="y", dw="dw", dh="dh", color_mapper=color_mapper1a,
+        )
+        
+        # Add renderer for Plot2 (either line or image depending on volume dimensionality)
+        if is_3d_volume:
+            # For 3D volume: create line renderer
+            line_renderer2 = plot2.line(
+                "x", "y", source=source2, line_width=2, line_color="blue"
+            )
+            image_renderer2 = None  # No image renderer for 1D plots
+            
+            # Add range overlay renderer for 3D volumes
+            range_overlay_renderer = plot2.vbar(
+                x="x", top="height", width="width", source=range_overlay_source,
+                fill_color="red", fill_alpha=0.3, line_color="red", line_alpha=0.8
+            )
+        else:
+            # For 4D volume: create image renderer
+            image_renderer2 = plot2.image(
+                "image", source=source2, x="x", y="y", dw="dw", dh="dh", color_mapper=color_mapper2a,
+            )
+            line_renderer2 = None  # No line renderer for 2D plots
+            range_overlay_renderer = None  # No range overlay for 2D plots
+            
+        # If Plot1B exists, add its image renderer using same color mapper as Plot1
+        image_renderer1b = None
+        color_mapper1b = None
+        if 'plot1b' in locals() and plot1b is not None:
+            # Initialize Plot1B mapper with its own data range
+            try:
+                img1b = source1b.data["image"][0]
+                cm_low = float(np.min(img1b[img1b > 0])) if np.any(img1b > 0) else float(np.min(img1b))
+                cm_high = float(np.max(img1b))
+            except Exception:
+                cm_low, cm_high = map_min_val, map_max_val
+            color_mapper1b = LinearColorMapper(palette=color_mapper1a.palette, low=cm_low, high=cm_high)
+            image_renderer1b = plot1b.image(
+                "image", source=source1b, x="x", y="y", dw="dw", dh="dh", color_mapper=color_mapper1b,
+            )
+
+        # If Plot2B exists, add appropriate renderer (line for 3D, image for 4D)
+        image_renderer2b = None
+        line_renderer2b = None
+        color_mapper2b = None
+        plot2b_is_2d = False
+        if 'plot2b' in locals() and plot2b is not None and 'source2b' in locals():
+            # Determine Plot2B dimensionality and prepare overlay source only if Plot2B is 3D
+            plot2b_is_2d = isinstance(source2b.data, dict) and 'image' in source2b.data
+            range_overlay_source_b = ColumnDataSource(data={"x": [], "y": [], "width": [], "height": []}) if not plot2b_is_2d else None
+            if plot2b_is_2d:
+                # 4D dataset → 2D image
+                try:
+                    img2b = source2b.data["image"][0]
+                    cm2_low = float(np.min(img2b[img2b > 0])) if np.any(img2b > 0) else float(np.min(img2b))
+                    cm2_high = float(np.max(img2b))
+                except Exception:
+                    cm2_low, cm2_high = (float(np.min(initial_slice)) if not is_3d_volume else 0.0,
+                                         float(np.max(initial_slice)) if not is_3d_volume else 1.0)
+                color_mapper2b = LinearColorMapper(palette=(color_mapper2a.palette if color_mapper2a is not None else "Viridis256"), low=cm2_low, high=cm2_high)
+                image_renderer2b = plot2b.image("image", source=source2b, x="x", y="y", dw="dw", dh="dh", color_mapper=color_mapper2b)
+            else:
+                # 3D dataset → 1D line
+                line_renderer2b = plot2b.line("x", "y", source=source2b, line_width=2, line_color="green")
+                # Add independent range overlay for Plot2B (3D)
+                if range_overlay_source_b is not None:
+                    range_overlay_renderer_b = plot2b.vbar(
+                        x="x", top="height", width="width", source=range_overlay_source_b,
+                        fill_color="green", fill_alpha=0.25, line_color="green", line_alpha=0.7
+                    )
+
+        # Add renderer for Plot3 (works for both 3D and 4D volumes)
+        image_renderer3 = plot3.image(
+            "image", source=source3, x="x", y="y", dw="dw", dh="dh", color_mapper=color_mapper3,
+        )
+        print(f"[TIMING] renderers added: {time.time()-t0:.3f}s")
+
+        # Create buttons
+        reset_ranges_button = Button(
+            label="Reset Range Values",
+            button_type="primary",
+            width=200,
+        )
+            
+        compute_plot3_image_button = Button(label="Show Plot3 from Plot2a ->", button_type="success")
+        plot3_status_div_a = Div(text="", width=220)
+        compute_plot2_image_button = Button(label="<- Compute Plot2a", button_type="success")
+        plot2_status_div = Div(text="", width=220)
+        # Buttons and status for Plot2B
+        compute_plot2b_image_button = Button(label="<- Compute Plot2b", button_type="success")
+        plot2b_status_div = Div(text="", width=220)
+        # Plot2B-specific trigger to compute Plot3 using rect2b
+        compute_plot3_from_plot2b_button = Button(label="Show Plot3 from Plot2b ->", button_type="success")
+        plot3_status_div_b = Div(text="", width=220)
+        back_to_selection_button = Button(label="Back to Dataset Selection", button_type="warning", width=200)
+
+        # Prepare reset buttons for Plot2A and Plot2B
+
+        # Reset buttons for Plot2A and Plot2B
+        reset_plot2a_button = Button(label="Reset Plot2a", button_type="warning")
+        reset_plot2b_button = Button(label="Reset Plot2b", button_type="warning")
+
+        # Create status display with instructions
+        if is_3d_volume:
+            status_text = f"""
+            <h3>3D Data Explorer Dashboard</h3>
+            <p><b>Instructions for 3D volumes:</b></p>
+            <ul>
+                <li><b>Plot1:</b> 2D map view - click to select position</li>
+                <li><b>Plot2:</b> 1D probe data - <b>Shift+click</b> to set z_min, <b>Ctrl/Cmd+click</b> or <b>double-click</b> to set z_max</li>
+                <li><b>Plot3:</b> Summed data over selected z range - click "Show Plot3 ->" after selecting range</li>
+            </ul>
+            <p>Ready to explore data...</p>
+            """
+        else:
+            status_text = f"""
+            <h3>4D Data Explorer Dashboard</h3>
+            <p><b>Instructions for 4D volumes:</b></p>
+            <ul>
+                <li><b>Plot1:</b> 2D map view - click to select position</li>
+                <li><b>Plot2:</b> 2D probe data - <b>Shift+click</b> to set min corner, <b>Ctrl+click</b> to set max corner</li>
+                <li><b>Plot3:</b> Summed data over selected region - click "Show Plot3 ->" after selecting region</li>
+            </ul>
+            <p>Ready to explore data...</p>
+            """
+        
+        status_div = Div(
+            text=status_text,
+            width=800,
+        )
+        
+        # Create z-range display for 3D volumes
+        if is_3d_volume:
+            z_range_display = Div(
+                text="<b>Z Range Selection:</b><br>z_min: 0, z_max: 0<br><small>Shift+click in Plot2 to set z_min, Ctrl/Cmd+click or double-click to set z_max</small>",
+                width=300,
+                styles={'background-color': '#f0f0f0', 'padding': '10px', 'border': '1px solid #ccc', 'border-radius': '5px'}
+            )
+        else:
+            z_range_display = None
+
+            # Configure plots
+        plot1.match_aspect = True
+        plot1.sizing_mode = "fixed"
+        plot1.add_layout(colorbar1, "below")
+        # Add a colorbar for Plot1B if present (shares title but independent range)
+        if image_renderer1b is not None:
+            colorbar1b = create_colorbar(color_mapper1b, "Plot1B Intensity")
+            plot1b.match_aspect = True
+            plot1b.sizing_mode = "fixed"
+            plot1b.add_layout(colorbar1b, "below")
+        plot2.match_aspect = True  # Restore 1:1 squares
+        plot2.sizing_mode = "fixed"
+        
+        # Only add colorbar to Plot2 if it's a 2D plot
+        if not is_3d_volume and colorbar2 is not None:
+            plot2.add_layout(colorbar2, "below")
+            if image_renderer2b is not None and plot2b_is_2d:
+                colorbar2b = create_colorbar(color_mapper2b, "Plot2B Intensity")
+                plot2b.match_aspect = True
+                plot2b.sizing_mode = "fixed"
+                plot2b.add_layout(colorbar2b, "below")
+            
+        # Configure Plot3 (works for both 3D and 4D volumes)
+        plot3.match_aspect = True
+        plot3.sizing_mode = "fixed"
+        plot3.add_layout(colorbar3, "below")
+
+        # Add callback functions
+        def get_x_index(x_coord=None):
+            if x_coord is None:
+                x_coord = x_slider.value
+            return np.argmin(np.abs(x_coords - x_coord))
+        
+        def get_y_index(y_coord=None):
+            if y_coord is None:
+                y_coord = y_slider.value
+            return np.argmin(np.abs(y_coords - y_coord))
+        
+        def clear_rect(p, r):
+            """Clear existing rectangle lines from the plot"""
+            if hasattr(r, 'h1line') and r.h1line is not None:
+                try:
+                    p.renderers.remove(r.h1line)
+                except ValueError:
+                    pass  # Line not in renderers list
+            if hasattr(r, 'h2line') and r.h2line is not None:
+                try:
+                    p.renderers.remove(r.h2line)
+                except ValueError:
+                    pass  # Line not in renderers list
+            if hasattr(r, 'v1line') and r.v1line is not None:
+                try:
+                    p.renderers.remove(r.v1line)
+                except ValueError:
+                    pass  # Line not in renderers list
+            if hasattr(r, 'v2line') and r.v2line is not None:
+                try:
+                    p.renderers.remove(r.v2line)
+                except ValueError:
+                    pass  # Line not in renderers list
+        
+        def draw_rect(p, r, x1, x2, y1, y2, line_color="yellow", line_width=2):
+            # Clear existing rectangle first
+            clear_rect(p, r)
+            
+            # Draw new rectangle
+            r.h1line = p.line(
+                x=[x1, x2], y=[y1, y1], line_color=line_color, line_width=line_width
+            )
+            r.h2line = p.line(
+                x=[x1, x2], y=[y2, y2], line_color=line_color, line_width=line_width
+            )
+            r.v1line = p.line(
+                x=[x1, x1], y=[y1, y2], line_color=line_color, line_width=line_width
+            )
+            r.v2line = p.line(
+                x=[x2, x2], y=[y1, y2], line_color=line_color, line_width=line_width
+            )
+        
+        def draw_cross1():
+            x_index = get_x_index()
+            x_coord = x_coords[x_index]
+            y_index = get_y_index()
+            y_coord = y_coords[y_index]
+
+            rect1.h1line.data_source.data = {
+                "x": [x_coords.min(), x_coords.max()],
+                "y": [y_coord, y_coord],
+            }
+            rect1.h2line.data_source.data = {
+                "x": [x_coords.min(), x_coords.max()],
+                "y": [y_coord, y_coord],
+            }
+            rect1.v1line.data_source.data = {
+                "x": [x_coord, x_coord],
+                "y": [y_coords.min(), y_coords.max()],
+            }
+            rect1.v2line.data_source.data = {
+                "x": [x_coord, x_coord],
+                "y": [y_coords.min(), y_coords.max()],
+            }
+        
+        def set_colormap_range(plot, colorbar, color_mapper, min_val, max_val):
+            color_mapper.low = min_val
+            color_mapper.high = max_val
+            if hasattr(plot, 'renderers') and len(plot.renderers) > 0:
+                plot.renderers[0].glyph.color_mapper = color_mapper
+        
+        def show_slice():
+            x_index = get_x_index()
+            y_index = get_y_index()
+            
+            # Update Plot2 with new slice
+            if is_3d_volume:
+                # For 3D volume: update 1D line plot
+                update_1d_plot(volume, x_index, y_index, source2, plot2, process_4dnexus)
+            else:
+                # For 4D volume: update 2D image plot
+                new_slice = volume[x_index, y_index, :, :]
+                source2.data = {
+                    "image": [new_slice],
+                    "x": [0],
+                    "y": [0],
+                    "dw": [volume.shape[2]],
+                    "dh": [volume.shape[3]],
+                }
+            
+            # Update crosshairs
+            draw_cross1()
+        
+        def on_plot1_tap(event):
+            x_index = get_x_index(event.x)
+            y_index = get_y_index(event.y)
+            
+            if event.modifiers.get("shift", False):
+                rect1.set(min_x=x_index, min_y=y_index)
+                print(f"on_plot1_tap rect1={rect1} (shift pressed)")
+                schedule_show_slice()
+            elif event.modifiers.get("ctrl", False) or event.modifiers.get('meta',False) or event.modifiers.get('cmd',False):
+                rect1.set(max_x=x_index, max_y=y_index)
+                print(f"on_plot1_tap rect1={rect1} (ctrl pressed)")
+                schedule_show_slice()
+            elif event.modifiers.get("alt", False):
+                rect1.set(
+                    min_x=0, max_x=volume.shape[0] - 1, min_y=0, max_y=volume.shape[1] - 1
+                )
+                print(f"on_plot1_tap rect1={rect1} (alt pressed)")
+                schedule_show_slice()
+            else:
+                # Clear existing rectangle and set new position
+                clear_rect(plot1, rect1)
+                rect1.set(min_x=x_index, min_y=y_index, max_x=x_index, max_y=y_index)
+                draw_rect(plot1, rect1, x_index, x_index, y_index, y_index)
+                
+                x_slider.value = x_coords[x_index]
+                y_slider.value = y_coords[y_index]
+                print(f"on_plot1_tap x_index={x_index}/{x_slider.value} y_index={y_index}/{y_slider.value}")
+        
+        def on_plot2_tap(event):
+            if is_3d_volume:
+                # For 3D volumes: Plot2 is a 1D line plot, only use x-coordinate
+                # Convert from plot coordinates to data indices
+                if hasattr(process_4dnexus, 'probe_x_coords_picked') and process_4dnexus.probe_x_coords_picked:
+                    try:
+                        probe_coords = process_4dnexus.load_probe_coordinates()
+                        if probe_coords is not None:
+                            # Find the closest probe coordinate index
+                            z_index = np.argmin(np.abs(probe_coords - event.x))
+                            print(f"on_plot2_tap: plot_x={event.x:.3f}, closest probe_coord={probe_coords[z_index]:.3f}, z_index={z_index}")
+                        else:
+                            z_index = int(event.x)
+                            print(f"on_plot2_tap: no probe coords, using plot_x={event.x:.3f}, z_index={z_index}")
+                    except:
+                        z_index = int(event.x)
+                        print(f"on_plot2_tap: failed to load probe coords, using plot_x={event.x:.3f}, z_index={z_index}")
+                else:
+                    z_index = int(event.x)
+                    print(f"on_plot2_tap: no probe coords specified, using plot_x={event.x:.3f}, z_index={z_index}")
+                
+                print(f"DEBUG: Event modifiers: {event.modifiers}")
+                print(f"DEBUG: ctrl={event.modifiers.get('ctrl', False)}, meta={event.modifiers.get('meta', False)}, cmd={event.modifiers.get('cmd', False)}")
+                print(f"DEBUG: shift={event.modifiers.get('shift', False)}")
+                
+                # Check for Ctrl/Cmd/Meta keys (try different approaches)
+                has_ctrl = (event.modifiers.get("ctrl", False) or 
+                           event.modifiers.get('meta', False) or 
+                           event.modifiers.get('cmd', False) or
+                           'ctrl' in str(event.modifiers).lower() or
+                           'meta' in str(event.modifiers).lower() or
+                           'cmd' in str(event.modifiers).lower())
+                
+                if event.modifiers.get("shift", False):
+                    # Shift+click: Set min value only
+                    rect2.set(min_x=z_index, min_y=z_index)  # Use z_index for both min_x and min_y
+                    print(f"on_plot2_tap rect2={rect2} (shift pressed) - 3D volume, z_index={z_index}")
+                    draw_rect2()
+                    update_z_range_display()
+                    update_range_overlay()
+                elif has_ctrl:
+                    # Ctrl/Cmd+click: Set max value only
+                    print(f"DEBUG: Ctrl/Cmd+click detected, setting max_x={z_index}")
+                    print(f"DEBUG: Before rect2.set, rect2.min_x={rect2.min_x}, rect2.max_x={rect2.max_x}")
+                    rect2.set(max_x=z_index, max_y=z_index)  # Use z_index for both max_x and max_y
+                    print(f"DEBUG: After rect2.set, rect2.min_x={rect2.min_x}, rect2.max_x={rect2.max_x}")
+                    print(f"on_plot2_tap rect2={rect2} (ctrl/cmd pressed) - 3D volume, z_index={z_index}")
+                    draw_rect2()
+                    update_z_range_display()
+                    update_range_overlay()
+                else:
+                    # Regular click: Clear any old rect lines and update overlay only
+                    clear_rect(plot2, rect2)
+                    rect2.set(min_x=z_index, min_y=z_index, max_x=z_index, max_y=z_index)
+                    print(f"on_plot2_tap z_index={z_index} - 3D volume")
+                    update_z_range_display()
+                    update_range_overlay()
+            else:
+                # For 4D volumes: Plot2 is a 2D image plot, use both x and y coordinates
+                print(f"DEBUG: 4D volume tap - x={event.x}, y={event.y}")
+                print(f"DEBUG: Event modifiers: {event.modifiers}")
+                print(f"DEBUG: shift={event.modifiers.get('shift', False)}, ctrl={event.modifiers.get('ctrl', False)}")
+                
+                if event.modifiers.get("shift", False):
+                    # Shift+click: Set min values only
+                    print(f"DEBUG: Shift+click detected for 4D volume, setting min_x={int(event.x)}, min_y={int(event.y)}")
+                    rect2.set(min_x=int(event.x), min_y=int(event.y))
+                    print(f"on_plot2_tap rect2={rect2} (shift pressed) - 4D volume")
+                    draw_rect2()
+                elif event.modifiers.get("ctrl", False) or event.modifiers.get('meta',False) or event.modifiers.get('cmd',False):
+                    # Ctrl/Cmd+click: Set max values only
+                    print(f"DEBUG: Ctrl/Cmd+click detected for 4D volume, setting max_x={int(event.x)}, max_y={int(event.y)}")
+                    rect2.set(max_x=int(event.x), max_y=int(event.y))
+                    print(f"on_plot2_tap rect2={rect2} (ctrl/cmd pressed) - 4D volume")
+                    draw_rect2()
+                else:
+                    # Regular click: Clear and set both min and max to same value
+                    print(f"DEBUG: Regular click detected for 4D volume, clearing and setting both min/max")
+                    clear_rect(plot2, rect2)
+                    rect2.set(min_x=int(event.x), min_y=int(event.y), max_x=int(event.x), max_y=int(event.y))
+                    draw_rect(plot2, rect2, int(event.x), int(event.x), int(event.y), int(event.y))
+                    print(f"on_plot2_tap x={event.x} y={event.y} - 4D volume")
+        
+        # Explicit Plot2A wrappers for clarity and independent wiring
+        def on_plot2a_tap(event):
+            return on_plot2_tap(event)
+        
+        def _parse_float_safe(value_str):
+            if value_str is None:
+                return None
+            try:
+                cleaned = re.sub(r"[^0-9eE+\-.]", "", str(value_str))
+                if cleaned == '' or cleaned in ['-', '+', '.', 'e', 'E']:
+                    return None
+                return float(cleaned)
+            except Exception:
+                return None
+
+        def on_range1_input_change():
+            min_val = _parse_float_safe(range1_min_input.value)
+            max_val = _parse_float_safe(range1_max_input.value)
+            if min_val is None or max_val is None:
+                return
+            if min_val >= max_val:
+                return
+            set_colormap_range(plot1, colorbar1, color_mapper1a, min_val, max_val)
+        
+        def on_range2_input_change():
+            min_val = _parse_float_safe(range2_min_input.value)
+            max_val = _parse_float_safe(range2_max_input.value)
+            if min_val is None or max_val is None:
+                return
+            if min_val >= max_val:
+                return
+            set_colormap_range(plot2, colorbar2, color_mapper2a, min_val, max_val)
+        
+        def on_range2b_input_change():
+            # Only apply if Plot2B exists and is a 2D image plot
+            if 'range2b_min_input' not in locals() or range2b_min_input is None:
+                return
+            if 'image_renderer2b' not in locals() or image_renderer2b is None:
+                return
+            if 'color_mapper2b' not in locals() or color_mapper2b is None:
+                return
+            min_val = _parse_float_safe(range2b_min_input.value)
+            max_val = _parse_float_safe(range2b_max_input.value)
+            if min_val is None or max_val is None:
+                return
+            if min_val >= max_val:
+                return
+            # Update Plot2B mapper range
+            try:
+                color_mapper2b.low = min_val
+                color_mapper2b.high = max_val
+                # Keep renderer in sync
+                plot2b.renderers[0].glyph.color_mapper = color_mapper2b
+                # Update colorbar if created
+                if 'colorbar2b' in locals() and colorbar2b is not None:
+                    colorbar2b.color_mapper = color_mapper2b
+            except Exception:
+                pass
+
+        def on_range3_input_change():
+            min_val = _parse_float_safe(range3_min_input.value)
+            max_val = _parse_float_safe(range3_max_input.value)
+            if min_val is None or max_val is None:
+                return
+            if min_val >= max_val:
+                return
+            set_colormap_range(plot3, colorbar3, color_mapper3, min_val, max_val)
+        
+        def on_map1_color_scale_change(attr, old, new):
+            current_data = source1.data["image"][0]
+            if current_data.size > 0:
+                data_min = np.min(current_data[current_data > 0])
+                data_max = np.max(current_data)
+                # Recreate mapper type for both A/B, keep independent ranges by resetting lows/highs after swap
+                new_cls = LogColorMapper if new else LinearColorMapper
+                # Preserve current ranges
+                low1a, high1a = color_mapper1a.low, color_mapper1a.high
+                color_mapper1a = new_cls(palette=color_mapper1a.palette, low=low1a, high=high1a)
+                if len(plot1.renderers) > 0:
+                    plot1.renderers[0].glyph.color_mapper = color_mapper1a
+                if 'plot1b' in locals() and plot1b is not None and image_renderer1b is not None and 'color_mapper1b' in locals() and color_mapper1b is not None:
+                    low1b, high1b = color_mapper1b.low, color_mapper1b.high
+                    color_mapper1b = new_cls(palette=color_mapper1a.palette, low=low1b, high=high1b)
+                    plot1b.renderers[0].glyph.color_mapper = color_mapper1b
+        
+        def on_map2_color_scale_change(attr, old, new):
+            current_data = source2.data["image"][0]
+            if current_data.size > 0:
+                data_min = np.min(current_data[current_data > 0])
+                data_max = np.max(current_data)
+                new_cls = LogColorMapper if new else LinearColorMapper
+                low2a, high2a = (color_mapper2a.low, color_mapper2a.high) if color_mapper2a is not None else (data_min, data_max)
+                if not is_3d_volume:
+                    color_mapper2a = new_cls(palette=color_mapper2a.palette, low=low2a, high=high2a)
+                    if len(plot2.renderers) > 0:
+                        plot2.renderers[0].glyph.color_mapper = color_mapper2a
+                if 'plot2b' in locals() and plot2b is not None and plot2b_is_2d and image_renderer2b is not None and 'color_mapper2b' in locals() and color_mapper2b is not None:
+                    low2b, high2b = color_mapper2b.low, color_mapper2b.high
+                    color_mapper2b = new_cls(palette=(color_mapper2a.palette if color_mapper2a is not None else "Viridis256"), low=low2b, high=high2b)
+                    plot2b.renderers[0].glyph.color_mapper = color_mapper2b
+        
+        def set_palette(value):
+            color_mapper1a.palette = value
+            if 'color_mapper1b' in locals() and color_mapper1b is not None:
+                color_mapper1b.palette = value
+            if not is_3d_volume and color_mapper2a is not None:
+                color_mapper2a.palette = value
+            if 'color_mapper2b' in locals() and color_mapper2b is not None:
+                color_mapper2b.palette = value
+            color_mapper3.palette = value
+        
+        def schedule_show_slice():
+            from bokeh.io import curdoc
+            curdoc().add_next_tick_callback(show_slice)
+        
+        def draw_rect2():
+            if is_3d_volume:
+                # 3D handled via overlay, nothing to draw here
+                pass
+            else:
+                # 4D: draw only on Plot2
+                draw_rect(plot2, rect2, rect2.min_x, rect2.max_x, rect2.min_y, rect2.max_y)
+
+        def draw_rect2b():
+            if 'plot2b' in locals() and plot2b is not None:
+                # Use Plot2B's own dimensionality: draw only if Plot2B is 2D image
+                if 'plot2b_is_2d' in locals() and plot2b_is_2d and 'rect2b' in locals() and rect2b is not None:
+                    draw_rect(plot2b, rect2b, rect2b.min_x, rect2b.max_x, rect2b.min_y, rect2b.max_y)
+            
+        def update_z_range_display():
+            """Update the z-range display for 3D volumes"""
+            if is_3d_volume and z_range_display is not None:
+                z_min = rect2.min_x
+                z_max = rect2.max_x
+                z_range_display.text = f"""
+                <b>Z Range Selection:</b><br>
+                z_min: {z_min}, z_max: {z_max}<br>
+                <small>Shift+click in Plot2 to set z_min, Ctrl/Cmd+click or double-click to set z_max</small>
+                """
+        
+        def update_range_overlay():
+            """Update the range overlay visualization for 3D volumes"""
+            print(f"DEBUG: update_range_overlay called, is_3d_volume={is_3d_volume}, range_overlay_renderer={range_overlay_renderer is not None}")
+            if is_3d_volume and range_overlay_renderer is not None:
+                z_min = rect2.min_x
+                z_max = rect2.max_x
+                print(f"DEBUG: z_min={z_min}, z_max={z_max}")
+                
+                if z_min != z_max:  # Only show overlay if range is selected
+                    # Get current plot ranges
+                    y_min = plot2.y_range.start
+                    y_max = plot2.y_range.end
+                    print(f"DEBUG: Plot ranges - y_min={y_min}, y_max={y_max}")
+                    
+                    # Calculate overlay position and size
+                    if hasattr(process_4dnexus, 'probe_x_coords_picked') and process_4dnexus.probe_x_coords_picked:
+                        try:
+                            probe_coords = process_4dnexus.load_probe_coordinates()
+                            if probe_coords is not None:
+                                x_min_coord = probe_coords[z_min] if z_min < len(probe_coords) else probe_coords[-1]
+                                x_max_coord = probe_coords[z_max] if z_max < len(probe_coords) else probe_coords[-1]
+                                x_center = (x_min_coord + x_max_coord) / 2
+                                x_width = abs(x_max_coord - x_min_coord)
+                            else:
+                                x_center = (z_min + z_max) / 2
+                                x_width = abs(z_max - z_min)
+                        except:
+                            x_center = (z_min + z_max) / 2
+                            x_width = abs(z_max - z_min)
+                    else:
+                        x_center = (z_min + z_max) / 2
+                        x_width = abs(z_max - z_min)
+                    
+                    print(f"DEBUG: Overlay calculation - x_center={x_center}, x_width={x_width}")
+                    
+                    # Update overlay data
+                    range_overlay_source.data = {
+                        "x": [x_center],
+                        "y": [y_min],
+                        "width": [x_width],
+                        "height": [y_max - y_min]
+                    }
+                    print(f"Range overlay updated: x={x_center:.3f}, width={x_width:.3f}, height={y_max-y_min:.3f}")
+                else:
+                    # Clear overlay if no range selected
+                    range_overlay_source.data = {
+                        "x": [],
+                        "y": [],
+                        "width": [],
+                        "height": []
+                    }
+                    print("Range overlay cleared")
+
+        def update_range_overlay_b():
+            # Update Plot2B overlay only if Plot2B is 3D
+            if not ('plot2b' in locals() and plot2b is not None and 'rect2b' in locals() and rect2b is not None and 'range_overlay_source_b' in locals() and range_overlay_source_b is not None):
+                return
+            z_min = rect2b.min_x
+            z_max = rect2b.max_x
+            if z_min != z_max:
+                y_min = plot2b.y_range.start
+                y_max = plot2b.y_range.end
+                if hasattr(process_4dnexus, 'probe_x_coords_picked_b') and getattr(process_4dnexus, 'probe_x_coords_picked_b', False):
+                    try:
+                        probe_coords_b = process_4dnexus.load_probe_coordinates()
+                        if probe_coords_b is not None:
+                            x_min_coord = probe_coords_b[z_min] if z_min < len(probe_coords_b) else probe_coords_b[-1]
+                            x_max_coord = probe_coords_b[z_max] if z_max < len(probe_coords_b) else probe_coords_b[-1]
+                            x_center = (x_min_coord + x_max_coord) / 2
+                            x_width = abs(x_max_coord - x_min_coord)
+                        else:
+                            x_center = (z_min + z_max) / 2
+                            x_width = abs(z_max - z_min)
+                    except Exception:
+                        x_center = (z_min + z_max) / 2
+                        x_width = abs(z_max - z_min)
+                else:
+                    x_center = (z_min + z_max) / 2
+                    x_width = abs(z_max - z_min)
+                range_overlay_source_b.data = {"x": [x_center], "y": [y_min], "width": [x_width], "height": [y_max - y_min]}
+            else:
+                range_overlay_source_b.data = {"x": [], "y": [], "width": [], "height": []}
+        
+        def draw_rect3():
+            draw_rect(plot3, rect3, rect3.min_x, rect3.max_x, rect3.min_y, rect3.max_y)
+        
+        def on_plot2_doubletap(event):
+            """Handle double-tap events on plot2 for max coordinates"""
+            print("plot2 double-tap event:", event, event.x, event.y)
+            
+            try:
+                print("Double-tap - setting max coordinates")
+                if event.x is not None and event.y is not None:
+                    if is_3d_volume:
+                        # For 3D volumes: only use x-coordinate, convert to data index
+                        if hasattr(process_4dnexus, 'probe_x_coords_picked') and process_4dnexus.probe_x_coords_picked:
+                            try:
+                                probe_coords = process_4dnexus.load_probe_coordinates()
+                                if probe_coords is not None:
+                                    z_index = np.argmin(np.abs(probe_coords - event.x))
+                                    print(f"on_plot2_doubletap: plot_x={event.x:.3f}, closest probe_coord={probe_coords[z_index]:.3f}, z_index={z_index}")
+                                else:
+                                    z_index = int(event.x)
+                                    print(f"on_plot2_doubletap: no probe coords, using plot_x={event.x:.3f}, z_index={z_index}")
+                            except:
+                                z_index = int(event.x)
+                                print(f"on_plot2_doubletap: failed to load probe coords, using plot_x={event.x:.3f}, z_index={z_index}")
+                        else:
+                            z_index = int(event.x)
+                            print(f"on_plot2_doubletap: no probe coords specified, using plot_x={event.x:.3f}, z_index={z_index}")
+                        
+                        # Double-click: Set max value only
+                        rect2.set(max_x=z_index, max_y=z_index)
+                        print(f"DEBUG: Double-click detected, setting max_x={z_index}")
+                        print(f"DEBUG: Before rect2.set, rect2.min_x={rect2.min_x}, rect2.max_x={rect2.max_x}")
+                        print(f"DEBUG: After rect2.set, rect2.min_x={rect2.min_x}, rect2.max_x={rect2.max_x}")
+                        print(f"on_plot2_doubletap rect2={rect2} - 3D volume, z_index={z_index}")
+                        draw_rect2()
+                        update_z_range_display()
+                        update_range_overlay()
+                    else:
+                        # For 4D volumes: use both x and y coordinates
+                        print(f"DEBUG: Double-click detected for 4D volume, setting max_x={int(event.x)}, max_y={int(event.y)}")
+                        print(f"DEBUG: Before rect2.set, rect2.min_x={rect2.min_x}, rect2.max_x={rect2.max_x}, rect2.min_y={rect2.min_y}, rect2.max_y={rect2.max_y}")
+                        rect2.set(max_x=int(event.x), max_y=int(event.y))
+                        print(f"DEBUG: After rect2.set, rect2.min_x={rect2.min_x}, rect2.max_x={rect2.max_x}, rect2.min_y={rect2.min_y}, rect2.max_y={rect2.max_y}")
+                        print(f"on_plot2_doubletap rect2={rect2} - 4D volume")
+                        draw_rect2()
+            except Exception as e:
+                print(f"Double-tap event error: {e}")
+
+        def on_plot2a_doubletap(event):
+            return on_plot2_doubletap(event)
+
+        # Plot2B independent handlers
+        def on_plot2b_tap(event):
+            print(f"DEBUG: on_plot2b_tap received, x={event.x}, y={event.y}, plot2b_is_2d={plot2b_is_2d}")
+            if not ('plot2b' in locals() and plot2b is not None and 'rect2b' in locals() and rect2b is not None):
+                print("DEBUG: on_plot2b_tap early return: plot2b or rect2b missing")
+                return
+            # Use Plot2B's own dimensionality instead of primary volume
+            if not plot2b_is_2d:
+                if hasattr(process_4dnexus, 'probe_x_coords_picked_b') and getattr(process_4dnexus, 'probe_x_coords_picked_b', False):
+                    try:
+                        probe_coords_b = process_4dnexus.load_probe_coordinates()
+                        if probe_coords_b is not None:
+                            z_index = int(np.argmin(np.abs(probe_coords_b - event.x)))
+                        else:
+                            z_index = int(event.x)
+                    except Exception:
+                        z_index = int(event.x)
+                else:
+                    z_index = int(event.x)
+                if event.modifiers.get("shift", False):
+                    rect2b.set(min_x=z_index, min_y=z_index)
+                elif event.modifiers.get("ctrl", False) or event.modifiers.get('meta',False) or event.modifiers.get('cmd',False):
+                    rect2b.set(max_x=z_index, max_y=z_index)
+                else:
+                    rect2b.set(min_x=z_index, min_y=z_index, max_x=z_index, max_y=z_index)
+                update_range_overlay_b()
+            else:
+                if event.modifiers.get("shift", False):
+                    rect2b.set(min_x=int(event.x), min_y=int(event.y))
+                    draw_rect2b()
+                elif event.modifiers.get("ctrl", False) or event.modifiers.get('meta',False) or event.modifiers.get('cmd',False):
+                    rect2b.set(max_x=int(event.x), max_y=int(event.y))
+                    draw_rect2b()
+                else:
+                    clear_rect(plot2b, rect2b)
+                    rect2b.set(min_x=int(event.x), min_y=int(event.y), max_x=int(event.x), max_y=int(event.y))
+                    draw_rect(plot2b, rect2b, int(event.x), int(event.x), int(event.y), int(event.y))
+                print(f"DEBUG: on_plot2b_tap updated rect2b: min=({rect2b.min_x},{rect2b.min_y}) max=({rect2b.max_x},{rect2b.max_y})")
+
+        def on_plot2b_doubletap(event):
+            print(f"DEBUG: on_plot2b_doubletap received, x={getattr(event,'x',None)}, y={getattr(event,'y',None)}, plot2b_is_2d={plot2b_is_2d}")
+            if not ('plot2b' in locals() and plot2b is not None and 'rect2b' in locals() and rect2b is not None):
+                print("DEBUG: on_plot2b_doubletap early return: plot2b or rect2b missing")
+                return
+            try:
+                if not plot2b_is_2d:
+                    if hasattr(process_4dnexus, 'probe_x_coords_picked_b') and getattr(process_4dnexus, 'probe_x_coords_picked_b', False):
+                        try:
+                            probe_coords_b = process_4dnexus.load_probe_coordinates()
+                            if probe_coords_b is not None:
+                                z_index = int(np.argmin(np.abs(probe_coords_b - event.x)))
+                            else:
+                                z_index = int(event.x)
+                        except Exception:
+                            z_index = int(event.x)
+                    else:
+                        z_index = int(event.x)
+                    rect2b.set(max_x=z_index, max_y=z_index)
+                    update_range_overlay_b()
+                else:
+                    rect2b.set(max_x=int(event.x), max_y=int(event.y))
+                    draw_rect2b()
+            except Exception as e:
+                print(f"Plot2B Double-tap event error: {e}")
+        
+        def on_plot3_tap(event):
+            x_index = get_x_index(event.x)
+            x_coord = x_coords[x_index]
+            y_index = get_y_index(event.y)
+            y_coord = y_coords[y_index]
+
+            print(f"DEBUG: Plot3 tap - x_coord={x_coord}, y_coord={y_coord}")
+            print(f"DEBUG: Event modifiers: {event.modifiers}")
+            print(f"DEBUG: shift={event.modifiers.get('shift', False)}, ctrl={event.modifiers.get('ctrl', False)}")
+
+            if event.modifiers.get("shift", False):
+                # Shift+click: Set min values only
+                print(f"DEBUG: Shift+click detected for Plot3, setting min_x={x_coord}, min_y={y_coord}")
+                rect3.set(min_x=x_coord, min_y=y_coord)
+                print(f"on_plot3_tap rect3={rect3} (shift pressed)")
+                draw_rect3()
+            elif event.modifiers.get("ctrl", False) or event.modifiers.get('meta',False) or event.modifiers.get('cmd',False):
+                # Ctrl/Cmd+click: Set max values only
+                print(f"DEBUG: Ctrl/Cmd+click detected for Plot3, setting max_x={x_coord}, max_y={y_coord}")
+                rect3.set(max_x=x_coord, max_y=y_coord)
+                print(f"on_plot3_tap rect3={rect3} (ctrl/cmd pressed)")
+                draw_rect3()
+            else:
+                # Regular click: Clear and set both min and max to same value
+                print(f"DEBUG: Regular click detected for Plot3, clearing and setting both min/max")
+                clear_rect(plot3, rect3)
+                rect3.set(min_x=x_coord, min_y=y_coord, max_x=x_coord, max_y=y_coord)
+                draw_rect(plot3, rect3, x_coord, x_coord, y_coord, y_coord)
+                print(f"on_plot3_tap x_coord={x_coord} y_coord={y_coord}")
+        
+        def on_plot3_doubletap(event):
+            """Handle double-tap events on plot3 for max coordinates"""
+            x_index = get_x_index(event.x)
+            x_coord = x_coords[x_index]
+            y_index = get_y_index(event.y)
+            y_coord = y_coords[y_index]
+            print("plot3 double-tap event:", event, event.x, event.y)
+            
+            try:
+                print("Double-tap - setting max coordinates")
+                if event.x is not None and event.y is not None:
+                    print(f"DEBUG: Double-click detected for Plot3, setting max_x={x_coord}, max_y={y_coord}")
+                    print(f"DEBUG: Before rect3.set, rect3.min_x={rect3.min_x}, rect3.max_x={rect3.max_x}, rect3.min_y={rect3.min_y}, rect3.max_y={rect3.max_y}")
+                    rect3.set(max_x=x_coord, max_y=y_coord)
+                    print(f"DEBUG: After rect3.set, rect3.min_x={rect3.min_x}, rect3.max_x={rect3.max_x}, rect3.min_y={rect3.min_y}, rect3.max_y={rect3.max_y}")
+                    print(f"on_plot3_doubletap rect3={rect3}")
+                    draw_rect3()
+            except Exception as e:
+                print(f"Double-tap event error: {e}")
+        
+        def _compute_plot3_image_work():
+            t_plot3 = time.time()
+            if is_3d_volume:
+                # For 3D volumes: sum over Z dimension for selected range
+                z1, z2 = rect2.min_x, rect2.max_x
+                # Normalize and clamp to valid non-empty range
+                try:
+                    z_lo, z_hi = (int(z1), int(z2)) if z1 <= z2 else (int(z2), int(z1))
+                    z_lo = max(0, min(z_lo, volume.shape[2]-1))
+                    z_hi = max(0, min(z_hi, volume.shape[2]-1))
+                    if z_hi <= z_lo:
+                        z_hi = min(z_lo + 1, volume.shape[2])
+                except Exception:
+                    z_lo, z_hi = 0, min(1, volume.shape[2])
+                print("# compute_plot3_image (3D)", z_lo, z_hi)
+                piece = volume[:, :, z_lo:z_hi]
+                img = np.sum(piece, axis=2)  # sum over Z dimension
+                # Normalize to [0,1]
+                img = np.nan_to_num(img, nan=0.0, posinf=0.0, neginf=0.0)
+                vmin = float(np.min(img))
+                vmax = float(np.max(img))
+                if vmax > vmin:
+                    img = (img - vmin) / (vmax - vmin)
+                else:
+                    img = np.zeros_like(img)
+                
+                source3.data = dict(
+                    image=[img],
+                    x=[plot3.x_range.start],
+                    dw=[plot3.x_range.end - plot3.x_range.start],
+                    y=[plot3.y_range.start],
+                    dh=[plot3.y_range.end - plot3.y_range.start],
+                )
+                
+                set_colormap_range(plot3, colorbar3, color_mapper3, 0.0, 1.0)
+                
+                # Update Plot3 range inputs with actual data range
+                range3_min_input.value = "0"
+                range3_max_input.value = "1"
+            else:
+                # For 4D volumes: sum over Z and U dimensions
+                z1, z2, u1, u2 = rect2.min_x, rect2.max_x, rect2.min_y, rect2.max_y
+                # Normalize, clamp, and ensure non-empty spans
+                try:
+                    z_lo, z_hi = (int(z1), int(z2)) if z1 <= z2 else (int(z2), int(z1))
+                    u_lo, u_hi = (int(u1), int(u2)) if u1 <= u2 else (int(u2), int(u1))
+                    z_lo = max(0, min(z_lo, volume.shape[2]-1))
+                    z_hi = max(0, min(z_hi, volume.shape[2]-1))
+                    u_lo = max(0, min(u_lo, volume.shape[3]-1))
+                    u_hi = max(0, min(u_hi, volume.shape[3]-1))
+                    if z_hi <= z_lo:
+                        z_hi = min(z_lo + 1, volume.shape[2])
+                    if u_hi <= u_lo:
+                        u_hi = min(u_lo + 1, volume.shape[3])
+                except Exception:
+                    z_lo, z_hi, u_lo, u_hi = 0, min(1, volume.shape[2]), 0, min(1, volume.shape[3])
+                print("# compute_plot3_image (4D)", z_lo, z_hi, u_lo, u_hi)
+                piece = volume[:, :, z_lo:z_hi, u_lo:u_hi]
+                img = np.sum(piece, axis=(2, 3))  # sum over Z and U
+                # Normalize to [0,1]
+                img = np.nan_to_num(img, nan=0.0, posinf=0.0, neginf=0.0)
+                vmin = float(np.min(img))
+                vmax = float(np.max(img))
+                if vmax > vmin:
+                    img = (img - vmin) / (vmax - vmin)
+                else:
+                    img = np.zeros_like(img)
+
+                source3.data = dict(
+                    image=[img],
+                    x=[plot3.x_range.start],
+                    dw=[plot3.x_range.end - plot3.x_range.start],
+                    y=[plot3.y_range.start],
+                    dh=[plot3.y_range.end - plot3.y_range.start],
+                )
+
+                set_colormap_range(plot3, colorbar3, color_mapper3, 0.0, 1.0)
+                
+                # Update Plot3 range inputs with actual data range
+                range3_min_input.value = "0"
+                range3_max_input.value = "1"
+            # Done status
+            try:
+                dt = time.time() - t_plot3
+                shape_txt = f"{source3.data['image'][0].shape[1]}x{source3.data['image'][0].shape[0]}" if source3.data.get('image') else ""
+                plot3_status_div_a.text = f"Done ({shape_txt}) in {dt:.2f}s"
+                compute_plot3_image_button.disabled = False
+                compute_plot3_image_button.label = "Show Plot3 from Plot2a ->"
+            except Exception:
+                try:
+                    compute_plot3_image_button.disabled = False
+                    compute_plot3_image_button.label = "Show Plot3 from Plot2a ->"
+                except Exception:
+                    pass
+
+        def compute_plot3_image(evt=None):
+            try:
+                compute_plot3_image_button.disabled = True
+                compute_plot3_image_button.label = "Computing…"
+                plot3_status_div_a.text = "Computing Plot3…"
+            except Exception:
+                pass
+            from bokeh.io import curdoc as _curdoc
+            _curdoc().add_next_tick_callback(_compute_plot3_image_work)
+
+        # Reset Plot2A to fresh data from process_4dnexus
+        def on_reset_plot2a():
+            try:
+                print("DEBUG: on_reset_plot2a invoked")
+                if is_3d_volume:
+                    # 3D volume → 1D line at center
+                    x_mid = volume.shape[0] // 2
+                    y_mid = volume.shape[1] // 2
+                    line = np.array(volume[x_mid, y_mid, :])
+                    if hasattr(process_4dnexus, 'probe_x_coords_picked') and process_4dnexus.probe_x_coords_picked:
+                        try:
+                            probe_coords = process_4dnexus.load_probe_coordinates()
+                            xvals = probe_coords if probe_coords is not None and len(probe_coords) == len(line) else np.arange(len(line))
+                        except Exception:
+                            xvals = np.arange(len(line))
+                    else:
+                        xvals = np.arange(len(line))
+                    source2.data = {"x": xvals, "y": line}
+                    plot2.x_range.start = float(np.min(xvals))
+                    plot2.x_range.end = float(np.max(xvals))
+                    plot2.y_range.start = float(np.min(line))
+                    plot2.y_range.end = float(np.max(line))
+                    # Reset numeric range inputs to data range
+                    try:
+                        range2_min_input.value = str(float(np.min(line)))
+                        range2_max_input.value = str(float(np.max(line)))
+                    except Exception:
+                        pass
+                    # Clear 3D overlay selection and status
+                    if 'range_overlay_source' in locals():
+                        range_overlay_source.data = {"x": [], "y": [], "width": [], "height": []}
+                    if 'z_range_display' in locals() and z_range_display is not None:
+                        z_range_display.text = "<b>Z Range Selection:</b><br>z_min: 0, z_max: 0"
+                else:
+                    # 4D volume → 2D image at center x,y
+                    x_mid = volume.shape[0] // 2
+                    y_mid = volume.shape[1] // 2
+                    img = np.array(volume[x_mid, y_mid, :, :])
+                    # Match original ProbePlot orientation: dw=shape[2], dh=shape[3]
+                    source2.data = {"image": [img], "x": [0], "y": [0], "dw": [img.shape[0]], "dh": [img.shape[1]]}
+                    try:
+                        set_colormap_range(plot2, colorbar2, color_mapper2a, float(np.min(img)), float(np.max(img)))
+                        # Reset numeric range inputs to data range
+                        range2_min_input.value = str(float(np.min(img)))
+                        range2_max_input.value = str(float(np.max(img)))
+                    except Exception:
+                        pass
+                    # Clear any rectangle lines on Plot2
+                    clear_rect(plot2, rect2)
+                plot2_status_div.text = "Reset"
+            except Exception as _e:
+                print(f"Reset Plot2a failed: {_e}")
+
+        # Compute Plot3 based on Plot2B's selection (rect2b)
+        def _compute_plot3_image_work_from_plot2b():
+            t_plot3b = time.time()
+            vb = getattr(process_4dnexus, 'volume_dataset_b', None)
+            if vb is None:
+                try:
+                    compute_plot3_from_plot2b_button.disabled = False
+                    compute_plot3_from_plot2b_button.label = "Show Plot3 from Plot2b ->"
+                except Exception:
+                    pass
+                return
+             
+            if len(vb.shape) == 3:
+                z1, z2 = rect2b.min_x, rect2b.max_x
+                # normalize and clamp bounds
+                try:
+                    z_lo, z_hi = (int(z1), int(z2)) if z1 <= z2 else (int(z2), int(z1))
+                    z_lo = max(0, min(z_lo, vb.shape[2]-1))
+                    z_hi = max(0, min(z_hi, vb.shape[2]-1))
+                    if z_hi <= z_lo:
+                        z_hi = min(z_lo + 1, vb.shape[2])
+                except Exception:
+                    z_lo, z_hi = 0, min(1, vb.shape[2])
+                print(f"DEBUG _compute_plot3_image_work_from_plot2b: z1 {z_lo}, z2 {z_hi}"  )
+                piece = vb[:, :, z_lo:z_hi]
+                img = np.sum(piece, axis=2)
+                img = np.nan_to_num(img, nan=0.0, posinf=0.0, neginf=0.0)
+                vmin = float(np.min(img))
+                vmax = float(np.max(img))
+                img = (img - vmin) / (vmax - vmin) if vmax > vmin else np.zeros_like(img)
+                source3.data = dict(
+                    image=[img],
+                    x=[plot3.x_range.start],
+                    dw=[plot3.x_range.end - plot3.x_range.start],
+                    y=[plot3.y_range.start],
+                    dh=[plot3.y_range.end - plot3.y_range.start],
+                )
+                set_colormap_range(plot3, colorbar3, color_mapper3, 0.0, 1.0)
+                range3_min_input.value = "0"
+                range3_max_input.value = "1"
+            else:
+                z1, z2, u1, u2 = rect2b.min_x, rect2b.max_x, rect2b.min_y, rect2b.max_y
+                # normalize and clamp 4D bounds
+                try:
+                    z_lo, z_hi = (int(z1), int(z2)) if z1 <= z2 else (int(z2), int(z1))
+                    u_lo, u_hi = (int(u1), int(u2)) if u1 <= u2 else (int(u2), int(u1))
+                    z_lo = max(0, min(z_lo, vb.shape[2]-1))
+                    z_hi = max(0, min(z_hi, vb.shape[2]-1))
+                    u_lo = max(0, min(u_lo, vb.shape[3]-1))
+                    u_hi = max(0, min(u_hi, vb.shape[3]-1))
+                    if z_hi <= z_lo:
+                        z_hi = min(z_lo + 1, vb.shape[2])
+                    if u_hi <= u_lo:
+                        u_hi = min(u_lo + 1, vb.shape[3])
+                except Exception:
+                    z_lo, z_hi, u_lo, u_hi = 0, min(1, vb.shape[2]), 0, min(1, vb.shape[3])
+                print(f"DEBUG _compute_plot3_image_work_from_plot2b: z1 {z_lo}, z2 {z_hi}, u1 {u_lo}, u2 {u_hi}"  )
+                piece = vb[:, :, z_lo:z_hi, u_lo:u_hi]
+                img = np.sum(piece, axis=(2, 3))
+                img = np.nan_to_num(img, nan=0.0, posinf=0.0, neginf=0.0)
+                vmin = float(np.min(img))
+                vmax = float(np.max(img))
+                img = (img - vmin) / (vmax - vmin) if vmax > vmin else np.zeros_like(img)
+                source3.data = dict(
+                    image=[img],
+                    x=[plot3.x_range.start],
+                    dw=[plot3.x_range.end - plot3.x_range.start],
+                    y=[plot3.y_range.start],
+                    dh=[plot3.y_range.end - plot3.y_range.start],
+                )
+                set_colormap_range(plot3, colorbar3, color_mapper3, 0.0, 1.0)
+                range3_min_input.value = "0"
+                range3_max_input.value = "1"
+            try:
+                dt = time.time() - t_plot3b
+                shape_txt = f"{source3.data['image'][0].shape[1]}x{source3.data['image'][0].shape[0]}" if source3.data.get('image') else ""
+                plot3_status_div_b.text = f"Done ({shape_txt}) in {dt:.2f}s"
+                compute_plot3_from_plot2b_button.disabled = False
+                compute_plot3_from_plot2b_button.label = "Show Plot3 from Plot2b ->"
+            except Exception:
+                try:
+                    compute_plot3_from_plot2b_button.disabled = False
+                    compute_plot3_from_plot2b_button.label = "Show Plot3 from Plot2b ->"
+                except Exception:
+                    pass
+
+        def compute_plot3_image_from_plot2b(evt=None):
+            try:
+                compute_plot3_from_plot2b_button.disabled = True
+                compute_plot3_from_plot2b_button.label = "Computing…"
+                plot3_status_div_b.text = "Computing Plot3…"
+            except Exception:
+                pass
+            from bokeh.io import curdoc as _curdoc
+            _curdoc().add_next_tick_callback(_compute_plot3_image_work_from_plot2b)
+
+        # Reset Plot2B to fresh data from process_4dnexus
+        def on_reset_plot2b():
+            try:
+                if 'source2b' in locals() and plot2b is not None:
+                    volume_b_local = getattr(process_4dnexus, 'volume_dataset_b', None)
+                    if volume_b_local is None:
+                        return
+                    if plot2b_is_2d:
+                        # 4D dataset → 2D image at center x,y
+                        xb = volume_b_local.shape[0] // 2
+                        yb = volume_b_local.shape[1] // 2
+                        img = np.array(volume_b_local[xb, yb, :, :])
+                        # Match original ProbePlot orientation
+                        source2b.data = {"image": [img], "x": [0], "y": [0], "dw": [img.shape[0]], "dh": [img.shape[1]]}
+                        if 'color_mapper2b' in locals() and color_mapper2b is not None and 'colorbar2b' in locals():
+                            try:
+                                set_colormap_range(plot2b, colorbar2b, color_mapper2b, float(np.min(img)), float(np.max(img)))
+                            except Exception:
+                                pass
+                        # Reset Plot2B range inputs if present
+                        if 'range2b_min_input' in locals() and range2b_min_input is not None:
+                            try:
+                                range2b_min_input.value = str(float(np.min(img)))
+                                range2b_max_input.value = str(float(np.max(img)))
+                            except Exception:
+                                pass
+                    else:
+                        # 3D dataset → 1D line at center
+                        xb = volume_b_local.shape[0] // 2
+                        yb = volume_b_local.shape[1] // 2
+                        line_b = np.array(volume_b_local[xb, yb, :])
+                        xvals_b = np.arange(len(line_b))
+                        source2b.data = {"x": xvals_b, "y": line_b}
+                        plot2b.x_range.start = float(np.min(xvals_b))
+                        plot2b.x_range.end = float(np.max(xvals_b))
+                        plot2b.y_range.start = float(np.min(line_b))
+                        plot2b.y_range.end = float(np.max(line_b))
+            except Exception as _e:
+                print(f"Reset Plot2b failed: {_e}")
+        
+        def _compute_plot2_image_work():
+            t_plot2 = time.time()
+            if is_3d_volume:
+                # For 3D volumes: sum over X,Y dimensions for selected region in Plot3
+                x1 = get_x_index(rect3.min_x)
+                y1 = get_y_index(rect3.min_y)
+                x2 = max(x1 + 1, get_x_index(rect3.max_x))
+                y2 = max(y1 + 1, get_y_index(rect3.max_y))
+                
+                print("#############################################################################")
+                print("# compute_plot2_image (3D)", x1, x2, y1, y2)
+                piece = volume[x1:x2, y1:y2, :]
+                slice = np.sum(piece, axis=(0, 1)) / ((x2-x1)*(y2-y1))  # sum over X and Y
+                
+                print(">>>>>>>>>>>>>>>>", np.min(slice), np.max(slice))
+                print("#############################################################################")
+                
+                # Update the 1D line plot with proper coordinates
+                if hasattr(process_4dnexus, 'probe_x_coords_picked') and process_4dnexus.probe_x_coords_picked:
+                    try:
+                        probe_coords = process_4dnexus.load_probe_coordinates()
+                        if probe_coords is not None and len(probe_coords) == len(slice):
+                            x_coords_1d = probe_coords
+                            print(f"Using probe coordinates for compute_plot2_image: {len(probe_coords)} points")
+                        else:
+                            x_coords_1d = np.arange(len(slice))
+                            print(f"Probe coordinates not available for compute_plot2_image, using indices")
+                    except:
+                        x_coords_1d = np.arange(len(slice))
+                        print(f"Failed to load probe coordinates for compute_plot2_image, using indices")
+                else:
+                    x_coords_1d = np.arange(len(slice))
+                    print(f"No probe coordinates for compute_plot2_image, using indices")
+                
+                source2.data = {
+                    "x": x_coords_1d,
+                    "y": slice
+                }
+                
+                # Update plot ranges
+                plot2.x_range.start = x_coords_1d.min()
+                plot2.x_range.end = x_coords_1d.max()
+                plot2.y_range.start = slice.min()
+                plot2.y_range.end = slice.max()
+                # Update numeric range inputs to data range
+                try:
+                    range2_min_input.value = str(float(np.min(slice)))
+                    range2_max_input.value = str(float(np.max(slice)))
+                except Exception:
+                    pass
+            else:
+                # For 4D volumes: sum over X,Y dimensions for selected region in Plot3
+                x1 = get_x_index(rect3.min_x)
+                y1 = get_y_index(rect3.min_y)
+
+                x2 = max(x1 + 1, get_x_index(rect3.max_x))
+                y2 = max(y1 + 1, get_y_index(rect3.max_y))
+
+                print("#############################################################################")
+                print("# compute_plot2_image (4D)", x1, x2, y1, y2)
+                piece = volume[x1:x2, y1:y2, :, :]
+                slice = np.sum(piece, axis=(0, 1)) / ((x2-x1)*(y2-y1))  # sum over X and Y
+
+                print(">>>>>>>>>>>>>>>>", np.min(slice), np.max(slice))
+                print("#############################################################################")
+
+                assert slice.shape[0] == volume.shape[2]  # After flipud: shape[2] stays shape[0]
+                assert slice.shape[1] == volume.shape[3]  # After flipud: shape[3] stays shape[1]
+
+                source2.data = dict(
+                    image=[slice], x=[0], y=[0], dw=[slice.shape[0]], dh=[slice.shape[1]]  # Revert dw/dh
+                )
+                
+                set_colormap_range(plot2, colorbar2, color_mapper2a, np.min(slice), np.max(slice))
+                # Update numeric range inputs to data range
+                try:
+                    range2_min_input.value = str(float(np.min(slice)))
+                    range2_max_input.value = str(float(np.max(slice)))
+                except Exception:
+                    pass
+            # Done status
+            try:
+                dt = time.time() - t_plot2
+                if is_3d_volume:
+                    length_txt = f"{len(slice)} pts" if 'slice' in locals() else ""
+                    plot2_status_div.text = f"Done ({length_txt}) in {dt:.2f}s"
+                else:
+                    shape_txt = f"{source2.data['image'][0].shape[1]}x{source2.data['image'][0].shape[0]}" if source2.data.get('image') else ""
+                    plot2_status_div.text = f"Done ({shape_txt}) in {dt:.2f}s"
+                compute_plot2_image_button.disabled = False
+                compute_plot2_image_button.label = "<- Compute Plot2a"
+            except Exception:
+                try:
+                    compute_plot2_image_button.disabled = False
+                    compute_plot2_image_button.label = "<- Compute Plot2a"
+                except Exception:
+                    pass
+
+        def _compute_plot2b_image_work():
+            t_plot2b = time.time()
+            # Use secondary dataset if available
+            volume_b_local = getattr(process_4dnexus, 'volume_dataset_b', None)
+            if volume_b_local is None:
+                plot2b_status_div.text = "No Plot2B dataset"
+                try:
+                    compute_plot2b_image_button.disabled = False
+                    compute_plot2b_image_button.label = "<- Compute Plot2b"
+                except Exception:
+                    pass
+                return
+            if len(volume_b_local.shape) == 3:
+                # 3D: produce 1D line
+                x1 = get_x_index(rect3.min_x)
+                y1 = get_y_index(rect3.min_y)
+                x2 = max(x1 + 1, get_x_index(rect3.max_x))
+                y2 = max(y1 + 1, get_y_index(rect3.max_y))
+                piece = volume_b_local[x1:x2, y1:y2, :]
+                slice_b = np.sum(piece, axis=(0, 1)) / ((x2-x1)*(y2-y1))
+                if hasattr(process_4dnexus, 'probe_x_coords_picked_b') and process_4dnexus.probe_x_coords_picked_b:
+                    try:
+                        probe_coords_b = process_4dnexus.load_probe_coordinates()
+                        x_coords_1d_b = probe_coords_b if (probe_coords_b is not None and len(probe_coords_b) == len(slice_b)) else np.arange(len(slice_b))
+                    except:
+                        x_coords_1d_b = np.arange(len(slice_b))
+                else:
+                    x_coords_1d_b = np.arange(len(slice_b))
+                # Update Plot2B source (line)
+                if 'source2b' in locals():
+                    source2b.data = {"x": x_coords_1d_b, "y": slice_b}
+                    plot2b.x_range.start = x_coords_1d_b.min()
+                    plot2b.x_range.end = x_coords_1d_b.max()
+                    plot2b.y_range.start = slice_b.min()
+                    plot2b.y_range.end = slice_b.max()
+                    # Update Plot2B numeric range inputs if present
+                    if 'range2b_min_input' in locals() and range2b_min_input is not None:
+                        try:
+                            range2b_min_input.value = str(float(np.min(slice_b)))
+                            range2b_max_input.value = str(float(np.max(slice_b)))
+                        except Exception:
+                            pass
+            else:
+                # 4D: produce 2D image
+                x1 = get_x_index(rect3.min_x)
+                y1 = get_y_index(rect3.min_y)
+                x2 = max(x1 + 1, get_x_index(rect3.max_x))
+                y2 = max(y1 + 1, get_y_index(rect3.max_y))
+                piece = volume_b_local[x1:x2, y1:y2, :, :]
+                slice_b = np.sum(piece, axis=(0, 1)) / ((x2-x1)*(y2-y1))
+                if 'source2b' in locals():
+                    source2b.data = dict(image=[slice_b], x=[0], y=[0], dw=[slice_b.shape[0]], dh=[slice_b.shape[1]])
+                if 'color_mapper2b' in locals() and color_mapper2b is not None and 'colorbar2b' in locals():
+                    set_colormap_range(plot2b, colorbar2b, color_mapper2b, float(np.min(slice_b)), float(np.max(slice_b)))
+                # Update Plot2B numeric range inputs if present
+                if 'range2b_min_input' in locals() and range2b_min_input is not None:
+                    try:
+                        range2b_min_input.value = str(float(np.min(slice_b)))
+                        range2b_max_input.value = str(float(np.max(slice_b)))
+                    except Exception:
+                        pass
+            # Done status
+            try:
+                dt = time.time() - t_plot2b
+                if len(volume_b_local.shape) == 3:
+                    txt = f"{len(slice_b)} pts"
+                else:
+                    txt = f"{slice_b.shape[1]}x{slice_b.shape[0]}"
+                plot2b_status_div.text = f"Done ({txt}) in {dt:.2f}s"
+                compute_plot2b_image_button.disabled = False
+                compute_plot2b_image_button.label = "<- Compute Plot2b"
+            except Exception:
+                try:
+                    compute_plot2b_image_button.disabled = False
+                    compute_plot2b_image_button.label = "<- Compute Plot2b"
+                except Exception:
+                    pass
+
+        def compute_plot2b_image(evt=None):
+            try:
+                compute_plot2b_image_button.disabled = True
+                compute_plot2b_image_button.label = "Computing…"
+                plot2b_status_div.text = "Computing Plot2B…"
+            except Exception:
+                pass
+            from bokeh.io import curdoc as _curdoc
+            _curdoc().add_next_tick_callback(_compute_plot2b_image_work)
+
+        def compute_plot2_image(evt=None):
+            try:
+                compute_plot2_image_button.disabled = True
+                compute_plot2_image_button.label = "Computing…"
+                plot2_status_div.text = "Computing Plot2…"
+            except Exception:
+                pass
+            from bokeh.io import curdoc as _curdoc
+            _curdoc().add_next_tick_callback(_compute_plot2_image_work)
+        
+        def on_reset_ranges_click():
+            # Reset to actual data ranges
+            map_min = float(preview.min())
+            map_max = float(preview.max())
+            range1_min_input.value = str(map_min)
+            range1_max_input.value = str(map_max)
+            set_colormap_range(plot1, colorbar1, color_mapper1a, map_min, map_max)
+            
+            if is_3d_volume:
+                # For 3D volumes: use initial 1D slice data
+                range2_min_input.value = str(np.min(initial_slice_1d))
+                range2_max_input.value = str(np.max(initial_slice_1d))
+                # No color mapper for 1D plots
+            else:
+                # For 4D volumes: use initial 2D slice data
+                range2_min_input.value = str(np.min(initial_slice))
+                range2_max_input.value = str(np.max(initial_slice))
+                set_colormap_range(plot2, colorbar2, color_mapper2a, np.min(initial_slice), np.max(initial_slice))
+        
+        def on_back_to_selection_click():
+            # Clear the current dashboard and show the temporary dashboard
+            from bokeh.io import curdoc
+            doc = curdoc()
+            doc.clear()
+            
+            # Recreate the temporary dashboard
+            tmp_layout = create_tmp_dashboard(process_4dnexus)
+            doc.add_root(tmp_layout)
+        
+        # Draw initial rectangles and crosshairs
+        draw_rect(plot1, rect1, 0, volume.shape[0], 0, volume.shape[1])
+        if is_3d_volume:
+            # For 3D volume: do not draw rectangle on the 1D plot; use overlay only
+            pass
+        else:
+            # For 4D volume: rect2 represents Z,Y dimensions
+            draw_rect(plot2, rect2, 0, volume.shape[2], 0, volume.shape[3])
+        
+        # Draw rect3 for both 3D and 4D volumes
+        draw_rect(plot3, rect3, 0, volume.shape[0], 0, volume.shape[1])
+        draw_cross1()
+
+        # Add callbacks
+        x_slider.on_change("value", lambda attr, old, new: schedule_show_slice())
+        y_slider.on_change("value", lambda attr, old, new: schedule_show_slice())
+        map1_color_scale_selector.on_change("active", on_map1_color_scale_change)
+        map2_color_scale_selector.on_change("active", on_map2_color_scale_change)
+        palette_selector.on_change("value", lambda attr, old, new: set_palette(new))
+        range1_min_input.on_change("value", lambda attr, old, new: on_range1_input_change())
+        range1_max_input.on_change("value", lambda attr, old, new: on_range1_input_change())
+        range2_min_input.on_change("value", lambda attr, old, new: on_range2_input_change())
+        range2_max_input.on_change("value", lambda attr, old, new: on_range2_input_change())
+        range3_min_input.on_change("value", lambda attr, old, new: on_range3_input_change())
+        range3_max_input.on_change("value", lambda attr, old, new: on_range3_input_change())
+        reset_ranges_button.on_click(on_reset_ranges_click)
+
+        # Plot2B range handlers if present
+        if 'range2b_min_input' in locals() and range2b_min_input is not None:
+            range2b_min_input.on_change("value", lambda attr, old, new: on_range2b_input_change())
+            range2b_max_input.on_change("value", lambda attr, old, new: on_range2b_input_change())
+
+        plot1.on_event("tap", on_plot1_tap)
+        plot2.on_event("tap", on_plot2a_tap)
+        plot2.on_event("doubletap", on_plot2a_doubletap)
+        # Independent selection interactions on Plot2B if present
+        if 'plot2b' in locals() and plot2b is not None:
+            plot2b.on_event("tap", on_plot2b_tap)
+            plot2b.on_event("doubletap", on_plot2b_doubletap)
+        plot3.on_event("tap", on_plot3_tap)
+        plot3.on_event("doubletap", on_plot3_doubletap)
+
+        compute_plot2_image_button.on_click(compute_plot2_image)
+        compute_plot2b_image_button.on_click(compute_plot2b_image)
+        compute_plot3_image_button.on_click(compute_plot3_image)
+        compute_plot3_from_plot2b_button.on_click(compute_plot3_image_from_plot2b)
+        reset_plot2a_button.on_click(lambda: on_reset_plot2a())
+        reset_plot2b_button.on_click(lambda: on_reset_plot2b())
+        back_to_selection_button.on_click(on_back_to_selection_click)
+
+        # Create tools column with conditional z-range display
+        tools_items = [
+            x_slider,
+            y_slider,
+            Div(text="<b>Map Shape:</b>", width=200),
+            Div(text="<b>Map Range:</b>", width=200),
+            row(range1_min_input, range1_max_input),
+            Div(text="<b>Map Color Scale:</b>", width=200),
+            map1_color_scale_selector,
+            Div(text="<b>Plot 2 Top (Probe 1) Range:</b>", width=200),
+            row(range2_min_input, range2_max_input),
+            Div(text="<b>Plot 2 Bottom (Probe 2) Range:</b>", width=200) if 'range2b_min_input' in locals() and range2b_min_input is not None else Div(text=""),
+            row(range2b_min_input, range2b_max_input) if 'range2b_min_input' in locals() and range2b_min_input is not None else Div(text=""),
+            Div(text="<b>Probe Color Scale:</b>", width=200),
+            map2_color_scale_selector,
+            Div(text="<b>Plot3 Range:</b>", width=200),
+            row(range3_min_input, range3_max_input),
+            status_div,
+        ]
+        
+        # Add z-range display for 3D volumes
+        if is_3d_volume and z_range_display is not None:
+            tools_items.append(z_range_display)
+            
+        tools_items.extend([
+            Div(text="<b>Color Palette:</b>", width=200),
+            palette_selector,
+            reset_ranges_button,
+            back_to_selection_button,
+        ])
+
+        div_title = Div(text=f"<b>Dataset Name:</b><br>{process_4dnexus.nexus_filename}", width=400)
+        div_plot1 = Div(text=f"<b>Plot1:</b><br>{process_4dnexus.postsample_picked} / {process_4dnexus.presample_picked} <br> {process_4dnexus.x_coords_picked} and {process_4dnexus.y_coords_picked}", width=400)
+        # Include Plot2B selection info if present
+        plot2b_info = ""
+        try:
+            if getattr(process_4dnexus, 'volume_picked_b', None):
+                probe_x_b = getattr(process_4dnexus, 'probe_x_coords_picked_b', None)
+                probe_y_b = getattr(process_4dnexus, 'probe_y_coords_picked_b', None)
+                plot2b_info = f"<b>Plot2B:</b><br>{process_4dnexus.volume_picked_b} <br> {probe_x_b} and {probe_y_b}"
+        except Exception:
+            pass
+        div_plot2 = Div(text=f"<b>Plot2:</b><br>{process_4dnexus.volume_picked} <br> {process_4dnexus.probe_x_coords_picked} and {process_4dnexus.probe_y_coords_picked}", width=200)
+        div_plot2b = Div(text=f"{plot2b_info}", width=200)
+        div_plot3 = Div(text=f"<b>Plot3:</b><br>", width=400)
+        
+        tools = column(*tools_items, width=400)
+        # Stack optional Plot1B under Plot1 and Plot2B under Plot2
+        plot1_column = column(plot1, *( [plot1b] if 'plot1b' in locals() and plot1b is not None else [] ), sizing_mode="stretch_both")
+        # Build Plot2 column and append Plot2B controls if present
+        if 'plot2b' in locals() and plot2b is not None:
+            plot2_column = column(
+                row(compute_plot3_image_button, reset_plot2a_button, plot3_status_div_a),
+                plot2,
+                row(compute_plot3_from_plot2b_button, reset_plot2b_button, plot3_status_div_b),
+                plot2b,
+                sizing_mode="stretch_both",
+            )
+        else:
+            plot2_column = column(
+                row(compute_plot3_image_button, reset_plot2a_button, plot3_status_div_a),
+                plot2,
+                sizing_mode="stretch_both",
+            )
+        # Create the layout - Plot3 works for both 3D and 4D volumes  
+        dashboard_layout = column(
+            div_title,
+            # row(
+            #     div_plot1,
+            #     div_plot2,
+            #     div_plot3,
+            # ),
+            row(
+                tools,
+                row(
+                    column(div_plot1, plot1_column, sizing_mode="stretch_both"),
+                    column(row(div_plot2, div_plot2b), plot2_column,  sizing_mode="stretch_both", align="end"),
+                    column(div_plot3, row(compute_plot2_image_button, plot2_status_div), plot3, row(compute_plot2b_image_button, plot2b_status_div), sizing_mode="stretch_both", align="start"),
+                    sizing_mode="stretch_both",
+                ),
+            ), 
+            # row(
+            #     column(
+            #         Div(text="<b>Probe Range:</b>", width=200),
+            #         row(range2_min_input, range2_max_input) if 'range2_min_input' in locals() else Div(text=""),
+            #         Div(text="<b>Probe2B Range:</b>", width=200) if 'range2b_min_input' in locals() and range2b_min_input is not None else Div(text=""),
+            #         row(range2b_min_input, range2b_max_input) if 'range2b_min_input' in locals() and range2b_min_input is not None else Div(text=""),
+            #         width=420
+            #     ),
+            # ),
+            status_display,  
+        )
+
+        return dashboard_layout
+        
+    except Exception as e:
+        print(f"Error in create_dashboard: {e}")
+        return Div(text=f"<h2>Error Loading Dashboard</h2><p>Error: {e}</p>")
+
+def find_nxs_files(directory):
+    print(f"🔍 DEBUG: find_nxs_files() called with directory: {directory}")
+    print(f"🔍 DEBUG: directory type: {type(directory)}")
+    
+    if directory is None:
+        print("❌ ERROR: directory is None!")
+        return []
+    
+    print(f"🔍 DEBUG: Starting os.walk on: {directory}")
+    nxs_files = []
+    for root, dirs, files in os.walk(directory):
+        for file in files:
+            if file.endswith('.nxs'):
+                nxs_files.append(os.path.join(root, file))
+    return nxs_files
+
+def find_nexus_and_mmap_files():
+    global base_dir
+    print(f"🔍 DEBUG: find_nexus_and_mmap_files() called")
+    print(f"🔍 DEBUG: base_dir = {base_dir}")
+    print(f"🔍 DEBUG: base_dir type = {type(base_dir)}")
+    
+    if base_dir is None:
+        print("❌ ERROR: base_dir is None!")
+        return None, None
+    
+    print(f"🔍 DEBUG: Searching for .nxs files in: {base_dir}")
+    nxs_files = find_nxs_files(base_dir)
+    print(f"🔍 DEBUG: Found {len(nxs_files)} .nxs files")
+    
+    if len(nxs_files) > 0:
+        nexus_filename = nxs_files[0]
+        mmap_filename = nexus_filename.replace('.nxs', '.float32.dat')
+    else:
+        print("No Nexus files found")
+        return None, None
+    print(f"🔍 DEBUG: nexus_filename = {nexus_filename}")
+    print(f"🔍 DEBUG: mmap_filename = {mmap_filename}")
+
+    return nexus_filename, mmap_filename
+
+def scientistCloudInitDashboard():
+    """Initialize the dashboard."""
+  # Clear status messages
+    global status_messages, curdoc,  request, has_args
+    global DATA_IS_LOCAL, uuid, server, name, is_authorized, auth_result
+    global base_dir, save_dir, user_email, mymongodb, collection, collection1, team_collection
+    
+    status_messages = []
+    doc = curdoc()
+    
+    # Check if running with URL arguments - if no args, we're in local mode
+    request = doc.session_context.request if hasattr(doc, 'session_context') and doc.session_context else None
+    has_args = request and request.arguments and len(request.arguments) > 0
+    DATA_IS_LOCAL = not has_args
+    
+
+    # Production mode - use utility initialization
+    # Initialize dashboard using utility
+    init_result = initialize_dashboard(request, add_status_message)
+    
+    if not init_result['success']:
+        add_status_message(f"❌ Dashboard initialization failed: {init_result['error']}")
+        return
+    
+    if (DATA_IS_LOCAL):
+        save_dir = local_base_dir
+        base_dir = local_base_dir
+    else:
+        # Extract initialization results
+        auth_result = init_result['auth_result']
+        mongodb = init_result['mongodb']
+        params = init_result['params']
+        
+        # Set global variables from initialization
+        uuid = params['uuid']
+        server = params['server']
+        name = params['name']
+        save_dir = params['save_dir']
+        base_dir = params['base_dir']
+        is_authorized = auth_result['is_authorized']
+        user_email = auth_result['user_email']
+
+        print(f"🔍 DEBUG: scientistCloudInitDashboard() called")
+        print(f"🔍 DEBUG: uuid = {uuid}")
+        print(f"🔍 DEBUG: server = {server}")
+        print(f"🔍 DEBUG: name = {name}")
+        print(f"🔍 DEBUG: save_dir = {save_dir}")
+        print(f"🔍 DEBUG: base_dir = {base_dir}")
+        print(f"🔍 DEBUG: is_authorized = {is_authorized}")
+        print(f"🔍 DEBUG: user_email = {user_email}")
+        
+        # Check if user is authorized
+        if not is_authorized:
+            error_message = auth_result.get('message', 'Access denied')
+            print(f"❌ Authorization failed: {error_message}")
+            error_div = Div(text=f"""
+                <div style="text-align: center; padding: 50px; background-color: #f8f9fa; border: 2px solid #dc3545; border-radius: 10px; margin: 20px;">
+                    <h2 style="color: #dc3545;">🚫 Access Denied</h2>
+                    <p style="font-size: 16px; color: #6c757d;">{error_message}</p>
+                    <p style="font-size: 14px; color: #6c757d; margin-top: 20px;">
+                        If you believe you should have access to this dataset, please contact the dataset owner.
+                    </p>
+                </div>
+            """, styles={'width': '100%', 'height': '100%'})
+            return error_div
+        
+        # Set MongoDB variables if available
+        if mongodb:
+            mymongodb = mongodb['mymongodb']
+            collection = mongodb['collection']
+            collection1 = mongodb['collection1']
+            team_collection = mongodb['team_collection']
+
+
+# ////////////////////////////////////////////////////////////////
+if True:  
+    # bokeh serve bokeh/4d_dashboard.py --port 5016 --allow-websocket-origin=localhost:5016
+    scientistCloudInitDashboard()
+
+    nexus_filename, mmap_filename = find_nexus_and_mmap_files(  )
+
+    # Create the processor object (but don't load data yet)
+    process_4dnexus = Process4dNexus(nexus_filename, mmap_filename, cached_cast_float=True, status_callback=add_status_message)
+    #process_4dnexus.status_message = status_messages
+    # Start with the temporary dashboard for dataset selection
+    dashboard = create_tmp_dashboard(process_4dnexus)
+    curdoc().add_root(dashboard)

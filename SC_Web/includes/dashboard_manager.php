@@ -76,9 +76,67 @@ function loadDashboard($datasetId, $dashboardType = null) {
 
 /**
  * Get dashboard configuration
+ * Fetches from dashboard registry, with fallback to defaults
  */
 function getDashboardConfig($dashboardType) {
-    $configs = [
+    // Try to load from dashboard registry
+    $possible_paths = [
+        __DIR__ . '/../../SC_Dashboards/config/dashboard-registry.json',
+        __DIR__ . '/../../SC_Dashboards/config/dashboards-list.json',
+        getenv('SC_DASHBOARDS_CONFIG') ?: null,
+        '/var/www/SC_Dashboards/config/dashboard-registry.json',
+        '/var/www/SC_Dashboards/config/dashboards-list.json'
+    ];
+    
+    foreach ($possible_paths as $path) {
+        if ($path && file_exists($path)) {
+            try {
+                $registry = json_decode(file_get_contents($path), true);
+                
+                // Look for dashboard in registry
+                if (isset($registry['dashboards'])) {
+                    foreach ($registry['dashboards'] as $name => $dashboard_info) {
+                        // Check if this dashboard matches the requested type
+                        if (strtolower($name) === strtolower($dashboardType) || 
+                            strtolower($dashboard_info['display_name'] ?? '') === strtolower($dashboardType) ||
+                            (isset($dashboard_info['type']) && strtolower($dashboard_info['type']) === strtolower($dashboardType))) {
+                            
+                            // Try to load full config (flat structure: {name}.json)
+                            $config_file = $dashboard_info['config_file'] ?? null;
+                            $full_config = null;
+                            
+                            if ($config_file && file_exists($config_file)) {
+                                $full_config = json_decode(file_get_contents($config_file), true);
+                            } else {
+                                // Try flat structure: {name}.json in dashboards directory
+                                $config_dir = dirname($path);
+                                $possible_config = $config_dir . '/../dashboards/' . $name . '.json';
+                                if (file_exists($possible_config)) {
+                                    $full_config = json_decode(file_get_contents($possible_config), true);
+                                }
+                            }
+                            
+                            return [
+                                'name' => $dashboard_info['display_name'] ?? $name,
+                                'type' => $dashboard_info['type'] ?? $dashboardType,
+                                'url_template' => ($dashboard_info['nginx_path'] ?? '/dashboard/' . strtolower($name)) . '?dataset={uuid}&server={server}',
+                                'supported_formats' => $full_config['supported_formats'] ?? ['tiff', 'hdf5', 'csv', 'json', 'nexus'],
+                                'description' => $full_config['description'] ?? $dashboard_info['display_name'] ?? 'Dashboard',
+                                'nginx_path' => $dashboard_info['nginx_path'] ?? '/dashboard/' . strtolower($name),
+                                'port' => $dashboard_info['port'] ?? 0
+                            ];
+                        }
+                    }
+                }
+            } catch (Exception $e) {
+                error_log("Error reading dashboard registry: " . $e->getMessage());
+                continue;
+            }
+        }
+    }
+    
+    // Fallback to default configurations
+    $default_configs = [
         'openvisus' => [
             'name' => 'OpenVisus Explorer',
             'type' => 'openvisus',
@@ -116,7 +174,73 @@ function getDashboardConfig($dashboardType) {
         ]
     ];
     
-    return $configs[$dashboardType] ?? null;
+    return $default_configs[$dashboardType] ?? null;
+}
+
+/**
+ * Get all available dashboards
+ */
+function getAllDashboards() {
+    $dashboards = [];
+    
+    // Try to load from dashboard registry
+    $possible_paths = [
+        __DIR__ . '/../../SC_Dashboards/config/dashboard-registry.json',
+        __DIR__ . '/../../SC_Dashboards/config/dashboards-list.json',
+        getenv('SC_DASHBOARDS_CONFIG') ?: null,
+        '/var/www/SC_Dashboards/config/dashboard-registry.json',
+        '/var/www/SC_Dashboards/config/dashboards-list.json'
+    ];
+    
+    foreach ($possible_paths as $path) {
+        if ($path && file_exists($path)) {
+            try {
+                $registry = json_decode(file_get_contents($path), true);
+                
+                if (isset($registry['dashboards'])) {
+                    foreach ($registry['dashboards'] as $name => $dashboard_info) {
+                        if (!isset($dashboard_info['enabled']) || $dashboard_info['enabled'] === true) {
+                            // Try to load full config from flat structure
+                            $config_file = $dashboard_info['config_file'] ?? null;
+                            $full_config = null;
+                            
+                            if ($config_file && file_exists($config_file)) {
+                                $full_config = json_decode(file_get_contents($config_file), true);
+                            } else {
+                                // Try relative path: {name}.json
+                                $config_dir = dirname($path);
+                                $possible_config = $config_dir . '/../dashboards/' . $name . '.json';
+                                if (file_exists($possible_config)) {
+                                    $full_config = json_decode(file_get_contents($possible_config), true);
+                                }
+                            }
+                            
+                            $dashboards[] = [
+                                'id' => $name,
+                                'name' => $dashboard_info['display_name'] ?? $name,
+                                'type' => $full_config['type'] ?? $dashboard_info['type'] ?? 'dash',
+                                'display_name' => $dashboard_info['display_name'] ?? $name,
+                                'description' => $full_config['description'] ?? $dashboard_info['description'] ?? 'Dashboard',
+                                'nginx_path' => $dashboard_info['nginx_path'] ?? '/dashboard/' . strtolower($name),
+                                'enabled' => $dashboard_info['enabled'] ?? true
+                            ];
+                        }
+                    }
+                    return $dashboards;
+                }
+            } catch (Exception $e) {
+                error_log("Error reading dashboard registry: " . $e->getMessage());
+                continue;
+            }
+        }
+    }
+    
+    // Fallback to defaults
+    return [
+        ['id' => 'openvisus', 'name' => 'OpenVisus Explorer', 'type' => 'openvisus', 'display_name' => 'OpenVisus Explorer'],
+        ['id' => 'plotly', 'name' => 'Plotly Dashboard', 'type' => 'plotly', 'display_name' => 'Plotly Dashboard'],
+        ['id' => 'bokeh', 'name' => 'Bokeh Dashboard', 'type' => 'bokeh', 'display_name' => 'Bokeh Dashboard']
+    ];
 }
 
 /**
