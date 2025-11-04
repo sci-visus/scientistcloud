@@ -71,7 +71,7 @@ class DatasetManager {
      */
     async loadDatasets() {
         try {
-            const response = await fetch('/api/datasets.php');
+            const response = await fetch('/portal/api/datasets.php');
             
             // Get response text first to check for errors
             const responseText = await response.text();
@@ -409,7 +409,7 @@ class DatasetManager {
      */
     async shareDataset(datasetId) {
         try {
-            const response = await fetch('/api/share-dataset.php', {
+            const response = await fetch('/portal/api/share-dataset.php', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -436,7 +436,7 @@ class DatasetManager {
     async deleteDataset(datasetId) {
         if (confirm('Are you sure you want to delete this dataset? This action cannot be undone.')) {
             try {
-                const response = await fetch('/api/delete-dataset.php', {
+                const response = await fetch('/portal/api/delete-dataset.php', {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
