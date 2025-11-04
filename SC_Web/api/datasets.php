@@ -4,6 +4,10 @@
  * Returns user's datasets in JSON format
  */
 
+// Start output buffering to prevent any output before JSON
+ob_start();
+
+// Set headers before any output
 header('Content-Type: application/json');
 header('Access-Control-Allow-Origin: *');
 header('Access-Control-Allow-Methods: GET, POST, OPTIONS');
@@ -12,6 +16,7 @@ header('Access-Control-Allow-Headers: Content-Type');
 // Handle preflight requests
 if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
     http_response_code(200);
+    ob_end_clean(); // Clear any output
     exit;
 }
 
@@ -23,15 +28,19 @@ require_once(__DIR__ . '/../includes/sclib_client.php');
 try {
     // Check authentication
     if (!isAuthenticated()) {
+        ob_clean();
         http_response_code(401);
         echo json_encode(['success' => false, 'error' => 'Authentication required']);
+        ob_end_flush();
         exit;
     }
 
     $user = getCurrentUser();
     if (!$user) {
+        ob_clean();
         http_response_code(401);
         echo json_encode(['success' => false, 'error' => 'User not found']);
+        ob_end_flush();
         exit;
     }
 
@@ -96,10 +105,21 @@ try {
         ]
     ];
 
+    // Clear any output that might have been generated (warnings, notices, etc.)
+    ob_clean();
+    
+    // Output JSON
     echo json_encode($response);
+    
+    // Flush and end output buffering
+    ob_end_flush();
+    exit;
 
 } catch (Exception $e) {
     logMessage('ERROR', 'Failed to get datasets', ['error' => $e->getMessage()]);
+    
+    // Clear any output buffer
+    ob_clean();
     
     http_response_code(500);
     echo json_encode([
@@ -107,5 +127,8 @@ try {
         'error' => 'Internal server error',
         'message' => $e->getMessage()
     ]);
+    
+    // Flush and end output buffering
+    ob_end_flush();
+    exit;
 }
-?>

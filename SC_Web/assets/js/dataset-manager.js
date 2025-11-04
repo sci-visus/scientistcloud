@@ -72,7 +72,19 @@ class DatasetManager {
     async loadDatasets() {
         try {
             const response = await fetch('/api/datasets.php');
-            const data = await response.json();
+            
+            // Get response text first to check for errors
+            const responseText = await response.text();
+            
+            // Check if response is valid JSON
+            let data;
+            try {
+                data = JSON.parse(responseText);
+            } catch (jsonError) {
+                console.error('Invalid JSON response:', responseText.substring(0, 200));
+                console.error('JSON parse error:', jsonError);
+                throw new Error('Invalid JSON response from server: ' + jsonError.message);
+            }
             
             if (data.success) {
                 // Handle the new structure: datasets.my, datasets.shared, datasets.team
