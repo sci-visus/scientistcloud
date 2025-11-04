@@ -4,7 +4,12 @@
  * Returns user's datasets in JSON format
  */
 
-// Start output buffering to prevent any output before JSON
+// Clean any existing output buffers
+while (ob_get_level()) {
+    ob_end_clean();
+}
+
+// Start fresh output buffering to prevent any output before JSON
 ob_start();
 
 // Set headers before any output
@@ -105,11 +110,23 @@ try {
         ]
     ];
 
-    // Clear any output that might have been generated (warnings, notices, etc.)
+    // Get any output that might have been generated (for debugging)
+    $output = ob_get_contents();
+    if (!empty($output) && trim($output) !== '') {
+        // Log unexpected output for debugging
+        error_log("Unexpected output before JSON in datasets.php: " . substr($output, 0, 200));
+        // Clear it
+        ob_clean();
+    }
+    
+    // Output JSON with clean buffer
+    $json = json_encode($response);
+    
+    // Ensure no output before JSON
     ob_clean();
     
     // Output JSON
-    echo json_encode($response);
+    echo $json;
     
     // Flush and end output buffering
     ob_end_flush();
