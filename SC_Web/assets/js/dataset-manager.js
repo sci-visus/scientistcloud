@@ -132,9 +132,35 @@ class DatasetManager {
      * Render datasets in the UI
      */
     renderDatasets() {
-        const container = document.querySelector('.dataset-list');
+        // Try to find the dataset-list container
+        let container = document.querySelector('.dataset-list');
+        
+        // Fallback: try to find the nav.panel-content or any container in the sidebar
         if (!container) {
-            console.error('Dataset list container not found!');
+            const sidebar = document.querySelector('#folderSidebar');
+            if (sidebar) {
+                container = sidebar.querySelector('nav.panel-content') || sidebar.querySelector('.panel-content');
+            }
+        }
+        
+        if (!container) {
+            console.error('Dataset list container not found! Looked for .dataset-list, nav.panel-content, or .panel-content');
+            // Try to create one
+            const sidebar = document.querySelector('#folderSidebar');
+            if (sidebar) {
+                const nav = sidebar.querySelector('nav');
+                if (nav) {
+                    container = document.createElement('div');
+                    container.className = 'dataset-list';
+                    nav.innerHTML = '';
+                    nav.appendChild(container);
+                    console.log('Created dataset-list container');
+                }
+            }
+        }
+        
+        if (!container) {
+            console.error('Could not create or find dataset list container!');
             return;
         }
         

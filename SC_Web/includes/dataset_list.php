@@ -73,6 +73,8 @@ function formatFileSize($bytes) {
 }
 ?>
 
+<!-- Dataset List Container - JavaScript will replace this content -->
+<div class="dataset-list">
 <!-- My Datasets -->
 <div class="dataset-section">
     <a class="nav-link" data-bs-toggle="collapse" data-bs-target="#myDatasets">
@@ -224,6 +226,8 @@ function formatFileSize($bytes) {
     </div>
 </div>
 <?php endif; ?>
+</div>
+<!-- End Dataset List Container -->
 
 <style>
 .dataset-section {
