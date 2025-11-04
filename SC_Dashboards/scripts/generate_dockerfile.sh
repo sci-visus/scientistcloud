@@ -149,13 +149,9 @@ sed -e "s|{{BASE_IMAGE}}|$BASE_IMAGE|g" \
     "$TEMPLATE_FILE" > "$OUTPUT_FILE"
 
 # Handle conditional sections
-if [ -n "$REQUIREMENTS_FILE" ]; then
-    sed -i.bak 's|{{#if REQUIREMENTS_FILE}}|#|g; s|{{/if}}||g' "$OUTPUT_FILE"
-    rm -f "$OUTPUT_FILE.bak"
-else
-    sed -i.bak '/{{#if REQUIREMENTS_FILE}}/,/{{/if}}/d' "$OUTPUT_FILE"
-    rm -f "$OUTPUT_FILE.bak"
-fi
+# Requirements file is always present (build script ensures it), so always include it
+sed -i.bak 's|{{#if REQUIREMENTS_FILE}}|#|g; s|{{/if}}||g' "$OUTPUT_FILE"
+rm -f "$OUTPUT_FILE.bak"
 
 # Handle ADDITIONAL_REQUIREMENTS conditional
 if [ -n "$ADDITIONAL_REQUIREMENTS" ]; then

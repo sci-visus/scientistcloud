@@ -99,10 +99,45 @@ elif [ -f "$DASHBOARDS_DIR/${DASHBOARD_NAME}.ipynb" ]; then
 fi
 
 # Copy requirements if exists
+# Try multiple naming patterns for requirements file
+REQUIREMENTS_COPIED=false
 if [ -n "$REQUIREMENTS_FILE" ] && [ -f "$DASHBOARDS_DIR/$REQUIREMENTS_FILE" ]; then
     cp "$DASHBOARDS_DIR/$REQUIREMENTS_FILE" "$BUILD_CONTEXT/requirements.txt"
+    REQUIREMENTS_COPIED=true
 elif [ -f "$DASHBOARDS_DIR/${DASHBOARD_NAME}_requirements.txt" ]; then
     cp "$DASHBOARDS_DIR/${DASHBOARD_NAME}_requirements.txt" "$BUILD_CONTEXT/requirements.txt"
+    REQUIREMENTS_COPIED=true
+elif [ -f "$DASHBOARDS_DIR/requirements.txt" ]; then
+    cp "$DASHBOARDS_DIR/requirements.txt" "$BUILD_CONTEXT/requirements.txt"
+    REQUIREMENTS_COPIED=true
+fi
+
+# If no requirements file found, generate one from additional_requirements if available
+if [ "$REQUIREMENTS_COPIED" = false ]; then
+    ADDITIONAL_REQUIREMENTS=$(jq -r '.additional_requirements // [] | .[]' "$CONFIG_FILE" 2>/dev/null || echo "")
+    if [ -n "$ADDITIONAL_REQUIREMENTS" ]; then
+        # Write additional requirements one per line to requirements.txt
+        > "$BUILD_CONTEXT/requirements.txt"  # Clear/create file
+        while IFS= read -r req; do
+            if [ -n "$req" ]; then
+                echo "$req" >> "$BUILD_CONTEXT/requirements.txt"
+            fi
+        done <<< "$ADDITIONAL_REQUIREMENTS"
+        echo "Generated requirements.txt from additional_requirements"
+        REQUIREMENTS_COPIED=true
+    else
+        echo "Warning: No requirements.txt file found for $DASHBOARD_NAME"
+        echo "   Tried: $REQUIREMENTS_FILE"
+        echo "   Tried: ${DASHBOARD_NAME}_requirements.txt"
+        echo "   Tried: requirements.txt"
+        echo "   Creating empty requirements.txt"
+        touch "$BUILD_CONTEXT/requirements.txt"
+    fi
+fi
+
+# Ensure requirements.txt always exists (even if empty) for Dockerfile COPY
+if [ ! -f "$BUILD_CONTEXT/requirements.txt" ]; then
+    touch "$BUILD_CONTEXT/requirements.txt"
 fi
 
 # Copy shared utilities

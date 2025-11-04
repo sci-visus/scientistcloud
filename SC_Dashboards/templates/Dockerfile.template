@@ -24,14 +24,16 @@ WORKDIR $APP_HOME
 
 # Copy dashboard-specific files (flat structure)
 COPY {{ENTRY_POINT}} ./
-{{#if REQUIREMENTS_FILE}}
-COPY {{REQUIREMENTS_FILE}} ./requirements.txt
-{{/if}}
+# Requirements file is always copied as requirements.txt in build context
+# (build script ensures it exists, even if empty)
+COPY requirements.txt ./requirements.txt
 
-# Install dashboard-specific requirements
-{{#if REQUIREMENTS_FILE}}
-RUN python3 -m pip install --no-cache-dir -r requirements.txt
-{{/if}}
+# Install dashboard-specific requirements (skip if file is empty)
+RUN if [ -s requirements.txt ]; then \
+        python3 -m pip install --no-cache-dir -r requirements.txt; \
+    else \
+        echo "No requirements to install (requirements.txt is empty)"; \
+    fi
 
 {{#if ADDITIONAL_REQUIREMENTS}}
 # Install additional requirements

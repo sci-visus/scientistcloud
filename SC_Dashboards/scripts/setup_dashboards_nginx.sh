@@ -90,23 +90,29 @@ if [ -z "$DASHBOARDS" ]; then
 fi
 
 while IFS= read -r DASHBOARD_NAME; do
-    # Try exact name first
+    # Generate lowercase name and remove trailing "_dashboard" if present
+    # (matches logic in generate_nginx_config.sh)
+    DASHBOARD_NAME_LOWER=$(echo "$DASHBOARD_NAME" | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9]/_/g')
+    DASHBOARD_NAME_LOWER=$(echo "$DASHBOARD_NAME_LOWER" | sed 's/_dashboard$//')
+    OUTPUT_NAME="${DASHBOARD_NAME_LOWER}_dashboard.conf"
+    
+    # Try exact name first, then lowercase variant (nginx configs use lowercase names)
     DASHBOARD_CONFIG="$DASHBOARD_NGINX_CONF_DIR/${DASHBOARD_NAME}_dashboard.conf"
     
-    # If not found, try lowercase/underscore variant (e.g., 4D_Dashboard -> 4d_dashboard)
+    # If not found, try lowercase variant (this is what generate_nginx_config.sh creates)
     if [ ! -f "$DASHBOARD_CONFIG" ]; then
-        DASHBOARD_NAME_LOWER=$(echo "$DASHBOARD_NAME" | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9]/_/g')
-        DASHBOARD_CONFIG="$DASHBOARD_NGINX_CONF_DIR/${DASHBOARD_NAME_LOWER}_dashboard.conf"
+        DASHBOARD_CONFIG="$DASHBOARD_NGINX_CONF_DIR/${OUTPUT_NAME}"
     fi
     
     if [ -f "$DASHBOARD_CONFIG" ]; then
-        cp "$DASHBOARD_CONFIG" "$MAIN_NGINX_CONF_DIR/${DASHBOARD_NAME}_dashboard.conf"
-        echo "   ✓ Copied: ${DASHBOARD_NAME}_dashboard.conf"
+        # Use consistent lowercase name in main nginx conf.d to avoid conflicts
+        cp "$DASHBOARD_CONFIG" "$MAIN_NGINX_CONF_DIR/${OUTPUT_NAME}"
+        echo "   ✓ Copied: ${OUTPUT_NAME} (from ${DASHBOARD_NAME})"
         COPIED_COUNT=$((COPIED_COUNT + 1))
     else
-        echo "   ⚠️  Config not found: ${DASHBOARD_NAME}_dashboard.conf"
+        echo "   ⚠️  Config not found for ${DASHBOARD_NAME}"
         echo "      Tried: ${DASHBOARD_NAME}_dashboard.conf"
-        echo "      Tried: ${DASHBOARD_NAME_LOWER}_dashboard.conf"
+        echo "      Tried: ${OUTPUT_NAME}"
         echo "      Run: ./scripts/generate_nginx_config.sh $DASHBOARD_NAME"
     fi
 done <<< "$DASHBOARDS"
@@ -116,12 +122,33 @@ echo "✅ Copied $COPIED_COUNT dashboard nginx configuration(s)"
 # Reload nginx if running
 if docker ps --format "{{.Names}}" | grep -q "visstore_nginx"; then
     echo "🔄 Reloading nginx..."
-    if docker exec visstore_nginx nginx -t; then
-        docker exec visstore_nginx nginx -s reload
-        echo "✅ Nginx reloaded with dashboard configurations"
+    
+    # Wait for nginx container to be fully running (not restarting)
+    echo "   Waiting for nginx container to be ready..."
+    MAX_WAIT=30
+    WAIT_COUNT=0
+    while [ $WAIT_COUNT -lt $MAX_WAIT ]; do
+        NGINX_STATUS=$(docker inspect --format='{{.State.Status}}' visstore_nginx 2>/dev/null || echo "not-found")
+        if [ "$NGINX_STATUS" = "running" ]; then
+            break
+        fi
+        sleep 1
+        WAIT_COUNT=$((WAIT_COUNT + 1))
+    done
+    
+    if [ "$NGINX_STATUS" != "running" ]; then
+        echo "⚠️  Nginx container is not in running state (status: $NGINX_STATUS)"
+        echo "   Skipping nginx reload - configurations will be active when nginx starts"
     else
-        echo "❌ Nginx configuration test failed"
-        exit 1
+        if docker exec visstore_nginx nginx -t 2>&1; then
+            docker exec visstore_nginx nginx -s reload
+            echo "✅ Nginx reloaded with dashboard configurations"
+        else
+            echo "❌ Nginx configuration test failed"
+            echo "   Run 'docker exec visstore_nginx nginx -t' to see the error"
+            echo "   Configurations were copied but nginx reload was skipped"
+            exit 1
+        fi
     fi
 else
     echo "⚠️  Nginx container (visstore_nginx) not found"

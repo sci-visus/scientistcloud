@@ -54,12 +54,17 @@ HEALTH_CHECK_PATH=$(jq -r '.health_check_path // empty' "$CONFIG_FILE")
 ENABLE_CORS=$(jq -r '.enable_cors // false' "$CONFIG_FILE")
 DASHBOARD_NAME_LOWER=$(echo "$DASHBOARD_NAME" | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9]/_/g')
 
+# Remove trailing "_dashboard" if present to avoid double "dashboard" in filename
+# (e.g., "4D_Dashboard" -> "4d_dashboard" -> remove "_dashboard" -> "4d" -> "4d_dashboard.conf")
+DASHBOARD_NAME_LOWER=$(echo "$DASHBOARD_NAME_LOWER" | sed 's/_dashboard$//')
+
 # Determine output file
+OUTPUT_NAME="${DASHBOARD_NAME_LOWER}_dashboard.conf"
 if [ -n "$2" ]; then
     OUTPUT_FILE="$2"
 else
     mkdir -p "$NGINX_OUTPUT_DIR/conf.d"
-    OUTPUT_FILE="$NGINX_OUTPUT_DIR/conf.d/${DASHBOARD_NAME}_dashboard.conf"
+    OUTPUT_FILE="$NGINX_OUTPUT_DIR/conf.d/${OUTPUT_NAME}"
 fi
 
 # Generate nginx config from template
