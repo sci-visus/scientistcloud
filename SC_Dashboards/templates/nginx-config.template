@@ -4,7 +4,7 @@
 
 # Dashboard proxy configuration
 location {{NGINX_PATH}} {
-    proxy_pass http://{{DASHBOARD_NAME}}_dashboard:{{DASHBOARD_PORT}};
+    proxy_pass http://dashboard_{{DASHBOARD_NAME_LOWER}}:{{DASHBOARD_PORT}};
     proxy_set_header Host $host;
     proxy_set_header X-Real-IP $remote_addr;
     proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
@@ -36,7 +36,7 @@ location {{NGINX_PATH}} {
 # Health check endpoint (if specified)
 {{#if HEALTH_CHECK_PATH}}
 location {{NGINX_PATH}}{{HEALTH_CHECK_PATH}} {
-    proxy_pass http://{{DASHBOARD_NAME}}_dashboard:{{DASHBOARD_PORT}}{{HEALTH_CHECK_PATH}};
+    proxy_pass http://dashboard_{{DASHBOARD_NAME_LOWER}}:{{DASHBOARD_PORT}}{{HEALTH_CHECK_PATH}};
     proxy_set_header Host $host;
     access_log off;
 }

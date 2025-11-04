@@ -6,7 +6,7 @@
   "type": "dash",
   "entry_point": "3DPlotly.py",
   "entry_point_type": "python",
-  "port": 8050,
+  "port": 8060,
   "base_image": "visstore-plotly-dashboard-base",
   "base_image_tag": "latest",
   "requirements_file": "requirements.txt",
@@ -40,7 +40,7 @@
     "D_GIT_TOKEN": "${D_GIT_TOKEN}"
   },
   "volume_mounts": [],
-  "exposed_ports": [8050],
+  "exposed_ports": [8060],
   "depends_on": [],
   "enabled": true
 }

@@ -1,7 +1,7 @@
 {
   "version": "1.0.0",
   "reserved_ports": {
-    "8050": "3DPlotly",
+    "8060": "3DPlotly",
     "8051": "3DVTK",
     "8052": "4D_Dashboard",
     "8053": "Magicscan",
@@ -11,6 +11,6 @@
     "start": 8050,
     "end": 8999
   },
-  "next_available": 8055
+  "next_available": 8065
 }
 

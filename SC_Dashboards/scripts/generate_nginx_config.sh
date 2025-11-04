@@ -52,6 +52,7 @@ NGINX_PATH=$(jq -r '.nginx_path' "$CONFIG_FILE")
 DASHBOARD_PORT=$(jq -r '.port' "$CONFIG_FILE")
 HEALTH_CHECK_PATH=$(jq -r '.health_check_path // empty' "$CONFIG_FILE")
 ENABLE_CORS=$(jq -r '.enable_cors // false' "$CONFIG_FILE")
+DASHBOARD_NAME_LOWER=$(echo "$DASHBOARD_NAME" | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9]/_/g')
 
 # Determine output file
 if [ -n "$2" ]; then
@@ -66,6 +67,7 @@ TEMPLATE_FILE="$TEMPLATES_DIR/nginx-config.template"
 
 # Simple template replacement
 sed -e "s|{{DASHBOARD_NAME}}|$DASHBOARD_NAME|g" \
+    -e "s|{{DASHBOARD_NAME_LOWER}}|$DASHBOARD_NAME_LOWER|g" \
     -e "s|{{NGINX_PATH}}|$NGINX_PATH|g" \
     -e "s|{{DASHBOARD_PORT}}|$DASHBOARD_PORT|g" \
     -e "s|{{HEALTH_CHECK_PATH}}|$HEALTH_CHECK_PATH|g" \

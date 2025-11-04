@@ -2,16 +2,16 @@
   "version": "1.0.0",
   "last_updated": "2025-11-04",
   "port_range": {
-    "start": 8050,
+    "start": 8060,
     "end": 8999,
-    "next_available": 8050
+    "next_available": 8065
   },
   "dashboards": {
     "3DPlotly": {
       "name": "3DPlotly",
       "display_name": "3D Plotly Dashboard",
       "enabled": true,
-      "port": 8050,
+      "port": 8060,
       "nginx_path": "/dashboard/plotly",
       "config_file": "../dashboards/3DPlotly.json"
     },

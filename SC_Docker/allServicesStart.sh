@@ -180,6 +180,56 @@ else
     echo "⏭️  Skipping portal nginx configuration (no VisusDataPortalPrivate path found)"
 fi
 
+# Setup and build dashboards
+# NOTE: New dashboards use separate .conf files in nginx/conf.d/ (automatically included)
+# Old dashboards are embedded in default.conf.https/default.conf.template inside server blocks
+# Ports are assigned to avoid conflicts with old dashboards (see PORT_CONFLICTS.md)
+echo "📊 Setting up and building dashboards..."
+DASHBOARDS_DIR="$HOME/ScientistCloud2.0/scientistcloud/SC_Dashboards"
+if [ -d "$DASHBOARDS_DIR" ]; then
+    pushd "$DASHBOARDS_DIR"
+    
+    # Initialize all enabled dashboards (generate Dockerfiles and nginx configs)
+    echo "   Initializing dashboards..."
+    DASHBOARDS=$(jq -r '.dashboards | to_entries[] | select(.value.enabled == true) | .key' config/dashboard-registry.json 2>/dev/null || echo "")
+    if [ -n "$DASHBOARDS" ]; then
+        while IFS= read -r DASHBOARD_NAME; do
+            echo "   📦 Initializing $DASHBOARD_NAME..."
+            ./scripts/init_dashboard.sh "$DASHBOARD_NAME" 2>&1 | grep -E "(✅|⚠️|❌|Error)" || true
+        done <<< "$DASHBOARDS"
+    fi
+    
+    # Build all enabled dashboards
+    echo "   Building dashboard Docker images..."
+    if [ -n "$DASHBOARDS" ]; then
+        while IFS= read -r DASHBOARD_NAME; do
+            echo "   🐳 Building $DASHBOARD_NAME..."
+            ./scripts/build_dashboard.sh "$DASHBOARD_NAME" 2>&1 | tail -1 || echo "   ⚠️  Build failed for $DASHBOARD_NAME"
+        done <<< "$DASHBOARDS"
+    fi
+    
+    # Generate docker-compose entries
+    echo "   Generating docker-compose entries..."
+    ./scripts/generate_docker_compose.sh --output ../SC_Docker/dashboards-docker-compose.yml 2>&1 | tail -1 || echo "   ⚠️  Failed to generate docker-compose entries"
+    
+    # Setup dashboard nginx configurations
+    # New dashboards use separate .conf files in conf.d/ (different from old embedded configs)
+    if [ -n "$VISUS_DOCKER_PATH" ] && [ -d "$VISUS_DOCKER_PATH" ]; then
+        echo "   Setting up dashboard nginx configurations..."
+        echo "   NOTE: New dashboards use separate .conf files in conf.d/ (automatically included by nginx)"
+        echo "   Old dashboards are embedded in default.conf.https/default.conf.template"
+        ./scripts/setup_dashboards_nginx.sh "$VISUS_DOCKER_PATH" 2>&1 | grep -E "(✅|⚠️|❌|Error)" || true
+    else
+        echo "   ⚠️  Skipping dashboard nginx setup (no VisusDataPortalPrivate path found)"
+    fi
+    
+    popd
+    echo "✅ Dashboard setup complete"
+else
+    echo "⚠️  SC_Dashboards directory not found: $DASHBOARDS_DIR"
+    echo "   Skipping dashboard setup"
+fi
+
 echo "🎉 All services startup complete!"
 echo ""
 echo "Service URLs:"
@@ -188,6 +238,16 @@ if [ "$SKIP_MAIN_SERVICES" = false ]; then
     echo "  🏠 Main Site: https://scientistcloud.com/"
 fi
 echo "  🔧 Health: https://scientistcloud.com/portal/health"
+if [ -d "$DASHBOARDS_DIR" ]; then
+    echo ""
+    echo "📊 Dashboard URLs:"
+    DASHBOARDS=$(jq -r '.dashboards | to_entries[] | select(.value.enabled == true) | "\(.key):\(.value.nginx_path)"' "$DASHBOARDS_DIR/config/dashboard-registry.json" 2>/dev/null || echo "")
+    if [ -n "$DASHBOARDS" ]; then
+        while IFS=: read -r DASHBOARD_NAME NGINX_PATH; do
+            echo "  📈 $DASHBOARD_NAME: https://scientistcloud.com${NGINX_PATH}"
+        done <<< "$DASHBOARDS"
+    fi
+fi
 echo ""
 if [ "$SKIP_MAIN_SERVICES" = true ]; then
     echo "ℹ️  Note: Main VisusDataPortalPrivate services were skipped (portal-only mode)"
