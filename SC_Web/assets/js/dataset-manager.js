@@ -103,6 +103,19 @@ class DatasetManager {
                         team: []
                     };
                 }
+                
+                // Debug logging
+                console.log('Datasets loaded:', {
+                    my: this.datasets.my.length,
+                    shared: this.datasets.shared.length,
+                    team: this.datasets.team.length,
+                    total: this.datasets.my.length + this.datasets.shared.length + this.datasets.team.length
+                });
+                
+                if (this.datasets.my.length > 0) {
+                    console.log('First my dataset:', this.datasets.my[0]);
+                }
+                
                 this.folders = data.folders || [];
                 this.renderDatasets();
             } else {
@@ -120,7 +133,16 @@ class DatasetManager {
      */
     renderDatasets() {
         const container = document.querySelector('.dataset-list');
-        if (!container) return;
+        if (!container) {
+            console.error('Dataset list container not found!');
+            return;
+        }
+        
+        console.log('Rendering datasets:', {
+            my: this.datasets.my?.length || 0,
+            shared: this.datasets.shared?.length || 0,
+            team: this.datasets.team?.length || 0
+        });
 
         // Group datasets by folder
         const groupedDatasets = this.groupDatasetsByFolder();
