@@ -76,25 +76,52 @@ function getDatasetStatus($datasetId) {
 
 /**
  * Format dataset for display
+ * Handles both MongoDB document format and API response format
  */
 function formatDataset($dataset) {
+    // Handle MongoDB document format (from SCLib_DatasetAPI)
+    if (isset($dataset['uuid'])) {
+        // Already in API format, but may need some adjustments
+        return [
+            'id' => $dataset['uuid'] ?? $dataset['id'] ?? '',
+            'name' => $dataset['name'] ?? 'Unnamed Dataset',
+            'uuid' => $dataset['uuid'] ?? $dataset['id'] ?? '',
+            'sensor' => $dataset['sensor'] ?? $dataset['metadata']['sensor'] ?? 'Unknown',
+            'status' => $dataset['status'] ?? $dataset['processing_status'] ?? 'unknown',
+            'compression_status' => $dataset['compression_status'] ?? $dataset['metadata']['compression_status'] ?? 'unknown',
+            'time' => $dataset['date_imported'] ?? $dataset['created_at'] ?? null,
+            'data_size' => $dataset['total_size'] ?? $dataset['raw_size'] ?? $dataset['file_size'] ?? 0,
+            'dimensions' => $dataset['dimensions'] ?? $dataset['metadata']['dimensions'] ?? '',
+            'google_drive_link' => $dataset['google_drive_link'] ?? $dataset['metadata']['google_drive_link'] ?? null,
+            'folder_uuid' => $dataset['folder_uuid'] ?? $dataset['metadata']['folder_uuid'] ?? '',
+            'team_uuid' => $dataset['team_uuid'] ?? $dataset['team_id'] ?? '',
+            'user_id' => $dataset['user'] ?? $dataset['user_id'] ?? '',
+            'tags' => $dataset['tags'] ?? $dataset['metadata']['tags'] ?? [],
+            'created_at' => $dataset['date_imported'] ?? $dataset['created_at'] ?? null,
+            'updated_at' => $dataset['date_updated'] ?? $dataset['updated_at'] ?? null,
+            'viewer_url' => $dataset['viewer_url'] ?? '',
+            'download_url' => $dataset['download_url'] ?? ''
+        ];
+    }
+    
+    // Handle legacy format (from old API)
     return [
-        'id' => $dataset['id'] ?? '',
+        'id' => $dataset['id'] ?? $dataset['uuid'] ?? '',
         'name' => $dataset['name'] ?? 'Unnamed Dataset',
-        'uuid' => $dataset['id'] ?? '',
-        'sensor' => $dataset['metadata']['sensor'] ?? 'Unknown',
-        'status' => $dataset['status'] ?? 'unknown',
-        'compression_status' => $dataset['metadata']['compression_status'] ?? 'unknown',
-        'time' => $dataset['created_at'] ?? null,
-        'data_size' => $dataset['file_size'] ?? 0,
-        'dimensions' => $dataset['metadata']['dimensions'] ?? '',
-        'google_drive_link' => $dataset['metadata']['google_drive_link'] ?? null,
-        'folder_uuid' => $dataset['metadata']['folder_uuid'] ?? '',
-        'team_uuid' => $dataset['team_id'] ?? '',
-        'user_id' => $dataset['user_id'] ?? '',
-        'tags' => $dataset['metadata']['tags'] ?? [],
-        'created_at' => $dataset['created_at'] ?? null,
-        'updated_at' => $dataset['updated_at'] ?? null,
+        'uuid' => $dataset['uuid'] ?? $dataset['id'] ?? '',
+        'sensor' => $dataset['sensor'] ?? $dataset['metadata']['sensor'] ?? 'Unknown',
+        'status' => $dataset['status'] ?? $dataset['processing_status'] ?? 'unknown',
+        'compression_status' => $dataset['compression_status'] ?? $dataset['metadata']['compression_status'] ?? 'unknown',
+        'time' => $dataset['created_at'] ?? $dataset['date_imported'] ?? null,
+        'data_size' => $dataset['file_size'] ?? $dataset['total_size'] ?? $dataset['raw_size'] ?? 0,
+        'dimensions' => $dataset['dimensions'] ?? $dataset['metadata']['dimensions'] ?? '',
+        'google_drive_link' => $dataset['google_drive_link'] ?? $dataset['metadata']['google_drive_link'] ?? null,
+        'folder_uuid' => $dataset['folder_uuid'] ?? $dataset['metadata']['folder_uuid'] ?? '',
+        'team_uuid' => $dataset['team_uuid'] ?? $dataset['team_id'] ?? '',
+        'user_id' => $dataset['user'] ?? $dataset['user_id'] ?? '',
+        'tags' => $dataset['tags'] ?? $dataset['metadata']['tags'] ?? [],
+        'created_at' => $dataset['created_at'] ?? $dataset['date_imported'] ?? null,
+        'updated_at' => $dataset['updated_at'] ?? $dataset['date_updated'] ?? null,
         'viewer_url' => $dataset['viewer_url'] ?? '',
         'download_url' => $dataset['download_url'] ?? ''
     ];
@@ -290,8 +317,14 @@ function getAllDatasetsByEmail($userEmail) {
             $response = $sclib->makeRequest('/api/v1/datasets', 'GET', null, ['user_email' => $userEmail]);
             // Transform basic list response to organized format
             if (isset($response['success']) && $response['success']) {
+                $datasets = $response['datasets'] ?? [];
+                // Format each dataset
+                $formattedDatasets = [];
+                foreach ($datasets as $dataset) {
+                    $formattedDatasets[] = formatDataset($dataset);
+                }
                 return [
-                    'my' => $response['datasets'] ?? [],
+                    'my' => $formattedDatasets,
                     'shared' => [],
                     'team' => []
                 ];
@@ -300,11 +333,41 @@ function getAllDatasetsByEmail($userEmail) {
         }
         
         if (isset($response['success']) && $response['success']) {
-            return $response['datasets'] ?? [
+            $datasets = $response['datasets'] ?? [
                 'my' => [],
                 'shared' => [],
                 'team' => []
             ];
+            
+            // Format datasets for each category
+            $formatted = [
+                'my' => [],
+                'shared' => [],
+                'team' => []
+            ];
+            
+            // Format my datasets
+            if (isset($datasets['my']) && is_array($datasets['my'])) {
+                foreach ($datasets['my'] as $dataset) {
+                    $formatted['my'][] = formatDataset($dataset);
+                }
+            }
+            
+            // Format shared datasets
+            if (isset($datasets['shared']) && is_array($datasets['shared'])) {
+                foreach ($datasets['shared'] as $dataset) {
+                    $formatted['shared'][] = formatDataset($dataset);
+                }
+            }
+            
+            // Format team datasets
+            if (isset($datasets['team']) && is_array($datasets['team'])) {
+                foreach ($datasets['team'] as $dataset) {
+                    $formatted['team'][] = formatDataset($dataset);
+                }
+            }
+            
+            return $formatted;
         }
         
         logMessage('WARNING', 'SCLib API returned unsuccessful response', ['response' => $response]);

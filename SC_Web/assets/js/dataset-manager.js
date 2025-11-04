@@ -75,16 +75,31 @@ class DatasetManager {
             const data = await response.json();
             
             if (data.success) {
-                this.datasets = data.datasets;
-                this.folders = data.folders;
+                // Handle the new structure: datasets.my, datasets.shared, datasets.team
+                if (data.datasets && typeof data.datasets === 'object') {
+                    // Flatten the datasets structure for easier access
+                    this.datasets = {
+                        my: data.datasets.my || [],
+                        shared: data.datasets.shared || [],
+                        team: data.datasets.team || []
+                    };
+                } else {
+                    // Fallback for old structure
+                    this.datasets = {
+                        my: Array.isArray(data.datasets) ? data.datasets : [],
+                        shared: [],
+                        team: []
+                    };
+                }
+                this.folders = data.folders || [];
                 this.renderDatasets();
             } else {
                 console.error('Failed to load datasets:', data.error);
-                this.showError('Failed to load datasets');
+                this.showError('Failed to load datasets: ' + (data.error || 'Unknown error'));
             }
         } catch (error) {
             console.error('Error loading datasets:', error);
-            this.showError('Error loading datasets');
+            this.showError('Error loading datasets: ' + error.message);
         }
     }
 
@@ -118,23 +133,13 @@ class DatasetManager {
      * Group datasets by folder
      */
     groupDatasetsByFolder() {
-        const grouped = {
-            'my': [],
-            'shared': [],
-            'team': []
+        // Datasets are already grouped by type (my, shared, team)
+        // Just return them as-is, but we can organize by folder within each group
+        return {
+            'my': this.datasets.my || [],
+            'shared': this.datasets.shared || [],
+            'team': this.datasets.team || []
         };
-
-        this.datasets.forEach(dataset => {
-            if (dataset.shared_with) {
-                grouped.shared.push(dataset);
-            } else if (dataset.team_id) {
-                grouped.team.push(dataset);
-            } else {
-                grouped.my.push(dataset);
-            }
-        });
-
-        return grouped;
     }
 
     /**
