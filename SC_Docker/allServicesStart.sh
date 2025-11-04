@@ -208,12 +208,14 @@ if [ -d "$DASHBOARDS_DIR" ]; then
     pushd "$DASHBOARDS_DIR"
     
     # Initialize all enabled dashboards (generate Dockerfiles and nginx configs)
+    # Regenerate to ensure latest fixes are applied (Dockerfiles and nginx configs)
     echo "   Initializing dashboards..."
     DASHBOARDS=$(jq -r '.dashboards | to_entries[] | select(.value.enabled == true) | .key' config/dashboard-registry.json 2>/dev/null || echo "")
     if [ -n "$DASHBOARDS" ]; then
         while IFS= read -r DASHBOARD_NAME; do
             echo "   📦 Initializing $DASHBOARD_NAME..."
-            ./scripts/init_dashboard.sh "$DASHBOARD_NAME" 2>&1 | grep -E "(✅|⚠️|❌|Error)" || true
+            # Force regeneration of Dockerfiles and nginx configs to apply latest fixes
+            ./scripts/init_dashboard.sh "$DASHBOARD_NAME" --overwrite 2>&1 | grep -E "(✅|⚠️|❌|Error|Generated|Exported)" || true
         done <<< "$DASHBOARDS"
     fi
     
