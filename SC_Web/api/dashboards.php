@@ -6,8 +6,22 @@
 
 header('Content-Type: application/json');
 
-// Start output buffering to prevent any output before JSON
+// Start output buffering IMMEDIATELY to catch any output from included files
+if (ob_get_level() > 0) {
+    while (ob_get_level()) {
+        ob_end_clean();
+    }
+}
 ob_start();
+
+// Disable error display to prevent output
+ini_set('display_errors', 0);
+ini_set('display_startup_errors', 0);
+
+// Start session BEFORE including config.php to ensure session is available
+if (session_status() == PHP_SESSION_NONE) {
+    session_start();
+}
 
 require_once(__DIR__ . '/../config.php');
 require_once(__DIR__ . '/../includes/auth.php');

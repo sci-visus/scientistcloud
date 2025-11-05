@@ -24,10 +24,18 @@ $folders = getDatasetFolders($user['id']);
 $groupedDatasets = [];
 $rootDatasets = [];
 foreach ($datasets as $dataset) {
-    $folderUuid = $dataset['folder_uuid'] ?? null;
-    if (empty($folderUuid) || $folderUuid === 'No_Folder_Selected' || $folderUuid === 'root') {
+    // Extract folder_uuid - check both direct field and metadata
+    // formatDataset() should have already extracted it, but check both just in case
+    $folderUuid = $dataset['folder_uuid'] ?? $dataset['metadata']['folder_uuid'] ?? null;
+    
+    // Debug: log if we have folder_uuid (remove after testing)
+    // error_log("Dataset: " . ($dataset['name'] ?? 'unnamed') . " folder_uuid: " . ($folderUuid ?? 'null'));
+    
+    // Normalize empty/null values - empty string is treated as no folder
+    if ($folderUuid === null || $folderUuid === '' || $folderUuid === 'No_Folder_Selected' || $folderUuid === 'root') {
         $rootDatasets[] = $dataset;
     } else {
+        // Use folder_uuid as the key (can be UUID or folder name)
         if (!isset($groupedDatasets[$folderUuid])) {
             $groupedDatasets[$folderUuid] = [];
         }
@@ -168,8 +176,11 @@ function formatFileSize($bytes) {
         $sharedGroupedDatasets = [];
         $sharedRootDatasets = [];
         foreach ($sharedDatasets as $dataset) {
-            $folderUuid = $dataset['folder_uuid'] ?? null;
-            if (empty($folderUuid) || $folderUuid === 'No_Folder_Selected' || $folderUuid === 'root') {
+            // Extract folder_uuid - check both direct field and metadata
+            $folderUuid = $dataset['folder_uuid'] ?? $dataset['metadata']['folder_uuid'] ?? null;
+            
+            // Normalize empty/null values
+            if ($folderUuid === null || $folderUuid === '' || $folderUuid === 'No_Folder_Selected' || $folderUuid === 'root') {
                 $sharedRootDatasets[] = $dataset;
             } else {
                 if (!isset($sharedGroupedDatasets[$folderUuid])) {
@@ -261,8 +272,11 @@ function formatFileSize($bytes) {
         $teamGroupedDatasets = [];
         $teamRootDatasets = [];
         foreach ($teamDatasets as $dataset) {
-            $folderUuid = $dataset['folder_uuid'] ?? null;
-            if (empty($folderUuid) || $folderUuid === 'No_Folder_Selected' || $folderUuid === 'root') {
+            // Extract folder_uuid - check both direct field and metadata
+            $folderUuid = $dataset['folder_uuid'] ?? $dataset['metadata']['folder_uuid'] ?? null;
+            
+            // Normalize empty/null values
+            if ($folderUuid === null || $folderUuid === '' || $folderUuid === 'No_Folder_Selected' || $folderUuid === 'root') {
                 $teamRootDatasets[] = $dataset;
             } else {
                 if (!isset($teamGroupedDatasets[$folderUuid])) {
@@ -432,10 +446,13 @@ document.addEventListener('DOMContentLoaded', function() {
         link.addEventListener('click', function(e) {
             e.preventDefault();
             
-            const datasetId = this.dataset.datasetId;
-            const datasetName = this.dataset.datasetName;
-            const datasetUuid = this.dataset.datasetUuid;
-            const datasetServer = this.dataset.datasetServer;
+            // Extract dataset information from data attributes
+            const datasetId = this.getAttribute('data-dataset-id');
+            const datasetName = this.getAttribute('data-dataset-name');
+            const datasetUuid = this.getAttribute('data-dataset-uuid');
+            const datasetServer = this.getAttribute('data-dataset-server');
+            
+            console.log('Dataset clicked:', { datasetId, datasetName, datasetUuid, datasetServer });
             
             // Update active state
             document.querySelectorAll('.dataset-link').forEach(function(l) {
@@ -443,11 +460,44 @@ document.addEventListener('DOMContentLoaded', function() {
             });
             this.classList.add('active');
             
-            // Load dataset details
-            loadDatasetDetails(datasetId);
+            // Validate required fields, especially UUID
+            if (!datasetUuid) {
+                console.error('Dataset UUID is missing! Cannot load dashboard.');
+                alert('Error: Dataset UUID is missing. Please contact support.');
+                return;
+            }
             
-            // Load dashboard
-            loadDashboard(datasetId, datasetName, datasetUuid, datasetServer);
+            // Load dataset details
+            if (typeof loadDatasetDetails === 'function') {
+                loadDatasetDetails(datasetId);
+            }
+            
+            // Load dashboard using viewer manager (preferred method)
+            if (window.viewerManager && window.datasetManager) {
+                // Store current dataset in dataset manager
+                window.datasetManager.currentDataset = {
+                    id: datasetId,
+                    name: datasetName,
+                    uuid: datasetUuid,  // Ensure UUID is passed
+                    server: datasetServer
+                };
+                
+                // Get default dashboard type from selector
+                const viewerType = document.getElementById('viewerType');
+                const dashboardType = viewerType ? viewerType.value : (Object.keys(window.viewerManager.viewers)[0] || 'openvisus');
+                
+                console.log('Loading dashboard with UUID:', datasetUuid, 'dashboard type:', dashboardType);
+                
+                // Load dashboard using viewer manager - MUST pass UUID
+                window.viewerManager.loadDashboard(datasetId, datasetName, datasetUuid, datasetServer, dashboardType);
+            } else if (typeof loadDashboard === 'function') {
+                // Fallback to main.js loadDashboard
+                console.log('Using fallback loadDashboard with UUID:', datasetUuid);
+                loadDashboard(datasetId, datasetName, datasetUuid, datasetServer);
+            } else {
+                console.error('No dashboard loader available');
+                alert('Error: Dashboard loader not available. Please refresh the page.');
+            }
         });
     });
     

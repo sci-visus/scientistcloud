@@ -48,7 +48,7 @@ body {
 }
 
 .sidebar {
-  width: 500px;
+  width: 600px;  /* Increased from 500px for better visibility */
   border-right: 1px solid var(--panel-border);
   padding-top: 1rem;
 }
