@@ -20,14 +20,19 @@ if (!$user) {
 $datasets = getUserDatasets($user['id']);
 $folders = getDatasetFolders($user['id']);
 
-// Group datasets by folder
+// Group datasets by folder (similar to list_conversions_treeview_fromJSON.php)
 $groupedDatasets = [];
+$rootDatasets = [];
 foreach ($datasets as $dataset) {
-    $folderUuid = $dataset['folder_uuid'] ?: 'root';
-    if (!isset($groupedDatasets[$folderUuid])) {
-        $groupedDatasets[$folderUuid] = [];
+    $folderUuid = $dataset['folder_uuid'] ?? null;
+    if (empty($folderUuid) || $folderUuid === 'No_Folder_Selected' || $folderUuid === 'root') {
+        $rootDatasets[] = $dataset;
+    } else {
+        if (!isset($groupedDatasets[$folderUuid])) {
+            $groupedDatasets[$folderUuid] = [];
+        }
+        $groupedDatasets[$folderUuid][] = $dataset;
     }
-    $groupedDatasets[$folderUuid][] = $dataset;
 }
 
 // Function to get file format icon
@@ -84,34 +89,35 @@ function formatFileSize($bytes) {
         <?php if (empty($datasets)): ?>
             <p class="text-muted">No datasets found. Upload your first dataset to get started.</p>
         <?php else: ?>
+            <!-- Root level datasets (no folder) -->
+            <?php foreach ($rootDatasets as $dataset): ?>
+                <div class="dataset-item" data-dataset-id="<?php echo htmlspecialchars($dataset['id']); ?>">
+                    <a class="nav-link dataset-link" href="javascript:void(0)" 
+                       data-dataset-id="<?php echo htmlspecialchars($dataset['id']); ?>"
+                       data-dataset-name="<?php echo htmlspecialchars($dataset['name']); ?>"
+                       data-dataset-uuid="<?php echo htmlspecialchars($dataset['uuid']); ?>"
+                       data-dataset-server="<?php echo $dataset['google_drive_link'] ? 'true' : 'false'; ?>">
+                        <i class="<?php echo getFileFormatIcon($dataset['sensor']); ?> me-2"></i>
+                        <span class="dataset-name"><?php echo htmlspecialchars($dataset['name']); ?></span>
+                        <span class="badge bg-<?php echo getStatusColor($dataset['status']); ?> ms-2">
+                            <?php echo htmlspecialchars($dataset['status']); ?>
+                        </span>
+                    </a>
+                </div>
+            <?php endforeach; ?>
+            
+            <!-- Folder datasets (grouped by folder_uuid) -->
             <?php foreach ($groupedDatasets as $folderUuid => $folderDatasets): ?>
-                <?php if ($folderUuid === 'root'): ?>
-                    <!-- Root level datasets -->
-                    <?php foreach ($folderDatasets as $dataset): ?>
-                        <div class="dataset-item" data-dataset-id="<?php echo htmlspecialchars($dataset['id']); ?>">
-                            <a class="nav-link dataset-link" href="javascript:void(0)" 
-                               data-dataset-id="<?php echo htmlspecialchars($dataset['id']); ?>"
-                               data-dataset-name="<?php echo htmlspecialchars($dataset['name']); ?>"
-                               data-dataset-uuid="<?php echo htmlspecialchars($dataset['uuid']); ?>"
-                               data-dataset-server="<?php echo $dataset['google_drive_link'] ? 'true' : 'false'; ?>">
-                                <i class="<?php echo getFileFormatIcon($dataset['sensor']); ?> me-2"></i>
-                                <span class="dataset-name"><?php echo htmlspecialchars($dataset['name']); ?></span>
-                                <span class="badge bg-<?php echo getStatusColor($dataset['status']); ?> ms-2">
-                                    <?php echo htmlspecialchars($dataset['status']); ?>
-                                </span>
-                            </a>
-                        </div>
-                    <?php endforeach; ?>
-                <?php else: ?>
-                    <!-- Folder datasets -->
-                    <div class="folder-group">
-                        <a class="nav-link" data-bs-toggle="collapse" data-bs-target="#folder-<?php echo htmlspecialchars($folderUuid); ?>">
-                            <span class="arrow-icon" id="arrow-<?php echo htmlspecialchars($folderUuid); ?>">&#9656;</span>
-                            <?php echo htmlspecialchars($folderUuid); ?>
-                        </a>
-                        <div class="collapse ps-4 w-100" id="folder-<?php echo htmlspecialchars($folderUuid); ?>">
+                <div class="folder-group">
+                    <details class="folder-details" open>
+                        <summary class="folder-summary">
+                            <span class="arrow-icon">&#9656;</span>
+                            <span class="folder-name"><?php echo htmlspecialchars($folderUuid); ?></span>
+                            <span class="badge bg-secondary ms-2"><?php echo count($folderDatasets); ?></span>
+                        </summary>
+                        <ul class="nested folder-datasets">
                             <?php foreach ($folderDatasets as $dataset): ?>
-                                <div class="dataset-item" data-dataset-id="<?php echo htmlspecialchars($dataset['id']); ?>">
+                                <li class="dataset-item" data-dataset-id="<?php echo htmlspecialchars($dataset['id']); ?>">
                                     <a class="nav-link dataset-link" href="javascript:void(0)" 
                                        data-dataset-id="<?php echo htmlspecialchars($dataset['id']); ?>"
                                        data-dataset-name="<?php echo htmlspecialchars($dataset['name']); ?>"
@@ -123,11 +129,11 @@ function formatFileSize($bytes) {
                                             <?php echo htmlspecialchars($dataset['status']); ?>
                                         </span>
                                     </a>
-                                </div>
+                                </li>
                             <?php endforeach; ?>
-                        </div>
-                    </div>
-                <?php endif; ?>
+                        </ul>
+                    </details>
+                </div>
             <?php endforeach; ?>
         <?php endif; ?>
     </div>
@@ -157,12 +163,28 @@ function formatFileSize($bytes) {
         } catch (Exception $e) {
             logMessage('ERROR', 'Failed to get shared datasets', ['error' => $e->getMessage()]);
         }
+        
+        // Group shared datasets by folder
+        $sharedGroupedDatasets = [];
+        $sharedRootDatasets = [];
+        foreach ($sharedDatasets as $dataset) {
+            $folderUuid = $dataset['folder_uuid'] ?? null;
+            if (empty($folderUuid) || $folderUuid === 'No_Folder_Selected' || $folderUuid === 'root') {
+                $sharedRootDatasets[] = $dataset;
+            } else {
+                if (!isset($sharedGroupedDatasets[$folderUuid])) {
+                    $sharedGroupedDatasets[$folderUuid] = [];
+                }
+                $sharedGroupedDatasets[$folderUuid][] = $dataset;
+            }
+        }
         ?>
         
         <?php if (empty($sharedDatasets)): ?>
             <p class="text-muted">No shared datasets found.</p>
         <?php else: ?>
-            <?php foreach ($sharedDatasets as $dataset): ?>
+            <!-- Root level shared datasets -->
+            <?php foreach ($sharedRootDatasets as $dataset): ?>
                 <div class="dataset-item" data-dataset-id="<?php echo htmlspecialchars($dataset['id']); ?>">
                     <a class="nav-link dataset-link" href="javascript:void(0)" 
                        data-dataset-id="<?php echo htmlspecialchars($dataset['id']); ?>"
@@ -173,6 +195,34 @@ function formatFileSize($bytes) {
                         <span class="dataset-name"><?php echo htmlspecialchars($dataset['name']); ?></span>
                         <span class="badge bg-info ms-2">Shared</span>
                     </a>
+                </div>
+            <?php endforeach; ?>
+            
+            <!-- Folder grouped shared datasets -->
+            <?php foreach ($sharedGroupedDatasets as $folderUuid => $folderDatasets): ?>
+                <div class="folder-group">
+                    <details class="folder-details" open>
+                        <summary class="folder-summary">
+                            <span class="arrow-icon">&#9656;</span>
+                            <span class="folder-name"><?php echo htmlspecialchars($folderUuid); ?></span>
+                            <span class="badge bg-secondary ms-2"><?php echo count($folderDatasets); ?></span>
+                        </summary>
+                        <ul class="nested folder-datasets">
+                            <?php foreach ($folderDatasets as $dataset): ?>
+                                <li class="dataset-item" data-dataset-id="<?php echo htmlspecialchars($dataset['id']); ?>">
+                                    <a class="nav-link dataset-link" href="javascript:void(0)" 
+                                       data-dataset-id="<?php echo htmlspecialchars($dataset['id']); ?>"
+                                       data-dataset-name="<?php echo htmlspecialchars($dataset['name']); ?>"
+                                       data-dataset-uuid="<?php echo htmlspecialchars($dataset['uuid']); ?>"
+                                       data-dataset-server="<?php echo $dataset['google_drive_link'] ? 'true' : 'false'; ?>">
+                                        <i class="<?php echo getFileFormatIcon($dataset['sensor']); ?> me-2"></i>
+                                        <span class="dataset-name"><?php echo htmlspecialchars($dataset['name']); ?></span>
+                                        <span class="badge bg-info ms-2">Shared</span>
+                                    </a>
+                                </li>
+                            <?php endforeach; ?>
+                        </ul>
+                    </details>
                 </div>
             <?php endforeach; ?>
         <?php endif; ?>
@@ -206,10 +256,28 @@ function formatFileSize($bytes) {
         }
         ?>
         
+        <?php
+        // Group team datasets by folder
+        $teamGroupedDatasets = [];
+        $teamRootDatasets = [];
+        foreach ($teamDatasets as $dataset) {
+            $folderUuid = $dataset['folder_uuid'] ?? null;
+            if (empty($folderUuid) || $folderUuid === 'No_Folder_Selected' || $folderUuid === 'root') {
+                $teamRootDatasets[] = $dataset;
+            } else {
+                if (!isset($teamGroupedDatasets[$folderUuid])) {
+                    $teamGroupedDatasets[$folderUuid] = [];
+                }
+                $teamGroupedDatasets[$folderUuid][] = $dataset;
+            }
+        }
+        ?>
+        
         <?php if (empty($teamDatasets)): ?>
             <p class="text-muted">No team datasets found.</p>
         <?php else: ?>
-            <?php foreach ($teamDatasets as $dataset): ?>
+            <!-- Root level team datasets -->
+            <?php foreach ($teamRootDatasets as $dataset): ?>
                 <div class="dataset-item" data-dataset-id="<?php echo htmlspecialchars($dataset['id']); ?>">
                     <a class="nav-link dataset-link" href="javascript:void(0)" 
                        data-dataset-id="<?php echo htmlspecialchars($dataset['id']); ?>"
@@ -220,6 +288,34 @@ function formatFileSize($bytes) {
                         <span class="dataset-name"><?php echo htmlspecialchars($dataset['name']); ?></span>
                         <span class="badge bg-primary ms-2">Team</span>
                     </a>
+                </div>
+            <?php endforeach; ?>
+            
+            <!-- Folder grouped team datasets -->
+            <?php foreach ($teamGroupedDatasets as $folderUuid => $folderDatasets): ?>
+                <div class="folder-group">
+                    <details class="folder-details" open>
+                        <summary class="folder-summary">
+                            <span class="arrow-icon">&#9656;</span>
+                            <span class="folder-name"><?php echo htmlspecialchars($folderUuid); ?></span>
+                            <span class="badge bg-secondary ms-2"><?php echo count($folderDatasets); ?></span>
+                        </summary>
+                        <ul class="nested folder-datasets">
+                            <?php foreach ($folderDatasets as $dataset): ?>
+                                <li class="dataset-item" data-dataset-id="<?php echo htmlspecialchars($dataset['id']); ?>">
+                                    <a class="nav-link dataset-link" href="javascript:void(0)" 
+                                       data-dataset-id="<?php echo htmlspecialchars($dataset['id']); ?>"
+                                       data-dataset-name="<?php echo htmlspecialchars($dataset['name']); ?>"
+                                       data-dataset-uuid="<?php echo htmlspecialchars($dataset['uuid']); ?>"
+                                       data-dataset-server="<?php echo $dataset['google_drive_link'] ? 'true' : 'false'; ?>">
+                                        <i class="<?php echo getFileFormatIcon($dataset['sensor']); ?> me-2"></i>
+                                        <span class="dataset-name"><?php echo htmlspecialchars($dataset['name']); ?></span>
+                                        <span class="badge bg-primary ms-2">Team</span>
+                                    </a>
+                                </li>
+                            <?php endforeach; ?>
+                        </ul>
+                    </details>
                 </div>
             <?php endforeach; ?>
         <?php endif; ?>
@@ -263,6 +359,56 @@ function formatFileSize($bytes) {
 
 .folder-group {
     margin-bottom: 0.5rem;
+}
+
+.folder-details {
+    margin-bottom: 0.5rem;
+}
+
+.folder-summary {
+    display: flex;
+    align-items: center;
+    padding: 0.5rem;
+    cursor: pointer;
+    list-style: none;
+    user-select: none;
+    border-radius: 0.25rem;
+    transition: background-color 0.2s;
+}
+
+.folder-summary:hover {
+    background-color: rgba(255, 255, 255, 0.1);
+}
+
+.folder-summary::-webkit-details-marker {
+    display: none;
+}
+
+.folder-summary .arrow-icon {
+    display: inline-block;
+    transition: transform 0.2s;
+    width: 1em;
+    text-align: center;
+    margin-right: 0.5rem;
+}
+
+.folder-details[open] .folder-summary .arrow-icon {
+    transform: rotate(90deg);
+}
+
+.folder-name {
+    flex: 1;
+    font-weight: 500;
+}
+
+.nested.folder-datasets {
+    list-style: none;
+    padding-left: 1.5rem;
+    margin-top: 0.25rem;
+}
+
+.nested.folder-datasets li {
+    margin-bottom: 0.25rem;
 }
 
 .arrow-icon {
