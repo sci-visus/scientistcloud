@@ -50,9 +50,15 @@ fi
 # Load configuration
 NGINX_PATH=$(jq -r '.nginx_path' "$CONFIG_FILE")
 DASHBOARD_PORT=$(jq -r '.port' "$CONFIG_FILE")
+DASHBOARD_TYPE=$(jq -r '.type // "dash"' "$CONFIG_FILE")
 HEALTH_CHECK_PATH=$(jq -r '.health_check_path // empty' "$CONFIG_FILE")
 ENABLE_CORS=$(jq -r '.enable_cors // false' "$CONFIG_FILE")
 DASHBOARD_NAME_LOWER=$(echo "$DASHBOARD_NAME" | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9]/_/g')
+
+# Ensure NGINX_PATH has trailing slash for proper path matching
+if [[ ! "$NGINX_PATH" =~ /$ ]]; then
+    NGINX_PATH="${NGINX_PATH}/"
+fi
 
 # Remove trailing "_dashboard" if present to avoid double "dashboard" in filename
 # (e.g., "4D_Dashboard" -> "4d_dashboard" -> remove "_dashboard" -> "4d" -> "4d_dashboard.conf")
@@ -108,23 +114,99 @@ else
     echo "    # Health check disabled" > "$HEALTH_TEMP"
 fi
 
+# Build static file section based on dashboard type
+STATIC_TEMP=$(mktemp)
+if [[ "$DASHBOARD_TYPE" == "plotly" ]]; then
+    # Plotly uses /assets/ for static files
+    cat > "$STATIC_TEMP" << STATICEOF
+# Static files (assets)
+location ${NGINX_PATH}assets/ {
+    # Use variable to defer hostname resolution
+    set \$upstream_host "dashboard_${DASHBOARD_NAME_LOWER}";
+    set \$upstream_port "${DASHBOARD_PORT}";
+    proxy_pass http://\$upstream_host:\$upstream_port/assets/;
+    proxy_set_header Host \$host;
+    proxy_set_header X-Real-IP \$remote_addr;
+    proxy_set_header X-Forwarded-For "\$proxy_add_x_forwarded_for";
+    proxy_set_header X-Forwarded-Proto \$scheme;
+}
+STATICEOF
+elif [[ "$DASHBOARD_TYPE" == "bokeh" || "$DASHBOARD_TYPE" == "dash" ]]; then
+    # Bokeh/Dash use /static/ for static files
+    cat > "$STATIC_TEMP" << STATICEOF
+# Static files (Bokeh/Dash)
+location ${NGINX_PATH}static/ {
+    # Use variable to defer hostname resolution
+    set \$upstream_host "dashboard_${DASHBOARD_NAME_LOWER}";
+    set \$upstream_port "${DASHBOARD_PORT}";
+    proxy_pass http://\$upstream_host:\$upstream_port/static/;
+    proxy_set_header Host \$host;
+    proxy_set_header X-Real-IP \$remote_addr;
+    proxy_set_header X-Forwarded-For "\$proxy_add_x_forwarded_for";
+    proxy_set_header X-Forwarded-Proto \$scheme;
+}
+STATICEOF
+else
+    # Other types (vtk, etc.) - no static file section
+    echo "# Static files not configured for type: $DASHBOARD_TYPE" > "$STATIC_TEMP"
+fi
+
+# Build Bokeh/Dash specific headers section
+BOKEH_HEADERS_TEMP=$(mktemp)
+if [[ "$DASHBOARD_TYPE" == "bokeh" || "$DASHBOARD_TYPE" == "dash" ]]; then
+    cat > "$BOKEH_HEADERS_TEMP" << BOKEHEOF
+    proxy_cookie_path / ${NGINX_PATH};
+    
+    # WebSocket support for Bokeh/Dash
+    proxy_http_version 1.1;
+    proxy_set_header Upgrade \$http_upgrade;
+    proxy_set_header Connection "upgrade";
+    
+    # Bokeh/Dash-specific headers
+    proxy_set_header X-Forwarded-Prefix ${NGINX_PATH};
+    proxy_redirect off;
+BOKEHEOF
+else
+    cat > "$BOKEH_HEADERS_TEMP" << BOKEHEOF
+    # WebSocket support (if needed)
+    proxy_http_version 1.1;
+    proxy_set_header Upgrade \$http_upgrade;
+    proxy_set_header Connection "upgrade";
+BOKEHEOF
+fi
+
 # Build the config file using a here-document approach
 TEMP_CONFIG=$(mktemp)
 sed -e "s|{{DASHBOARD_NAME}}|$DASHBOARD_NAME|g" \
     -e "s|{{DASHBOARD_NAME_LOWER}}|$DASHBOARD_NAME_LOWER|g" \
     -e "s|{{NGINX_PATH}}|$NGINX_PATH|g" \
     -e "s|{{DASHBOARD_PORT}}|$DASHBOARD_PORT|g" \
+    -e "s|{{DASHBOARD_TYPE}}|$DASHBOARD_TYPE|g" \
     -e "s|{{DOMAIN_NAME}}|$DOMAIN_NAME|g" \
     "$TEMPLATE_FILE" > "$TEMP_CONFIG"
 
 # Replace the section placeholders with actual content
 # Use awk to handle multi-line replacements properly
-awk -v cors_file="$CORS_TEMP" -v health_file="$HEALTH_TEMP" '
+awk -v cors_file="$CORS_TEMP" -v health_file="$HEALTH_TEMP" -v static_file="$STATIC_TEMP" -v bokeh_file="$BOKEH_HEADERS_TEMP" '
     /{{CORS_SECTION}}/ {
         while ((getline line < cors_file) > 0) {
             print line
         }
         close(cors_file)
+        next
+    }
+    /{{BOKEH_DASH_HEADERS}}/ {
+        while ((getline line < bokeh_file) > 0) {
+            print line
+        }
+        close(bokeh_file)
+        next
+    }
+    /{{STATIC_FILES_SECTION}}/ {
+        while ((getline line < static_file) > 0) {
+            print line
+        }
+        close(static_file)
         next
     }
     /{{HEALTH_CHECK_SECTION}}/ {
@@ -138,7 +220,7 @@ awk -v cors_file="$CORS_TEMP" -v health_file="$HEALTH_TEMP" '
 ' "$TEMP_CONFIG" > "$OUTPUT_FILE"
 
 # Cleanup temp files
-rm -f "$CORS_TEMP" "$HEALTH_TEMP" "$TEMP_CONFIG"
+rm -f "$CORS_TEMP" "$HEALTH_TEMP" "$STATIC_TEMP" "$BOKEH_HEADERS_TEMP" "$TEMP_CONFIG"
 
 echo "✅ Generated nginx configuration: $OUTPUT_FILE"
 echo "   Add this to your main nginx configuration or include it in conf.d/"
