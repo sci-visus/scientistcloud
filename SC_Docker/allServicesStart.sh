@@ -252,6 +252,15 @@ if [ -d "$DASHBOARDS_DIR" ]; then
             docker network create docker_visstore_web || echo "   ⚠️  Network creation failed (may already exist)"
         fi
         
+        # Remove old dashboard containers to avoid ContainerConfig errors
+        echo "   Cleaning up old dashboard containers..."
+        docker ps -a --filter "name=dashboard_" --format "{{.Names}}" | while read -r container; do
+            if [ -n "$container" ]; then
+                echo "   🗑️  Removing old container: $container"
+                docker rm -f "$container" 2>/dev/null || true
+            fi
+        done
+        
         # Find .env file - check SC_Docker first (where env.scientistcloud is copied), then VisusDataPortalPrivate
         # This ensures DOMAIN_NAME and other dashboard variables are available
         ENV_FILE=""
@@ -263,6 +272,10 @@ if [ -d "$DASHBOARDS_DIR" ]; then
             ENV_FILE="$VISUS_DOCKER_PATH/.env"
             echo "   Using .env file from VisusDataPortalPrivate: $ENV_FILE"
         fi
+        
+        # Stop and remove any existing containers defined in docker-compose first
+        echo "   Stopping existing dashboard containers..."
+        docker-compose -f dashboards-docker-compose.yml down 2>/dev/null || true
         
         # Start containers
         if [ -n "$ENV_FILE" ]; then
