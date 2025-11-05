@@ -96,7 +96,10 @@ HEALTH_TEMP=$(mktemp)
 if [ -n "$HEALTH_CHECK_PATH" ]; then
     cat > "$HEALTH_TEMP" << HEALTHEOF
     location ${NGINX_PATH}${HEALTH_CHECK_PATH} {
-        proxy_pass http://dashboard_${DASHBOARD_NAME_LOWER}:${DASHBOARD_PORT}${HEALTH_CHECK_PATH};
+        # Use variable to defer hostname resolution (prevents startup errors if containers aren't up)
+        set \$upstream_host "dashboard_${DASHBOARD_NAME_LOWER}";
+        set \$upstream_port "${DASHBOARD_PORT}";
+        proxy_pass http://\$upstream_host:\$upstream_port${HEALTH_CHECK_PATH};
         proxy_set_header Host \$host;
         access_log off;
     }

@@ -6,16 +6,27 @@
 # This server block will merge with the main server block using the same server_name.
 
 server {
-    listen 443 ssl http2;
+    listen 443 ssl;
+    http2 on;
     listen 80;
     server_name {{DOMAIN_NAME}};
+    
+    # Docker DNS resolver (allows Nginx to resolve container hostnames)
+    # Using variable in proxy_pass defers hostname resolution until request time
+    # This prevents Nginx from failing if dashboard containers aren't running yet
+    resolver 127.0.0.11 valid=30s;
+    resolver_timeout 5s;
     
     # SSL configuration (inherited from main nginx config or environment)
     # SSL certs should be configured in the main nginx config
     
     # Dashboard proxy configuration
     location {{NGINX_PATH}} {
-        proxy_pass http://dashboard_{{DASHBOARD_NAME_LOWER}}:{{DASHBOARD_PORT}};
+        # Use variable to defer hostname resolution (prevents startup errors if containers aren't up)
+        set $upstream_host "dashboard_{{DASHBOARD_NAME_LOWER}}";
+        set $upstream_port "{{DASHBOARD_PORT}}";
+        proxy_pass http://$upstream_host:$upstream_port;
+        
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
