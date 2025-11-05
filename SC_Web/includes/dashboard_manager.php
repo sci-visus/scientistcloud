@@ -198,7 +198,11 @@ function getAllDashboards() {
                 $registry = json_decode(file_get_contents($path), true);
                 
                 if (isset($registry['dashboards'])) {
-                    foreach ($registry['dashboards'] as $name => $dashboard_info) {
+                    // Handle both associative array (dashboard-registry.json) and numeric array (dashboards-list.json)
+                    foreach ($registry['dashboards'] as $key => $dashboard_info) {
+                        // For numeric arrays, use 'id' field; for associative arrays, use key
+                        $dashboardId = $dashboard_info['id'] ?? $key;
+                        
                         if (!isset($dashboard_info['enabled']) || $dashboard_info['enabled'] === true) {
                             // Try to load full config from flat structure
                             $config_file = $dashboard_info['config_file'] ?? null;
@@ -209,19 +213,19 @@ function getAllDashboards() {
                             } else {
                                 // Try relative path: {name}.json
                                 $config_dir = dirname($path);
-                                $possible_config = $config_dir . '/../dashboards/' . $name . '.json';
+                                $possible_config = $config_dir . '/../dashboards/' . $dashboardId . '.json';
                                 if (file_exists($possible_config)) {
                                     $full_config = json_decode(file_get_contents($possible_config), true);
                                 }
                             }
                             
                             $dashboards[] = [
-                                'id' => $name,
-                                'name' => $dashboard_info['display_name'] ?? $name,
+                                'id' => $dashboardId,
+                                'name' => $dashboard_info['display_name'] ?? $dashboard_info['name'] ?? $dashboardId,
                                 'type' => $full_config['type'] ?? $dashboard_info['type'] ?? 'dash',
-                                'display_name' => $dashboard_info['display_name'] ?? $name,
+                                'display_name' => $dashboard_info['display_name'] ?? $dashboard_info['name'] ?? $dashboardId,
                                 'description' => $full_config['description'] ?? $dashboard_info['description'] ?? 'Dashboard',
-                                'nginx_path' => $dashboard_info['nginx_path'] ?? '/dashboard/' . strtolower($name),
+                                'nginx_path' => $dashboard_info['nginx_path'] ?? '/dashboard/' . strtolower($dashboardId),
                                 'enabled' => $dashboard_info['enabled'] ?? true
                             ];
                         }
@@ -280,14 +284,30 @@ function getAvailableDashboards($datasetId) {
         
         $availableDashboards = [];
         
-        foreach (SUPPORTED_DASHBOARDS as $dashboardType) {
-            $config = getDashboardConfig($dashboardType);
+        // Use new dashboard list instead of old SUPPORTED_DASHBOARDS constant
+        $allDashboards = getAllDashboards();
+        
+        foreach ($allDashboards as $dashboardInfo) {
+            $dashboardId = $dashboardInfo['id'] ?? null;
+            $dashboardType = $dashboardInfo['type'] ?? $dashboardId;
+            
+            if (!$dashboardId) {
+                continue;
+            }
+            
+            // Try to get config using dashboard ID or type
+            $config = getDashboardConfig($dashboardId);
+            if (!$config) {
+                // Fallback to type
+                $config = getDashboardConfig($dashboardType);
+            }
+            
             if ($config && isDatasetSupported($dataset, $config)) {
                 $availableDashboards[] = [
-                    'type' => $dashboardType,
-                    'name' => $config['name'],
-                    'description' => $config['description'],
-                    'url' => generateViewerUrl($dataset, $dashboardType)
+                    'type' => $dashboardId,
+                    'name' => $config['name'] ?? $dashboardInfo['display_name'] ?? $dashboardInfo['name'] ?? $dashboardId,
+                    'description' => $config['description'] ?? $dashboardInfo['description'] ?? '',
+                    'url' => generateViewerUrl($dataset, $dashboardId)
                 ];
             }
         }
@@ -302,13 +322,25 @@ function getAvailableDashboards($datasetId) {
 
 /**
  * Check if dataset is supported by dashboard
+ * If no supported_formats are specified, assume dashboard supports all datasets
  */
 function isDatasetSupported($dataset, $config) {
-    $sensor = strtolower($dataset['sensor'] ?? '');
     $supportedFormats = $config['supported_formats'] ?? [];
     
+    // If no supported_formats specified, assume dashboard supports all datasets
+    if (empty($supportedFormats)) {
+        return true;
+    }
+    
+    $sensor = strtolower($dataset['sensor'] ?? '');
+    
+    // If sensor is empty, assume dataset is supported (let dashboard handle it)
+    if (empty($sensor)) {
+        return true;
+    }
+    
     foreach ($supportedFormats as $format) {
-        if (strpos($sensor, $format) !== false) {
+        if (strpos($sensor, strtolower($format)) !== false) {
             return true;
         }
     }
