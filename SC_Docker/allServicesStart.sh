@@ -202,7 +202,17 @@ fi
 # Old dashboards are embedded in default.conf.https/default.conf.template inside server blocks
 # Ports are assigned to avoid conflicts with old dashboards (see PORT_CONFLICTS.md)
 echo "📊 Setting up and building dashboards..."
-DASHBOARDS_DIR="$HOME/ScientistCloud2.0/scientistcloud/SC_Dashboards"
+# Find SC_Dashboards directory - try multiple possible locations
+DASHBOARDS_DIR=""
+if [ -d "$(pwd)/../SC_Dashboards" ]; then
+    DASHBOARDS_DIR="$(cd "$(pwd)/../SC_Dashboards" && pwd)"
+elif [ -d "$HOME/ScientistCloud2.0/scientistcloud/SC_Dashboards" ]; then
+    DASHBOARDS_DIR="$HOME/ScientistCloud2.0/scientistcloud/SC_Dashboards"
+elif [ -d "$HOME/ScientistCloud_2.0/scientistcloud/SC_Dashboards" ]; then
+    DASHBOARDS_DIR="$HOME/ScientistCloud_2.0/scientistcloud/SC_Dashboards"
+elif [ -d "$(dirname "$(dirname "$(dirname "$(pwd)")")")/scientistcloud/SC_Dashboards" ]; then
+    DASHBOARDS_DIR="$(cd "$(dirname "$(dirname "$(dirname "$(pwd)")")")/scientistcloud/SC_Dashboards" && pwd)"
+fi
 if [ -d "$DASHBOARDS_DIR" ]; then
     pushd "$DASHBOARDS_DIR"
     

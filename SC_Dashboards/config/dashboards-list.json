@@ -8,7 +8,7 @@
       "type": "plotly",
       "display_name": "3D Plotly Dashboard",
       "description": "Dashboard description",
-      "port": 8050,
+      "port": 8060,
       "nginx_path": "/dashboard/plotly",
       "url_template": "/dashboard/plotly?dataset={uuid}&server={server}",
       "enabled": true,
