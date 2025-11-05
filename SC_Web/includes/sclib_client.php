@@ -119,9 +119,22 @@ class SCLibClient {
     /**
      * Get dataset details
      */
-    public function getDatasetDetails($datasetId, $userId) {
+    public function getDatasetDetails($datasetId, $userId = null) {
         try {
-            $response = $this->makeRequest("/api/dataset/$datasetId", 'GET', null, ['user_id' => $userId]);
+            // Use the correct FastAPI endpoint: /api/v1/datasets/{identifier}
+            // Pass user_email as query parameter (FastAPI expects user_email, not user_id)
+            $userEmail = null;
+            if (function_exists('getCurrentUser')) {
+                $user = getCurrentUser();
+                $userEmail = $user['email'] ?? null;
+            }
+            
+            $params = [];
+            if ($userEmail) {
+                $params['user_email'] = $userEmail;
+            }
+            
+            $response = $this->makeRequest("/api/v1/datasets/$datasetId", 'GET', null, $params);
             return $response['dataset'] ?? null;
         } catch (Exception $e) {
             error_log("Failed to get dataset details: " . $e->getMessage());
@@ -132,9 +145,21 @@ class SCLibClient {
     /**
      * Get dataset status
      */
-    public function getDatasetStatus($datasetId, $userId) {
+    public function getDatasetStatus($datasetId, $userId = null) {
         try {
-            $response = $this->makeRequest("/api/dataset/$datasetId/status", 'GET', null, ['user_id' => $userId]);
+            // Use the correct FastAPI endpoint: /api/v1/datasets/{identifier}/status
+            $userEmail = null;
+            if (function_exists('getCurrentUser')) {
+                $user = getCurrentUser();
+                $userEmail = $user['email'] ?? null;
+            }
+            
+            $params = [];
+            if ($userEmail) {
+                $params['user_email'] = $userEmail;
+            }
+            
+            $response = $this->makeRequest("/api/v1/datasets/$datasetId/status", 'GET', null, $params);
             return $response;
         } catch (Exception $e) {
             error_log("Failed to get dataset status: " . $e->getMessage());
