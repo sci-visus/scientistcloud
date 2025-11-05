@@ -8,7 +8,7 @@
 server {
     listen 443 ssl http2;
     listen 80;
-    server_name ${DOMAIN_NAME};
+    server_name {{DOMAIN_NAME}};
     
     # SSL configuration (inherited from main nginx config or environment)
     # SSL certs should be configured in the main nginx config
@@ -36,21 +36,10 @@ server {
         proxy_buffers 4 256k;
         proxy_busy_buffers_size 256k;
         
-        # CORS headers (if needed)
-        {{#if ENABLE_CORS}}
-        add_header Access-Control-Allow-Origin *;
-        add_header Access-Control-Allow-Methods "GET, POST, OPTIONS";
-        add_header Access-Control-Allow-Headers "Content-Type, Authorization";
-        {{/if}}
+        # CORS headers (if enabled)
+{{CORS_SECTION}}
     }
     
     # Health check endpoint (if specified)
-    {{#if HEALTH_CHECK_PATH}}
-    location {{NGINX_PATH}}{{HEALTH_CHECK_PATH}} {
-        proxy_pass http://dashboard_{{DASHBOARD_NAME_LOWER}}:{{DASHBOARD_PORT}}{{HEALTH_CHECK_PATH}};
-        proxy_set_header Host $host;
-        access_log off;
-    }
-    {{/if}}
+{{HEALTH_CHECK_SECTION}}
 }
-

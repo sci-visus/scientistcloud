@@ -79,92 +79,63 @@ fi
 # Generate nginx config from template
 TEMPLATE_FILE="$TEMPLATES_DIR/nginx-config.template"
 
-# Simple template replacement
+# Build CORS section (if enabled) - write to temp file for multi-line handling
+CORS_TEMP=$(mktemp)
+if [ "$ENABLE_CORS" = "true" ]; then
+    cat > "$CORS_TEMP" << 'CORSEOF'
+        add_header Access-Control-Allow-Origin *;
+        add_header Access-Control-Allow-Methods "GET, POST, OPTIONS";
+        add_header Access-Control-Allow-Headers "Content-Type, Authorization";
+CORSEOF
+else
+    echo "        # CORS disabled" > "$CORS_TEMP"
+fi
+
+# Build health check section (if specified) - write to temp file for multi-line handling
+HEALTH_TEMP=$(mktemp)
+if [ -n "$HEALTH_CHECK_PATH" ]; then
+    cat > "$HEALTH_TEMP" << HEALTHEOF
+    location ${NGINX_PATH}${HEALTH_CHECK_PATH} {
+        proxy_pass http://dashboard_${DASHBOARD_NAME_LOWER}:${DASHBOARD_PORT}${HEALTH_CHECK_PATH};
+        proxy_set_header Host \$host;
+        access_log off;
+    }
+HEALTHEOF
+else
+    echo "    # Health check disabled" > "$HEALTH_TEMP"
+fi
+
+# Build the config file using a here-document approach
+TEMP_CONFIG=$(mktemp)
 sed -e "s|{{DASHBOARD_NAME}}|$DASHBOARD_NAME|g" \
     -e "s|{{DASHBOARD_NAME_LOWER}}|$DASHBOARD_NAME_LOWER|g" \
     -e "s|{{NGINX_PATH}}|$NGINX_PATH|g" \
     -e "s|{{DASHBOARD_PORT}}|$DASHBOARD_PORT|g" \
-    -e "s|{{HEALTH_CHECK_PATH}}|$HEALTH_CHECK_PATH|g" \
-    -e "s|{{ENABLE_CORS}}|$ENABLE_CORS|g" \
-    -e "s|\${DOMAIN_NAME}|$DOMAIN_NAME|g" \
-    "$TEMPLATE_FILE" > "$OUTPUT_FILE"
+    -e "s|{{DOMAIN_NAME}}|$DOMAIN_NAME|g" \
+    "$TEMPLATE_FILE" > "$TEMP_CONFIG"
 
-# Handle conditional sections
-# Note: macOS sed requires -i with extension, Linux doesn't - use .bak for compatibility
-# We need to be careful not to delete the closing server block brace
+# Replace the section placeholders with actual content
+# Use awk to handle multi-line replacements properly
+awk -v cors_file="$CORS_TEMP" -v health_file="$HEALTH_TEMP" '
+    /{{CORS_SECTION}}/ {
+        while ((getline line < cors_file) > 0) {
+            print line
+        }
+        close(cors_file)
+        next
+    }
+    /{{HEALTH_CHECK_SECTION}}/ {
+        while ((getline line < health_file) > 0) {
+            print line
+        }
+        close(health_file)
+        next
+    }
+    { print }
+' "$TEMP_CONFIG" > "$OUTPUT_FILE"
 
-# Use a temporary file approach to avoid sed range pattern issues
-TEMP_FILE=$(mktemp)
-cp "$OUTPUT_FILE" "$TEMP_FILE"
-
-# Handle HEALTH_CHECK_PATH conditional
-if [ -n "$HEALTH_CHECK_PATH" ]; then
-    # Keep the health check section - just remove the conditional markers
-    sed -i.bak 's|{{#if HEALTH_CHECK_PATH}}||g; s|{{/if}}||g' "$TEMP_FILE"
-    rm -f "$TEMP_FILE.bak"
-else
-    # Delete the health check section (lines with the conditional markers)
-    # Use awk to delete lines between {{#if HEALTH_CHECK_PATH}} and {{/if}}
-    # Match the closing tag explicitly, but preserve lines that are just closing braces
-    awk '/{{#if HEALTH_CHECK_PATH}}/{flag=1; next} /{{\/if}}/ && flag {flag=0; next} !flag' "$TEMP_FILE" > "$TEMP_FILE.tmp" && mv "$TEMP_FILE.tmp" "$TEMP_FILE"
-fi
-
-# Handle ENABLE_CORS conditional
-if [ "$ENABLE_CORS" = "true" ]; then
-    # Keep the CORS section - just remove the conditional markers
-    sed -i.bak 's|{{#if ENABLE_CORS}}||g; s|{{/if}}||g' "$TEMP_FILE"
-    rm -f "$TEMP_FILE.bak"
-else
-    # Delete the CORS section (lines with the conditional markers)
-    # Use awk to delete lines between {{#if ENABLE_CORS}} and {{/if}}
-    # Match the closing tag explicitly, but preserve lines that are just closing braces
-    awk '/{{#if ENABLE_CORS}}/{flag=1; next} /{{\/if}}/ && flag {flag=0; next} !flag' "$TEMP_FILE" > "$TEMP_FILE.tmp" && mv "$TEMP_FILE.tmp" "$TEMP_FILE"
-fi
-
-# Replace original file with cleaned version
-mv "$TEMP_FILE" "$OUTPUT_FILE"
-
-# Ensure the file ends with a closing brace for the server block
-# Count opening and closing braces to verify structure
-OPEN_COUNT=$(grep -o '{' "$OUTPUT_FILE" | wc -l)
-CLOSE_COUNT=$(grep -o '}' "$OUTPUT_FILE" | wc -l)
-if [ "$OPEN_COUNT" -gt "$CLOSE_COUNT" ]; then
-    # Missing closing brace(s) - add them
-    DIFF=$((OPEN_COUNT - CLOSE_COUNT))
-    while [ $DIFF -gt 0 ]; do
-        echo "}" >> "$OUTPUT_FILE"
-        DIFF=$((DIFF - 1))
-    done
-    echo "   ⚠️  Added missing closing brace(s) for server block"
-fi
-
-# Final verification: ensure file ends with closing brace for server block
-# Check the last non-empty line
-LAST_NON_EMPTY=$(grep -v '^[[:space:]]*$' "$OUTPUT_FILE" | tail -1)
-if [ -z "$LAST_NON_EMPTY" ] || ! echo "$LAST_NON_EMPTY" | grep -qE '^[[:space:]]*}[[:space:]]*$'; then
-    # Ensure we have a newline, then add the closing brace
-    if [ -s "$OUTPUT_FILE" ] && ! tail -c 1 "$OUTPUT_FILE" | grep -q .; then
-        # File ends with newline, just add the brace
-        echo "}" >> "$OUTPUT_FILE"
-    else
-        # File doesn't end with newline, add newline and brace
-        echo "" >> "$OUTPUT_FILE"
-        echo "}" >> "$OUTPUT_FILE"
-    fi
-    echo "   ⚠️  Added missing closing brace for server block"
-fi
-
-# Double-check: braces should now be balanced
-FINAL_OPEN=$(grep -o '{' "$OUTPUT_FILE" | wc -l)
-FINAL_CLOSE=$(grep -o '}' "$OUTPUT_FILE" | wc -l)
-if [ "$FINAL_OPEN" -ne "$FINAL_CLOSE" ]; then
-    echo "   ⚠️  Warning: Brace mismatch (open: $FINAL_OPEN, close: $FINAL_CLOSE)"
-fi
-
-# Also verify the file starts with server block
-if ! head -10 "$OUTPUT_FILE" | grep -q "^server {"; then
-    echo "   ⚠️  Warning: Generated config may be missing server block"
-fi
+# Cleanup temp files
+rm -f "$CORS_TEMP" "$HEALTH_TEMP" "$TEMP_CONFIG"
 
 echo "✅ Generated nginx configuration: $OUTPUT_FILE"
 echo "   Add this to your main nginx configuration or include it in conf.d/"

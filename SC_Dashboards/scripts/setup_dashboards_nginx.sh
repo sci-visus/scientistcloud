@@ -153,8 +153,24 @@ while IFS= read -r DASHBOARD_NAME; do
     fi
     
     if [ -f "$DASHBOARD_CONFIG" ]; then
-        # Use consistent lowercase name in main nginx conf.d to avoid conflicts
-        cp "$DASHBOARD_CONFIG" "$MAIN_NGINX_CONF_DIR/${OUTPUT_NAME}"
+        # Clean up any artifacts before copying
+        # Remove lines with "f}}/d" (sed artifact) and ensure proper structure
+        TEMP_COPY=$(mktemp)
+        grep -v '^f\}\}\/d$' "$DASHBOARD_CONFIG" > "$TEMP_COPY"
+        
+        # Ensure file ends with closing brace
+        if ! tail -1 "$TEMP_COPY" | grep -qE '^[[:space:]]*}[[:space:]]*$'; then
+            # Count braces to see if we need to add one
+            OPEN_COUNT=$(grep -v '^[[:space:]]*#' "$TEMP_COPY" | grep -o '{' | wc -l)
+            CLOSE_COUNT=$(grep -v '^[[:space:]]*#' "$TEMP_COPY" | grep -o '}' | wc -l)
+            if [ "$OPEN_COUNT" -gt "$CLOSE_COUNT" ]; then
+                echo "" >> "$TEMP_COPY"
+                echo "}" >> "$TEMP_COPY"
+            fi
+        fi
+        
+        cp "$TEMP_COPY" "$MAIN_NGINX_CONF_DIR/${OUTPUT_NAME}"
+        rm -f "$TEMP_COPY"
         echo "   ✓ Copied: ${OUTPUT_NAME} (from ${DASHBOARD_NAME})"
         COPIED_COUNT=$((COPIED_COUNT + 1))
     else
