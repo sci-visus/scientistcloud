@@ -105,7 +105,7 @@ if [ -n "$HEALTH_CHECK_PATH" ]; then
 else
     # Delete the health check section (lines with the conditional markers)
     # Use awk to delete lines between {{#if HEALTH_CHECK_PATH}} and {{/if}}
-    # Match the closing tag explicitly
+    # Match the closing tag explicitly, but preserve lines that are just closing braces
     awk '/{{#if HEALTH_CHECK_PATH}}/{flag=1; next} /{{\/if}}/ && flag {flag=0; next} !flag' "$TEMP_FILE" > "$TEMP_FILE.tmp" && mv "$TEMP_FILE.tmp" "$TEMP_FILE"
 fi
 
@@ -117,15 +117,28 @@ if [ "$ENABLE_CORS" = "true" ]; then
 else
     # Delete the CORS section (lines with the conditional markers)
     # Use awk to delete lines between {{#if ENABLE_CORS}} and {{/if}}
-    # Match the closing tag explicitly
+    # Match the closing tag explicitly, but preserve lines that are just closing braces
     awk '/{{#if ENABLE_CORS}}/{flag=1; next} /{{\/if}}/ && flag {flag=0; next} !flag' "$TEMP_FILE" > "$TEMP_FILE.tmp" && mv "$TEMP_FILE.tmp" "$TEMP_FILE"
 fi
 
 # Replace original file with cleaned version
 mv "$TEMP_FILE" "$OUTPUT_FILE"
 
-# Verify the file ends with a closing brace for the server block
-# If it doesn't, add it (safety check)
+# Ensure the file ends with a closing brace for the server block
+# Count opening and closing braces to verify structure
+OPEN_COUNT=$(grep -o '{' "$OUTPUT_FILE" | wc -l)
+CLOSE_COUNT=$(grep -o '}' "$OUTPUT_FILE" | wc -l)
+if [ "$OPEN_COUNT" -gt "$CLOSE_COUNT" ]; then
+    # Missing closing brace(s) - add them
+    DIFF=$((OPEN_COUNT - CLOSE_COUNT))
+    while [ $DIFF -gt 0 ]; do
+        echo "}" >> "$OUTPUT_FILE"
+        DIFF=$((DIFF - 1))
+    done
+    echo "   ⚠️  Added missing closing brace(s) for server block"
+fi
+
+# Final verification: ensure file ends with closing brace for server block
 # Check the last non-empty line
 LAST_NON_EMPTY=$(grep -v '^[[:space:]]*$' "$OUTPUT_FILE" | tail -1)
 if [ -z "$LAST_NON_EMPTY" ] || ! echo "$LAST_NON_EMPTY" | grep -qE '^[[:space:]]*}[[:space:]]*$'; then
@@ -139,6 +152,13 @@ if [ -z "$LAST_NON_EMPTY" ] || ! echo "$LAST_NON_EMPTY" | grep -qE '^[[:space:]]
         echo "}" >> "$OUTPUT_FILE"
     fi
     echo "   ⚠️  Added missing closing brace for server block"
+fi
+
+# Double-check: braces should now be balanced
+FINAL_OPEN=$(grep -o '{' "$OUTPUT_FILE" | wc -l)
+FINAL_CLOSE=$(grep -o '}' "$OUTPUT_FILE" | wc -l)
+if [ "$FINAL_OPEN" -ne "$FINAL_CLOSE" ]; then
+    echo "   ⚠️  Warning: Brace mismatch (open: $FINAL_OPEN, close: $FINAL_CLOSE)"
 fi
 
 # Also verify the file starts with server block
