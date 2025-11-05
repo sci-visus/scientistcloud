@@ -44,7 +44,7 @@
       "display_name": "OpenVisus Slice Explorer",
       "enabled": true,
       "port": 8054,
-      "nginx_path": "/dashboard/openvisus",
+      "nginx_path": "/dashboard/openvisusslice",
       "config_file": "../dashboards/OpenVisusSlice.json"
     }
   }

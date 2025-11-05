@@ -55,7 +55,9 @@ HEALTH_CHECK_PATH=$(jq -r '.health_check_path // empty' "$CONFIG_FILE")
 ENABLE_CORS=$(jq -r '.enable_cors // false' "$CONFIG_FILE")
 DASHBOARD_NAME_LOWER=$(echo "$DASHBOARD_NAME" | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9]/_/g')
 
-# Ensure NGINX_PATH has trailing slash for proper path matching
+# Store path without trailing slash for location block (matches both /dashboard/plotly and /dashboard/plotly/)
+NGINX_PATH_WITHOUT_SLASH="${NGINX_PATH%/}"
+# Keep path with trailing slash for static files and other uses
 if [[ ! "$NGINX_PATH" =~ /$ ]]; then
     NGINX_PATH="${NGINX_PATH}/"
 fi
@@ -180,6 +182,7 @@ TEMP_CONFIG=$(mktemp)
 sed -e "s|{{DASHBOARD_NAME}}|$DASHBOARD_NAME|g" \
     -e "s|{{DASHBOARD_NAME_LOWER}}|$DASHBOARD_NAME_LOWER|g" \
     -e "s|{{NGINX_PATH}}|$NGINX_PATH|g" \
+    -e "s|{{NGINX_PATH_WITHOUT_SLASH}}|$NGINX_PATH_WITHOUT_SLASH|g" \
     -e "s|{{DASHBOARD_PORT}}|$DASHBOARD_PORT|g" \
     -e "s|{{DASHBOARD_TYPE}}|$DASHBOARD_TYPE|g" \
     -e "s|{{DOMAIN_NAME}}|$DOMAIN_NAME|g" \
