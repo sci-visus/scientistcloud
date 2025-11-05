@@ -39,11 +39,18 @@ if (!$user) {
 }
 
 // Path to dashboards-list.json
-// Try multiple possible paths
+// Try multiple possible paths (container paths and host paths)
 $possiblePaths = [
-    __DIR__ . '/../../SC_Dashboards/config/dashboards-list.json', // Relative from SC_Web/api/
-    __DIR__ . '/../../../scientistcloud/SC_Dashboards/config/dashboards-list.json', // From root
-    getenv('HOME') . '/ScientistCloud2.0/scientistcloud/SC_Dashboards/config/dashboards-list.json', // Server absolute path
+    // Mounted volume path (preferred)
+    '/var/www/SC_Dashboards/config/dashboards-list.json',
+    // Relative paths from SC_Web/api/ (inside container)
+    __DIR__ . '/../../SC_Dashboards/config/dashboards-list.json',
+    __DIR__ . '/../../../scientistcloud/SC_Dashboards/config/dashboards-list.json',
+    // Server absolute paths (if SC_Dashboards is accessible from container)
+    '/home/amy/ScientistCloud2.0/scientistcloud/SC_Dashboards/config/dashboards-list.json',
+    '/home/amy/ScientistCloud_2.0/scientistcloud/SC_Dashboards/config/dashboards-list.json',
+    getenv('HOME') . '/ScientistCloud2.0/scientistcloud/SC_Dashboards/config/dashboards-list.json',
+    getenv('HOME') . '/ScientistCloud_2.0/scientistcloud/SC_Dashboards/config/dashboards-list.json',
 ];
 
 $dashboardsListPath = null;
