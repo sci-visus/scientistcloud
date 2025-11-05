@@ -71,6 +71,9 @@ if [ -z "$DASHBOARDS" ]; then
     exit 0
 fi
 
+# Start services section
+COMPOSE_CONTENT="${COMPOSE_CONTENT}services:\n"
+
 # Generate service entry for each dashboard
 while IFS= read -r DASHBOARD_NAME; do
     # Get dashboard info from registry
