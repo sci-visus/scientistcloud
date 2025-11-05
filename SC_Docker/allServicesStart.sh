@@ -49,7 +49,7 @@ if [ "$DASHBOARDS_ONLY" = false ]; then
         cp env.scientistcloud "$HOME/ScientistCloud2.0/scientistCloudLib/Docker/.env"
         cp env.scientistcloud "$HOME/ScientistCloud2.0/scientistcloud/SC_Docker/.env"
         popd
-        echo "✅ Environment files copied"
+        echo "✅ Environment files copied (includes DOMAIN_NAME for dashboard containers)"
     else
         echo "⚠️ SCLib_TryTest directory not found: $SCLIB_TRYTEST_DIR"
     fi
@@ -252,17 +252,20 @@ if [ -d "$DASHBOARDS_DIR" ]; then
             docker network create docker_visstore_web || echo "   ⚠️  Network creation failed (may already exist)"
         fi
         
-        # Find .env file - check VisusDataPortalPrivate first, then SC_Docker
+        # Find .env file - check SC_Docker first (where env.scientistcloud is copied), then VisusDataPortalPrivate
+        # This ensures DOMAIN_NAME and other dashboard variables are available
         ENV_FILE=""
-        if [ -n "$VISUS_DOCKER_PATH" ] && [ -f "$VISUS_DOCKER_PATH/.env" ]; then
-            ENV_FILE="$VISUS_DOCKER_PATH/.env"
-        elif [ -f ".env" ]; then
+        if [ -f ".env" ]; then
+            # SC_Docker/.env is created by copying env.scientistcloud (line 50)
             ENV_FILE=".env"
+            echo "   Using .env file from SC_Docker: $ENV_FILE"
+        elif [ -n "$VISUS_DOCKER_PATH" ] && [ -f "$VISUS_DOCKER_PATH/.env" ]; then
+            ENV_FILE="$VISUS_DOCKER_PATH/.env"
+            echo "   Using .env file from VisusDataPortalPrivate: $ENV_FILE"
         fi
         
         # Start containers
         if [ -n "$ENV_FILE" ]; then
-            echo "   Using .env file: $ENV_FILE"
             if docker-compose -f dashboards-docker-compose.yml --env-file "$ENV_FILE" up -d; then
                 echo "   ✅ Dashboard containers started"
             else

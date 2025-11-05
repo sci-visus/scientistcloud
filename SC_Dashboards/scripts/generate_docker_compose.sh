@@ -170,16 +170,21 @@ while IFS= read -r DASHBOARD_NAME; do
     fi
     
     # Environment variables
+    # Always include DOMAIN_NAME (required for Bokeh/Panel dashboards)
+    COMPOSE_CONTENT="${COMPOSE_CONTENT}    environment:\n"
     if [ -n "$ENV_VARS" ]; then
-        COMPOSE_CONTENT="${COMPOSE_CONTENT}    environment:\n"
+        # Use custom environment variables from dashboard config
         while IFS= read -r VAR; do
             if [ -n "$VAR" ]; then
                 COMPOSE_CONTENT="${COMPOSE_CONTENT}${VAR}\n"
             fi
         done <<< "$ENV_VARS"
+        # Add DOMAIN_NAME if not already in custom vars
+        if ! echo "$ENV_VARS" | grep -q "DOMAIN_NAME"; then
+            COMPOSE_CONTENT="${COMPOSE_CONTENT}      - DOMAIN_NAME=\${DOMAIN_NAME}\n"
+        fi
     else
-        # Default environment variables
-        COMPOSE_CONTENT="${COMPOSE_CONTENT}    environment:\n"
+        # Default environment variables (if dashboard config doesn't specify any)
         COMPOSE_CONTENT="${COMPOSE_CONTENT}      - SECRET_KEY=\${SECRET_KEY}\n"
         COMPOSE_CONTENT="${COMPOSE_CONTENT}      - DEPLOY_SERVER=\${DEPLOY_SERVER}\n"
         COMPOSE_CONTENT="${COMPOSE_CONTENT}      - DB_NAME=\${DB_NAME}\n"
