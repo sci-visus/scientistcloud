@@ -237,6 +237,12 @@ if [ -d "$DASHBOARDS_DIR" ]; then
         echo "   Starting dashboard containers..."
         pushd ../SC_Docker
         
+        # Ensure docker_visstore_web network exists (required for dashboards)
+        if ! docker network inspect docker_visstore_web >/dev/null 2>&1; then
+            echo "   Creating docker_visstore_web network..."
+            docker network create docker_visstore_web || echo "   ⚠️  Network creation failed (may already exist)"
+        fi
+        
         # Find .env file - check VisusDataPortalPrivate first, then SC_Docker
         ENV_FILE=""
         if [ -n "$VISUS_DOCKER_PATH" ] && [ -f "$VISUS_DOCKER_PATH/.env" ]; then
@@ -245,15 +251,39 @@ if [ -d "$DASHBOARDS_DIR" ]; then
             ENV_FILE=".env"
         fi
         
+        # Start containers
         if [ -n "$ENV_FILE" ]; then
             echo "   Using .env file: $ENV_FILE"
-            COMPOSE_OUTPUT=$(docker-compose -f dashboards-docker-compose.yml --env-file "$ENV_FILE" up -d 2>&1)
-            echo "$COMPOSE_OUTPUT" | grep -E "(Creating|Starting|Up|Error|Container|network|image)" || echo "$COMPOSE_OUTPUT"
+            if docker-compose -f dashboards-docker-compose.yml --env-file "$ENV_FILE" up -d; then
+                echo "   ✅ Dashboard containers started"
+            else
+                echo "   ❌ Failed to start dashboard containers"
+                echo "   Checking container status..."
+                docker-compose -f dashboards-docker-compose.yml ps || true
+            fi
         else
             echo "   ⚠️  No .env file found - trying without explicit env-file"
-            COMPOSE_OUTPUT=$(docker-compose -f dashboards-docker-compose.yml up -d 2>&1)
-            echo "$COMPOSE_OUTPUT" | grep -E "(Creating|Starting|Up|Error|Container|network|image)" || echo "$COMPOSE_OUTPUT"
+            if docker-compose -f dashboards-docker-compose.yml up -d; then
+                echo "   ✅ Dashboard containers started"
+            else
+                echo "   ❌ Failed to start dashboard containers"
+                echo "   Checking container status..."
+                docker-compose -f dashboards-docker-compose.yml ps || true
+            fi
         fi
+        
+        # Verify containers are running
+        echo "   Verifying dashboard containers..."
+        RUNNING_CONTAINERS=$(docker-compose -f dashboards-docker-compose.yml ps --services --filter "status=running" 2>/dev/null | wc -l)
+        TOTAL_CONTAINERS=$(docker-compose -f dashboards-docker-compose.yml ps --services 2>/dev/null | wc -l)
+        if [ "$RUNNING_CONTAINERS" -gt 0 ]; then
+            echo "   ✅ $RUNNING_CONTAINERS/$TOTAL_CONTAINERS dashboard containers running"
+            docker-compose -f dashboards-docker-compose.yml ps --format "table {{.Name}}\t{{.Status}}" 2>/dev/null || true
+        else
+            echo "   ⚠️  No dashboard containers running - checking status..."
+            docker-compose -f dashboards-docker-compose.yml ps 2>/dev/null || true
+        fi
+        
         popd
     else
         echo "   ⚠️  dashboards-docker-compose.yml not found - skipping container startup"
