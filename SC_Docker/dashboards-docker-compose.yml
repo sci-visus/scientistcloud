@@ -1,6 +1,6 @@
 # Dashboard Services - Auto-generated from dashboard-registry.json
 # DO NOT EDIT MANUALLY - Regenerate using scripts/generate_docker_compose.sh
-# Generated: Tue Nov  4 13:21:35 CST 2025
+# Generated: Wed Nov  5 08:49:15 CST 2025
 
   # 3D Plotly Dashboard
   3dplotly:
@@ -8,7 +8,7 @@
     platform: linux/amd64
     image: 3dplotly:latest
     build:
-      context: /Users/amygooch/GIT/ScientistCloud_2.0/scientistcloud/SC_Dashboards/dashboards
+      context: ../SC_Dashboards/dashboards
       dockerfile: 3DPlotly.Dockerfile
       args:
         D_GIT_TOKEN: ${D_GIT_TOKEN}
@@ -24,7 +24,7 @@
       - ${VISUS_DB}:/mnt/visus_db
       - ${VISUS_DATASETS}:/mnt/visus_datasets
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8050/health"]
+      test: ["CMD", "curl", "-f", "http://localhost:8060/health"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -37,7 +37,7 @@
     platform: linux/amd64
     image: 3dvtk:latest
     build:
-      context: /Users/amygooch/GIT/ScientistCloud_2.0/scientistcloud/SC_Dashboards/dashboards
+      context: ../SC_Dashboards/dashboards
       dockerfile: 3DVTK.Dockerfile
       args:
         D_GIT_TOKEN: ${D_GIT_TOKEN}
@@ -66,7 +66,7 @@
     platform: linux/amd64
     image: 4d_dashboard:latest
     build:
-      context: /Users/amygooch/GIT/ScientistCloud_2.0/scientistcloud/SC_Dashboards/dashboards
+      context: ../SC_Dashboards/dashboards
       dockerfile: 4D_Dashboard.Dockerfile
       args:
         D_GIT_TOKEN: ${D_GIT_TOKEN}
@@ -95,7 +95,7 @@
     platform: linux/amd64
     image: magicscan:latest
     build:
-      context: /Users/amygooch/GIT/ScientistCloud_2.0/scientistcloud/SC_Dashboards/dashboards
+      context: ../SC_Dashboards/dashboards
       dockerfile: Magicscan.Dockerfile
       args:
         D_GIT_TOKEN: ${D_GIT_TOKEN}
@@ -124,7 +124,7 @@
     platform: linux/amd64
     image: openvisusslice:latest
     build:
-      context: /Users/amygooch/GIT/ScientistCloud_2.0/scientistcloud/SC_Dashboards/dashboards
+      context: ../SC_Dashboards/dashboards
       dockerfile: OpenVisusSlice.Dockerfile
       args:
         D_GIT_TOKEN: ${D_GIT_TOKEN}
@@ -147,4 +147,8 @@
       start_period: 40s
     init: true
 
+
+networks:
+  docker_visstore_web:
+    external: true
 

@@ -247,10 +247,12 @@ if [ -d "$DASHBOARDS_DIR" ]; then
         
         if [ -n "$ENV_FILE" ]; then
             echo "   Using .env file: $ENV_FILE"
-            docker-compose -f dashboards-docker-compose.yml --env-file "$ENV_FILE" up -d 2>&1 | grep -E "(Creating|Starting|Up|✅|Error|Container)" || echo "   ⚠️  Some dashboard containers may have failed to start"
+            COMPOSE_OUTPUT=$(docker-compose -f dashboards-docker-compose.yml --env-file "$ENV_FILE" up -d 2>&1)
+            echo "$COMPOSE_OUTPUT" | grep -E "(Creating|Starting|Up|Error|Container|network|image)" || echo "$COMPOSE_OUTPUT"
         else
             echo "   ⚠️  No .env file found - trying without explicit env-file"
-            docker-compose -f dashboards-docker-compose.yml up -d 2>&1 | grep -E "(Creating|Starting|Up|✅|Error|Container)" || echo "   ⚠️  Some dashboard containers may have failed to start"
+            COMPOSE_OUTPUT=$(docker-compose -f dashboards-docker-compose.yml up -d 2>&1)
+            echo "$COMPOSE_OUTPUT" | grep -E "(Creating|Starting|Up|Error|Container|network|image)" || echo "$COMPOSE_OUTPUT"
         fi
         popd
     else
