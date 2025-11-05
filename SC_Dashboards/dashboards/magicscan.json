@@ -7,7 +7,7 @@
   "entry_point": "magicscan.py",
   "entry_point_type": "python",
   "port": 8053,
-  "base_image": "magicscan-dashboard-base",
+  "base_image": "visstore-bokeh-dashboard-base",
   "base_image_tag": "latest",
   "requirements_file": "requirements.txt",
   "additional_requirements": [

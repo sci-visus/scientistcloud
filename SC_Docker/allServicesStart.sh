@@ -254,12 +254,15 @@ if [ -d "$DASHBOARDS_DIR" ]; then
         
         # Remove old dashboard containers to avoid ContainerConfig errors
         echo "   Cleaning up old dashboard containers..."
-        docker ps -a --filter "name=dashboard_" --format "{{.Names}}" | while read -r container; do
-            if [ -n "$container" ]; then
-                echo "   🗑️  Removing old container: $container"
-                docker rm -f "$container" 2>/dev/null || true
-            fi
-        done
+        OLD_CONTAINERS=$(docker ps -a --filter "name=dashboard_" --format "{{.Names}}" 2>/dev/null || true)
+        if [ -n "$OLD_CONTAINERS" ]; then
+            echo "$OLD_CONTAINERS" | while read -r container; do
+                if [ -n "$container" ]; then
+                    echo "   🗑️  Removing old container: $container"
+                    docker rm -f "$container" 2>/dev/null || true
+                fi
+            done
+        fi
         
         # Find .env file - check SC_Docker first (where env.scientistcloud is copied), then VisusDataPortalPrivate
         # This ensures DOMAIN_NAME and other dashboard variables are available
