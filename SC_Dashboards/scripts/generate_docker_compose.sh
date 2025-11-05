@@ -133,8 +133,10 @@ while IFS= read -r DASHBOARD_NAME; do
     SERVICE_NAME=$(echo "$DASHBOARD_NAME" | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9]/_/g')
     CONTAINER_NAME="dashboard_${SERVICE_NAME}"
     
-    # Build context - use dashboards directory
-    BUILD_CONTEXT="$DASHBOARDS_DIR"
+    # Build context - use relative path from docker-compose file location
+    # docker-compose.yml is in SC_Docker, dashboards are in SC_Dashboards/dashboards
+    # So relative path is ../SC_Dashboards/dashboards
+    BUILD_CONTEXT="../SC_Dashboards/dashboards"
     
     # Generate docker-compose service entry
     COMPOSE_CONTENT="${COMPOSE_CONTENT}  # ${DISPLAY_NAME}\n"
@@ -213,6 +215,12 @@ while IFS= read -r DASHBOARD_NAME; do
     COMPOSE_CONTENT="${COMPOSE_CONTENT}\n"
     
 done <<< "$DASHBOARDS"
+
+# Add networks section at the end (docker_visstore_web is external)
+COMPOSE_CONTENT="${COMPOSE_CONTENT}\n"
+COMPOSE_CONTENT="${COMPOSE_CONTENT}networks:\n"
+COMPOSE_CONTENT="${COMPOSE_CONTENT}  docker_visstore_web:\n"
+COMPOSE_CONTENT="${COMPOSE_CONTENT}    external: true\n"
 
 # Output
 if [ -z "$OUTPUT_FILE" ]; then

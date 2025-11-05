@@ -232,6 +232,31 @@ if [ -d "$DASHBOARDS_DIR" ]; then
     echo "   Generating docker-compose entries..."
     ./scripts/generate_docker_compose.sh --output ../SC_Docker/dashboards-docker-compose.yml 2>&1 | tail -1 || echo "   ⚠️  Failed to generate docker-compose entries"
     
+    # Start dashboard containers using docker-compose
+    if [ -f "../SC_Docker/dashboards-docker-compose.yml" ]; then
+        echo "   Starting dashboard containers..."
+        pushd ../SC_Docker
+        
+        # Find .env file - check VisusDataPortalPrivate first, then SC_Docker
+        ENV_FILE=""
+        if [ -n "$VISUS_DOCKER_PATH" ] && [ -f "$VISUS_DOCKER_PATH/.env" ]; then
+            ENV_FILE="$VISUS_DOCKER_PATH/.env"
+        elif [ -f ".env" ]; then
+            ENV_FILE=".env"
+        fi
+        
+        if [ -n "$ENV_FILE" ]; then
+            echo "   Using .env file: $ENV_FILE"
+            docker-compose -f dashboards-docker-compose.yml --env-file "$ENV_FILE" up -d 2>&1 | grep -E "(Creating|Starting|Up|✅|Error|Container)" || echo "   ⚠️  Some dashboard containers may have failed to start"
+        else
+            echo "   ⚠️  No .env file found - trying without explicit env-file"
+            docker-compose -f dashboards-docker-compose.yml up -d 2>&1 | grep -E "(Creating|Starting|Up|✅|Error|Container)" || echo "   ⚠️  Some dashboard containers may have failed to start"
+        fi
+        popd
+    else
+        echo "   ⚠️  dashboards-docker-compose.yml not found - skipping container startup"
+    fi
+    
     # Setup dashboard nginx configurations
     # Dashboards are part of ScientistCloud 2.0, so we should set them up even if main services are skipped
     # New dashboards use separate .conf files in conf.d/ (different from old embedded configs)

@@ -1,54 +1,40 @@
-# Nginx configuration for {{DASHBOARD_NAME}} dashboard
+# Nginx location configuration for {{DASHBOARD_NAME}} dashboard
 # Generated from dashboard.json configuration
 # DO NOT EDIT MANUALLY - Regenerate using scripts/generate_nginx_config.sh
 #
-# NOTE: Files in conf.d/ are included at http level, so they need complete server blocks.
-# This server block will merge with the main server block using the same server_name.
+# NOTE: This file contains location blocks that should be included in the main server block.
+# The resolver directive must be in the server block (already added to main server block).
 
-server {
-    listen 80;
-    server_name {{DOMAIN_NAME}};
+# Dashboard proxy configuration
+location {{NGINX_PATH}} {
+    # Use variable to defer hostname resolution (prevents startup errors if containers aren't up)
+    set $upstream_host "dashboard_{{DASHBOARD_NAME_LOWER}}";
+    set $upstream_port "{{DASHBOARD_PORT}}";
+    proxy_pass http://$upstream_host:$upstream_port;
     
-    # Docker DNS resolver (allows Nginx to resolve container hostnames)
-    # Using variable in proxy_pass defers hostname resolution until request time
-    # This prevents Nginx from failing if dashboard containers aren't running yet
-    resolver 127.0.0.11 valid=30s;
-    resolver_timeout 5s;
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
     
-    # SSL configuration (inherited from main nginx config or environment)
-    # SSL certs should be configured in the main nginx config
+    # WebSocket support (for Dash, Bokeh, etc.)
+    proxy_http_version 1.1;
+    proxy_set_header Upgrade $http_upgrade;
+    proxy_set_header Connection "upgrade";
     
-    # Dashboard proxy configuration
-    location {{NGINX_PATH}} {
-        # Use variable to defer hostname resolution (prevents startup errors if containers aren't up)
-        set $upstream_host "dashboard_{{DASHBOARD_NAME_LOWER}}";
-        set $upstream_port "{{DASHBOARD_PORT}}";
-        proxy_pass http://$upstream_host:$upstream_port;
-        
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
-        
-        # WebSocket support (for Dash, Bokeh, etc.)
-        proxy_http_version 1.1;
-        proxy_set_header Upgrade $http_upgrade;
-        proxy_set_header Connection "upgrade";
-        
-        # Timeouts for long-running requests
-        proxy_read_timeout 300s;
-        proxy_connect_timeout 300s;
-        proxy_send_timeout 300s;
-        
-        # Buffer settings
-        proxy_buffer_size 128k;
-        proxy_buffers 4 256k;
-        proxy_busy_buffers_size 256k;
-        
-        # CORS headers (if enabled)
+    # Timeouts for long-running requests
+    proxy_read_timeout 300s;
+    proxy_connect_timeout 300s;
+    proxy_send_timeout 300s;
+    
+    # Buffer settings
+    proxy_buffer_size 128k;
+    proxy_buffers 4 256k;
+    proxy_busy_buffers_size 256k;
+    
+    # CORS headers (if enabled)
 {{CORS_SECTION}}
-    }
-    
-    # Health check endpoint (if specified)
-{{HEALTH_CHECK_SECTION}}
 }
+
+# Health check endpoint (if specified)
+{{HEALTH_CHECK_SECTION}}

@@ -57,11 +57,16 @@ fi
 
 MAIN_NGINX_CONF_DIR="$VISUS_DOCKER_PATH/nginx/conf.d"
 DASHBOARD_NGINX_CONF_DIR="$SCRIPT_DIR/../../SC_Docker/nginx/conf.d"
+# Dashboard configs are location blocks, so they go in a subdirectory to avoid http-level includes
+DASHBOARD_SUBDIR="$MAIN_NGINX_CONF_DIR/dashboards"
 
 if [ ! -d "$MAIN_NGINX_CONF_DIR" ]; then
     echo "❌ Main nginx conf.d directory not found: $MAIN_NGINX_CONF_DIR"
     exit 1
 fi
+
+# Create dashboard subdirectory if it doesn't exist
+mkdir -p "$DASHBOARD_SUBDIR" 2>/dev/null || true
 
 if [ ! -d "$DASHBOARD_NGINX_CONF_DIR" ]; then
     echo "❌ Dashboard nginx conf.d directory not found: $DASHBOARD_NGINX_CONF_DIR"
@@ -71,7 +76,8 @@ fi
 
 echo "📋 Setting up dashboard nginx configurations..."
 echo "   Source: $DASHBOARD_NGINX_CONF_DIR"
-echo "   Target: $MAIN_NGINX_CONF_DIR"
+echo "   Target: $DASHBOARD_SUBDIR"
+echo "   (Dashboard configs are location blocks, stored in subdirectory to avoid http-level includes)"
 
 # Check nginx status first - if restarting, stop it to break the loop
 if docker ps --format "{{.Names}}" | grep -q "visstore_nginx"; then
@@ -102,6 +108,11 @@ if [ -d "$MAIN_NGINX_CONF_DIR" ]; then
             fi
         fi
     done < <(find "$MAIN_NGINX_CONF_DIR" -maxdepth 1 -name "*_dashboard.conf" -o -name "*Dashboard*.conf" 2>/dev/null || true)
+    
+    # Also clean up dashboard subdirectory
+    if [ -d "$DASHBOARD_SUBDIR" ]; then
+        find "$DASHBOARD_SUBDIR" -name "*_dashboard.conf" -delete 2>/dev/null || true
+    fi
     
     # Remove uppercase duplicates (e.g., 3DPlotly_dashboard.conf) if lowercase versions exist
     for config_file in "$MAIN_NGINX_CONF_DIR"/*_dashboard.conf; do
@@ -169,7 +180,7 @@ while IFS= read -r DASHBOARD_NAME; do
             fi
         fi
         
-        cp "$TEMP_COPY" "$MAIN_NGINX_CONF_DIR/${OUTPUT_NAME}"
+        cp "$TEMP_COPY" "$DASHBOARD_SUBDIR/${OUTPUT_NAME}"
         rm -f "$TEMP_COPY"
         echo "   ✓ Copied: ${OUTPUT_NAME} (from ${DASHBOARD_NAME})"
         COPIED_COUNT=$((COPIED_COUNT + 1))
