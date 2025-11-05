@@ -182,7 +182,9 @@ class DatasetManager {
         html += this.renderDatasetGroup('Shared with Me', groupedDatasets['shared'], 'sharedDatasets');
         
         // Team Datasets
-        if (groupedDatasets['team'].length > 0) {
+        const teamRootCount = groupedDatasets['team'].root?.length || 0;
+        const teamFolderCount = Object.values(groupedDatasets['team'].folders || {}).reduce((sum, arr) => sum + arr.length, 0);
+        if (teamRootCount > 0 || teamFolderCount > 0) {
             html += this.renderDatasetGroup('Team Datasets', groupedDatasets['team'], 'teamDatasets');
         }
         
@@ -191,22 +193,54 @@ class DatasetManager {
 
     /**
      * Group datasets by folder
+     * Returns datasets grouped by folder_uuid for each category (my, shared, team)
      */
     groupDatasetsByFolder() {
-        // Datasets are already grouped by type (my, shared, team)
-        // Just return them as-is, but we can organize by folder within each group
-        return {
-            'my': this.datasets.my || [],
-            'shared': this.datasets.shared || [],
-            'team': this.datasets.team || []
+        const result = {
+            'my': { folders: {}, root: [] },
+            'shared': { folders: {}, root: [] },
+            'team': { folders: {}, root: [] }
         };
+
+        // Process each category
+        ['my', 'shared', 'team'].forEach(category => {
+            const datasets = this.datasets[category] || [];
+            
+            datasets.forEach(dataset => {
+                if (!dataset) return;
+                
+                // Extract folder_uuid - check both direct field and metadata
+                const folderUuid = dataset.folder_uuid || 
+                                   (dataset.metadata && dataset.metadata.folder_uuid) || 
+                                   null;
+                
+                // Normalize empty/null values - treat as root level
+                if (folderUuid === null || folderUuid === '' || 
+                    folderUuid === 'No_Folder_Selected' || folderUuid === 'root') {
+                    result[category].root.push(dataset);
+                } else {
+                    // Group by folder_uuid
+                    if (!result[category].folders[folderUuid]) {
+                        result[category].folders[folderUuid] = [];
+                    }
+                    result[category].folders[folderUuid].push(dataset);
+                }
+            });
+        });
+
+        return result;
     }
 
     /**
-     * Render a dataset group
+     * Render a dataset group with folder support
      */
-    renderDatasetGroup(title, datasets, id) {
-        if (!datasets || datasets.length === 0) {
+    renderDatasetGroup(title, groupedData, id) {
+        // groupedData is { folders: {}, root: [] }
+        const rootDatasets = groupedData.root || [];
+        const folders = groupedData.folders || {};
+        const totalCount = rootDatasets.length + Object.values(folders).reduce((sum, arr) => sum + arr.length, 0);
+
+        if (totalCount === 0) {
             console.log(`No datasets to render for ${title} (id: ${id})`);
             return `
                 <div class="dataset-section">
@@ -223,17 +257,53 @@ class DatasetManager {
         let html = `
             <div class="dataset-section">
                 <a class="nav-link" data-bs-toggle="collapse" data-bs-target="#${id}">
-                    <span class="arrow-icon" id="arrow-${id}">&#9656;</span>${title} (${datasets.length})
+                    <span class="arrow-icon" id="arrow-${id}">&#9656;</span>${title} (${totalCount})
                 </a>
                 <div class="collapse show ps-4 w-100" id="${id}">
         `;
 
-        datasets.forEach((dataset, index) => {
+        // Render root level datasets (no folder)
+        rootDatasets.forEach((dataset, index) => {
             if (!dataset) {
-                console.warn(`Dataset at index ${index} is null or undefined`);
+                console.warn(`Root dataset at index ${index} is null or undefined`);
                 return;
             }
+            html += `<div class="dataset-item" data-dataset-id="${dataset.id || dataset.uuid || 'unknown'}">`;
             html += this.renderDatasetItem(dataset);
+            html += `</div>`;
+        });
+
+        // Render folder groups
+        Object.keys(folders).forEach(folderUuid => {
+            const folderDatasets = folders[folderUuid];
+            if (!folderDatasets || folderDatasets.length === 0) return;
+
+            html += `
+                <div class="folder-group">
+                    <details class="folder-details" open>
+                        <summary class="folder-summary">
+                            <span class="arrow-icon">&#9656;</span>
+                            <span class="folder-name">${this.escapeHtml(folderUuid)}</span>
+                            <span class="badge bg-secondary ms-2">${folderDatasets.length}</span>
+                        </summary>
+                        <ul class="nested folder-datasets">
+            `;
+
+            folderDatasets.forEach((dataset, index) => {
+                if (!dataset) {
+                    console.warn(`Folder dataset at index ${index} is null or undefined`);
+                    return;
+                }
+                html += `<li class="dataset-item" data-dataset-id="${dataset.id || dataset.uuid || 'unknown'}">`;
+                html += this.renderDatasetItem(dataset);
+                html += `</li>`;
+            });
+
+            html += `
+                        </ul>
+                    </details>
+                </div>
+            `;
         });
 
         html += `
@@ -242,6 +312,15 @@ class DatasetManager {
         `;
 
         return html;
+    }
+
+    /**
+     * Escape HTML to prevent XSS
+     */
+    escapeHtml(text) {
+        const div = document.createElement('div');
+        div.textContent = text;
+        return div.innerHTML;
     }
 
     /**
