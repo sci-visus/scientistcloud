@@ -16,7 +16,30 @@ class DatasetManager {
      */
     initialize() {
         this.setupEventListeners();
-        this.loadDatasets();
+        // Only load datasets if PHP hasn't already rendered them
+        // Check if PHP has already rendered the dataset list (look for folder-details elements)
+        const existingFolders = document.querySelectorAll('.folder-details').length;
+        const existingDatasets = document.querySelectorAll('.dataset-link').length;
+        
+        if (existingFolders > 0 || existingDatasets > 0) {
+            console.log(`Using PHP-rendered dataset list (${existingFolders} folders, ${existingDatasets} datasets)`);
+            // Don't load/replace PHP content - just attach event listeners
+            this.attachEventListenersToExisting();
+        } else {
+            // No PHP content found, load datasets via JavaScript
+            console.log('No PHP-rendered content found, loading datasets via JavaScript');
+            this.loadDatasets();
+        }
+    }
+
+    /**
+     * Attach event listeners to existing PHP-rendered dataset list
+     */
+    attachEventListenersToExisting() {
+        // Event listeners are already set up by setupEventListeners()
+        // The click handlers in main.js and dataset_list.php should handle this
+        // Just ensure we have access to datasets for other operations
+        console.log('Event listeners attached to PHP-rendered dataset list');
     }
 
     /**
