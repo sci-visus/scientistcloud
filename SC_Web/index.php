@@ -64,12 +64,10 @@ $preferredDashboard = getUserPreferredDashboard($user['id']);
   <section class="main">
     <div class="toolbar-wrapper">
       <div class="viewer-toolbar">
-        <label for="viewerType">Viewer:</label>
+        <label for="viewerType">Dashboard:</label>
         <select id="viewerType" class="form-select form-select-sm">
-          <option value="openvisus">OpenVisus</option>
-          <option value="bokeh">Bokeh</option>
-          <option value="jupyter">Jupyter notebook</option>
-          <option value="plotly">Plotly</option>
+          <!-- Options will be populated dynamically by viewer-manager.js -->
+          <option value="">Loading dashboards...</option>
         </select>
         <div class="btn-group" role="group" aria-label="Annotation tools">
           <button type="button" class="btn btn-outline-light"><i class="fas fa-search-plus"></i></button>

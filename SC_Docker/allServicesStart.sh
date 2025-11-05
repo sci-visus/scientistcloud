@@ -172,8 +172,8 @@ fi
 
 # Setup portal nginx configuration after all services are running
 # Portal is part of ScientistCloud 2.0, so we should set it up even if main services are skipped
-# Skip in dashboards-only mode since we're not starting portal services
-if [ "$DASHBOARDS_ONLY" = false ]; then
+# Also set up in dashboards-only mode if portal container is already running
+if [ "$DASHBOARDS_ONLY" = false ] || docker ps --format "{{.Names}}" | grep -q "scientistcloud-portal"; then
     if [ -n "$VISUS_DOCKER_PATH" ] && [ -d "$VISUS_DOCKER_PATH" ]; then
         echo "🔧 Setting up portal nginx configuration..."
         pushd "$VISUS_DOCKER_PATH"
@@ -183,7 +183,6 @@ if [ "$DASHBOARDS_ONLY" = false ]; then
         else
             echo "⚠️ setup_portal_nginx.sh not found"
             echo "   Portal routes may not work. Please ensure setup_portal_nginx.sh exists in $VISUS_DOCKER_PATH"
-            # setup_ssl.sh should have called setup_portal_config at the end, but verify
             if docker ps --format "{{.Names}}" | grep -q "scientistcloud-portal"; then
                 echo "   Portal container is running, but nginx config may be missing portal routes"
             fi
@@ -195,7 +194,7 @@ if [ "$DASHBOARDS_ONLY" = false ]; then
         echo "   To fix: Set VISUS_DOCKER or VISUS_CODE in env.scientistcloud file"
     fi
 else
-    echo "⏭️  Skipping portal nginx setup (dashboards-only mode)"
+    echo "⏭️  Skipping portal nginx setup (portal container not running)"
 fi
 
 # Setup and build dashboards
@@ -304,6 +303,18 @@ if [ -d "$DASHBOARDS_DIR" ]; then
     
     popd
     echo "✅ Dashboard setup complete"
+    
+    # Final nginx reload to ensure all configs are applied (portal + dashboards)
+    if [ -n "$VISUS_DOCKER_PATH" ] && docker ps --format "{{.Names}}" | grep -q "visstore_nginx"; then
+        echo "🔄 Performing final nginx reload to apply all configuration changes..."
+        if docker exec visstore_nginx nginx -t >/dev/null 2>&1; then
+            docker exec visstore_nginx nginx -s reload
+            echo "✅ Nginx reloaded with all configuration changes"
+        else
+            echo "⚠️  Nginx configuration test failed - skipping reload"
+            echo "   Check nginx logs: docker logs visstore_nginx"
+        fi
+    fi
 else
     echo "⚠️  SC_Dashboards directory not found: $DASHBOARDS_DIR"
     echo "   Skipping dashboard setup"

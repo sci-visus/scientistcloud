@@ -40,10 +40,13 @@ class ViewerManager {
                 this.viewers = {};
                 data.dashboards.forEach(dashboard => {
                     if (dashboard.enabled) {
-                        this.viewers[dashboard.id] = {
+                        // Use dashboard.id as the key (e.g., "3DPlotly", "3DVTK")
+                        const dashboardId = dashboard.id;
+                        this.viewers[dashboardId] = {
+                            id: dashboardId,
                             name: dashboard.display_name || dashboard.name,
-                            type: dashboard.type || dashboard.id,
-                            url_template: dashboard.url_template || dashboard.nginx_path + '?dataset={uuid}&server={server}',
+                            type: dashboard.type || dashboardId, // Use type for compatibility, fallback to id
+                            url_template: dashboard.url_template || (dashboard.nginx_path + '?dataset={uuid}&server={server}'),
                             supported_formats: [], // Will be determined from dataset type
                             description: dashboard.description || dashboard.display_name,
                             nginx_path: dashboard.nginx_path,
@@ -85,9 +88,11 @@ class ViewerManager {
         viewerType.innerHTML = '';
         
         // Add options from loaded viewers
-        Object.values(this.viewers).forEach(viewer => {
+        // Use dashboard id as value for consistency
+        Object.entries(this.viewers).forEach(([viewerKey, viewer]) => {
             const option = document.createElement('option');
-            option.value = viewer.type;
+            // Use id if available, otherwise use the key or type
+            option.value = viewer.id || viewerKey || viewer.type;
             option.textContent = viewer.name;
             viewerType.appendChild(option);
         });
@@ -281,13 +286,23 @@ class ViewerManager {
         const viewerContainer = document.getElementById('viewerContainer');
         if (!viewerContainer) return;
 
-        const viewer = this.viewers[dashboardType];
+        // Find viewer by id, type, or key
+        let viewer = this.viewers[dashboardType];
         if (!viewer) {
-            this.showErrorDashboard('Unknown viewer type');
+            // Try to find by matching id or type
+            viewer = Object.values(this.viewers).find(v => 
+                v.id === dashboardType || 
+                v.type === dashboardType || 
+                v.nginx_path === dashboardType
+            );
+        }
+        
+        if (!viewer) {
+            this.showErrorDashboard('Unknown dashboard type: ' + dashboardType);
             return;
         }
 
-        // Generate viewer URL
+        // Generate viewer URL using the url_template
         const viewerUrl = this.generateViewerUrl(datasetUuid, datasetServer, viewer.url_template);
         
         // Create iframe
