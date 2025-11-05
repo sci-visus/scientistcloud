@@ -170,7 +170,10 @@ echo "✅ Copied $COPIED_COUNT dashboard nginx configuration(s)"
 # Now test and start/reload nginx
 # First, test the configuration using a temporary container (before touching the real one)
 echo "   Testing nginx configuration..."
-if docker run --rm -v "$VISUS_DOCKER_PATH/nginx:/etc/nginx:ro" nginx:alpine nginx -t 2>&1 | grep -q "syntax is ok"; then
+NGINX_TEST_OUTPUT=$(docker run --rm -v "$VISUS_DOCKER_PATH/nginx:/etc/nginx:ro" nginx:alpine nginx -t 2>&1)
+NGINX_TEST_EXIT=$?
+
+if echo "$NGINX_TEST_OUTPUT" | grep -q "syntax is ok"; then
     echo "   ✅ Configuration test passed"
     
     # Check if nginx container exists
@@ -204,7 +207,21 @@ if docker run --rm -v "$VISUS_DOCKER_PATH/nginx:/etc/nginx:ro" nginx:alpine ngin
 else
     echo "❌ Nginx configuration test failed"
     echo "   Error details:"
-    docker run --rm -v "$VISUS_DOCKER_PATH/nginx:/etc/nginx:ro" nginx:alpine nginx -t 2>&1 | sed 's/^/      /'
+    echo "$NGINX_TEST_OUTPUT" | sed 's/^/      /'
+    echo ""
+    echo "   Checking dashboard config files for issues..."
+    # List the dashboard config files and check if they have closing braces
+    for conf_file in "$MAIN_NGINX_CONF_DIR"/*_dashboard.conf; do
+        if [ -f "$conf_file" ]; then
+            echo "   Checking: $(basename "$conf_file")"
+            if ! tail -1 "$conf_file" | grep -qE '^[[:space:]]*}[[:space:]]*$'; then
+                echo "      ⚠️  Missing closing brace"
+            fi
+            if ! head -1 "$conf_file" | grep -q "server {"; then
+                echo "      ⚠️  Missing server block"
+            fi
+        fi
+    done
     echo ""
     echo "   Configurations were copied but nginx cannot start/reload"
     echo "   Fix the errors above before starting nginx"

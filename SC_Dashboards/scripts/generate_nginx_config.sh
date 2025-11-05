@@ -93,34 +93,57 @@ sed -e "s|{{DASHBOARD_NAME}}|$DASHBOARD_NAME|g" \
 # Note: macOS sed requires -i with extension, Linux doesn't - use .bak for compatibility
 # We need to be careful not to delete the closing server block brace
 
+# Use a temporary file approach to avoid sed range pattern issues
+TEMP_FILE=$(mktemp)
+cp "$OUTPUT_FILE" "$TEMP_FILE"
+
+# Handle HEALTH_CHECK_PATH conditional
 if [ -n "$HEALTH_CHECK_PATH" ]; then
     # Keep the health check section - just remove the conditional markers
-    sed -i.bak 's|{{#if HEALTH_CHECK_PATH}}||g; s|{{/if}}||g' "$OUTPUT_FILE"
-    rm -f "$OUTPUT_FILE.bak"
+    sed -i.bak 's|{{#if HEALTH_CHECK_PATH}}||g; s|{{/if}}||g' "$TEMP_FILE"
+    rm -f "$TEMP_FILE.bak"
 else
     # Delete the health check section (lines with the conditional markers)
-    # Use escaped braces for the pattern matching
-    sed -i.bak '/{{#if HEALTH_CHECK_PATH}}/,/{{/if}}/d' "$OUTPUT_FILE"
-    rm -f "$OUTPUT_FILE.bak"
+    # Use awk to delete lines between {{#if HEALTH_CHECK_PATH}} and {{/if}}
+    # Match the closing tag explicitly
+    awk '/{{#if HEALTH_CHECK_PATH}}/{flag=1; next} /{{\/if}}/ && flag {flag=0; next} !flag' "$TEMP_FILE" > "$TEMP_FILE.tmp" && mv "$TEMP_FILE.tmp" "$TEMP_FILE"
 fi
 
+# Handle ENABLE_CORS conditional
 if [ "$ENABLE_CORS" = "true" ]; then
     # Keep the CORS section - just remove the conditional markers
-    sed -i.bak 's|{{#if ENABLE_CORS}}||g; s|{{/if}}||g' "$OUTPUT_FILE"
-    rm -f "$OUTPUT_FILE.bak"
+    sed -i.bak 's|{{#if ENABLE_CORS}}||g; s|{{/if}}||g' "$TEMP_FILE"
+    rm -f "$TEMP_FILE.bak"
 else
     # Delete the CORS section (lines with the conditional markers)
-    # Use escaped braces for the pattern matching
-    sed -i.bak '/{{#if ENABLE_CORS}}/,/{{/if}}/d' "$OUTPUT_FILE"
-    rm -f "$OUTPUT_FILE.bak"
+    # Use awk to delete lines between {{#if ENABLE_CORS}} and {{/if}}
+    # Match the closing tag explicitly
+    awk '/{{#if ENABLE_CORS}}/{flag=1; next} /{{\/if}}/ && flag {flag=0; next} !flag' "$TEMP_FILE" > "$TEMP_FILE.tmp" && mv "$TEMP_FILE.tmp" "$TEMP_FILE"
 fi
+
+# Replace original file with cleaned version
+mv "$TEMP_FILE" "$OUTPUT_FILE"
 
 # Verify the file ends with a closing brace for the server block
 # If it doesn't, add it (safety check)
-if ! tail -1 "$OUTPUT_FILE" | grep -qE '^[[:space:]]*}[[:space:]]*$'; then
-    echo "" >> "$OUTPUT_FILE"
-    echo "}" >> "$OUTPUT_FILE"
+# Check the last non-empty line
+LAST_NON_EMPTY=$(grep -v '^[[:space:]]*$' "$OUTPUT_FILE" | tail -1)
+if [ -z "$LAST_NON_EMPTY" ] || ! echo "$LAST_NON_EMPTY" | grep -qE '^[[:space:]]*}[[:space:]]*$'; then
+    # Ensure we have a newline, then add the closing brace
+    if [ -s "$OUTPUT_FILE" ] && ! tail -c 1 "$OUTPUT_FILE" | grep -q .; then
+        # File ends with newline, just add the brace
+        echo "}" >> "$OUTPUT_FILE"
+    else
+        # File doesn't end with newline, add newline and brace
+        echo "" >> "$OUTPUT_FILE"
+        echo "}" >> "$OUTPUT_FILE"
+    fi
     echo "   ⚠️  Added missing closing brace for server block"
+fi
+
+# Also verify the file starts with server block
+if ! head -10 "$OUTPUT_FILE" | grep -q "^server {"; then
+    echo "   ⚠️  Warning: Generated config may be missing server block"
 fi
 
 echo "✅ Generated nginx configuration: $OUTPUT_FILE"
