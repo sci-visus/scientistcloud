@@ -260,6 +260,11 @@ class DatasetManager {
         const status = dataset.status || 'unknown';
         const sensor = dataset.sensor || 'Unknown';
         
+        // Determine server flag: true if link includes 'http' but is NOT a Google Drive link
+        // Check download_url, viewer_url, or google_drive_link
+        const link = dataset.download_url || dataset.viewer_url || dataset.google_drive_link || '';
+        const datasetServer = (link.includes('http') && !link.includes('drive.google.com')) ? 'true' : 'false';
+        
         const statusColor = this.getStatusColor(status);
         const fileIcon = this.getFileIcon(sensor);
         
@@ -269,7 +274,7 @@ class DatasetManager {
                    data-dataset-id="${datasetId}"
                    data-dataset-name="${datasetName}"
                    data-dataset-uuid="${datasetUuid}"
-                   data-dataset-server="${dataset.google_drive_link ? 'true' : 'false'}">
+                   data-dataset-server="${datasetServer}">
                     <i class="${fileIcon} me-2"></i>
                     <span class="dataset-name">${datasetName}</span>
                     <span class="badge bg-${statusColor} ms-2">${status}</span>

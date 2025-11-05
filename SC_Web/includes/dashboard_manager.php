@@ -119,7 +119,7 @@ function getDashboardConfig($dashboardType) {
                             return [
                                 'name' => $dashboard_info['display_name'] ?? $name,
                                 'type' => $dashboard_info['type'] ?? $dashboardType,
-                                'url_template' => ($dashboard_info['nginx_path'] ?? '/dashboard/' . strtolower($name)) . '?dataset={uuid}&server={server}',
+                                'url_template' => ($dashboard_info['nginx_path'] ?? '/dashboard/' . strtolower($name)) . '?uuid={uuid}&server={server}&name={name}',
                                 'supported_formats' => $full_config['supported_formats'] ?? ['tiff', 'hdf5', 'csv', 'json', 'nexus'],
                                 'description' => $full_config['description'] ?? $dashboard_info['display_name'] ?? 'Dashboard',
                                 'nginx_path' => $dashboard_info['nginx_path'] ?? '/dashboard/' . strtolower($name),
@@ -140,35 +140,35 @@ function getDashboardConfig($dashboardType) {
         'openvisus' => [
             'name' => 'OpenVisus Explorer',
             'type' => 'openvisus',
-            'url_template' => '/viewer/openvisus.php?dataset={uuid}&server={server}',
+            'url_template' => '/dashboard/openvisus?uuid={uuid}&server={server}&name={name}',
             'supported_formats' => ['tiff', 'hdf5', 'nexus'],
             'description' => 'Interactive 3D volume rendering with OpenVisus'
         ],
         'bokeh' => [
             'name' => 'Bokeh Dashboard',
             'type' => 'bokeh',
-            'url_template' => '/viewer/bokeh.php?dataset={uuid}&server={server}',
+            'url_template' => '/dashboard/bokeh?uuid={uuid}&server={server}&name={name}',
             'supported_formats' => ['tiff', 'hdf5', 'csv', 'json'],
             'description' => 'Interactive data visualization with Bokeh'
         ],
         'jupyter' => [
             'name' => 'Jupyter Notebook',
             'type' => 'jupyter',
-            'url_template' => '/viewer/jupyter.php?dataset={uuid}&server={server}',
+            'url_template' => '/dashboard/jupyter?uuid={uuid}&server={server}&name={name}',
             'supported_formats' => ['tiff', 'hdf5', 'csv', 'json', 'nexus'],
             'description' => 'Interactive data analysis with Jupyter'
         ],
         'plotly' => [
             'name' => 'Plotly Dashboard',
             'type' => 'plotly',
-            'url_template' => '/viewer/plotly.php?dataset={uuid}&server={server}',
+            'url_template' => '/dashboard/plotly?uuid={uuid}&server={server}&name={name}',
             'supported_formats' => ['tiff', 'hdf5', 'csv', 'json'],
             'description' => 'Interactive 3D plotting with Plotly'
         ],
         'vtk' => [
             'name' => 'VTK Explorer',
             'type' => 'vtk',
-            'url_template' => '/viewer/vtk.php?dataset={uuid}&server={server}',
+            'url_template' => '/dashboard/vtk?uuid={uuid}&server={server}&name={name}',
             'supported_formats' => ['tiff', 'hdf5', 'nexus'],
             'description' => '3D visualization with VTK'
         ]
@@ -252,14 +252,16 @@ function generateViewerUrl($dataset, $dashboardType) {
         return null;
     }
     
-    $server = 'false';
-    if ($dataset['google_drive_link'] && strpos($dataset['google_drive_link'], 'http') !== false) {
-        $server = 'true';
-    }
+    // Determine server flag: true if link includes 'http' but is NOT a Google Drive link
+    // Check download_url, viewer_url, or google_drive_link
+    $link = $dataset['download_url'] ?? $dataset['viewer_url'] ?? $dataset['google_drive_link'] ?? '';
+    $server = (!empty($link) && strpos($link, 'http') !== false && strpos($link, 'drive.google.com') === false) ? 'true' : 'false';
+    
+    $datasetName = $dataset['name'] ?? '';
     
     $url = str_replace(
-        ['{uuid}', '{server}'],
-        [$dataset['uuid'], $server],
+        ['{uuid}', '{server}', '{name}'],
+        [$dataset['uuid'], $server, urlencode($datasetName)],
         $config['url_template']
     );
     

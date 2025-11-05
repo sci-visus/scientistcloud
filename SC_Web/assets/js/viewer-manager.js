@@ -303,7 +303,7 @@ class ViewerManager {
         }
 
         // Generate viewer URL using the url_template
-        const viewerUrl = this.generateViewerUrl(datasetUuid, datasetServer, viewer.url_template);
+        const viewerUrl = this.generateViewerUrl(datasetUuid, datasetServer, datasetName, viewer.url_template);
         
         // Create iframe
         const iframe = document.createElement('iframe');
@@ -348,12 +348,16 @@ class ViewerManager {
     }
 
     /**
-     * Generate viewer URL
+     * Generate viewer URL with uuid, server, and name parameters
      */
-    generateViewerUrl(datasetUuid, datasetServer, urlTemplate) {
-        return urlTemplate
-            .replace('{uuid}', datasetUuid)
-            .replace('{server}', datasetServer);
+    generateViewerUrl(datasetUuid, datasetServer, datasetName, urlTemplate) {
+        // Replace all three placeholders: {uuid}, {server}, {name}
+        let url = urlTemplate
+            .replace('{uuid}', encodeURIComponent(datasetUuid))
+            .replace('{server}', encodeURIComponent(datasetServer || 'false'))
+            .replace('{name}', encodeURIComponent(datasetName || ''));
+        
+        return url;
     }
 
     /**

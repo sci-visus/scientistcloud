@@ -10,7 +10,7 @@
       "description": "Dashboard description",
       "port": 8060,
       "nginx_path": "/dashboard/plotly",
-      "url_template": "/dashboard/plotly?dataset={uuid}&server={server}",
+      "url_template": "/dashboard/plotly?uuid={uuid}&server={server}&name={name}",
       "enabled": true,
       "config_file": "../dashboards/3DPlotly.json"
     },
@@ -22,7 +22,7 @@
       "description": "Dashboard description",
       "port": 8051,
       "nginx_path": "/dashboard/vtk",
-      "url_template": "/dashboard/vtk?dataset={uuid}&server={server}",
+      "url_template": "/dashboard/vtk?uuid={uuid}&server={server}&name={name}",
       "enabled": true,
       "config_file": "../dashboards/3DVTK.json"
     },
@@ -34,7 +34,7 @@
       "description": "Dashboard description",
       "port": 8052,
       "nginx_path": "/dashboard/4d",
-      "url_template": "/dashboard/4d?dataset={uuid}&server={server}",
+      "url_template": "/dashboard/4d?uuid={uuid}&server={server}&name={name}",
       "enabled": true,
       "config_file": "../dashboards/4D_Dashboard.json"
     },
@@ -46,7 +46,7 @@
       "description": "Dashboard description",
       "port": 8053,
       "nginx_path": "/dashboard/magicscan",
-      "url_template": "/dashboard/magicscan?dataset={uuid}&server={server}",
+      "url_template": "/dashboard/magicscan?uuid={uuid}&server={server}&name={name}",
       "enabled": true,
       "config_file": "../dashboards/Magicscan.json"
     },
@@ -58,7 +58,7 @@
       "description": "Dashboard description",
       "port": 8054,
       "nginx_path": "/dashboard/openvisus",
-      "url_template": "/dashboard/openvisus?dataset={uuid}&server={server}",
+      "url_template": "/dashboard/openvisus?uuid={uuid}&server={server}&name={name}",
       "enabled": true,
       "config_file": "../dashboards/OpenVisusSlice.json"
     }

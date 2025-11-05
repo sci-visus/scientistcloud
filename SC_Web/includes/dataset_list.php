@@ -43,6 +43,19 @@ foreach ($datasets as $dataset) {
     }
 }
 
+// Function to determine server flag: true if link includes 'http' but is NOT a Google Drive link
+function getDatasetServerFlag($dataset) {
+    // Check download_url, viewer_url, or google_drive_link
+    $link = $dataset['download_url'] ?? $dataset['viewer_url'] ?? $dataset['google_drive_link'] ?? '';
+    
+    // server = true if link includes 'http' AND is NOT a Google Drive link
+    if (!empty($link) && strpos($link, 'http') !== false && strpos($link, 'drive.google.com') === false) {
+        return 'true';
+    }
+    
+    return 'false';
+}
+
 // Function to get file format icon
 function getFileFormatIcon($sensor) {
     $icons = [
@@ -104,7 +117,7 @@ function formatFileSize($bytes) {
                        data-dataset-id="<?php echo htmlspecialchars($dataset['id']); ?>"
                        data-dataset-name="<?php echo htmlspecialchars($dataset['name']); ?>"
                        data-dataset-uuid="<?php echo htmlspecialchars($dataset['uuid']); ?>"
-                       data-dataset-server="<?php echo $dataset['google_drive_link'] ? 'true' : 'false'; ?>">
+                       data-dataset-server="<?php echo getDatasetServerFlag($dataset); ?>">
                         <i class="<?php echo getFileFormatIcon($dataset['sensor']); ?> me-2"></i>
                         <span class="dataset-name"><?php echo htmlspecialchars($dataset['name']); ?></span>
                         <span class="badge bg-<?php echo getStatusColor($dataset['status']); ?> ms-2">
@@ -130,7 +143,7 @@ function formatFileSize($bytes) {
                                        data-dataset-id="<?php echo htmlspecialchars($dataset['id']); ?>"
                                        data-dataset-name="<?php echo htmlspecialchars($dataset['name']); ?>"
                                        data-dataset-uuid="<?php echo htmlspecialchars($dataset['uuid']); ?>"
-                                       data-dataset-server="<?php echo $dataset['google_drive_link'] ? 'true' : 'false'; ?>">
+                                       data-dataset-server="<?php echo getDatasetServerFlag($dataset); ?>">
                                         <i class="<?php echo getFileFormatIcon($dataset['sensor']); ?> me-2"></i>
                                         <span class="dataset-name"><?php echo htmlspecialchars($dataset['name']); ?></span>
                                         <span class="badge bg-<?php echo getStatusColor($dataset['status']); ?> ms-2">
@@ -201,7 +214,7 @@ function formatFileSize($bytes) {
                        data-dataset-id="<?php echo htmlspecialchars($dataset['id']); ?>"
                        data-dataset-name="<?php echo htmlspecialchars($dataset['name']); ?>"
                        data-dataset-uuid="<?php echo htmlspecialchars($dataset['uuid']); ?>"
-                       data-dataset-server="<?php echo $dataset['google_drive_link'] ? 'true' : 'false'; ?>">
+                       data-dataset-server="<?php echo getDatasetServerFlag($dataset); ?>">
                         <i class="<?php echo getFileFormatIcon($dataset['sensor']); ?> me-2"></i>
                         <span class="dataset-name"><?php echo htmlspecialchars($dataset['name']); ?></span>
                         <span class="badge bg-info ms-2">Shared</span>
@@ -225,7 +238,7 @@ function formatFileSize($bytes) {
                                        data-dataset-id="<?php echo htmlspecialchars($dataset['id']); ?>"
                                        data-dataset-name="<?php echo htmlspecialchars($dataset['name']); ?>"
                                        data-dataset-uuid="<?php echo htmlspecialchars($dataset['uuid']); ?>"
-                                       data-dataset-server="<?php echo $dataset['google_drive_link'] ? 'true' : 'false'; ?>">
+                                       data-dataset-server="<?php echo getDatasetServerFlag($dataset); ?>">
                                         <i class="<?php echo getFileFormatIcon($dataset['sensor']); ?> me-2"></i>
                                         <span class="dataset-name"><?php echo htmlspecialchars($dataset['name']); ?></span>
                                         <span class="badge bg-info ms-2">Shared</span>
@@ -297,7 +310,7 @@ function formatFileSize($bytes) {
                        data-dataset-id="<?php echo htmlspecialchars($dataset['id']); ?>"
                        data-dataset-name="<?php echo htmlspecialchars($dataset['name']); ?>"
                        data-dataset-uuid="<?php echo htmlspecialchars($dataset['uuid']); ?>"
-                       data-dataset-server="<?php echo $dataset['google_drive_link'] ? 'true' : 'false'; ?>">
+                       data-dataset-server="<?php echo getDatasetServerFlag($dataset); ?>">
                         <i class="<?php echo getFileFormatIcon($dataset['sensor']); ?> me-2"></i>
                         <span class="dataset-name"><?php echo htmlspecialchars($dataset['name']); ?></span>
                         <span class="badge bg-primary ms-2">Team</span>
@@ -321,7 +334,7 @@ function formatFileSize($bytes) {
                                        data-dataset-id="<?php echo htmlspecialchars($dataset['id']); ?>"
                                        data-dataset-name="<?php echo htmlspecialchars($dataset['name']); ?>"
                                        data-dataset-uuid="<?php echo htmlspecialchars($dataset['uuid']); ?>"
-                                       data-dataset-server="<?php echo $dataset['google_drive_link'] ? 'true' : 'false'; ?>">
+                                       data-dataset-server="<?php echo getDatasetServerFlag($dataset); ?>">
                                         <i class="<?php echo getFileFormatIcon($dataset['sensor']); ?> me-2"></i>
                                         <span class="dataset-name"><?php echo htmlspecialchars($dataset['name']); ?></span>
                                         <span class="badge bg-primary ms-2">Team</span>
