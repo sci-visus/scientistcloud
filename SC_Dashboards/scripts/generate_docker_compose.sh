@@ -98,8 +98,16 @@ while IFS= read -r DASHBOARD_NAME; do
     DASHBOARD_CONFIG=$(cat "$CONFIG_FILE")
     
     # Extract values from config
+    # Try original name first, then lowercase version (matching init_dashboard.sh logic)
     DOCKERFILE_NAME="${DASHBOARD_NAME}.Dockerfile"
     DOCKERFILE_PATH="$DASHBOARDS_DIR/$DOCKERFILE_NAME"
+    
+    # If not found, try lowercase version
+    if [ ! -f "$DOCKERFILE_PATH" ]; then
+        DASHBOARD_NAME_LOWER=$(echo "$DASHBOARD_NAME" | tr '[:upper:]' '[:lower:]')
+        DOCKERFILE_NAME="${DASHBOARD_NAME_LOWER}.Dockerfile"
+        DOCKERFILE_PATH="$DASHBOARDS_DIR/$DOCKERFILE_NAME"
+    fi
     
     # Check if Dockerfile exists
     if [ ! -f "$DOCKERFILE_PATH" ]; then
