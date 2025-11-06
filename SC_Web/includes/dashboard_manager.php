@@ -102,10 +102,16 @@ function getDashboardConfig($dashboardType) {
                 
                 // Look for dashboard in registry
                 if (isset($registry['dashboards'])) {
-                    foreach ($registry['dashboards'] as $name => $dashboard_info) {
+                    // Handle both associative array (dashboard-registry.json) and numeric array (dashboards-list.json)
+                    foreach ($registry['dashboards'] as $key => $dashboard_info) {
+                        // For numeric arrays, use 'id' field; for associative arrays, use key
+                        $dashboardId = $dashboard_info['id'] ?? $key;
+                        $dashboardName = $dashboard_info['display_name'] ?? $dashboard_info['name'] ?? $dashboardId;
+                        
                         // Check if this dashboard matches the requested type
-                        if (strtolower($name) === strtolower($dashboardType) || 
-                            strtolower($dashboard_info['display_name'] ?? '') === strtolower($dashboardType) ||
+                        if (strtolower($dashboardId) === strtolower($dashboardType) || 
+                            strtolower($dashboardName) === strtolower($dashboardType) ||
+                            strtolower($key) === strtolower($dashboardType) ||
                             (isset($dashboard_info['type']) && strtolower($dashboard_info['type']) === strtolower($dashboardType))) {
                             
                             // Try to load full config (flat structure: {name}.json)
@@ -117,7 +123,7 @@ function getDashboardConfig($dashboardType) {
                             } else {
                                 // Try flat structure: {name}.json in dashboards directory
                                 $config_dir = dirname($path);
-                                $possible_config = $config_dir . '/../dashboards/' . $name . '.json';
+                                $possible_config = $config_dir . '/../dashboards/' . $dashboardId . '.json';
                                 if (file_exists($possible_config)) {
                                     $full_config = json_decode(file_get_contents($possible_config), true);
                                 }
@@ -127,17 +133,17 @@ function getDashboardConfig($dashboardType) {
                             $url_template = $dashboard_info['url_template'] ?? null;
                             if (!$url_template) {
                                 // Fallback: construct from nginx_path
-                                $url_template = ($dashboard_info['nginx_path'] ?? '/dashboard/' . strtolower($name)) . '?uuid={uuid}&server={server}&name={name}';
+                                $url_template = ($dashboard_info['nginx_path'] ?? '/dashboard/' . strtolower($dashboardId)) . '?uuid={uuid}&server={server}&name={name}';
                             }
                             
                             return [
-                                'name' => $dashboard_info['display_name'] ?? $name,
+                                'name' => $dashboardName,
                                 'type' => $dashboard_info['type'] ?? $dashboardType,
                                 'url_template' => $url_template,
                                 'supported_dimensions' => $full_config['supported_dimensions'] ?? [],
                                 'supported_formats' => $full_config['supported_formats'] ?? ['tiff', 'hdf5', 'csv', 'json', 'nexus'],
-                                'description' => $full_config['description'] ?? $dashboard_info['display_name'] ?? 'Dashboard',
-                                'nginx_path' => $dashboard_info['nginx_path'] ?? '/dashboard/' . strtolower($name),
+                                'description' => $full_config['description'] ?? $dashboard_info['description'] ?? $dashboardName,
+                                'nginx_path' => $dashboard_info['nginx_path'] ?? '/dashboard/' . strtolower($dashboardId),
                                 'port' => $dashboard_info['port'] ?? 0
                             ];
                         }
@@ -449,7 +455,16 @@ function getDashboardStatus($datasetId, $dashboardType) {
             return 'ready';
         }
         
-        // Check if dashboard is available - use flexible matching
+        // First, check if the dashboard config exists
+        // If it exists, allow it to load and let the dashboard handle format checking
+        $config = getDashboardConfig($dashboardType);
+        if ($config) {
+            // Dashboard config exists - allow it to load
+            // The dashboard itself can handle format/dimension checking
+            return 'ready';
+        }
+        
+        // If config doesn't exist, check if dashboard is available for this dataset
         $availableDashboards = getAvailableDashboards($datasetId);
         
         // Normalize dashboard type for comparison
@@ -464,16 +479,6 @@ function getDashboardStatus($datasetId, $dashboardType) {
                 $dashboardName === $normalizedType ||
                 strpos($dashboardId, $normalizedType) !== false ||
                 strpos($normalizedType, $dashboardId) !== false) {
-                return 'ready';
-            }
-        }
-        
-        // If no dashboards are available but we have a dashboard type, 
-        // assume it's ready (let the dashboard handle format checking)
-        if (empty($availableDashboards)) {
-            // Try to get dashboard config to verify it exists
-            $config = getDashboardConfig($dashboardType);
-            if ($config) {
                 return 'ready';
             }
         }

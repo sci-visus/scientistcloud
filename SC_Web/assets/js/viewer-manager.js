@@ -346,10 +346,22 @@ class ViewerManager {
             // Try to construct from nginx_path
             if (viewer.nginx_path) {
                 viewer.url_template = viewer.nginx_path + '?uuid={uuid}&server={server}&name={name}';
+            } else if (viewer.id || resolvedDashboardType) {
+                // Fallback: construct from dashboard ID
+                const dashboardId = viewer.id || resolvedDashboardType;
+                viewer.url_template = '/dashboard/' + dashboardId.toLowerCase().replace(/_/g, '') + '?uuid={uuid}&server={server}&name={name}';
+                console.warn('Constructed url_template from dashboard ID:', viewer.url_template);
             } else {
                 this.showErrorDashboard('Dashboard configuration error: missing URL template');
                 return;
             }
+        }
+
+        // Ensure url_template is a valid string
+        if (typeof viewer.url_template !== 'string' || viewer.url_template.trim() === '') {
+            console.error('Invalid url_template:', viewer.url_template);
+            this.showErrorDashboard('Dashboard configuration error: invalid URL template');
+            return;
         }
 
         // Generate viewer URL using the url_template
@@ -410,22 +422,27 @@ class ViewerManager {
      * Generate viewer URL with uuid, server, and name parameters
      */
     generateViewerUrl(datasetUuid, datasetServer, datasetName, urlTemplate) {
-        if (!urlTemplate) {
-            console.error('generateViewerUrl: urlTemplate is empty');
+        if (!urlTemplate || typeof urlTemplate !== 'string') {
+            console.error('generateViewerUrl: urlTemplate is empty or invalid:', urlTemplate);
             return '#';
         }
+        
+        // Trim whitespace
+        urlTemplate = urlTemplate.trim();
         
         // If urlTemplate doesn't start with / or http, it's likely just an ID - construct proper path
         if (!urlTemplate.startsWith('/') && !urlTemplate.startsWith('http')) {
             console.warn('generateViewerUrl: urlTemplate appears to be just an ID, constructing path:', urlTemplate);
-            urlTemplate = '/dashboard/' + urlTemplate.toLowerCase() + '?uuid={uuid}&server={server}&name={name}';
+            // Convert to lowercase and replace underscores/dashes with nothing for URL path
+            const pathId = urlTemplate.toLowerCase().replace(/[_-]/g, '');
+            urlTemplate = '/dashboard/' + pathId + '?uuid={uuid}&server={server}&name={name}';
         }
         
         // Replace all three placeholders: {uuid}, {server}, {name}
         let url = urlTemplate
-            .replace('{uuid}', encodeURIComponent(datasetUuid))
-            .replace('{server}', encodeURIComponent(datasetServer || 'false'))
-            .replace('{name}', encodeURIComponent(datasetName || ''));
+            .replace(/{uuid}/g, encodeURIComponent(datasetUuid))
+            .replace(/{server}/g, encodeURIComponent(datasetServer || 'false'))
+            .replace(/{name}/g, encodeURIComponent(datasetName || ''));
         
         return url;
     }

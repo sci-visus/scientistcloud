@@ -114,13 +114,19 @@ try {
     ]);
 
     // Redirect to main application (portal)
-    header('Location: /portal/index.php');
+    // For local development, use /index.php (no /portal/ prefix)
+    // For server, use /portal/index.php
+    $isLocal = (strpos(SC_SERVER_URL, 'localhost') !== false || strpos(SC_SERVER_URL, '127.0.0.1') !== false);
+    $indexPath = $isLocal ? '/index.php' : '/portal/index.php';
+    header('Location: ' . $indexPath);
     exit;
     
 } catch (Exception $e) {
     logMessage('ERROR', 'Auth0 callback error', ['error' => $e->getMessage()]);
+    $isLocal = (strpos(SC_SERVER_URL, 'localhost') !== false || strpos(SC_SERVER_URL, '127.0.0.1') !== false);
+    $loginPath = $isLocal ? '/login.php' : '/portal/login.php';
     echo "<h2>Login Error</h2><p>There was a problem signing you in. Please try again.</p>";
     echo "<p>Error: " . htmlspecialchars($e->getMessage()) . "</p>";
-    echo "<p><a href='/portal/login.php'>Try again</a></p>";
+    echo "<p><a href='" . $loginPath . "'>Try again</a></p>";
 }
 ?>
