@@ -6,12 +6,12 @@
 # The resolver directive must be in the server block (already added to main server block).
 
 # Dashboard proxy configuration
-# Use location without trailing slash to match both /dashboard/name and /dashboard/name/
-# This matches the working pattern and handles query strings correctly
-location {{NGINX_PATH_WITHOUT_SLASH}} {
+# Use location with trailing slash to match working pattern (like /4d_dashboard/)
+location {{NGINX_PATH}} {
     # Use variable to defer hostname resolution (prevents startup errors if containers aren't up)
     set $upstream_host "dashboard_{{DASHBOARD_NAME_LOWER}}";
     set $upstream_port "{{DASHBOARD_PORT}}";
+    # proxy_pass with trailing slash matches working pattern
     proxy_pass http://$upstream_host:$upstream_port{{APP_PATH}};
     
     proxy_set_header Host $host;
