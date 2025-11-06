@@ -190,7 +190,7 @@ class ViewerManager {
      */
     saveViewerSettings() {
         const settings = {
-            viewerType: document.getElementById('viewerType')?.value || 'openvisus',
+            viewerType: document.getElementById('viewerType')?.value || 'OpenVisusSlice',
             theme: document.body.classList.contains('light-theme') ? 'light' : 'dark'
         };
         
@@ -237,7 +237,7 @@ class ViewerManager {
     /**
      * Load dashboard
      */
-    async loadDashboard(datasetId, datasetName, datasetUuid, datasetServer, dashboardType = 'openvisus') {
+    async loadDashboard(datasetId, datasetName, datasetUuid, datasetServer, dashboardType = 'OpenVisusSlice') {
         const viewerContainer = document.getElementById('viewerContainer');
         if (!viewerContainer) return;
 

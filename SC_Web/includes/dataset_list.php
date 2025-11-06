@@ -497,7 +497,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 
                 // Get default dashboard type from selector
                 const viewerType = document.getElementById('viewerType');
-                const dashboardType = viewerType ? viewerType.value : (Object.keys(window.viewerManager.viewers)[0] || 'openvisus');
+                const dashboardType = viewerType ? viewerType.value : (Object.keys(window.viewerManager.viewers)[0] || 'OpenVisusSlice');
                 
                 console.log('Loading dashboard with UUID:', datasetUuid, 'dashboard type:', dashboardType);
                 

@@ -334,7 +334,7 @@ function loadDashboard(datasetId, datasetName, datasetUuid, datasetServer) {
     // Load dashboard
     const url = new URL(window.location);
     url.searchParams.set('dataset_id', datasetId);
-    url.searchParams.set('dashboard', 'openvisus'); // Default dashboard
+    url.searchParams.set('dashboard', 'OpenVisusSlice'); // Default dashboard
     
     fetch(url.toString())
         .then(response => response.text())

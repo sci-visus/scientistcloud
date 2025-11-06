@@ -34,8 +34,9 @@ RUN echo '{"require":{"php":">=8.0","auth0/auth0-php":"^8.17","guzzlehttp/guzzle
 
 # Install dependencies during build (these will be available even if volume overwrites vendor)
 # The vendor directory in the volume will be used at runtime if it exists
+# Use composer update since we're creating a fresh composer.json
 RUN cd /var/www/html && \
-    composer install --no-dev --optimize-autoloader --no-interaction
+    composer update --no-dev --optimize-autoloader --no-interaction
 
 # No MongoDB dependencies needed - using SCLib API for all database operations
 
@@ -165,14 +166,32 @@ PYEOF\n\
     # Check if autoload exists and if key packages are installed\n\
     if [ ! -f vendor/autoload.php ] || [ ! -d vendor/guzzlehttp ] || [ ! -d vendor/php-http ]; then\n\
         echo "📥 Installing/updating dependencies from composer.json..."\n\
-        composer install --no-dev --optimize-autoloader --no-interaction --prefer-dist\n\
+        # Try composer install first, but fall back to update if lock file is out of sync\n\
+        if ! composer install --no-dev --optimize-autoloader --no-interaction --prefer-dist 2>&1 | tee /tmp/composer-install.log; then\n\
+            if grep -q "lock file" /tmp/composer-install.log || grep -q "not present in the lock file" /tmp/composer-install.log; then\n\
+                echo "⚠️ Lock file out of sync, running composer update instead..."\n\
+                composer update --no-dev --optimize-autoloader --no-interaction --prefer-dist\n\
+            else\n\
+                echo "❌ Composer install failed with unknown error"\n\
+                exit 1\n\
+            fi\n\
+        fi\n\
         echo "✅ Dependencies installed"\n\
     else\n\
         echo "📋 Dependencies found, checking if all required packages exist..."\n\
         # Check for critical packages individually\n\
         if [ ! -d vendor/guzzlehttp/guzzle ] || [ ! -d vendor/auth0 ]; then\n\
             echo "⚠️ Some critical packages missing, reinstalling..."\n\
-            composer install --no-dev --optimize-autoloader --no-interaction --prefer-dist\n\
+            # Try composer install first, but fall back to update if lock file is out of sync\n\
+            if ! composer install --no-dev --optimize-autoloader --no-interaction --prefer-dist 2>&1 | tee /tmp/composer-install.log; then\n\
+                if grep -q "lock file" /tmp/composer-install.log || grep -q "not present in the lock file" /tmp/composer-install.log; then\n\
+                    echo "⚠️ Lock file out of sync, running composer update instead..."\n\
+                    composer update --no-dev --optimize-autoloader --no-interaction --prefer-dist\n\
+                else\n\
+                    echo "❌ Composer install failed with unknown error"\n\
+                    exit 1\n\
+                fi\n\
+            fi\n\
         else\n\
             echo "✅ All critical packages found"\n\
             composer dump-autoload --optimize --no-interaction 2>/dev/null || true\n\
@@ -184,12 +203,12 @@ PYEOF\n\
         echo "❌ CRITICAL: guzzlehttp/guzzle not found after installation attempt!"\n\
         echo "   Forcing complete reinstall..."\n\
         rm -rf vendor/ composer.lock 2>/dev/null || true\n\
-        composer install --no-dev --optimize-autoloader --no-interaction --prefer-dist\n\
+        composer update --no-dev --optimize-autoloader --no-interaction --prefer-dist\n\
     fi\n\
 else\n\
     echo "⚠️ composer.json not found, creating minimal one..."\n\
     echo '"'"'{"require":{"php":">=8.0","auth0/auth0-php":"^8.17","guzzlehttp/guzzle":"^7.0","guzzlehttp/psr7":"^2.0","guzzlehttp/promises":"^2.0","php-http/discovery":"^1.19"},"config":{"optimize-autoloader":true,"sort-packages":true,"allow-plugins":{"php-http/discovery":true}},"minimum-stability":"stable","prefer-stable":true}'"'"' > composer.json\n\
-    composer install --no-dev --optimize-autoloader --no-interaction --prefer-dist\n\
+    composer update --no-dev --optimize-autoloader --no-interaction --prefer-dist\n\
     echo "✅ Minimal dependencies installed"\n\
 fi\n\
 \n\

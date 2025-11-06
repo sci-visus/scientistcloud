@@ -96,6 +96,29 @@ start_portal() {
     return 1
 }
 
+# Function to check if base image exists
+check_base_image() {
+    local base_image="$1"
+    if docker image inspect "$base_image" >/dev/null 2>&1; then
+        return 0
+    else
+        return 1
+    fi
+}
+
+# Function to get required base image for a dashboard
+get_dashboard_base_image() {
+    local config_file="$1"
+    local base_image=$(jq -r '.base_image // empty' "$config_file" 2>/dev/null)
+    local base_image_tag=$(jq -r '.base_image_tag // "latest"' "$config_file" 2>/dev/null)
+    
+    if [ -n "$base_image" ] && [ "$base_image" != "null" ]; then
+        echo "${base_image}:${base_image_tag}"
+    else
+        echo ""
+    fi
+}
+
 # Function to start a single dashboard
 start_dashboard() {
     local dashboard_name=$1
@@ -113,6 +136,22 @@ start_dashboard() {
     if [ ! -f "$config_file" ]; then
         print_error "Dashboard config not found: $dashboard_name"
         return 1
+    fi
+    
+    # Check for required base image
+    local required_base=$(get_dashboard_base_image "$config_file")
+    if [ -n "$required_base" ]; then
+        if ! check_base_image "$required_base"; then
+            print_error "Required base image not found: $required_base"
+            print_warning "Base images need to be built from VisusDataPortalPrivate/Docker/"
+            print_warning "You can either:"
+            print_warning "  1. Build base images manually (see VisusDataPortalPrivate/Docker/rebuild-base-images.sh)"
+            print_warning "  2. Skip dashboard building with: ./local-dev.sh start --skip-dashboards"
+            print_warning "  3. Build base images from the other repository first"
+            return 1
+        else
+            print_success "Base image found: $required_base"
+        fi
     fi
     
     # Extract port from config

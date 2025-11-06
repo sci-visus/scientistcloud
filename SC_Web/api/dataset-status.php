@@ -77,7 +77,7 @@ try {
     }
 
     // Get dashboard status
-    $dashboardType = $_GET['dashboard'] ?? 'openvisus';
+    $dashboardType = $_GET['dashboard'] ?? 'OpenVisusSlice';
     $status = getDashboardStatus($datasetId, $dashboardType);
 
     // Format response
