@@ -246,8 +246,8 @@ class ViewerManager {
         `;
 
         try {
-            // Check if dataset is ready
-            const status = await this.checkDatasetStatus(datasetId);
+            // Check if dataset is ready (pass dashboard type for proper status check)
+            const status = await this.checkDatasetStatus(datasetId, dashboardType);
             
             if (status === 'ready') {
                 // Load the dashboard
@@ -268,9 +268,13 @@ class ViewerManager {
     /**
      * Check dataset status
      */
-    async checkDatasetStatus(datasetId) {
+    async checkDatasetStatus(datasetId, dashboardType = null) {
         try {
-            const response = await fetch(`/api/dataset-status.php?dataset_id=${datasetId}`);
+            let url = `/api/dataset-status.php?dataset_id=${datasetId}`;
+            if (dashboardType) {
+                url += `&dashboard=${encodeURIComponent(dashboardType)}`;
+            }
+            const response = await fetch(url);
             const data = await response.json();
             return data.status || 'unknown';
         } catch (error) {

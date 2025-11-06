@@ -32,6 +32,7 @@
   },
   "nginx_path": "/dashboard/vtk",
   "health_check_path": "/health",
+  "supported_dimensions": ["3D"],
   "build_args": {
     "D_GIT_TOKEN": "${D_GIT_TOKEN}"
   },

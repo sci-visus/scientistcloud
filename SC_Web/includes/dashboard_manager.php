@@ -120,6 +120,7 @@ function getDashboardConfig($dashboardType) {
                                 'name' => $dashboard_info['display_name'] ?? $name,
                                 'type' => $dashboard_info['type'] ?? $dashboardType,
                                 'url_template' => ($dashboard_info['nginx_path'] ?? '/dashboard/' . strtolower($name)) . '?uuid={uuid}&server={server}&name={name}',
+                                'supported_dimensions' => $full_config['supported_dimensions'] ?? [],
                                 'supported_formats' => $full_config['supported_formats'] ?? ['tiff', 'hdf5', 'csv', 'json', 'nexus'],
                                 'description' => $full_config['description'] ?? $dashboard_info['display_name'] ?? 'Dashboard',
                                 'nginx_path' => $dashboard_info['nginx_path'] ?? '/dashboard/' . strtolower($name),
@@ -321,26 +322,66 @@ function getAvailableDashboards($datasetId) {
 }
 
 /**
- * Check if dataset is supported by dashboard
- * If no supported_formats are specified, assume dashboard supports all datasets
+ * Check if dataset is supported by dashboard based on dimensions
+ * Dashboards specify supported_dimensions (e.g., ["4D", "3D", "2D", "1D"])
+ * Datasets have a dimensions field (e.g., "4D", "3D", "2D", "1D")
  */
 function isDatasetSupported($dataset, $config) {
-    $supportedFormats = $config['supported_formats'] ?? [];
+    // Get supported dimensions from config (prefer supported_dimensions over supported_formats for backward compatibility)
+    $supportedDimensions = $config['supported_dimensions'] ?? [];
     
-    // If no supported_formats specified, assume dashboard supports all datasets
-    if (empty($supportedFormats)) {
+    // If no supported_dimensions specified, check for legacy supported_formats
+    if (empty($supportedDimensions)) {
+        $supportedFormats = $config['supported_formats'] ?? [];
+        // If neither is specified, assume dashboard supports all datasets
+        if (empty($supportedFormats)) {
+            return true;
+        }
+        // Legacy format checking (for backward compatibility)
+        $sensor = strtolower($dataset['sensor'] ?? '');
+        if (empty($sensor)) {
+            return true;
+        }
+        foreach ($supportedFormats as $format) {
+            if (strpos($sensor, strtolower($format)) !== false) {
+                return true;
+            }
+        }
+        return false;
+    }
+    
+    // Get dataset dimensions
+    $datasetDimensions = $dataset['dimensions'] ?? $dataset['metadata']['dimensions'] ?? '';
+    
+    // If dimensions are empty, assume dataset is supported (let dashboard handle it)
+    if (empty($datasetDimensions)) {
         return true;
     }
     
-    $sensor = strtolower($dataset['sensor'] ?? '');
-    
-    // If sensor is empty, assume dataset is supported (let dashboard handle it)
-    if (empty($sensor)) {
-        return true;
+    // Normalize dimensions: extract "4D", "3D", "2D", "1D" from the string
+    // Handle formats like "4D", "4-D", "4 D", "4d", etc.
+    $normalizedDatasetDim = preg_replace('/[^0-9D]/i', '', strtoupper($datasetDimensions));
+    if (empty($normalizedDatasetDim)) {
+        // Try to extract just the number and add "D"
+        if (preg_match('/(\d+)/', $datasetDimensions, $matches)) {
+            $normalizedDatasetDim = $matches[1] . 'D';
+        } else {
+            return true; // Can't determine dimension, let dashboard handle it
+        }
     }
     
-    foreach ($supportedFormats as $format) {
-        if (strpos($sensor, strtolower($format)) !== false) {
+    // Normalize supported dimensions
+    $normalizedSupported = array_map(function($dim) {
+        $normalized = preg_replace('/[^0-9D]/i', '', strtoupper($dim));
+        if (empty($normalized) && preg_match('/(\d+)/', $dim, $matches)) {
+            $normalized = $matches[1] . 'D';
+        }
+        return $normalized;
+    }, $supportedDimensions);
+    
+    // Check if dataset dimension matches any supported dimension
+    foreach ($normalizedSupported as $supportedDim) {
+        if ($normalizedDatasetDim === $supportedDim) {
             return true;
         }
     }
@@ -363,10 +404,36 @@ function getDashboardStatus($datasetId, $dashboardType) {
             return 'processing';
         }
         
-        // Check if dashboard is available
+        // If no dashboard type specified, assume ready (let dashboard handle it)
+        if (empty($dashboardType)) {
+            return 'ready';
+        }
+        
+        // Check if dashboard is available - use flexible matching
         $availableDashboards = getAvailableDashboards($datasetId);
+        
+        // Normalize dashboard type for comparison
+        $normalizedType = strtolower(trim($dashboardType));
+        
         foreach ($availableDashboards as $dashboard) {
-            if ($dashboard['type'] === $dashboardType) {
+            $dashboardId = strtolower($dashboard['type'] ?? '');
+            $dashboardName = strtolower($dashboard['name'] ?? '');
+            
+            // Match by ID, type, or name (case-insensitive)
+            if ($dashboardId === $normalizedType || 
+                $dashboardName === $normalizedType ||
+                strpos($dashboardId, $normalizedType) !== false ||
+                strpos($normalizedType, $dashboardId) !== false) {
+                return 'ready';
+            }
+        }
+        
+        // If no dashboards are available but we have a dashboard type, 
+        // assume it's ready (let the dashboard handle format checking)
+        if (empty($availableDashboards)) {
+            // Try to get dashboard config to verify it exists
+            $config = getDashboardConfig($dashboardType);
+            if ($config) {
                 return 'ready';
             }
         }
