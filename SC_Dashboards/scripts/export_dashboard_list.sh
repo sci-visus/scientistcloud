@@ -34,7 +34,7 @@ jq '{
       "description": (try (.value.config_file | . as $config | input | .description) catch "Dashboard description"),
       "port": .value.port,
       "nginx_path": .value.nginx_path,
-      "url_template": (.value.nginx_path + "?uuid={uuid}&server={server}&name={name}"),
+      "url_template": ((.value.nginx_path | if endswith("/") then . else . + "/" end) + "?uuid={uuid}&server={server}&name={name}"),
       "enabled": .value.enabled,
       "config_file": .value.config_file
     }

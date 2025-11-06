@@ -163,7 +163,7 @@ function getDashboardConfig($dashboardType) {
         'openvisus' => [
             'name' => 'OpenVisus Slice Explorer',
             'type' => 'openvisus',
-            'url_template' => '/dashboard/openvisusslice?uuid={uuid}&server={server}&name={name}',
+            'url_template' => '/dashboard/openvisusslice/?uuid={uuid}&server={server}&name={name}',
             'supported_formats' => [], // Use supported_dimensions instead
             'description' => 'Interactive 3D volume rendering with OpenVisus'
         ],
@@ -171,35 +171,35 @@ function getDashboardConfig($dashboardType) {
         'OpenVisusSlice' => [
             'name' => 'OpenVisus Slice Explorer',
             'type' => 'dash',
-            'url_template' => '/dashboard/openvisusslice?uuid={uuid}&server={server}&name={name}',
+            'url_template' => '/dashboard/openvisusslice/?uuid={uuid}&server={server}&name={name}',
             'supported_formats' => [],
             'description' => 'Interactive 3D volume rendering with OpenVisus'
         ],
         '3DPlotly' => [
             'name' => '3D Plotly Dashboard',
             'type' => 'plotly',
-            'url_template' => '/dashboard/plotly?uuid={uuid}&server={server}&name={name}',
+            'url_template' => '/dashboard/plotly/?uuid={uuid}&server={server}&name={name}',
             'supported_formats' => [],
             'description' => 'Interactive 3D visualization using Plotly and Dash'
         ],
         '3DVTK' => [
             'name' => '3D VTK Dashboard',
             'type' => 'vtk',
-            'url_template' => '/dashboard/vtk?uuid={uuid}&server={server}&name={name}',
+            'url_template' => '/dashboard/vtk/?uuid={uuid}&server={server}&name={name}',
             'supported_formats' => [],
             'description' => 'Interactive 3D visualization using VTK'
         ],
         '4D_Dashboard' => [
             'name' => '4D Dashboard',
             'type' => 'dash',
-            'url_template' => '/dashboard/4d_dashboard?uuid={uuid}&server={server}&name={name}',
+            'url_template' => '/dashboard/4d_dashboard/?uuid={uuid}&server={server}&name={name}',
             'supported_formats' => [],
             'description' => 'Interactive 4D visualization using 4D Nexus files'
         ],
         'Magicscan' => [
             'name' => 'MagicScan Dashboard',
             'type' => 'dash',
-            'url_template' => '/dashboard/magicscan?uuid={uuid}&server={server}&name={name}',
+            'url_template' => '/dashboard/magicscan/?uuid={uuid}&server={server}&name={name}',
             'supported_formats' => [],
             'description' => 'Interactive MagicScan visualization using OpenVisus'
         ]

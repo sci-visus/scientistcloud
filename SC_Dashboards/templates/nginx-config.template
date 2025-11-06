@@ -6,7 +6,8 @@
 # The resolver directive must be in the server block (already added to main server block).
 
 # Dashboard proxy configuration
-# Prefix location without trailing slash matches both /dashboard/plotly and /dashboard/plotly/
+# Use location without trailing slash to match both /dashboard/name and /dashboard/name/
+# This matches the working pattern and handles query strings correctly
 location {{NGINX_PATH_WITHOUT_SLASH}} {
     # Use variable to defer hostname resolution (prevents startup errors if containers aren't up)
     set $upstream_host "dashboard_{{DASHBOARD_NAME_LOWER}}";

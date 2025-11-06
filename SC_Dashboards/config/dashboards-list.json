@@ -22,7 +22,7 @@
       "description": "Dashboard description",
       "port": 8051,
       "nginx_path": "/dashboard/vtk",
-      "url_template": "/dashboard/vtk?uuid={uuid}&server={server}&name={name}",
+      "url_template": "/dashboard/vtk/?uuid={uuid}&server={server}&name={name}",
       "enabled": true,
       "config_file": "../dashboards/3DVTK.json"
     },
@@ -34,7 +34,7 @@
       "description": "Dashboard description",
       "port": 8052,
       "nginx_path": "/dashboard/4d_dashboard",
-      "url_template": "/dashboard/4d_dashboard?uuid={uuid}&server={server}&name={name}",
+      "url_template": "/dashboard/4d_dashboard/?uuid={uuid}&server={server}&name={name}",
       "enabled": true,
       "config_file": "../dashboards/4d_dashboard.json"
     },
@@ -46,7 +46,7 @@
       "description": "Dashboard description",
       "port": 8053,
       "nginx_path": "/dashboard/magicscan",
-      "url_template": "/dashboard/magicscan?uuid={uuid}&server={server}&name={name}",
+      "url_template": "/dashboard/magicscan/?uuid={uuid}&server={server}&name={name}",
       "enabled": true,
       "config_file": "../dashboards/magicscan.json"
     },
@@ -58,7 +58,7 @@
       "description": "Dashboard description",
       "port": 8054,
       "nginx_path": "/dashboard/openvisusslice",
-      "url_template": "/dashboard/openvisusslice?uuid={uuid}&server={server}&name={name}",
+      "url_template": "/dashboard/openvisusslice/?uuid={uuid}&server={server}&name={name}",
       "enabled": true,
       "config_file": "../dashboards/OpenVisusSlice.json"
     }
