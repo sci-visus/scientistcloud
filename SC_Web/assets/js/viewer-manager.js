@@ -49,11 +49,17 @@ class ViewerManager {
                     if (dashboard.enabled) {
                         // Use dashboard.id as the key (e.g., "3DPlotly", "3DVTK")
                         const dashboardId = dashboard.id;
+                        // Ensure url_template is set correctly
+                        let urlTemplate = dashboard.url_template;
+                        if (!urlTemplate && dashboard.nginx_path) {
+                            urlTemplate = dashboard.nginx_path + '?uuid={uuid}&server={server}&name={name}';
+                        }
+                        
                         this.viewers[dashboardId] = {
                             id: dashboardId,
                             name: dashboard.display_name || dashboard.name,
                             type: dashboard.type || dashboardId, // Use type for compatibility, fallback to id
-                            url_template: dashboard.url_template || (dashboard.nginx_path + '?dataset={uuid}&server={server}'),
+                            url_template: urlTemplate,
                             supported_formats: [], // Will be determined from dataset type
                             description: dashboard.description || dashboard.display_name,
                             nginx_path: dashboard.nginx_path,
@@ -307,18 +313,20 @@ class ViewerManager {
         // Resolve dashboard type to actual ID
         const resolvedDashboardType = dashboardAliases[dashboardType] || dashboardType;
         
-        // Find viewer by id, type, or key
-        let viewer = this.viewers[resolvedDashboardType];
+        // Find viewer by id, type, or key (try multiple lookup strategies)
+        let viewer = this.viewers[resolvedDashboardType] || this.viewers[dashboardType];
+        
         if (!viewer) {
-            // Try to find by matching id or type
-            viewer = Object.values(this.viewers).find(v => 
-                v.id === resolvedDashboardType || 
-                v.id === dashboardType ||
-                v.type === resolvedDashboardType || 
-                v.type === dashboardType ||
-                v.nginx_path === resolvedDashboardType ||
-                v.nginx_path === dashboardType
-            );
+            // Try to find by matching id or type (case-insensitive)
+            const normalizedType = resolvedDashboardType.toLowerCase();
+            viewer = Object.values(this.viewers).find(v => {
+                const vId = (v.id || '').toLowerCase();
+                const vType = (v.type || '').toLowerCase();
+                return vId === normalizedType || 
+                       vType === normalizedType ||
+                       vId === dashboardType.toLowerCase() ||
+                       vType === dashboardType.toLowerCase();
+            });
         }
         
         // Fallback to default viewers if not found
@@ -327,13 +335,34 @@ class ViewerManager {
         }
         
         if (!viewer) {
-            console.error('Unknown dashboard type:', dashboardType, 'Available viewers:', Object.keys(this.viewers));
+            console.error('Unknown dashboard type:', dashboardType, 'Resolved:', resolvedDashboardType, 'Available viewers:', Object.keys(this.viewers));
             this.showErrorDashboard('Unknown dashboard type: ' + dashboardType);
             return;
         }
 
+        // Validate url_template exists
+        if (!viewer.url_template) {
+            console.error('Viewer missing url_template:', viewer, 'Dashboard type:', dashboardType);
+            // Try to construct from nginx_path
+            if (viewer.nginx_path) {
+                viewer.url_template = viewer.nginx_path + '?uuid={uuid}&server={server}&name={name}';
+            } else {
+                this.showErrorDashboard('Dashboard configuration error: missing URL template');
+                return;
+            }
+        }
+
         // Generate viewer URL using the url_template
         const viewerUrl = this.generateViewerUrl(datasetUuid, datasetServer, datasetName, viewer.url_template);
+        
+        console.log('Loading dashboard:', {
+            dashboardType,
+            resolvedDashboardType,
+            viewerId: viewer.id,
+            viewerName: viewer.name,
+            urlTemplate: viewer.url_template,
+            generatedUrl: viewerUrl
+        });
         
         // Create iframe
         const iframe = document.createElement('iframe');
@@ -381,6 +410,17 @@ class ViewerManager {
      * Generate viewer URL with uuid, server, and name parameters
      */
     generateViewerUrl(datasetUuid, datasetServer, datasetName, urlTemplate) {
+        if (!urlTemplate) {
+            console.error('generateViewerUrl: urlTemplate is empty');
+            return '#';
+        }
+        
+        // If urlTemplate doesn't start with / or http, it's likely just an ID - construct proper path
+        if (!urlTemplate.startsWith('/') && !urlTemplate.startsWith('http')) {
+            console.warn('generateViewerUrl: urlTemplate appears to be just an ID, constructing path:', urlTemplate);
+            urlTemplate = '/dashboard/' + urlTemplate.toLowerCase() + '?uuid={uuid}&server={server}&name={name}';
+        }
+        
         // Replace all three placeholders: {uuid}, {server}, {name}
         let url = urlTemplate
             .replace('{uuid}', encodeURIComponent(datasetUuid))

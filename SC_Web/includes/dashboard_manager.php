@@ -434,10 +434,15 @@ function getDashboardStatus($datasetId, $dashboardType) {
             return 'error';
         }
         
-        // Check if dataset is ready
-        if ($dataset['status'] !== 'done' && $dataset['status'] !== 'Ready') {
+        // Check if dataset is explicitly processing
+        // Only return 'processing' if status explicitly indicates processing
+        $status = strtolower(trim($dataset['status'] ?? ''));
+        if (in_array($status, ['processing', 'pending', 'converting', 'uploading', 'queued'])) {
             return 'processing';
         }
+        
+        // If status is empty, null, or 'done'/'ready', assume ready
+        // Most datasets should be ready to view even if status is not explicitly set
         
         // If no dashboard type specified, assume ready (let dashboard handle it)
         if (empty($dashboardType)) {
