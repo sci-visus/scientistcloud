@@ -9,9 +9,16 @@ class ViewerManager {
         this.viewers = {}; // Will be loaded from API
         this.defaultViewers = {
             'openvisus': {
-                name: 'OpenVisus Explorer',
+                name: 'OpenVisus Slice Explorer',
                 type: 'openvisus',
-                url_template: '/viewer/openvisus.php?dataset={uuid}&server={server}',
+                url_template: '/dashboard/openvisusslice?uuid={uuid}&server={server}&name={name}',
+                supported_formats: ['tiff', 'hdf5', 'nexus'],
+                description: 'Interactive 3D volume rendering with OpenVisus'
+            },
+            'OpenVisusSlice': {
+                name: 'OpenVisus Slice Explorer',
+                type: 'OpenVisusSlice',
+                url_template: '/dashboard/openvisusslice?uuid={uuid}&server={server}&name={name}',
                 supported_formats: ['tiff', 'hdf5', 'nexus'],
                 description: 'Interactive 3D volume rendering with OpenVisus'
             }
@@ -290,18 +297,37 @@ class ViewerManager {
         const viewerContainer = document.getElementById('viewerContainer');
         if (!viewerContainer) return;
 
+        // Map common aliases to actual dashboard IDs
+        const dashboardAliases = {
+            'openvisus': 'OpenVisusSlice',
+            'OpenVisus': 'OpenVisusSlice',
+            'openvisusslice': 'OpenVisusSlice'
+        };
+        
+        // Resolve dashboard type to actual ID
+        const resolvedDashboardType = dashboardAliases[dashboardType] || dashboardType;
+        
         // Find viewer by id, type, or key
-        let viewer = this.viewers[dashboardType];
+        let viewer = this.viewers[resolvedDashboardType];
         if (!viewer) {
             // Try to find by matching id or type
             viewer = Object.values(this.viewers).find(v => 
-                v.id === dashboardType || 
-                v.type === dashboardType || 
+                v.id === resolvedDashboardType || 
+                v.id === dashboardType ||
+                v.type === resolvedDashboardType || 
+                v.type === dashboardType ||
+                v.nginx_path === resolvedDashboardType ||
                 v.nginx_path === dashboardType
             );
         }
         
+        // Fallback to default viewers if not found
         if (!viewer) {
+            viewer = this.defaultViewers[resolvedDashboardType] || this.defaultViewers[dashboardType];
+        }
+        
+        if (!viewer) {
+            console.error('Unknown dashboard type:', dashboardType, 'Available viewers:', Object.keys(this.viewers));
             this.showErrorDashboard('Unknown dashboard type: ' + dashboardType);
             return;
         }

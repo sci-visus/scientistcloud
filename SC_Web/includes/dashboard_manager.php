@@ -30,7 +30,14 @@ function getUserPreferredDashboard($userId) {
  */
 function setUserPreferredDashboard($userId, $dashboard) {
     try {
-        if (!in_array($dashboard, SUPPORTED_DASHBOARDS)) {
+        // Get actual dashboards from registry instead of using old SUPPORTED_DASHBOARDS constant
+        $allDashboards = getAllDashboards();
+        $validDashboards = array_map(function($d) { return $d['id']; }, $allDashboards);
+        
+        // Also check against SUPPORTED_DASHBOARDS for backward compatibility
+        $validDashboards = array_merge($validDashboards, SUPPORTED_DASHBOARDS);
+        
+        if (!in_array($dashboard, $validDashboards)) {
             return false;
         }
         
@@ -136,42 +143,52 @@ function getDashboardConfig($dashboardType) {
         }
     }
     
-    // Fallback to default configurations
+    // Fallback to default configurations (only actual dashboards from dashboards-list.json)
+    // These should match the dashboards in SC_Dashboards/config/dashboards-list.json
     $default_configs = [
+        // Alias for backward compatibility
         'openvisus' => [
-            'name' => 'OpenVisus Explorer',
+            'name' => 'OpenVisus Slice Explorer',
             'type' => 'openvisus',
-            'url_template' => '/dashboard/openvisus?uuid={uuid}&server={server}&name={name}',
-            'supported_formats' => ['tiff', 'hdf5', 'nexus'],
+            'url_template' => '/dashboard/openvisusslice?uuid={uuid}&server={server}&name={name}',
+            'supported_formats' => [], // Use supported_dimensions instead
             'description' => 'Interactive 3D volume rendering with OpenVisus'
         ],
-        'bokeh' => [
-            'name' => 'Bokeh Dashboard',
-            'type' => 'bokeh',
-            'url_template' => '/dashboard/bokeh?uuid={uuid}&server={server}&name={name}',
-            'supported_formats' => ['tiff', 'hdf5', 'csv', 'json'],
-            'description' => 'Interactive data visualization with Bokeh'
+        // Actual dashboards from dashboards-list.json
+        'OpenVisusSlice' => [
+            'name' => 'OpenVisus Slice Explorer',
+            'type' => 'dash',
+            'url_template' => '/dashboard/openvisusslice?uuid={uuid}&server={server}&name={name}',
+            'supported_formats' => [],
+            'description' => 'Interactive 3D volume rendering with OpenVisus'
         ],
-        'jupyter' => [
-            'name' => 'Jupyter Notebook',
-            'type' => 'jupyter',
-            'url_template' => '/dashboard/jupyter?uuid={uuid}&server={server}&name={name}',
-            'supported_formats' => ['tiff', 'hdf5', 'csv', 'json', 'nexus'],
-            'description' => 'Interactive data analysis with Jupyter'
-        ],
-        'plotly' => [
-            'name' => 'Plotly Dashboard',
+        '3DPlotly' => [
+            'name' => '3D Plotly Dashboard',
             'type' => 'plotly',
             'url_template' => '/dashboard/plotly?uuid={uuid}&server={server}&name={name}',
-            'supported_formats' => ['tiff', 'hdf5', 'csv', 'json'],
-            'description' => 'Interactive 3D plotting with Plotly'
+            'supported_formats' => [],
+            'description' => 'Interactive 3D visualization using Plotly and Dash'
         ],
-        'vtk' => [
-            'name' => 'VTK Explorer',
+        '3DVTK' => [
+            'name' => '3D VTK Dashboard',
             'type' => 'vtk',
             'url_template' => '/dashboard/vtk?uuid={uuid}&server={server}&name={name}',
-            'supported_formats' => ['tiff', 'hdf5', 'nexus'],
-            'description' => '3D visualization with VTK'
+            'supported_formats' => [],
+            'description' => 'Interactive 3D visualization using VTK'
+        ],
+        '4D_Dashboard' => [
+            'name' => '4D Dashboard',
+            'type' => 'dash',
+            'url_template' => '/dashboard/4d?uuid={uuid}&server={server}&name={name}',
+            'supported_formats' => [],
+            'description' => 'Interactive 4D visualization using 4D Nexus files'
+        ],
+        'Magicscan' => [
+            'name' => 'MagicScan Dashboard',
+            'type' => 'dash',
+            'url_template' => '/dashboard/magicscan?uuid={uuid}&server={server}&name={name}',
+            'supported_formats' => [],
+            'description' => 'Interactive MagicScan visualization using OpenVisus'
         ]
     ];
     
@@ -240,11 +257,13 @@ function getAllDashboards() {
         }
     }
     
-    // Fallback to defaults
+    // Fallback to defaults (only actual dashboards from dashboards-list.json)
     return [
-        ['id' => 'openvisus', 'name' => 'OpenVisus Explorer', 'type' => 'openvisus', 'display_name' => 'OpenVisus Explorer'],
-        ['id' => 'plotly', 'name' => 'Plotly Dashboard', 'type' => 'plotly', 'display_name' => 'Plotly Dashboard'],
-        ['id' => 'bokeh', 'name' => 'Bokeh Dashboard', 'type' => 'bokeh', 'display_name' => 'Bokeh Dashboard']
+        ['id' => 'OpenVisusSlice', 'name' => 'OpenVisus Slice Explorer', 'type' => 'dash', 'display_name' => 'OpenVisus Slice Explorer'],
+        ['id' => '3DPlotly', 'name' => '3D Plotly Dashboard', 'type' => 'plotly', 'display_name' => '3D Plotly Dashboard'],
+        ['id' => '3DVTK', 'name' => '3D VTK Dashboard', 'type' => 'vtk', 'display_name' => '3D VTK Dashboard'],
+        ['id' => '4D_Dashboard', 'name' => '4D Dashboard', 'type' => 'dash', 'display_name' => '4D Dashboard'],
+        ['id' => 'Magicscan', 'name' => 'MagicScan Dashboard', 'type' => 'dash', 'display_name' => 'MagicScan Dashboard']
     ];
 }
 

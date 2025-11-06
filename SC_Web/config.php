@@ -77,8 +77,8 @@ define('SECRET_KEY', $config['auth']['secret_key']);
 define('SECRET_IV', $config['auth']['secret_iv']);
 
 // Dashboard configuration
-define('DEFAULT_DASHBOARD', 'openvisus');
-define('SUPPORTED_DASHBOARDS', ['openvisus', 'bokeh', 'jupyter', 'plotly', 'vtk']);
+define('DEFAULT_DASHBOARD', 'OpenVisusSlice');
+define('SUPPORTED_DASHBOARDS', ['OpenVisusSlice', '3DPlotly', '3DVTK', '4D_Dashboard', 'Magicscan']);
 
 // File upload settings
 define('MAX_UPLOAD_SIZE', 500 * 1024 * 1024); // 500MB

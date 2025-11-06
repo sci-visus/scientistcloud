@@ -537,10 +537,22 @@ class DatasetManager {
             </div>
         `;
 
-        // Load dashboard
+        // Load dashboard using viewer manager
+        if (window.viewerManager) {
+            window.viewerManager.loadDashboard(
+                datasetId,
+                datasetName,
+                datasetUuid,
+                datasetServer,
+                'OpenVisusSlice' // Use actual dashboard ID
+            );
+            return;
+        }
+        
+        // Fallback: Load dashboard via URL
         const url = new URL(window.location);
         url.searchParams.set('dataset_id', datasetId);
-        url.searchParams.set('dashboard', 'openvisus'); // Default dashboard
+        url.searchParams.set('dashboard', 'OpenVisusSlice'); // Use actual dashboard ID
 
         fetch(url.toString())
             .then(response => response.text())
