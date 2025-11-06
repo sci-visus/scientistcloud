@@ -181,14 +181,15 @@ location ${NGINX_PATH}assets/ {
 }
 STATICEOF
 elif [[ "$DASHBOARD_TYPE" == "bokeh" ]]; then
-    # Bokeh uses /static/ for static files
+    # Bokeh uses /static/ for static files (shared across all apps, served from root)
     cat > "$STATIC_TEMP" << STATICEOF
-# Static files (Bokeh - uses static/)
+# Static files (Bokeh - uses static/ at root level, not app path)
 location ${NGINX_PATH}static/ {
     # Use variable to defer hostname resolution
     set \$upstream_host "dashboard_${DASHBOARD_NAME_LOWER}";
     set \$upstream_port "${DASHBOARD_PORT}";
-    proxy_pass http://\$upstream_host:\$upstream_port${APP_PATH}static/;
+    # Bokeh serves static files from /static/ at root, not from app path
+    proxy_pass http://\$upstream_host:\$upstream_port/static/;
     proxy_set_header Host \$host;
     proxy_set_header X-Real-IP \$remote_addr;
     proxy_set_header X-Forwarded-For "\$proxy_add_x_forwarded_for";
@@ -209,6 +210,10 @@ if [[ "$DASHBOARD_TYPE" == "bokeh" || "$DASHBOARD_TYPE" == "dash" ]]; then
     # WebSocket support for Bokeh/Dash
     proxy_http_version 1.1;
     proxy_set_header Upgrade \$http_upgrade;
+    # Connection header for WebSocket upgrade
+    # Note: The main nginx config should have: map \$http_upgrade \$connection_upgrade { default upgrade; '' close; }
+    # If that map exists, use: proxy_set_header Connection \$connection_upgrade;
+    # Otherwise, for Bokeh apps that always use WebSockets, we can set to upgrade
     proxy_set_header Connection "upgrade";
     
     # Bokeh/Dash-specific headers
@@ -220,7 +225,11 @@ else
     # WebSocket support (if needed)
     proxy_http_version 1.1;
     proxy_set_header Upgrade \$http_upgrade;
-    proxy_set_header Connection "upgrade";
+    set \$connection_upgrade "upgrade";
+    if (\$http_upgrade = '') {
+        set \$connection_upgrade "close";
+    }
+    proxy_set_header Connection \$connection_upgrade;
 BOKEHEOF
 fi
 
