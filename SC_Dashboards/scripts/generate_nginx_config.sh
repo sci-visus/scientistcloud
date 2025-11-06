@@ -134,8 +134,12 @@ HEALTH_TEMP=$(mktemp)
 if [ -n "$HEALTH_CHECK_PATH" ]; then
     # Health check path should be at the app_path, not root
     HEALTH_CHECK_FULL_PATH="${APP_PATH}${HEALTH_CHECK_PATH#/}"  # Remove leading / from health_check_path if present
+    # Remove trailing slash from NGINX_PATH to avoid double slashes
+    NGINX_PATH_FOR_HEALTH="${NGINX_PATH%/}"
+    # Remove leading slash from HEALTH_CHECK_PATH to avoid double slashes
+    HEALTH_CHECK_PATH_CLEAN="${HEALTH_CHECK_PATH#/}"
     cat > "$HEALTH_TEMP" << HEALTHEOF
-    location ${NGINX_PATH}${HEALTH_CHECK_PATH} {
+    location ${NGINX_PATH_FOR_HEALTH}/${HEALTH_CHECK_PATH_CLEAN} {
         # Use variable to defer hostname resolution (prevents startup errors if containers aren't up)
         set \$upstream_host "dashboard_${DASHBOARD_NAME_LOWER}";
         set \$upstream_port "${DASHBOARD_PORT}";
