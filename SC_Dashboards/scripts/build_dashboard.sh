@@ -79,6 +79,15 @@ fi
 echo "Building dashboard image: $IMAGE_NAME:$TAG"
 echo "Base image: $BASE_IMAGE:$BASE_IMAGE_TAG"
 
+# Detect platform - base images are amd64, so we need to build for amd64 on ARM Macs
+ARCH=$(uname -m)
+if [ "$ARCH" = "arm64" ] || [ "$ARCH" = "aarch64" ]; then
+    PLATFORM="linux/amd64"
+    echo "Detected ARM architecture, building for linux/amd64 to match base images"
+else
+    PLATFORM="linux/amd64"  # Base images are amd64, so always use that
+fi
+
 # Build context includes dashboard directory and shared utilities
 BUILD_CONTEXT=$(mktemp -d)
 trap "rm -rf $BUILD_CONTEXT" EXIT
@@ -175,15 +184,17 @@ fi
 echo "📦 Build context contents:"
 ls -la "$BUILD_CONTEXT" | grep -E "(requirements|Dockerfile|\.py|\.ipynb)" | sed 's/^/   /' || true
 
-# Build image
+# Build image with platform specification to match base images (amd64)
 if [ -n "$BUILD_ARGS" ]; then
     docker build \
+        --platform "$PLATFORM" \
         -f "$BUILD_CONTEXT/Dockerfile" \
         -t "${IMAGE_NAME}:${TAG}" \
         $BUILD_ARGS \
         "$BUILD_CONTEXT"
 else
     docker build \
+        --platform "$PLATFORM" \
         -f "$BUILD_CONTEXT/Dockerfile" \
         -t "${IMAGE_NAME}:${TAG}" \
         "$BUILD_CONTEXT"
