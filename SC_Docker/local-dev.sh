@@ -380,7 +380,7 @@ server {
         proxy_set_header X-Real-IP \$remote_addr;
     }
     
-    location /dashboard/4d/ {
+    location /dashboard/4d_dashboard/ {
         proxy_pass http://localhost:8052/;
         proxy_set_header Host \$host;
         proxy_set_header X-Real-IP \$remote_addr;

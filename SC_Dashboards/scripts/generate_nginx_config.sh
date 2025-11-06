@@ -53,8 +53,29 @@ DASHBOARD_PORT=$(jq -r '.port' "$CONFIG_FILE")
 DASHBOARD_TYPE=$(jq -r '.type // "dash"' "$CONFIG_FILE")
 HEALTH_CHECK_PATH=$(jq -r '.health_check_path // empty' "$CONFIG_FILE")
 ENABLE_CORS=$(jq -r '.enable_cors // false' "$CONFIG_FILE")
-# Get app_path (where the dashboard app is mounted, e.g., /plotly/ for Dash, / for Bokeh)
-APP_PATH=$(jq -r '.app_path // "/"' "$CONFIG_FILE")
+# Get app_path (where the dashboard app is mounted, e.g., /plotly/ for Dash, /3DVTK/ for Bokeh)
+APP_PATH=$(jq -r '.app_path // empty' "$CONFIG_FILE")
+# If app_path is not specified, determine it based on dashboard type
+if [ -z "$APP_PATH" ] || [ "$APP_PATH" == "null" ]; then
+    if [[ "$DASHBOARD_TYPE" == "bokeh" ]]; then
+        # For Bokeh apps, use the dashboard name as the app path
+        # Prefer command line name (most accurate), fallback to config file name
+        if [ -n "$DASHBOARD_NAME" ]; then
+            APP_PATH="/${DASHBOARD_NAME}/"
+        else
+            # Fallback to dashboard name from config file
+            DASHBOARD_NAME_FROM_CONFIG=$(jq -r '.name // empty' "$CONFIG_FILE")
+            if [ -n "$DASHBOARD_NAME_FROM_CONFIG" ] && [ "$DASHBOARD_NAME_FROM_CONFIG" != "null" ]; then
+                APP_PATH="/${DASHBOARD_NAME_FROM_CONFIG}/"
+            else
+                APP_PATH="/"
+            fi
+        fi
+    else
+        # For other types (Dash, Plotly), default to root
+        APP_PATH="/"
+    fi
+fi
 # Ensure app_path starts with / and ends with /
 if [[ ! "$APP_PATH" =~ ^/ ]]; then
     APP_PATH="/$APP_PATH"
@@ -111,12 +132,14 @@ fi
 # Build health check section (if specified) - write to temp file for multi-line handling
 HEALTH_TEMP=$(mktemp)
 if [ -n "$HEALTH_CHECK_PATH" ]; then
+    # Health check path should be at the app_path, not root
+    HEALTH_CHECK_FULL_PATH="${APP_PATH}${HEALTH_CHECK_PATH#/}"  # Remove leading / from health_check_path if present
     cat > "$HEALTH_TEMP" << HEALTHEOF
     location ${NGINX_PATH}${HEALTH_CHECK_PATH} {
         # Use variable to defer hostname resolution (prevents startup errors if containers aren't up)
         set \$upstream_host "dashboard_${DASHBOARD_NAME_LOWER}";
         set \$upstream_port "${DASHBOARD_PORT}";
-        proxy_pass http://\$upstream_host:\$upstream_port${HEALTH_CHECK_PATH};
+        proxy_pass http://\$upstream_host:\$upstream_port${HEALTH_CHECK_FULL_PATH};
         proxy_set_header Host \$host;
         access_log off;
     }

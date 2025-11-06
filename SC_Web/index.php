@@ -26,7 +26,11 @@ if (!$user) {
     }
     
     // Redirect to login if not authenticated
-    header('Location: /portal/login.php');
+    // For local development, use /login.php (no /portal/ prefix)
+    // For server, use /portal/login.php
+    $isLocal = (strpos(SC_SERVER_URL, 'localhost') !== false || strpos(SC_SERVER_URL, '127.0.0.1') !== false);
+    $loginPath = $isLocal ? '/login.php' : '/portal/login.php';
+    header('Location: ' . $loginPath);
     exit;
 }
 

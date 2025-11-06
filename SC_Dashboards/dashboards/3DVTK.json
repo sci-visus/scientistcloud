@@ -1,5 +1,5 @@
 {
-  "name": "3DPlotly",
+  "name": "3DVTK",
   "display_name": "3D VTK Dashboard",
   "description": "Interactive 3D visualization using VTK",
   "version": "1.0.0",

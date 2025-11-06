@@ -3,6 +3,12 @@
  * Handles dataset operations and interactions
  */
 
+// Helper function to get API base path (detects local vs server)
+function getApiBasePath() {
+    const isLocal = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+    return isLocal ? '/api' : '/portal/api';
+}
+
 class DatasetManager {
     constructor() {
         this.currentDataset = null;
@@ -94,7 +100,7 @@ class DatasetManager {
      */
     async loadDatasets() {
         try {
-            const response = await fetch('/portal/api/datasets.php');
+            const response = await fetch(`${getApiBasePath()}/datasets.php`);
             
             // Get response text first to check for errors
             const responseText = await response.text();
@@ -435,7 +441,7 @@ class DatasetManager {
         `;
 
         try {
-            const response = await fetch(`/api/dataset-details.php?dataset_id=${datasetId}`);
+            const response = await fetch(`${getApiBasePath()}/dataset-details.php?dataset_id=${datasetId}`);
             const data = await response.json();
 
             if (data.success) {
@@ -593,7 +599,7 @@ class DatasetManager {
      */
     async shareDataset(datasetId) {
         try {
-            const response = await fetch('/portal/api/share-dataset.php', {
+            const response = await fetch(`${getApiBasePath()}/share-dataset.php`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -620,7 +626,7 @@ class DatasetManager {
     async deleteDataset(datasetId) {
         if (confirm('Are you sure you want to delete this dataset? This action cannot be undone.')) {
             try {
-                const response = await fetch('/portal/api/delete-dataset.php', {
+                const response = await fetch(`${getApiBasePath()}/delete-dataset.php`, {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',

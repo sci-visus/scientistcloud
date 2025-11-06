@@ -3,6 +3,12 @@
  * Handles UI interactions and theme management
  */
 
+// Helper function to get API base path (detects local vs server)
+function getApiBasePath() {
+    const isLocal = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+    return isLocal ? '/api' : '/portal/api';
+}
+
 // Global state
 const AppState = {
     currentDataset: null,
@@ -228,7 +234,7 @@ function loadDatasetDetails(datasetId) {
     detailsContainer.innerHTML = '<div class="text-center"><div class="spinner-border text-primary" role="status"><span class="visually-hidden">Loading...</span></div><p class="mt-2">Loading details...</p></div>';
     
     // Fetch dataset details
-    fetch(`/api/dataset-details.php?dataset_id=${datasetId}`)
+    fetch(`${getApiBasePath()}/dataset-details.php?dataset_id=${datasetId}`)
         .then(response => response.json())
         .then(data => {
             if (data.success) {
@@ -409,7 +415,7 @@ function shareDataset(datasetId) {
  */
 function deleteDataset(datasetId) {
     if (confirm('Are you sure you want to delete this dataset? This action cannot be undone.')) {
-        fetch(`/api/delete-dataset.php`, {
+        fetch(`${getApiBasePath()}/delete-dataset.php`, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
@@ -486,7 +492,7 @@ function refreshDashboard() {
  * Check processing status
  */
 function checkProcessingStatus(datasetId) {
-    fetch(`/api/dataset-status.php?dataset_id=${datasetId}`)
+    fetch(`${getApiBasePath()}/dataset-status.php?dataset_id=${datasetId}`)
         .then(response => response.json())
         .then(data => {
             if (data.status === 'ready') {

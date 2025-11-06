@@ -31,7 +31,12 @@ class ViewerManager {
      */
     async loadDashboards() {
         try {
-            const response = await fetch('/portal/api/dashboards.php');
+            // Helper function to get API base path (detects local vs server)
+            const getApiBasePath = () => {
+                const isLocal = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+                return isLocal ? '/api' : '/portal/api';
+            };
+            const response = await fetch(`${getApiBasePath()}/dashboards.php`);
             
             if (!response.ok) {
                 console.warn('Failed to load dashboards from API, using defaults');
@@ -283,7 +288,12 @@ class ViewerManager {
      */
     async checkDatasetStatus(datasetId, dashboardType = null) {
         try {
-            let url = `/api/dataset-status.php?dataset_id=${datasetId}`;
+            // Helper function to get API base path
+            const getApiBasePath = () => {
+                const isLocal = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+                return isLocal ? '/api' : '/portal/api';
+            };
+            let url = `${getApiBasePath()}/dataset-status.php?dataset_id=${datasetId}`;
             if (dashboardType) {
                 url += `&dashboard=${encodeURIComponent(dashboardType)}`;
             }
@@ -622,7 +632,12 @@ class ViewerManager {
      */
     async checkProcessingStatus(datasetId) {
         try {
-            const response = await fetch(`/api/dataset-status.php?dataset_id=${datasetId}`);
+            // Helper function to get API base path
+            const getApiBasePath = () => {
+                const isLocal = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+                return isLocal ? '/api' : '/portal/api';
+            };
+            const response = await fetch(`${getApiBasePath()}/dataset-status.php?dataset_id=${datasetId}`);
             const data = await response.json();
             
             if (data.status === 'ready') {
