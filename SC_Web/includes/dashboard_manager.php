@@ -186,7 +186,7 @@ function getDashboardConfig($dashboardType) {
         '4D_Dashboard' => [
             'name' => '4D Dashboard',
             'type' => 'dash',
-            'url_template' => '/dashboard/4d?uuid={uuid}&server={server}&name={name}',
+            'url_template' => '/dashboard/4d_dashboard?uuid={uuid}&server={server}&name={name}',
             'supported_formats' => [],
             'description' => 'Interactive 4D visualization using 4D Nexus files'
         ],

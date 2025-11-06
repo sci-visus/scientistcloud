@@ -41,7 +41,7 @@
     "DB_NAME": "${DB_NAME}",
     "MONGO_URL": "${MONGO_URL}"
   },
-  "nginx_path": "/dashboard/4d",
+  "nginx_path": "/dashboard/4d_dashboard",
   "health_check_path": "/health",
   "supported_dimensions": ["4D"],
   "build_args": {

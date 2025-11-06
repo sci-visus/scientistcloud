@@ -28,7 +28,7 @@
       "display_name": "4D Dashboard",
       "enabled": true,
       "port": 8052,
-      "nginx_path": "/dashboard/4d",
+      "nginx_path": "/dashboard/4d_dashboard",
       "config_file": "../dashboards/4d_dashboard.json"
     },
     "Magicscan": {

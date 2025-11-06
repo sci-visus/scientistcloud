@@ -27,7 +27,10 @@ if (!isset($_SESSION['CREATED'])) {
 // isAuthenticated() now verifies getCurrentUser(), so this should be safe
 if (isAuthenticated()) {
     // User is authenticated, redirect to index
-    header('Location: /portal/index.php');
+    // For local development, use /index.php (no /portal/ prefix)
+    $isLocal = (strpos(SC_SERVER_URL, 'localhost') !== false || strpos(SC_SERVER_URL, '127.0.0.1') !== false);
+    $indexPath = $isLocal ? '/index.php' : '/portal/index.php';
+    header('Location: ' . $indexPath);
     exit;
 }
 
@@ -36,8 +39,15 @@ if (isAuthenticated()) {
 if (!isset($_GET['code'])) {
     // Not coming from callback, redirect to Auth0
     try {
+        // Determine callback URL based on environment
+        // For local development (localhost), use /auth/callback.php (no /portal/ prefix)
+        // For server, use /portal/auth/callback.php
+        $isLocal = (strpos(SC_SERVER_URL, 'localhost') !== false || strpos(SC_SERVER_URL, '127.0.0.1') !== false);
+        $callbackPath = $isLocal ? '/auth/callback.php' : '/portal/auth/callback.php';
+        $callbackUrl = SC_SERVER_URL . $callbackPath;
+        
         $loginUrl = $auth0->login(
-            SC_SERVER_URL . '/portal/auth/callback.php',
+            $callbackUrl,
             [
                 'prompt' => 'consent',
                 'access_type' => 'offline',
@@ -54,14 +64,19 @@ if (!isset($_GET['code'])) {
         }
     } catch (Exception $e) {
         error_log("Auth0 login error: " . $e->getMessage());
+        $isLocal = (strpos(SC_SERVER_URL, 'localhost') !== false || strpos(SC_SERVER_URL, '127.0.0.1') !== false);
+        $loginPath = $isLocal ? '/login.php' : '/portal/login.php';
         echo "<h2>Login Error</h2><p>Failed to redirect to Auth0: " . htmlspecialchars($e->getMessage()) . "</p>";
-        echo "<p><a href='/portal/login.php'>Try again</a></p>";
+        echo "<p><a href='" . $loginPath . "'>Try again</a></p>";
         exit;
     }
 } else {
     // We have a code parameter, might be from Auth0 callback
     // Redirect to callback handler
-    header('Location: /portal/auth/callback.php?' . $_SERVER['QUERY_STRING']);
+    // For local development, use /auth/callback.php (no /portal/ prefix)
+    $isLocal = (strpos(SC_SERVER_URL, 'localhost') !== false || strpos(SC_SERVER_URL, '127.0.0.1') !== false);
+    $callbackPath = $isLocal ? '/auth/callback.php' : '/portal/auth/callback.php';
+    header('Location: ' . $callbackPath . '?' . $_SERVER['QUERY_STRING']);
     exit;
 }
 ?>
