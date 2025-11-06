@@ -11,7 +11,7 @@ location {{NGINX_PATH_WITHOUT_SLASH}} {
     # Use variable to defer hostname resolution (prevents startup errors if containers aren't up)
     set $upstream_host "dashboard_{{DASHBOARD_NAME_LOWER}}";
     set $upstream_port "{{DASHBOARD_PORT}}";
-    proxy_pass http://$upstream_host:$upstream_port/;
+    proxy_pass http://$upstream_host:$upstream_port{{APP_PATH}};
     
     proxy_set_header Host $host;
     proxy_set_header X-Real-IP $remote_addr;

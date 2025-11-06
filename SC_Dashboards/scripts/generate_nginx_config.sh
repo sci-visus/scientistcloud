@@ -53,6 +53,15 @@ DASHBOARD_PORT=$(jq -r '.port' "$CONFIG_FILE")
 DASHBOARD_TYPE=$(jq -r '.type // "dash"' "$CONFIG_FILE")
 HEALTH_CHECK_PATH=$(jq -r '.health_check_path // empty' "$CONFIG_FILE")
 ENABLE_CORS=$(jq -r '.enable_cors // false' "$CONFIG_FILE")
+# Get app_path (where the dashboard app is mounted, e.g., /plotly/ for Dash, / for Bokeh)
+APP_PATH=$(jq -r '.app_path // "/"' "$CONFIG_FILE")
+# Ensure app_path starts with / and ends with /
+if [[ ! "$APP_PATH" =~ ^/ ]]; then
+    APP_PATH="/$APP_PATH"
+fi
+if [[ ! "$APP_PATH" =~ /$ ]]; then
+    APP_PATH="${APP_PATH}/"
+fi
 DASHBOARD_NAME_LOWER=$(echo "$DASHBOARD_NAME" | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9]/_/g')
 
 # Store path without trailing slash for location block (matches both /dashboard/plotly and /dashboard/plotly/)
@@ -119,29 +128,44 @@ fi
 # Build static file section based on dashboard type
 STATIC_TEMP=$(mktemp)
 if [[ "$DASHBOARD_TYPE" == "plotly" ]]; then
-    # Plotly uses /assets/ for static files
+    # Plotly/Dash uses /assets/ for static files (mounted at APP_PATH/assets/)
     cat > "$STATIC_TEMP" << STATICEOF
 # Static files (assets)
 location ${NGINX_PATH}assets/ {
     # Use variable to defer hostname resolution
     set \$upstream_host "dashboard_${DASHBOARD_NAME_LOWER}";
     set \$upstream_port "${DASHBOARD_PORT}";
-    proxy_pass http://\$upstream_host:\$upstream_port/assets/;
+    proxy_pass http://\$upstream_host:\$upstream_port${APP_PATH}assets/;
     proxy_set_header Host \$host;
     proxy_set_header X-Real-IP \$remote_addr;
     proxy_set_header X-Forwarded-For "\$proxy_add_x_forwarded_for";
     proxy_set_header X-Forwarded-Proto \$scheme;
 }
 STATICEOF
-elif [[ "$DASHBOARD_TYPE" == "bokeh" || "$DASHBOARD_TYPE" == "dash" ]]; then
-    # Bokeh/Dash use /static/ for static files
+elif [[ "$DASHBOARD_TYPE" == "dash" ]]; then
+    # Dash uses /assets/ for static files (mounted at APP_PATH/assets/)
     cat > "$STATIC_TEMP" << STATICEOF
-# Static files (Bokeh/Dash)
+# Static files (Dash - uses assets/)
+location ${NGINX_PATH}assets/ {
+    # Use variable to defer hostname resolution
+    set \$upstream_host "dashboard_${DASHBOARD_NAME_LOWER}";
+    set \$upstream_port "${DASHBOARD_PORT}";
+    proxy_pass http://\$upstream_host:\$upstream_port${APP_PATH}assets/;
+    proxy_set_header Host \$host;
+    proxy_set_header X-Real-IP \$remote_addr;
+    proxy_set_header X-Forwarded-For "\$proxy_add_x_forwarded_for";
+    proxy_set_header X-Forwarded-Proto \$scheme;
+}
+STATICEOF
+elif [[ "$DASHBOARD_TYPE" == "bokeh" ]]; then
+    # Bokeh uses /static/ for static files
+    cat > "$STATIC_TEMP" << STATICEOF
+# Static files (Bokeh - uses static/)
 location ${NGINX_PATH}static/ {
     # Use variable to defer hostname resolution
     set \$upstream_host "dashboard_${DASHBOARD_NAME_LOWER}";
     set \$upstream_port "${DASHBOARD_PORT}";
-    proxy_pass http://\$upstream_host:\$upstream_port/static/;
+    proxy_pass http://\$upstream_host:\$upstream_port${APP_PATH}static/;
     proxy_set_header Host \$host;
     proxy_set_header X-Real-IP \$remote_addr;
     proxy_set_header X-Forwarded-For "\$proxy_add_x_forwarded_for";
@@ -186,6 +210,7 @@ sed -e "s|{{DASHBOARD_NAME}}|$DASHBOARD_NAME|g" \
     -e "s|{{DASHBOARD_PORT}}|$DASHBOARD_PORT|g" \
     -e "s|{{DASHBOARD_TYPE}}|$DASHBOARD_TYPE|g" \
     -e "s|{{DOMAIN_NAME}}|$DOMAIN_NAME|g" \
+    -e "s|{{APP_PATH}}|$APP_PATH|g" \
     "$TEMPLATE_FILE" > "$TEMP_CONFIG"
 
 # Replace the section placeholders with actual content

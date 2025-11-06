@@ -35,6 +35,7 @@
     "MONGO_URL": "${MONGO_URL}"
   },
   "nginx_path": "/dashboard/plotly",
+  "app_path": "/plotly/",
   "health_check_path": "/health",
   "supported_dimensions": ["3D"],
   "build_args": {
