@@ -123,10 +123,17 @@ function getDashboardConfig($dashboardType) {
                                 }
                             }
                             
+                            // Use url_template from dashboard_info if available, otherwise construct it
+                            $url_template = $dashboard_info['url_template'] ?? null;
+                            if (!$url_template) {
+                                // Fallback: construct from nginx_path
+                                $url_template = ($dashboard_info['nginx_path'] ?? '/dashboard/' . strtolower($name)) . '?uuid={uuid}&server={server}&name={name}';
+                            }
+                            
                             return [
                                 'name' => $dashboard_info['display_name'] ?? $name,
                                 'type' => $dashboard_info['type'] ?? $dashboardType,
-                                'url_template' => ($dashboard_info['nginx_path'] ?? '/dashboard/' . strtolower($name)) . '?uuid={uuid}&server={server}&name={name}',
+                                'url_template' => $url_template,
                                 'supported_dimensions' => $full_config['supported_dimensions'] ?? [],
                                 'supported_formats' => $full_config['supported_formats'] ?? ['tiff', 'hdf5', 'csv', 'json', 'nexus'],
                                 'description' => $full_config['description'] ?? $dashboard_info['display_name'] ?? 'Dashboard',
@@ -237,6 +244,13 @@ function getAllDashboards() {
                                 }
                             }
                             
+                            // Use url_template from dashboard_info if available, otherwise construct it
+                            $url_template = $dashboard_info['url_template'] ?? null;
+                            if (!$url_template) {
+                                // Fallback: construct from nginx_path
+                                $url_template = ($dashboard_info['nginx_path'] ?? '/dashboard/' . strtolower($dashboardId)) . '?uuid={uuid}&server={server}&name={name}';
+                            }
+                            
                             $dashboards[] = [
                                 'id' => $dashboardId,
                                 'name' => $dashboard_info['display_name'] ?? $dashboard_info['name'] ?? $dashboardId,
@@ -244,6 +258,8 @@ function getAllDashboards() {
                                 'display_name' => $dashboard_info['display_name'] ?? $dashboard_info['name'] ?? $dashboardId,
                                 'description' => $full_config['description'] ?? $dashboard_info['description'] ?? 'Dashboard',
                                 'nginx_path' => $dashboard_info['nginx_path'] ?? '/dashboard/' . strtolower($dashboardId),
+                                'url_template' => $url_template,
+                                'port' => $dashboard_info['port'] ?? 0,
                                 'enabled' => $dashboard_info['enabled'] ?? true
                             ];
                         }
