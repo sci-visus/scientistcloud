@@ -260,7 +260,7 @@ class ViewerManager {
                 // Load the dashboard
                 await this.loadDashboardContent(datasetId, datasetName, datasetUuid, datasetServer, dashboardType);
             } else if (status === 'processing') {
-                this.showProcessingDashboard(datasetName);
+                this.showProcessingDashboard(datasetId, datasetName);
             } else if (status === 'unsupported') {
                 this.showUnsupportedDashboard(datasetId, datasetName);
             } else {
@@ -418,7 +418,7 @@ class ViewerManager {
     /**
      * Show processing dashboard
      */
-    showProcessingDashboard(datasetName) {
+    showProcessingDashboard(datasetId, datasetName) {
         const viewerContainer = document.getElementById('viewerContainer');
         if (!viewerContainer) return;
 
