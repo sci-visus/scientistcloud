@@ -140,6 +140,16 @@ while IFS= read -r DASHBOARD_NAME; do
     # Get depends_on
     DEPENDS_ON=$(echo "$DASHBOARD_CONFIG" | jq -r '.depends_on // [] | .[]' | tr '\n' ' ' || echo "")
     
+    # Get port (from config or registry)
+    PORT=$(echo "$DASHBOARD_CONFIG" | jq -r '.port // 8050')
+    
+    # Get exposed_ports (for port mapping)
+    EXPOSED_PORTS=$(echo "$DASHBOARD_CONFIG" | jq -r '.exposed_ports // [] | .[]' || echo "")
+    if [ -z "$EXPOSED_PORTS" ]; then
+        # Default to the main port if no exposed_ports specified
+        EXPOSED_PORTS="$PORT"
+    fi
+    
     # Generate service name (lowercase, replace special chars with underscore)
     SERVICE_NAME=$(echo "$DASHBOARD_NAME" | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9]/_/g')
     CONTAINER_NAME="dashboard_${SERVICE_NAME}"
@@ -171,6 +181,7 @@ while IFS= read -r DASHBOARD_NAME; do
     
     # Environment variables
     # Always include DOMAIN_NAME (required for Bokeh/Panel dashboards)
+    # Always include DASHBOARD_PORT (for dashboards that need it)
     COMPOSE_CONTENT="${COMPOSE_CONTENT}    environment:\n"
     if [ -n "$ENV_VARS" ]; then
         # Use custom environment variables from dashboard config
@@ -183,6 +194,10 @@ while IFS= read -r DASHBOARD_NAME; do
         if ! echo "$ENV_VARS" | grep -q "DOMAIN_NAME"; then
             COMPOSE_CONTENT="${COMPOSE_CONTENT}      - DOMAIN_NAME=\${DOMAIN_NAME}\n"
         fi
+        # Add DASHBOARD_PORT if not already in custom vars
+        if ! echo "$ENV_VARS" | grep -q "DASHBOARD_PORT"; then
+            COMPOSE_CONTENT="${COMPOSE_CONTENT}      - DASHBOARD_PORT=${PORT}\n"
+        fi
     else
         # Default environment variables (if dashboard config doesn't specify any)
         COMPOSE_CONTENT="${COMPOSE_CONTENT}      - SECRET_KEY=\${SECRET_KEY}\n"
@@ -190,7 +205,14 @@ while IFS= read -r DASHBOARD_NAME; do
         COMPOSE_CONTENT="${COMPOSE_CONTENT}      - DB_NAME=\${DB_NAME}\n"
         COMPOSE_CONTENT="${COMPOSE_CONTENT}      - MONGO_URL=\${MONGO_URL}\n"
         COMPOSE_CONTENT="${COMPOSE_CONTENT}      - DOMAIN_NAME=\${DOMAIN_NAME}\n"
+        COMPOSE_CONTENT="${COMPOSE_CONTENT}      - DASHBOARD_PORT=${PORT}\n"
     fi
+    
+    # Ports (expose to host for local development)
+    COMPOSE_CONTENT="${COMPOSE_CONTENT}    ports:\n"
+    for EXPOSED_PORT in $EXPOSED_PORTS; do
+        COMPOSE_CONTENT="${COMPOSE_CONTENT}      - \"${EXPOSED_PORT}:${EXPOSED_PORT}\"\n"
+    done
     
     # Networks
     COMPOSE_CONTENT="${COMPOSE_CONTENT}    networks:\n"

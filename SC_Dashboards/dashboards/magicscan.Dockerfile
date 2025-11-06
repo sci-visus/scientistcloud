@@ -2,7 +2,7 @@
 # Generated from dashboard.json configuration
 # DO NOT EDIT MANUALLY - Regenerate using scripts/generate_dockerfile.sh
 
-FROM magicscan-dashboard-base:latest
+FROM visstore-bokeh-dashboard-base:latest
 
 # Build arguments
 ARG D_GIT_TOKEN
@@ -37,14 +37,16 @@ COPY SCLib_Dashboards/msc_py.cpython-310-x86_64-linux-gnu.so ./msc_py.cpython-31
 
 # Copy dashboard-specific files (flat structure)
 COPY magicscan.py ./
-#
+# Requirements file is always copied as requirements.txt in build context
+# (build script ensures it exists, even if empty)
 COPY requirements.txt ./requirements.txt
 
-
-# Install dashboard-specific requirements
-#
-RUN python3 -m pip install --no-cache-dir -r requirements.txt
-
+# Install dashboard-specific requirements (skip if file is empty)
+RUN if [ -s requirements.txt ]; then \
+        python3 -m pip install --no-cache-dir -r requirements.txt; \
+    else \
+        echo "No requirements to install (requirements.txt is empty)"; \
+    fi
 
 #
 # Install additional requirements
@@ -64,5 +66,5 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
 
 
 # Run dashboard entry point
-CMD ["sh", "-c", "python3 -m bokeh serve ./magicscan.py --allow-websocket-origin=${DOMAIN_NAME} --allow-websocket-origin=127.0.0.1 --allow-websocket-origin=0.0.0.0 --port=8053 --address=0.0.0.0 --use-xheaders --session-token-expiration=86400"]
+CMD ["sh", "-c", "python3 -m bokeh serve ./magicscan.py --allow-websocket-origin=$DOMAIN_NAME --allow-websocket-origin=127.0.0.1 --allow-websocket-origin=0.0.0.0 --port=8053 --address=0.0.0.0 --use-xheaders --session-token-expiration=86400"]
 

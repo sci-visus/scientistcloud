@@ -185,7 +185,9 @@ start_dashboard() {
     docker rm "$container_name" 2>/dev/null || true
     
     # Run dashboard container
-    print_status "Starting dashboard container: $container_name on port $port"
+    # Image name matches what build_dashboard.sh creates (e.g., 3dplotly:latest, not 3dplotly_dashboard:latest)
+    local image_name="${dashboard_lower}:latest"
+    print_status "Starting dashboard container: $container_name on port $port (image: $image_name)"
     docker run -d \
         --name "$container_name" \
         --network docker_visstore_web \
@@ -195,7 +197,7 @@ start_dashboard() {
         -e SECRET_KEY="${SECRET_KEY:-local-dev-secret}" \
         -e DB_NAME="${DB_NAME:-scientistcloud}" \
         -e MONGO_URL="${MONGO_URL:-mongodb://localhost:27017}" \
-        "${dashboard_lower}_dashboard:latest" || {
+        "$image_name" || {
         print_error "Failed to start dashboard container"
         return 1
     }
@@ -218,28 +220,127 @@ start_dashboard() {
     return 0
 }
 
-# Function to start all dashboards
+# Function to start all dashboards using docker-compose (matches allServicesStart.sh)
 start_all_dashboards() {
-    print_status "Starting all dashboards..."
+    print_status "Setting up and building dashboards..."
     
-    # Get list of enabled dashboards
-    local dashboards_list="../SC_Dashboards/config/dashboards-list.json"
-    if [ ! -f "$dashboards_list" ]; then
-        print_error "Dashboards list not found: $dashboards_list"
+    # Find SC_Dashboards directory (same logic as allServicesStart.sh)
+    local dashboards_dir=""
+    if [ -d "$(pwd)/../SC_Dashboards" ]; then
+        dashboards_dir="$(cd "$(pwd)/../SC_Dashboards" && pwd)"
+    elif [ -d "$HOME/ScientistCloud2.0/scientistcloud/SC_Dashboards" ]; then
+        dashboards_dir="$HOME/ScientistCloud2.0/scientistcloud/SC_Dashboards"
+    elif [ -d "$HOME/ScientistCloud_2.0/scientistcloud/SC_Dashboards" ]; then
+        dashboards_dir="$HOME/ScientistCloud_2.0/scientistcloud/SC_Dashboards"
+    fi
+    
+    if [ ! -d "$dashboards_dir" ]; then
+        print_error "SC_Dashboards directory not found"
         return 1
     fi
     
-    # Extract dashboard IDs
-    local dashboards=$(jq -r '.dashboards[] | select(.enabled == true) | .id' "$dashboards_list" 2>/dev/null)
+    pushd "$dashboards_dir"
     
-    if [ -z "$dashboards" ]; then
-        print_warning "No enabled dashboards found"
-        return 0
+    # Initialize all enabled dashboards (generate Dockerfiles and nginx configs)
+    # Regenerate to ensure latest fixes are applied (matches allServicesStart.sh)
+    print_status "Initializing dashboards..."
+    local dashboards=$(jq -r '.dashboards | to_entries[] | select(.value.enabled == true) | .key' config/dashboard-registry.json 2>/dev/null || echo "")
+    if [ -n "$dashboards" ]; then
+        while IFS= read -r dashboard_name; do
+            print_status "📦 Initializing $dashboard_name..."
+            # Force regeneration of Dockerfiles and nginx configs to apply latest fixes
+            ./scripts/init_dashboard.sh "$dashboard_name" --overwrite 2>&1 | grep -E "(✅|⚠️|❌|Error|Generated|Exported)" || true
+        done <<< "$dashboards"
     fi
     
-    for dashboard in $dashboards; do
-        start_dashboard "$dashboard" || print_warning "Failed to start $dashboard"
-    done
+    # Build all enabled dashboards (matches allServicesStart.sh)
+    print_status "Building dashboard Docker images..."
+    if [ -n "$dashboards" ]; then
+        while IFS= read -r dashboard_name; do
+            print_status "🐳 Building $dashboard_name..."
+            ./scripts/build_dashboard.sh "$dashboard_name" 2>&1 | tail -1 || print_warning "Build failed for $dashboard_name"
+        done <<< "$dashboards"
+    fi
+    
+    # Generate docker-compose entries (matches allServicesStart.sh)
+    print_status "Generating docker-compose entries..."
+    ./scripts/generate_docker_compose.sh --output ../SC_Docker/dashboards-docker-compose.yml 2>&1 | tail -1 || print_warning "Failed to generate docker-compose entries"
+    
+    # Start dashboard containers using docker-compose (matches allServicesStart.sh)
+    if [ -f "../SC_Docker/dashboards-docker-compose.yml" ]; then
+        print_status "Starting dashboard containers..."
+        pushd ../SC_Docker
+        
+        # Ensure docker_visstore_web network exists (required for dashboards)
+        if ! docker network inspect docker_visstore_web >/dev/null 2>&1; then
+            print_status "Creating docker_visstore_web network..."
+            docker network create docker_visstore_web || print_warning "Network creation failed (may already exist)"
+        fi
+        
+        # Remove old dashboard containers to avoid ContainerConfig errors
+        print_status "Cleaning up old dashboard containers..."
+        local old_containers=$(docker ps -a --filter "name=dashboard_" --format "{{.Names}}" 2>/dev/null || true)
+        if [ -n "$old_containers" ]; then
+            echo "$old_containers" | while read -r container; do
+                if [ -n "$container" ]; then
+                    print_status "🗑️  Removing old container: $container"
+                    docker rm -f "$container" 2>/dev/null || true
+                fi
+            done
+        fi
+        
+        # Find .env file - check .env.local first (for local dev), then .env
+        local env_file=""
+        if [ -f ".env.local" ]; then
+            env_file=".env.local"
+            print_status "Using .env.local file: $env_file"
+        elif [ -f ".env" ]; then
+            env_file=".env"
+            print_status "Using .env file: $env_file"
+        fi
+        
+        # Stop and remove any existing containers defined in docker-compose first
+        print_status "Stopping existing dashboard containers..."
+        docker-compose -f dashboards-docker-compose.yml down 2>/dev/null || true
+        
+        # Start containers (matches allServicesStart.sh)
+        if [ -n "$env_file" ]; then
+            if docker-compose -f dashboards-docker-compose.yml --env-file "$env_file" up -d; then
+                print_success "Dashboard containers started"
+            else
+                print_error "Failed to start dashboard containers"
+                print_status "Checking container status..."
+                docker-compose -f dashboards-docker-compose.yml ps || true
+            fi
+        else
+            print_warning "No .env file found - trying without explicit env-file"
+            if docker-compose -f dashboards-docker-compose.yml up -d; then
+                print_success "Dashboard containers started"
+            else
+                print_error "Failed to start dashboard containers"
+                print_status "Checking container status..."
+                docker-compose -f dashboards-docker-compose.yml ps || true
+            fi
+        fi
+        
+        # Verify containers are running (matches allServicesStart.sh)
+        print_status "Verifying dashboard containers..."
+        local running_containers=$(docker-compose -f dashboards-docker-compose.yml ps --services --filter "status=running" 2>/dev/null | wc -l)
+        local total_containers=$(docker-compose -f dashboards-docker-compose.yml ps --services 2>/dev/null | wc -l)
+        if [ "$running_containers" -gt 0 ]; then
+            print_success "$running_containers/$total_containers dashboard containers running"
+            docker-compose -f dashboards-docker-compose.yml ps --format "table {{.Name}}\t{{.Status}}" 2>/dev/null || true
+        else
+            print_warning "No dashboard containers running - checking status..."
+            docker-compose -f dashboards-docker-compose.yml ps 2>/dev/null || true
+        fi
+        
+        popd
+    else
+        print_error "dashboards-docker-compose.yml not found after generation"
+    fi
+    
+    popd
 }
 
 # Function to create local nginx config (optional)
@@ -351,12 +452,18 @@ stop_all() {
     # Stop portal
     docker-compose -f docker-compose.yml down 2>/dev/null || true
     
-    # Stop all dashboard containers
-    docker ps --format "{{.Names}}" | grep "^dashboard_" | while read container; do
-        print_status "Stopping $container..."
-        docker stop "$container" 2>/dev/null || true
-        docker rm "$container" 2>/dev/null || true
-    done
+    # Stop dashboard containers using docker-compose if file exists
+    if [ -f "dashboards-docker-compose.yml" ]; then
+        print_status "Stopping dashboard containers with docker-compose..."
+        docker-compose -f dashboards-docker-compose.yml down 2>/dev/null || true
+    else
+        # Fallback to individual container stop
+        docker ps --format "{{.Names}}" | grep "^dashboard_" | while read container; do
+            print_status "Stopping $container..."
+            docker stop "$container" 2>/dev/null || true
+            docker rm "$container" 2>/dev/null || true
+        done
+    fi
     
     print_success "All services stopped"
 }

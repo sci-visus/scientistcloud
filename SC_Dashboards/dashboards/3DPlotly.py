@@ -397,4 +397,7 @@ def display_confirm(n_clicks, search):
 
 
 
-app.run(debug=True, port=8050,host='0.0.0.0') # Dont change the host here to 51.81..., its always LOCAL to the SERVER
+# Get port from environment variable or default to 8060
+import os
+DASHBOARD_PORT = int(os.environ.get('DASHBOARD_PORT', '8060'))
+app.run(debug=True, port=DASHBOARD_PORT, host='0.0.0.0') # Dont change the host here to 51.81..., its always LOCAL to the SERVER

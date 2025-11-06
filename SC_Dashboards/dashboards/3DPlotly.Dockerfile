@@ -35,14 +35,16 @@ COPY SCLib_Dashboards/utils_bokeh_param.py ./utils_bokeh_param.py
 
 # Copy dashboard-specific files (flat structure)
 COPY 3DPlotly.py ./
-#
+# Requirements file is always copied as requirements.txt in build context
+# (build script ensures it exists, even if empty)
 COPY requirements.txt ./requirements.txt
 
-
-# Install dashboard-specific requirements
-#
-RUN python3 -m pip install --no-cache-dir -r requirements.txt
-
+# Install dashboard-specific requirements (skip if file is empty)
+RUN if [ -s requirements.txt ]; then \
+        python3 -m pip install --no-cache-dir -r requirements.txt; \
+    else \
+        echo "No requirements to install (requirements.txt is empty)"; \
+    fi
 
 #
 # Install additional requirements
@@ -53,12 +55,12 @@ RUN python3 -m pip install --no-cache-dir versioneer[toml] Cython pandas bokeh==
 
 
 # Expose dashboard port
-EXPOSE 8050
+EXPOSE 8060
 
 # Health check (if specified)
 #
 HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
-  CMD curl -f http://localhost:8050/health || exit 1
+  CMD curl -f http://localhost:8060/health || exit 1
 
 
 # Run dashboard entry point

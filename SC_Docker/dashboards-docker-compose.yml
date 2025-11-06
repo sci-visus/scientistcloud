@@ -1,7 +1,8 @@
 # Dashboard Services - Auto-generated from dashboard-registry.json
 # DO NOT EDIT MANUALLY - Regenerate using scripts/generate_docker_compose.sh
-# Generated: Wed Nov  5 08:49:15 CST 2025
+# Generated: Thu Nov  6 13:45:29 CST 2025
 
+services:
   # 3D Plotly Dashboard
   3dplotly:
     container_name: dashboard_3dplotly
@@ -17,6 +18,10 @@
       - DEPLOY_SERVER=${DEPLOY_SERVER}
       - DB_NAME=${DB_NAME}
       - MONGO_URL=${MONGO_URL}
+      - DOMAIN_NAME=${DOMAIN_NAME}
+      - DASHBOARD_PORT=8060
+    ports:
+      - "8060:8060"
     networks:
       - docker_visstore_web
     restart: unless-stopped
@@ -46,6 +51,10 @@
       - DEPLOY_SERVER=${DEPLOY_SERVER}
       - DB_NAME=${DB_NAME}
       - MONGO_URL=${MONGO_URL}
+      - DOMAIN_NAME=${DOMAIN_NAME}
+      - DASHBOARD_PORT=8051
+    ports:
+      - "8051:8051"
     networks:
       - docker_visstore_web
     restart: unless-stopped
@@ -75,6 +84,10 @@
       - DEPLOY_SERVER=${DEPLOY_SERVER}
       - DB_NAME=${DB_NAME}
       - MONGO_URL=${MONGO_URL}
+      - DOMAIN_NAME=${DOMAIN_NAME}
+      - DASHBOARD_PORT=8052
+    ports:
+      - "8052:8052"
     networks:
       - docker_visstore_web
     restart: unless-stopped
@@ -104,6 +117,10 @@
       - DEPLOY_SERVER=${DEPLOY_SERVER}
       - DB_NAME=${DB_NAME}
       - MONGO_URL=${MONGO_URL}
+      - DOMAIN_NAME=${DOMAIN_NAME}
+      - DASHBOARD_PORT=8053
+    ports:
+      - "8053:8053"
     networks:
       - docker_visstore_web
     restart: unless-stopped
@@ -133,6 +150,10 @@
       - DEPLOY_SERVER=${DEPLOY_SERVER}
       - DB_NAME=${DB_NAME}
       - MONGO_URL=${MONGO_URL}
+      - DOMAIN_NAME=${DOMAIN_NAME}
+      - DASHBOARD_PORT=8054
+    ports:
+      - "8054:8054"
     networks:
       - docker_visstore_web
     restart: unless-stopped

@@ -72,9 +72,8 @@ services:
       - SCLIB_AUTH_URL=http://sclib_auth:8001
       
       # File paths (use existing volumes)
-      - VISUS_DB=${VISUS_DB}
       - VISUS_DATASETS=${VISUS_DATASETS}
-      - HOME_DIR=${HOME_DIR}
+  
       
     networks:
       - docker_visstore_web
