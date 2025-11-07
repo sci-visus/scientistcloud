@@ -27,6 +27,7 @@ request = doc.session_context.request if hasattr(doc, 'session_context') and doc
 
 # Debug logging for request arguments
 print(f"🔍 DEBUG: request = {request}")
+request_args = {}
 if request:
     print(f"🔍 DEBUG: request.arguments = {request.arguments}")
     print(f"🔍 DEBUG: request.arguments type = {type(request.arguments)}")
@@ -34,9 +35,31 @@ if request:
         print(f"🔍 DEBUG: request.query_string = {request.query_string}")
     if hasattr(request, 'url'):
         print(f"🔍 DEBUG: request.url = {request.url}")
+    
+    # Try to get arguments from request.arguments first
+    if hasattr(request, 'arguments') and request.arguments:
+        request_args = request.arguments
+    # If arguments is empty, try to parse from query_string or url
+    elif hasattr(request, 'query_string') and request.query_string:
+        print(f"🔍 DEBUG: Parsing query_string: {request.query_string}")
+        request_args = parse_qs(request.query_string)
+        # Convert values from lists to single values (Bokeh format)
+        for key in list(request_args.keys()):
+            if isinstance(request_args[key], list) and len(request_args[key]) > 0:
+                request_args[key] = [request_args[key][0].decode('utf-8') if isinstance(request_args[key][0], bytes) else request_args[key][0]]
+    elif hasattr(request, 'url') and request.url:
+        print(f"🔍 DEBUG: Parsing URL: {request.url}")
+        from urllib.parse import urlparse
+        parsed_url = urlparse(request.url)
+        if parsed_url.query:
+            request_args = parse_qs(parsed_url.query)
+            # Convert values from lists to single values (Bokeh format)
+            for key in list(request_args.keys()):
+                if isinstance(request_args[key], list) and len(request_args[key]) > 0:
+                    request_args[key] = [request_args[key][0].decode('utf-8') if isinstance(request_args[key][0], bytes) else request_args[key][0]]
 
-has_args = request and request.arguments and len(request.arguments) > 0
-print(f"🔍 DEBUG: has_args = {has_args}")
+has_args = request and len(request_args) > 0
+print(f"🔍 DEBUG: has_args = {has_args}, request_args = {request_args}")
 DATA_IS_LOCAL = not has_args
 local_base_dir = f'/Users/amygooch/GIT/SCI/DATA/turbine/turbin_visus'
 
@@ -74,10 +97,31 @@ if not has_args:
 else:
     # Production mode - use utility initialization
     doc = curdoc()
-    request = doc.session_context.request if hasattr(doc, 'session_context') and doc.session_context else None
+    real_request = doc.session_context.request if hasattr(doc, 'session_context') and doc.session_context else None
     
-    # Initialize dashboard using utility
-    init_result = initialize_dashboard(request, print)
+    # Create a request object that combines URL args with the real request (which has cookies)
+    class RequestWithArgs:
+        def __init__(self, real_request, args_dict):
+            # Copy all attributes from the real request (including cookies)
+            for attr in dir(real_request):
+                if not attr.startswith('_'):
+                    try:
+                        setattr(self, attr, getattr(real_request, attr))
+                    except:
+                        pass
+            
+            # Override arguments with our parsed URL args
+            self.arguments = {}
+            for key, value in args_dict.items():
+                if isinstance(value, list):
+                    self.arguments[key] = value
+                else:
+                    self.arguments[key] = [value]
+    
+    request_with_args = RequestWithArgs(real_request, request_args)
+    
+    # Initialize dashboard using utility with the request object that has arguments
+    init_result = initialize_dashboard(request_with_args, print)
     
     if not init_result['success']:
         print(f"❌ Dashboard initialization failed: {init_result['error']}")

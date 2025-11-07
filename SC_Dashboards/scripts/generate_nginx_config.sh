@@ -85,12 +85,12 @@ if [[ ! "$APP_PATH" =~ /$ ]]; then
 fi
 DASHBOARD_NAME_LOWER=$(echo "$DASHBOARD_NAME" | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9]/_/g')
 
-# Store path without trailing slash for location block (matches both /dashboard/plotly and /dashboard/plotly/)
-NGINX_PATH_WITHOUT_SLASH="${NGINX_PATH%/}"
-# Keep path with trailing slash for static files and other uses
+# Ensure NGINX_PATH has trailing slash (matches working pattern like /dataExplorer/)
 if [[ ! "$NGINX_PATH" =~ /$ ]]; then
     NGINX_PATH="${NGINX_PATH}/"
 fi
+# Store path without trailing slash for backward compatibility (if needed elsewhere)
+NGINX_PATH_WITHOUT_SLASH="${NGINX_PATH%/}"
 
 # Remove trailing "_dashboard" if present to avoid double "dashboard" in filename
 # (e.g., "4D_Dashboard" -> "4d_dashboard" -> remove "_dashboard" -> "4d" -> "4d_dashboard.conf")
