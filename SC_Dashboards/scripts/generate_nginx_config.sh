@@ -89,7 +89,15 @@ if [[ ! "$APP_PATH" =~ /$ ]]; then
 fi
 # Remove trailing slash for X-Forwarded-Prefix header (matches dataExplorer pattern)
 APP_PATH_NO_SLASH="${APP_PATH%/}"
-DASHBOARD_NAME_LOWER=$(echo "$DASHBOARD_NAME" | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9]/_/g')
+
+# Derive the actual dashboard name from the config file name (matches what user chose in directory)
+# This ensures container names match the actual filenames, not the registry key
+# e.g., /path/to/4d_dashboard.json -> 4d_dashboard
+CONFIG_BASENAME=$(basename "$CONFIG_FILE" .json)
+
+# For container name, use the config file basename (matches docker-compose logic)
+# Docker container names must be lowercase, so ensure it's lowercase
+CONTAINER_NAME_SERVICE=$(echo "$CONFIG_BASENAME" | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9]/_/g')
 
 # Ensure NGINX_PATH has trailing slash (matches working pattern like /dataExplorer/)
 if [[ ! "$NGINX_PATH" =~ /$ ]]; then
@@ -98,9 +106,9 @@ fi
 # Store path without trailing slash for backward compatibility (if needed elsewhere)
 NGINX_PATH_WITHOUT_SLASH="${NGINX_PATH%/}"
 
-# Remove trailing "_dashboard" if present to avoid double "dashboard" in filename
-# (e.g., "4D_Dashboard" -> "4d_dashboard" -> remove "_dashboard" -> "4d" -> "4d_dashboard.conf")
-DASHBOARD_NAME_LOWER=$(echo "$DASHBOARD_NAME_LOWER" | sed 's/_dashboard$//')
+# Remove trailing "_dashboard" if present ONLY for the output filename
+# (e.g., "4d_dashboard" -> remove "_dashboard" -> "4d" -> "4d_dashboard.conf")
+DASHBOARD_NAME_LOWER_FOR_FILE=$(echo "$CONTAINER_NAME_SERVICE" | sed 's/_dashboard$//')
 
 # Get domain name from environment or use default
 DOMAIN_NAME="${DOMAIN_NAME:-${DEPLOY_SERVER#https://}}"
@@ -112,7 +120,7 @@ if [ -z "$DOMAIN_NAME" ] || [ "$DOMAIN_NAME" = "${DOMAIN_NAME#*.}" ]; then
 fi
 
 # Determine output file
-OUTPUT_NAME="${DASHBOARD_NAME_LOWER}_dashboard.conf"
+OUTPUT_NAME="${DASHBOARD_NAME_LOWER_FOR_FILE}_dashboard.conf"
 if [ -n "$2" ]; then
     OUTPUT_FILE="$2"
 else
@@ -147,7 +155,7 @@ if [ -n "$HEALTH_CHECK_PATH" ]; then
     cat > "$HEALTH_TEMP" << HEALTHEOF
     location ${NGINX_PATH_FOR_HEALTH}/${HEALTH_CHECK_PATH_CLEAN} {
         # Use variable to defer hostname resolution (prevents startup errors if containers aren't up)
-        set \$upstream_host "dashboard_${DASHBOARD_NAME_LOWER}";
+        set \$upstream_host "dashboard_${CONTAINER_NAME_SERVICE}";
         set \$upstream_port "${DASHBOARD_PORT}";
         proxy_pass http://\$upstream_host:\$upstream_port${HEALTH_CHECK_FULL_PATH};
         proxy_set_header Host \$host;
@@ -250,7 +258,7 @@ fi
 # Build the config file using a here-document approach
 TEMP_CONFIG=$(mktemp)
 sed -e "s|{{DASHBOARD_NAME}}|$DASHBOARD_NAME|g" \
-    -e "s|{{DASHBOARD_NAME_LOWER}}|$DASHBOARD_NAME_LOWER|g" \
+    -e "s|{{DASHBOARD_NAME_LOWER}}|$CONTAINER_NAME_SERVICE|g" \
     -e "s|{{NGINX_PATH}}|$NGINX_PATH|g" \
     -e "s|{{NGINX_PATH_WITHOUT_SLASH}}|$NGINX_PATH_WITHOUT_SLASH|g" \
     -e "s|{{DASHBOARD_PORT}}|$DASHBOARD_PORT|g" \

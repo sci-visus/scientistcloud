@@ -97,16 +97,25 @@ while IFS= read -r DASHBOARD_NAME; do
     
     DASHBOARD_CONFIG=$(cat "$CONFIG_FILE")
     
+    # Derive the actual dashboard name from the config file name (matches what user chose in directory)
+    # e.g., /path/to/4d_dashboard.json -> 4d_dashboard
+    CONFIG_BASENAME=$(basename "$CONFIG_FILE" .json)
+    
     # Extract values from config
-    # Try original name first, then lowercase version (matching init_dashboard.sh logic)
-    DOCKERFILE_NAME="${DASHBOARD_NAME}.Dockerfile"
+    # Use the actual filename for Dockerfile lookup (matches user's choice)
+    DOCKERFILE_NAME="${CONFIG_BASENAME}.Dockerfile"
     DOCKERFILE_PATH="$DASHBOARDS_DIR/$DOCKERFILE_NAME"
     
-    # If not found, try lowercase version
+    # If not found, try with registry name as fallback
     if [ ! -f "$DOCKERFILE_PATH" ]; then
-        DASHBOARD_NAME_LOWER=$(echo "$DASHBOARD_NAME" | tr '[:upper:]' '[:lower:]')
-        DOCKERFILE_NAME="${DASHBOARD_NAME_LOWER}.Dockerfile"
+        DOCKERFILE_NAME="${DASHBOARD_NAME}.Dockerfile"
         DOCKERFILE_PATH="$DASHBOARDS_DIR/$DOCKERFILE_NAME"
+        # If still not found, try lowercase version
+        if [ ! -f "$DOCKERFILE_PATH" ]; then
+            DASHBOARD_NAME_LOWER=$(echo "$DASHBOARD_NAME" | tr '[:upper:]' '[:lower:]')
+            DOCKERFILE_NAME="${DASHBOARD_NAME_LOWER}.Dockerfile"
+            DOCKERFILE_PATH="$DASHBOARDS_DIR/$DOCKERFILE_NAME"
+        fi
     fi
     
     # Check if Dockerfile exists
@@ -150,8 +159,10 @@ while IFS= read -r DASHBOARD_NAME; do
         EXPOSED_PORTS="$PORT"
     fi
     
-    # Generate service name (lowercase, replace special chars with underscore)
-    SERVICE_NAME=$(echo "$DASHBOARD_NAME" | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9]/_/g')
+    # Generate service name from the actual config file name (matches what user chose in directory)
+    # Docker container names must be lowercase, so ensure it's lowercase
+    # Use the config file basename (e.g., 4d_dashboard.json -> 4d_dashboard)
+    SERVICE_NAME=$(echo "$CONFIG_BASENAME" | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9]/_/g')
     CONTAINER_NAME="dashboard_${SERVICE_NAME}"
     
     # Build context - use relative path from docker-compose file location
