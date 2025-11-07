@@ -63,6 +63,9 @@ $preferredDashboard = getUserPreferredDashboard($user['id']);
     <button class="collapse-btn left" id="toggleFolder">&#9664;</button>
     <button class="theme-toggle" id="themeToggle"><i class="fas fa-adjust"></i></button>
   </aside>
+  
+  <!-- Left Sidebar Resize Handle -->
+  <div class="resize-handle resize-handle-left" id="resizeHandleLeft"></div>
 
   <!-- Main Content -->
   <section class="main">
@@ -86,6 +89,9 @@ $preferredDashboard = getUserPreferredDashboard($user['id']);
     </div>
   </section>
 
+  <!-- Right Sidebar Resize Handle -->
+  <div class="resize-handle resize-handle-right" id="resizeHandleRight"></div>
+  
   <!-- Right Sidebar -->
   <aside class="details d-flex flex-column px-3 py-3" id="detailSidebar">
     <h5>Dataset Details</h5>

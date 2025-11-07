@@ -46,9 +46,17 @@ function initializeApp() {
     }
     
     if (AppState.detailsCollapsed) {
-        document.getElementById('detailSidebar').classList.add('collapsed');
+        const details = document.getElementById('detailSidebar');
+        const resizeHandleRight = document.getElementById('resizeHandleRight');
+        details.classList.add('collapsed');
         document.getElementById('toggleDetail').innerHTML = '&#9664;';
+        if (resizeHandleRight) {
+            resizeHandleRight.style.display = 'none';
+        }
     }
+    
+    // Load saved sidebar widths
+    loadSidebarWidths();
 }
 
 /**
@@ -79,9 +87,10 @@ function setupEventListeners() {
         } else {
             themeToggle.innerHTML = '<i class="fas fa-sun"></i>'; // Sun icon for dark mode
         }
-    } else {
-        console.warn('Theme toggle button not found!');
     }
+    
+    // Initialize resize handles
+    initializeResizeHandles();
     
     // Dataset selection
     document.addEventListener('click', function(e) {
@@ -127,9 +136,15 @@ function setupEventListeners() {
 function toggleSidebar() {
     const sidebar = document.getElementById('folderSidebar');
     const button = document.getElementById('toggleFolder');
+    const resizeHandleLeft = document.getElementById('resizeHandleLeft');
     
     sidebar.classList.toggle('collapsed');
     AppState.sidebarCollapsed = sidebar.classList.contains('collapsed');
+    
+    // Hide/show resize handle (CSS handles this, but ensure it's hidden)
+    if (resizeHandleLeft) {
+        resizeHandleLeft.style.display = AppState.sidebarCollapsed ? 'none' : 'block';
+    }
     
     if (AppState.sidebarCollapsed) {
         button.innerHTML = '&#9654;';
@@ -146,9 +161,15 @@ function toggleSidebar() {
 function toggleDetails() {
     const details = document.getElementById('detailSidebar');
     const button = document.getElementById('toggleDetail');
+    const resizeHandleRight = document.getElementById('resizeHandleRight');
     
     details.classList.toggle('collapsed');
     AppState.detailsCollapsed = details.classList.contains('collapsed');
+    
+    // Hide/show resize handle
+    if (resizeHandleRight) {
+        resizeHandleRight.style.display = AppState.detailsCollapsed ? 'none' : 'block';
+    }
     
     if (AppState.detailsCollapsed) {
         button.innerHTML = '&#9664;';
@@ -526,6 +547,115 @@ function showImportModal() {
  */
 function showSettingsModal() {
     alert('Settings functionality not yet implemented');
+}
+
+/**
+ * Load saved sidebar widths from localStorage
+ */
+function loadSidebarWidths() {
+    const savedSidebarWidth = localStorage.getItem('sidebarWidth');
+    const savedDetailsWidth = localStorage.getItem('detailsWidth');
+    
+    if (savedSidebarWidth) {
+        document.documentElement.style.setProperty('--sidebar-width', savedSidebarWidth + 'px');
+    }
+    
+    if (savedDetailsWidth) {
+        document.documentElement.style.setProperty('--details-width', savedDetailsWidth + 'px');
+    }
+}
+
+/**
+ * Save sidebar width to localStorage
+ */
+function saveSidebarWidth(width) {
+    localStorage.setItem('sidebarWidth', width);
+    document.documentElement.style.setProperty('--sidebar-width', width + 'px');
+}
+
+/**
+ * Save details sidebar width to localStorage
+ */
+function saveDetailsWidth(width) {
+    localStorage.setItem('detailsWidth', width);
+    document.documentElement.style.setProperty('--details-width', width + 'px');
+}
+
+/**
+ * Initialize resize handles for sidebars
+ */
+function initializeResizeHandles() {
+    const resizeHandleLeft = document.getElementById('resizeHandleLeft');
+    const resizeHandleRight = document.getElementById('resizeHandleRight');
+    const sidebar = document.getElementById('folderSidebar');
+    const details = document.getElementById('detailSidebar');
+    
+    if (!resizeHandleLeft || !resizeHandleRight || !sidebar || !details) {
+        console.warn('Resize handles or sidebars not found');
+        return;
+    }
+    
+    let isResizingLeft = false;
+    let isResizingRight = false;
+    let startX = 0;
+    let startWidth = 0;
+    
+    // Left sidebar resize
+    resizeHandleLeft.addEventListener('mousedown', (e) => {
+        if (sidebar.classList.contains('collapsed')) return;
+        
+        isResizingLeft = true;
+        startX = e.clientX;
+        startWidth = sidebar.offsetWidth;
+        resizeHandleLeft.classList.add('resizing');
+        document.body.style.cursor = 'col-resize';
+        document.body.style.userSelect = 'none';
+        e.preventDefault();
+    });
+    
+    // Right sidebar resize
+    resizeHandleRight.addEventListener('mousedown', (e) => {
+        if (details.classList.contains('collapsed')) return;
+        
+        isResizingRight = true;
+        startX = e.clientX;
+        startWidth = details.offsetWidth;
+        resizeHandleRight.classList.add('resizing');
+        document.body.style.cursor = 'col-resize';
+        document.body.style.userSelect = 'none';
+        e.preventDefault();
+    });
+    
+    // Mouse move handler
+    document.addEventListener('mousemove', (e) => {
+        if (!isResizingLeft && !isResizingRight) return;
+        
+        if (isResizingLeft) {
+            const diff = startX - e.clientX; // Inverted because we're dragging left
+            const newWidth = Math.max(200, Math.min(startWidth + diff, window.innerWidth * 0.8));
+            saveSidebarWidth(newWidth);
+        }
+        
+        if (isResizingRight) {
+            const diff = e.clientX - startX;
+            const newWidth = Math.max(200, Math.min(startWidth + diff, window.innerWidth * 0.8));
+            saveDetailsWidth(newWidth);
+        }
+    });
+    
+    // Mouse up handler
+    document.addEventListener('mouseup', () => {
+        if (isResizingLeft) {
+            isResizingLeft = false;
+            resizeHandleLeft.classList.remove('resizing');
+        }
+        if (isResizingRight) {
+            isResizingRight = false;
+            resizeHandleRight.classList.remove('resizing');
+        }
+        document.body.style.cursor = '';
+        document.body.style.userSelect = '';
+    });
 }
 
 // Export functions for global access
