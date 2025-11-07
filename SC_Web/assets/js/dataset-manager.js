@@ -394,7 +394,7 @@ class DatasetManager {
     /**
      * Handle dataset selection
      */
-    handleDatasetSelection(datasetLink) {
+    async handleDatasetSelection(datasetLink) {
         const datasetId = datasetLink.dataset.datasetId;
         const datasetName = datasetLink.dataset.datasetName;
         const datasetUuid = datasetLink.dataset.datasetUuid;
@@ -417,7 +417,34 @@ class DatasetManager {
         // Load dataset details
         this.loadDatasetDetails(datasetId);
 
-        // Load dashboard
+        // Determine appropriate dashboard and update dropdown
+        // First check if we can determine from dataset details
+        try {
+            const response = await fetch(`${getApiBasePath()}/dataset-details.php?dataset_id=${datasetId}`);
+            const data = await response.json();
+            if (data.success && data.dataset) {
+                const dimensions = data.dataset.dimensions || '';
+                // If dataset is 4D, select 4D_Dashboard in dropdown
+                if (dimensions && dimensions.toUpperCase().includes('4D')) {
+                    const viewerTypeSelect = document.getElementById('viewerType');
+                    if (viewerTypeSelect) {
+                        // Try to find 4D_Dashboard option
+                        const option4D = Array.from(viewerTypeSelect.options).find(opt => 
+                            opt.value === '4D_Dashboard' || 
+                            opt.value.toLowerCase() === '4d_dashboard' ||
+                            opt.text.toLowerCase().includes('4d')
+                        );
+                        if (option4D) {
+                            viewerTypeSelect.value = option4D.value;
+                        }
+                    }
+                }
+            }
+        } catch (error) {
+            console.warn('Could not determine dashboard from dimensions:', error);
+        }
+
+        // Load dashboard (will use selected dashboard from dropdown or determine from dimensions)
         this.loadDashboard(datasetId, datasetName, datasetUuid, datasetServer);
 
         console.log('Dataset selected:', this.currentDataset);
@@ -528,7 +555,7 @@ class DatasetManager {
     /**
      * Load dashboard
      */
-    loadDashboard(datasetId, datasetName, datasetUuid, datasetServer) {
+    async loadDashboard(datasetId, datasetName, datasetUuid, datasetServer) {
         const viewerContainer = document.getElementById('viewerContainer');
         if (!viewerContainer) return;
 
@@ -543,6 +570,37 @@ class DatasetManager {
             </div>
         `;
 
+        // Determine appropriate dashboard
+        // First, try to get the selected dashboard from the dropdown
+        let selectedDashboard = null;
+        const viewerTypeSelect = document.getElementById('viewerType');
+        if (viewerTypeSelect && viewerTypeSelect.value) {
+            selectedDashboard = viewerTypeSelect.value;
+        }
+        
+        // If no dashboard selected, try to determine from dataset dimensions
+        if (!selectedDashboard && this.currentDataset) {
+            // Get dataset details to check dimensions
+            try {
+                const response = await fetch(`${getApiBasePath()}/dataset-details.php?dataset_id=${datasetId}`);
+                const data = await response.json();
+                if (data.success && data.dataset) {
+                    const dimensions = data.dataset.dimensions || '';
+                    // If dataset is 4D, default to 4D_Dashboard
+                    if (dimensions && dimensions.toUpperCase().includes('4D')) {
+                        selectedDashboard = '4D_Dashboard';
+                    }
+                }
+            } catch (error) {
+                console.warn('Could not determine dashboard from dimensions:', error);
+            }
+        }
+        
+        // Fallback to OpenVisusSlice if nothing else selected
+        if (!selectedDashboard) {
+            selectedDashboard = 'OpenVisusSlice';
+        }
+        
         // Load dashboard using viewer manager
         if (window.viewerManager) {
             window.viewerManager.loadDashboard(
@@ -550,7 +608,7 @@ class DatasetManager {
                 datasetName,
                 datasetUuid,
                 datasetServer,
-                'OpenVisusSlice' // Use actual dashboard ID
+                selectedDashboard
             );
             return;
         }
@@ -558,7 +616,7 @@ class DatasetManager {
         // Fallback: Load dashboard via URL
         const url = new URL(window.location);
         url.searchParams.set('dataset_id', datasetId);
-        url.searchParams.set('dashboard', 'OpenVisusSlice'); // Use actual dashboard ID
+        url.searchParams.set('dashboard', selectedDashboard);
 
         fetch(url.toString())
             .then(response => response.text())
