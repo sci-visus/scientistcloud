@@ -87,6 +87,8 @@ fi
 if [[ ! "$APP_PATH" =~ /$ ]]; then
     APP_PATH="${APP_PATH}/"
 fi
+# Remove trailing slash for X-Forwarded-Prefix header (matches dataExplorer pattern)
+APP_PATH_NO_SLASH="${APP_PATH%/}"
 DASHBOARD_NAME_LOWER=$(echo "$DASHBOARD_NAME" | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9]/_/g')
 
 # Ensure NGINX_PATH has trailing slash (matches working pattern like /dataExplorer/)
@@ -213,7 +215,9 @@ fi
 BOKEH_HEADERS_TEMP=$(mktemp)
 if [[ "$DASHBOARD_TYPE" == "bokeh" || "$DASHBOARD_TYPE" == "dash" ]]; then
     cat > "$BOKEH_HEADERS_TEMP" << BOKEHEOF
-    proxy_cookie_path / ${NGINX_PATH};
+    # Cookie path should match the app path, not the nginx path
+    # This ensures cookies set by the app are accessible at the app's path
+    proxy_cookie_path / ${APP_PATH};
     
     # WebSocket support for Bokeh/Dash
     proxy_http_version 1.1;
@@ -225,7 +229,9 @@ if [[ "$DASHBOARD_TYPE" == "bokeh" || "$DASHBOARD_TYPE" == "dash" ]]; then
     proxy_set_header Connection "upgrade";
     
     # Bokeh/Dash-specific headers
-    proxy_set_header X-Forwarded-Prefix ${NGINX_PATH};
+    # Use APP_PATH (without trailing slash) to match the app's actual path, not the nginx path
+    # This matches the working dataExplorer pattern: X-Forwarded-Prefix /dataExplorer
+    proxy_set_header X-Forwarded-Prefix ${APP_PATH_NO_SLASH};
     proxy_redirect off;
 BOKEHEOF
 else

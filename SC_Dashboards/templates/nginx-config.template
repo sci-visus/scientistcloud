@@ -6,13 +6,21 @@
 # The resolver directive must be in the server block (already added to main server block).
 
 # Dashboard proxy configuration
-# Use location with trailing slash to match working pattern (like /4d_dashboard/)
+# Handle both with and without trailing slash to preserve query parameters
+location {{NGINX_PATH_WITHOUT_SLASH}} {
+    # Redirect to version with trailing slash, preserving query parameters
+    return 301 $scheme://$host{{NGINX_PATH}}$is_args$args;
+}
+
 location {{NGINX_PATH}} {
     # Use variable to defer hostname resolution (prevents startup errors if containers aren't up)
     set $upstream_host "dashboard_{{DASHBOARD_NAME_LOWER}}";
     set $upstream_port "{{DASHBOARD_PORT}}";
-    # proxy_pass with trailing slash matches working pattern
-    proxy_pass http://$upstream_host:$upstream_port{{APP_PATH}};
+    # When using variables in proxy_pass, query parameters must be explicitly preserved
+    # Match the working dataExplorer pattern: proxy_pass with trailing slash preserves query params
+    # But with variables, we need to construct the full URL including query string
+    set $proxy_url "http://$upstream_host:$upstream_port{{APP_PATH}}$is_args$args";
+    proxy_pass $proxy_url;
     
     proxy_set_header Host $host;
     proxy_set_header X-Real-IP $remote_addr;
