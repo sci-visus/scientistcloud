@@ -225,6 +225,14 @@ if [ -d "$DASHBOARDS_DIR" ]; then
         echo "   ⚠️  regenerate_registry.sh not found - using existing registry"
     fi
     
+    # Export dashboard list (generates dashboards-list.json from registry)
+    echo "   Exporting dashboard list..."
+    if [ -f "./scripts/export_dashboard_list.sh" ]; then
+        ./scripts/export_dashboard_list.sh 2>&1 | grep -E "(✅|⚠️|❌|Error|Total)" || true
+    else
+        echo "   ⚠️  export_dashboard_list.sh not found"
+    fi
+    
     # Initialize all enabled dashboards (generate Dockerfiles and nginx configs)
     # Regenerate to ensure latest fixes are applied (Dockerfiles and nginx configs)
     echo "   Initializing dashboards..."
