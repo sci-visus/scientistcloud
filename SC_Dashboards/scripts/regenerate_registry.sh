@@ -70,6 +70,44 @@ for CONFIG_FILE in "$DASHBOARDS_DIR"/*.json; do
     DASHBOARD_COUNT=$((DASHBOARD_COUNT + 1))
 done
 
+# Update port-registry.json with ports from regenerated registry
+PORT_REGISTRY="$CONFIG_DIR/port-registry.json"
+if [ ! -f "$PORT_REGISTRY" ]; then
+    # Create initial port registry
+    cat > "$PORT_REGISTRY" <<EOF
+{
+  "version": "1.0.0",
+  "reserved_ports": {},
+  "port_range": {
+    "start": 8050,
+    "end": 8999
+  },
+  "next_available": 8050
+}
+EOF
+fi
+
+# Update reserved_ports from registry
+PORT_REGISTRY_TEMP=$(mktemp)
+jq '.reserved_ports = {}' "$PORT_REGISTRY" > "$PORT_REGISTRY_TEMP"
+
+for CONFIG_FILE in "$DASHBOARDS_DIR"/*.json; do
+    [ -f "$CONFIG_FILE" ] || continue
+    BASENAME=$(basename "$CONFIG_FILE" .json)
+    if [[ "$BASENAME" == demo_* ]] || [[ "$BASENAME" == test_* ]]; then
+        continue
+    fi
+    PORT=$(jq -r '.port // 8050' "$CONFIG_FILE")
+    PORT_REGISTRY_TEMP=$(echo "$PORT_REGISTRY_TEMP" | jq --arg port "$PORT" --arg name "$BASENAME" '.reserved_ports[$port] = $name')
+done
+
+# Calculate next available port
+NEXT_AVAILABLE=$(echo "$PORT_REGISTRY_TEMP" | jq '[.reserved_ports | to_entries[] | (.key | tonumber)] | max + 1 // 8050')
+PORT_REGISTRY_TEMP=$(echo "$PORT_REGISTRY_TEMP" | jq --arg next "$NEXT_AVAILABLE" '.next_available = ($next | tonumber)')
+
+mv "$PORT_REGISTRY_TEMP" "$PORT_REGISTRY"
+echo "✅ Port registry updated"
+
 echo ""
 echo "✅ Registry regenerated with $DASHBOARD_COUNT dashboard(s)"
 echo "   Registry file: $REGISTRY_FILE"

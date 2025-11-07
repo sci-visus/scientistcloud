@@ -21,13 +21,14 @@ if [ ! -f "$REGISTRY_FILE" ]; then
 fi
 
 # Generate dashboard list with full configuration
+# Use the registry key (which matches the filename) as the id
 jq '{
   "version": "1.0.0",
   "last_updated": .last_updated,
   "dashboards": [
     .dashboards | to_entries | .[] | 
     {
-      "id": .value.name,
+      "id": .key,
       "name": .value.display_name,
       "type": (if (.value.config_file | test("plotly|Plotly")) then "plotly" elif (.value.config_file | test("bokeh|Bokeh")) then "bokeh" elif (.value.config_file | test("jupyter|Jupyter|notebook")) then "jupyter" elif (.value.config_file | test("vtk|VTK")) then "vtk" else "dash" end),
       "display_name": .value.display_name,
