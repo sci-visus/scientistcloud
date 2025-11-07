@@ -16,10 +16,12 @@ location {{NGINX_PATH}} {
     # Use variable to defer hostname resolution (prevents startup errors if containers aren't up)
     set $upstream_host "dashboard_{{DASHBOARD_NAME_LOWER}}";
     set $upstream_port "{{DASHBOARD_PORT}}";
-    # When using variables in proxy_pass, query parameters must be explicitly preserved
-    # Match the working dataExplorer pattern: proxy_pass with trailing slash preserves query params
-    # But with variables, we need to construct the full URL including query string
-    set $proxy_url "http://$upstream_host:$upstream_port{{APP_PATH}}$is_args$args";
+    # When using variables in proxy_pass, we need to rewrite the path to match the app path
+    # This ensures /dashboard/OpenVisusSlice/ws becomes /OpenVisusSlice/ws
+    # Use regex to capture everything after the nginx path and rewrite to app path
+    rewrite ^{{NGINX_PATH}}(.*)$ {{APP_PATH}}$1 break;
+    # Construct proxy URL - when using variables, query params are preserved automatically
+    set $proxy_url "http://$upstream_host:$upstream_port";
     proxy_pass $proxy_url;
     
     proxy_set_header Host $host;
