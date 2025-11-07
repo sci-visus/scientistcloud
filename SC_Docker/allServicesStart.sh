@@ -216,6 +216,15 @@ fi
 if [ -d "$DASHBOARDS_DIR" ]; then
     pushd "$DASHBOARDS_DIR"
     
+    # Regenerate registry from actual filenames to ensure keys match what user named them
+    echo "   Regenerating dashboard registry from filenames..."
+    if [ -f "./scripts/regenerate_registry.sh" ]; then
+        ./scripts/regenerate_registry.sh 2>&1 | grep -E "(✅|⚠️|❌|Error|Registering)" || true
+        echo "   ✅ Registry regenerated"
+    else
+        echo "   ⚠️  regenerate_registry.sh not found - using existing registry"
+    fi
+    
     # Initialize all enabled dashboards (generate Dockerfiles and nginx configs)
     # Regenerate to ensure latest fixes are applied (Dockerfiles and nginx configs)
     echo "   Initializing dashboards..."

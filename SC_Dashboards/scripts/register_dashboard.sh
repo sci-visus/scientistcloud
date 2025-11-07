@@ -28,18 +28,23 @@ else
     CONFIG_FILE="$2"
 fi
 
+# Derive the registry key from the actual config file name (matches what user chose in directory)
+# e.g., /path/to/4d_dashboard.json -> 4d_dashboard
+CONFIG_BASENAME=$(basename "$CONFIG_FILE" .json)
+REGISTRY_KEY="$CONFIG_BASENAME"
+
 # Load config to get port and nginx_path if not provided
 if [ -f "$CONFIG_FILE" ]; then
-    DISPLAY_NAME=$(jq -r '.display_name // "'"$DASHBOARD_NAME"'"' "$CONFIG_FILE")
+    DISPLAY_NAME=$(jq -r '.display_name // "'"$REGISTRY_KEY"'"' "$CONFIG_FILE")
     PORT=${3:-$(jq -r '.port // 8050' "$CONFIG_FILE")}
-    NGINX_PATH=${4:-$(jq -r '.nginx_path // "/dashboard/'$(echo "$DASHBOARD_NAME" | tr '[:upper:]' '[:lower:]')'"' "$CONFIG_FILE")}
+    NGINX_PATH=${4:-$(jq -r '.nginx_path // "/dashboard/'$(echo "$REGISTRY_KEY" | tr '[:upper:]' '[:lower:]')'"' "$CONFIG_FILE")}
     # Use relative path for registry
-    CONFIG_FILE_PATH="../dashboards/${DASHBOARD_NAME}.json"
+    CONFIG_FILE_PATH="../dashboards/${CONFIG_BASENAME}.json"
 else
-    DISPLAY_NAME="$DASHBOARD_NAME"
+    DISPLAY_NAME="$REGISTRY_KEY"
     PORT=${3:-8050}
-    NGINX_PATH=${4:-/dashboard/$(echo "$DASHBOARD_NAME" | tr '[:upper:]' '[:lower:]')}
-    CONFIG_FILE_PATH="../dashboards/${DASHBOARD_NAME}.json"
+    NGINX_PATH=${4:-/dashboard/$(echo "$REGISTRY_KEY" | tr '[:upper:]' '[:lower:]')}
+    CONFIG_FILE_PATH="../dashboards/${CONFIG_BASENAME}.json"
 fi
 
 # Update registry using jq
@@ -59,13 +64,14 @@ if [ ! -f "$REGISTRY_FILE" ]; then
 EOF
 fi
 
-# Add or update dashboard entry
-jq --arg name "$DASHBOARD_NAME" \
+# Add or update dashboard entry using the registry key derived from filename
+jq --arg key "$REGISTRY_KEY" \
+   --arg name "$REGISTRY_KEY" \
    --arg display "$DISPLAY_NAME" \
    --arg port "$PORT" \
    --arg path "$NGINX_PATH" \
    --arg config "$CONFIG_FILE_PATH" \
-   '.dashboards[$name] = {
+   '.dashboards[$key] = {
      "name": $name,
      "display_name": $display,
      "enabled": true,
@@ -75,5 +81,5 @@ jq --arg name "$DASHBOARD_NAME" \
    } | .last_updated = "'"$(date -u +"%Y-%m-%dT%H:%M:%SZ")"'"' \
    "$REGISTRY_FILE" > "$REGISTRY_FILE.tmp" && mv "$REGISTRY_FILE.tmp" "$REGISTRY_FILE"
 
-echo "✅ Registered dashboard '$DASHBOARD_NAME' in registry"
+echo "✅ Registered dashboard '$REGISTRY_KEY' in registry (from file: $(basename "$CONFIG_FILE"))"
 
