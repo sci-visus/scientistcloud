@@ -65,17 +65,6 @@ body {
   margin-bottom: 0.5rem;
 }
 
-.sidebar .collapse-btn.left {
-  flex-shrink: 0;
-  margin-top: auto;
-  position: relative !important;
-  transform: none !important;
-  top: auto !important;
-  right: auto !important;
-  align-self: center;
-  margin-top: 0.5rem;
-}
-
 .sidebar .theme-toggle {
   flex-shrink: 0;
   margin-top: 0.5rem;
@@ -127,15 +116,20 @@ body {
 .sidebar.collapsed, .details.collapsed {
   width: 0;
   min-width: 0;
+  overflow: visible; /* Allow collapse button to be visible outside */
+}
+
+/* Ensure collapse buttons are always visible and clickable */
+.sidebar.collapsed .collapse-btn.left,
+.details.collapsed .collapse-btn.right {
+  position: absolute;
+  z-index: 1000; /* High z-index to ensure it's above everything */
+  display: flex !important; /* Force display even when parent is collapsed */
 }
 
 /* Hide resize handles when sidebars are collapsed */
 .sidebar.collapsed ~ .resize-handle-left {
   display: none;
-}
-
-.details.collapsed {
-  /* Right resize handle visibility handled by JavaScript */
 }
 
 /* Resize handles */
@@ -280,12 +274,13 @@ body {
 /* Viewer content */
 .viewer-container {
   flex-grow: 1;
-  padding: 1rem;
+  padding: 0;
   display: flex;
-  align-items: center;
-  justify-content: center;
+  align-items: stretch;
+  justify-content: stretch;
   background: var(--viewer-bg);
   transition: background 0.3s;
+  overflow: hidden;
 }
 
 .viewer-container img {
@@ -294,6 +289,28 @@ body {
   object-fit: contain;
   border: 1px solid var(--panel-border);
   border-radius: 0.5rem;
+}
+
+/* Ensure iframe and dashboard content fill the container */
+.viewer-container iframe,
+.viewer-container #dashboardFrame {
+  width: 100%;
+  height: 100%;
+  border: none;
+  display: block;
+}
+
+.viewer-container > * {
+  width: 100%;
+  height: 100%;
+}
+
+/* Ensure dashboard-container fills viewer-container */
+.viewer-container .dashboard-container {
+  width: 100% !important;
+  height: 100% !important;
+  min-width: 0;
+  min-height: 0;
 }
 
 /* Collapse buttons */
@@ -312,7 +329,7 @@ body {
   justify-content: center;
   cursor: pointer;
   transition: background-color 0.3s;
-  z-index: 2;
+  z-index: 1000; /* High z-index to ensure it's always accessible */
 }
 
 .collapse-btn:hover {
@@ -323,8 +340,20 @@ body {
   right: -16px;
 }
 
+/* When sidebar is collapsed, position button at the left edge */
+.sidebar.collapsed .collapse-btn.left {
+  left: 0;
+  right: auto;
+}
+
 .collapse-btn.right {
   left: -16px;
+}
+
+/* When details sidebar is collapsed, position button at the right edge */
+.details.collapsed .collapse-btn.right {
+  right: 0;
+  left: auto;
 }
 
 /* Theme toggle */
@@ -443,23 +472,35 @@ body {
 /* Dashboard styles */
 .dashboard-container {
   height: 100%;
+  width: 100%;
+  min-height: 0;
+  min-width: 0;
   display: flex;
   flex-direction: column;
+  padding: 0;
+  margin: 0;
+  box-sizing: border-box;
 }
 
 .dashboard-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 1rem;
+  padding: 0.5rem;
   border-bottom: 1px solid var(--panel-border);
   background-color: var(--toolbar-bg);
+  flex-shrink: 0;
 }
 
 .dashboard-content {
   flex: 1;
-  padding: 1rem;
-  overflow: auto;
+  min-height: 0;
+  min-width: 0;
+  padding: 0;
+  margin: 0;
+  overflow: hidden;
+  width: 100%;
+  box-sizing: border-box;
 }
 
 .dashboard-controls {
