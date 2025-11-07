@@ -785,3 +785,58 @@ Viz
 import atexit
 atexit.register(cleanup_mongodb)
 
+# Add health check endpoint for Docker health checks
+# Bokeh doesn't easily support adding routes at runtime, so we'll use a workaround:
+# Create a simple health check by adding it to the document's server context
+try:
+    from tornado.web import RequestHandler
+    import json
+    from datetime import datetime
+    
+    # Create a health check handler
+    class HealthHandler(RequestHandler):
+        def get(self):
+            self.set_header("Content-Type", "application/json")
+            self.write(json.dumps({
+                "status": "healthy",
+                "service": "3DVTK Dashboard",
+                "timestamp": datetime.now().isoformat()
+            }))
+    
+    # Try to add the health endpoint to the Bokeh server
+    # This needs to be done via the server's tornado application
+    doc = curdoc()
+    
+    # Use a callback that runs after the server is fully initialized
+    def add_health_route():
+        try:
+            # Access the server context and add the route
+            if hasattr(doc, 'server_context') and doc.server_context:
+                server_context = doc.server_context
+                if hasattr(server_context, 'application'):
+                    app = server_context.application
+                    # Add the health endpoint route
+                    # Note: Bokeh's tornado app uses a specific structure
+                    # We need to add it to the handlers
+                    if hasattr(app, '_handlers'):
+                        # Add to existing handlers
+                        app._handlers.append((r"/health", HealthHandler))
+                        print("✅ Health endpoint added at /health")
+                    elif hasattr(app, 'add_handlers'):
+                        app.add_handlers(r".*", [(r"/health", HealthHandler)])
+                        print("✅ Health endpoint added at /health")
+        except Exception as e:
+            print(f"⚠️ Could not add health endpoint: {e}")
+            print("   Health checks may fail, but dashboard will still work")
+    
+    # Try to add immediately (may not work if server not ready)
+    add_health_route()
+    
+    # Also try on next tick (after server is ready)
+    from bokeh.io import curdoc as _curdoc
+    _curdoc().add_next_tick_callback(add_health_route)
+    
+except Exception as e:
+    print(f"⚠️ Error setting up health endpoint: {e}")
+    print("   Health checks may fail, but dashboard will still work")
+
