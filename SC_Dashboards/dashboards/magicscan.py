@@ -53,6 +53,7 @@ client, mymongodb, collection, collection1, team_collection, shared_team_collect
 # In Bokeh, we can access URL parameters through curdoc().session_context.request
 has_args = False
 request_args = {}
+init_failed = False
 
 # Try to get URL parameters from Bokeh's request
 try:

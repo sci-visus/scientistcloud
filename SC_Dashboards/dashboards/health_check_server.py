@@ -34,7 +34,15 @@ class HealthCheckHandler(http.server.SimpleHTTPRequestHandler):
             super().log_message(format, *args)
 
 if __name__ == "__main__":
-    with socketserver.TCPServer(("", HEALTH_PORT), HealthCheckHandler) as httpd:
-        print(f"Health check server running on port {HEALTH_PORT}")
-        httpd.serve_forever()
+    try:
+        with socketserver.TCPServer(("", HEALTH_PORT), HealthCheckHandler) as httpd:
+            print(f"✅ Health check server running on port {HEALTH_PORT}")
+            print(f"   Health endpoint: http://localhost:{HEALTH_PORT}/health")
+            httpd.serve_forever()
+    except OSError as e:
+        if "Address already in use" in str(e):
+            print(f"⚠️ Port {HEALTH_PORT} already in use. Health check server may already be running.")
+        else:
+            print(f"❌ Error starting health check server: {e}")
+        raise
 
