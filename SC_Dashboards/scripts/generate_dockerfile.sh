@@ -56,7 +56,14 @@ ENTRY_POINT=$(jq -r '.entry_point' "$CONFIG_FILE")
 ENTRY_POINT_TYPE=$(jq -r '.entry_point_type // "python"' "$CONFIG_FILE")
 DASHBOARD_TYPE=$(jq -r '.type' "$CONFIG_FILE")
 REQUIREMENTS_FILE=$(jq -r '.requirements_file // empty' "$CONFIG_FILE")
-ADDITIONAL_REQUIREMENTS=$(jq -r '.additional_requirements | if length > 0 then join(" ") else "" end' "$CONFIG_FILE")
+# Get additional requirements and check if array has any items
+ADDITIONAL_REQUIREMENTS_RAW=$(jq -r '.additional_requirements // []' "$CONFIG_FILE")
+ADDITIONAL_REQUIREMENTS_COUNT=$(echo "$ADDITIONAL_REQUIREMENTS_RAW" | jq 'length')
+if [ "$ADDITIONAL_REQUIREMENTS_COUNT" -gt 0 ]; then
+    ADDITIONAL_REQUIREMENTS=$(echo "$ADDITIONAL_REQUIREMENTS_RAW" | jq -r 'join(" ")')
+else
+    ADDITIONAL_REQUIREMENTS=""
+fi
 SHARED_UTILITIES=$(jq -r '.shared_utilities[]' "$CONFIG_FILE" 2>/dev/null | tr '\n' ' ' || echo "")
 DASHBOARD_VERSION=$(jq -r '.version // "1.0.0"' "$CONFIG_FILE")
 DASHBOARD_PORT=$(jq -r '.port' "$CONFIG_FILE")
@@ -133,7 +140,41 @@ fi
 TEMPLATE_FILE="$TEMPLATES_DIR/Dockerfile.template"
 OUTPUT_FILE="$DASHBOARDS_DIR/${DASHBOARD_NAME}.Dockerfile"
 
-# Simple template replacement (using sed for portability)
+# First, handle conditional sections BEFORE template replacement
+# Create a temporary file to process conditionals
+TEMP_FILE="${OUTPUT_FILE}.tmp"
+cp "$TEMPLATE_FILE" "$TEMP_FILE"
+
+# Handle ADDITIONAL_REQUIREMENTS conditional
+# Check if there are any additional requirements (explicit count check)
+if [ "$ADDITIONAL_REQUIREMENTS_COUNT" -gt 0 ] && [ -n "$ADDITIONAL_REQUIREMENTS" ]; then
+    # Keep the section, just remove the conditional markers
+    sed -i.bak 's|{{#if ADDITIONAL_REQUIREMENTS}}||g; s|{{/if}}||g' "$TEMP_FILE"
+    rm -f "$TEMP_FILE.bak"
+else
+    # Remove the entire conditional section (match from opening to closing tag)
+    # Use a pattern that matches {{/if}} with escaped forward slash
+    sed -i.bak '/{{#if ADDITIONAL_REQUIREMENTS}}/,/{{\/if}}/d' "$TEMP_FILE"
+    rm -f "$TEMP_FILE.bak"
+fi
+
+# Handle HEALTH_CHECK_PATH conditional
+if [ -n "$HEALTH_CHECK_PATH" ]; then
+    # Keep the section, just remove the conditional markers
+    sed -i.bak 's|{{#if HEALTH_CHECK_PATH}}||g; s|{{/if}}||g' "$TEMP_FILE"
+    rm -f "$TEMP_FILE.bak"
+else
+    # Remove the entire conditional section (match from opening to closing tag)
+    # Use a pattern that matches {{/if}} with escaped forward slash
+    sed -i.bak '/{{#if HEALTH_CHECK_PATH}}/,/{{\/if}}/d' "$TEMP_FILE"
+    rm -f "$TEMP_FILE.bak"
+fi
+
+# Requirements file is always present (build script ensures it), so always include it
+sed -i.bak 's|{{#if REQUIREMENTS_FILE}}||g; s|{{/if}}||g' "$TEMP_FILE"
+rm -f "$TEMP_FILE.bak"
+
+# Now do template replacement
 sed -e "s|{{BASE_IMAGE}}|$BASE_IMAGE|g" \
     -e "s|{{BASE_IMAGE_TAG}}|$BASE_IMAGE_TAG|g" \
     -e "s|{{DASHBOARD_NAME}}|$DASHBOARD_NAME|g" \
@@ -148,30 +189,10 @@ sed -e "s|{{BASE_IMAGE}}|$BASE_IMAGE|g" \
     -e "s|{{SHARED_UTILITIES_SECTION}}|$SHARED_UTILITIES_SECTION|g" \
     -e "s|{{ENVIRONMENT_VARIABLES_SECTION}}|$ENVIRONMENT_VARIABLES_SECTION|g" \
     -e "s|{{CMD_SECTION}}|$CMD_SECTION|g" \
-    "$TEMPLATE_FILE" > "$OUTPUT_FILE"
+    "$TEMP_FILE" > "$OUTPUT_FILE"
 
-# Handle conditional sections
-# Requirements file is always present (build script ensures it), so always include it
-sed -i.bak 's|{{#if REQUIREMENTS_FILE}}|#|g; s|{{/if}}||g' "$OUTPUT_FILE"
-rm -f "$OUTPUT_FILE.bak"
-
-# Handle ADDITIONAL_REQUIREMENTS conditional
-if [ -n "$ADDITIONAL_REQUIREMENTS" ]; then
-    sed -i.bak 's|{{#if ADDITIONAL_REQUIREMENTS}}|#|g; s|{{/if}}||g' "$OUTPUT_FILE"
-    rm -f "$OUTPUT_FILE.bak"
-else
-    sed -i.bak '/{{#if ADDITIONAL_REQUIREMENTS}}/,/{{/if}}/d' "$OUTPUT_FILE"
-    rm -f "$OUTPUT_FILE.bak"
-fi
-
-# Handle HEALTH_CHECK_PATH conditional
-if [ -n "$HEALTH_CHECK_PATH" ]; then
-    sed -i.bak 's|{{#if HEALTH_CHECK_PATH}}|#|g; s|{{/if}}||g' "$OUTPUT_FILE"
-    rm -f "$OUTPUT_FILE.bak"
-else
-    sed -i.bak '/{{#if HEALTH_CHECK_PATH}}/,/{{/if}}/d' "$OUTPUT_FILE"
-    rm -f "$OUTPUT_FILE.bak"
-fi
+# Clean up temp file
+rm -f "$TEMP_FILE"
 
 # Handle BUILD_ARGS (if any)
 if [ -n "$BUILD_ARGS" ]; then
