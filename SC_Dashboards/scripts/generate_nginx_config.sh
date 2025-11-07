@@ -58,12 +58,16 @@ APP_PATH=$(jq -r '.app_path // empty' "$CONFIG_FILE")
 # If app_path is not specified, determine it based on dashboard type
 if [ -z "$APP_PATH" ] || [ "$APP_PATH" == "null" ]; then
     if [[ "$DASHBOARD_TYPE" == "bokeh" ]]; then
-        # For Bokeh apps, use the dashboard name as the app path
-        # Prefer command line name (most accurate), fallback to config file name
-        if [ -n "$DASHBOARD_NAME" ]; then
-            APP_PATH="/${DASHBOARD_NAME}/"
+        # For Bokeh apps, the app path matches the entry_point filename (without .py extension)
+        # Bokeh serves OpenVisusSlice.py at /OpenVisusSlice/ (preserving case)
+        ENTRY_POINT=$(jq -r '.entry_point // empty' "$CONFIG_FILE")
+        if [ -n "$ENTRY_POINT" ] && [ "$ENTRY_POINT" != "null" ]; then
+            # Remove .py or .ipynb extension to get the app path (preserving case)
+            ENTRY_BASENAME=$(basename "$ENTRY_POINT" .py)
+            ENTRY_BASENAME=$(basename "$ENTRY_BASENAME" .ipynb)
+            APP_PATH="/${ENTRY_BASENAME}/"
         else
-            # Fallback to dashboard name from config file
+            # Fallback to dashboard name from config (preserving case)
             DASHBOARD_NAME_FROM_CONFIG=$(jq -r '.name // empty' "$CONFIG_FILE")
             if [ -n "$DASHBOARD_NAME_FROM_CONFIG" ] && [ "$DASHBOARD_NAME_FROM_CONFIG" != "null" ]; then
                 APP_PATH="/${DASHBOARD_NAME_FROM_CONFIG}/"
