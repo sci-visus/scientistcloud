@@ -163,7 +163,7 @@ function getDashboardConfig($dashboardType) {
         'openvisus' => [
             'name' => 'OpenVisus Slice Explorer',
             'type' => 'openvisus',
-            'url_template' => '/dashboard/openvisusslice/?uuid={uuid}&server={server}&name={name}',
+            'url_template' => '/dashboard/OpenVisusSlice/?uuid={uuid}&server={server}&name={name}',
             'supported_formats' => [], // Use supported_dimensions instead
             'description' => 'Interactive 3D volume rendering with OpenVisus'
         ],
@@ -171,7 +171,7 @@ function getDashboardConfig($dashboardType) {
         'OpenVisusSlice' => [
             'name' => 'OpenVisus Slice Explorer',
             'type' => 'dash',
-            'url_template' => '/dashboard/openvisusslice/?uuid={uuid}&server={server}&name={name}',
+            'url_template' => '/dashboard/OpenVisusSlice/?uuid={uuid}&server={server}&name={name}',
             'supported_formats' => [],
             'description' => 'Interactive 3D volume rendering with OpenVisus'
         ],
@@ -185,7 +185,7 @@ function getDashboardConfig($dashboardType) {
         '3DVTK' => [
             'name' => '3D VTK Dashboard',
             'type' => 'vtk',
-            'url_template' => '/dashboard/vtk/?uuid={uuid}&server={server}&name={name}',
+            'url_template' => '/dashboard/3DVTK/?uuid={uuid}&server={server}&name={name}',
             'supported_formats' => [],
             'description' => 'Interactive 3D visualization using VTK'
         ],

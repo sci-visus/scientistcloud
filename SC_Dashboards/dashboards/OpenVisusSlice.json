@@ -25,7 +25,7 @@
     "DB_NAME": "${DB_NAME}",
     "MONGO_URL": "${MONGO_URL}"
   },
-  "nginx_path": "/dashboard/openvisusslice",
+  "nginx_path": "/dashboard/OpenVisusSlice",
   "health_check_path": "/health",
   "supported_dimensions": ["2D", "3D"],
   "build_args": {

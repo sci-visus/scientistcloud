@@ -21,8 +21,8 @@
       "display_name": "3D VTK Dashboard",
       "description": "Dashboard description",
       "port": 8051,
-      "nginx_path": "/dashboard/vtk",
-      "url_template": "/dashboard/vtk/?uuid={uuid}&server={server}&name={name}",
+      "nginx_path": "/dashboard/3DVTK",
+      "url_template": "/dashboard/3DVTK/?uuid={uuid}&server={server}&name={name}",
       "enabled": true,
       "config_file": "../dashboards/3DVTK.json"
     },
@@ -57,8 +57,8 @@
       "display_name": "OpenVisus Slice Explorer",
       "description": "Dashboard description",
       "port": 8054,
-      "nginx_path": "/dashboard/openvisusslice",
-      "url_template": "/dashboard/openvisusslice/?uuid={uuid}&server={server}&name={name}",
+      "nginx_path": "/dashboard/OpenVisusSlice",
+      "url_template": "/dashboard/OpenVisusSlice/?uuid={uuid}&server={server}&name={name}",
       "enabled": true,
       "config_file": "../dashboards/OpenVisusSlice.json"
     }

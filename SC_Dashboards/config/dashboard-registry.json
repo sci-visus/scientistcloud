@@ -20,7 +20,7 @@
       "display_name": "3D VTK Dashboard",
       "enabled": true,
       "port": 8051,
-      "nginx_path": "/dashboard/vtk",
+      "nginx_path": "/dashboard/3DVTK",
       "config_file": "../dashboards/3DVTK.json"
     },
     "4D_Dashboard": {
@@ -44,7 +44,7 @@
       "display_name": "OpenVisus Slice Explorer",
       "enabled": true,
       "port": 8054,
-      "nginx_path": "/dashboard/openvisusslice",
+      "nginx_path": "/dashboard/OpenVisusSlice",
       "config_file": "../dashboards/OpenVisusSlice.json"
     }
   }
