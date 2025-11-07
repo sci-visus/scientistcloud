@@ -113,3 +113,4 @@ echo "   cd ~/ScientistCloud2.0/scientistcloud/SC_Dashboards"
 echo "   # Or: cd ~/ScientistCloud2.0/scientistcloud/SC_Docker"
 echo "   ./allServicesStart.sh --dashboards-only"
 
+

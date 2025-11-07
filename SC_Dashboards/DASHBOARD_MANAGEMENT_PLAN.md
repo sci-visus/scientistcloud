@@ -190,3 +190,4 @@ cd /Users/amygooch/GIT/ScientistCloud_2.0/scientistcloud/SC_Dashboards
 6. Migrate all dashboards
 7. Update documentation
 
+

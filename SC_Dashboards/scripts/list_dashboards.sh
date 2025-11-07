@@ -29,3 +29,4 @@ jq -r '.dashboards | to_entries | .[] |
 echo ""
 echo "Total: $(jq '.dashboards | length' "$REGISTRY_FILE") dashboard(s)"
 
+

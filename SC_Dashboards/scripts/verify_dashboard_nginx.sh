@@ -131,3 +131,4 @@ echo "  1. Generate configs: ./scripts/generate_nginx_config.sh <dashboard-name>
 echo "  2. Copy configs: ./scripts/setup_dashboards_nginx.sh \"$VISUS_DOCKER_PATH\""
 echo "  3. Reload nginx: docker exec visstore_nginx nginx -s reload"
 
+

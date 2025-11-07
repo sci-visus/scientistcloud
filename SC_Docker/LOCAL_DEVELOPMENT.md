@@ -174,3 +174,4 @@ The script uses `.env.local` for local development. Key variables:
 - The portal container can access dashboards via Docker network
 - For production-like testing, you can set up local nginx (see `./local-dev.sh nginx`)
 
+
