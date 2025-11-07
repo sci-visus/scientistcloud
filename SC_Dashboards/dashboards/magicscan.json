@@ -3,7 +3,7 @@
   "display_name": "MagicScan Dashboard",
   "description": "Interactive MagicScan visualization using OpenVisus",
   "version": "1.0.0",
-  "type": "bokeh",
+  "type": "panel",
   "entry_point": "magicscan.py",
   "entry_point_type": "python",
   "port": 8053,

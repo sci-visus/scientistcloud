@@ -106,6 +106,61 @@ if [ -n "$SHARED_UTILITIES" ]; then
     done
 fi
 
+# Check if VTK/PyVista is needed (check additional_requirements for vtk or pyvista)
+NEEDS_VTK_X11=false
+if [ "$ADDITIONAL_REQUIREMENTS_COUNT" -gt 0 ]; then
+    # Check if any requirement contains vtk or pyvista (case insensitive)
+    if echo "$ADDITIONAL_REQUIREMENTS_RAW" | jq -r '.[]' | grep -qiE '(vtk|pyvista)'; then
+        NEEDS_VTK_X11=true
+    fi
+fi
+
+# Build VTK X11 libraries section if needed
+VTK_X11_SECTION=""
+if [ "$NEEDS_VTK_X11" = true ]; then
+    VTK_X11_SECTION="# Environment variables for headless VTK/PyVista rendering\n"
+    VTK_X11_SECTION="${VTK_X11_SECTION}ENV DISPLAY=:99\n"
+    VTK_X11_SECTION="${VTK_X11_SECTION}ENV QT_QPA_PLATFORM=offscreen\n"
+    VTK_X11_SECTION="${VTK_X11_SECTION}ENV MESA_GL_VERSION_OVERRIDE=3.3\n"
+    VTK_X11_SECTION="${VTK_X11_SECTION}ENV MESA_GLSL_VERSION_OVERRIDE=330\n"
+    VTK_X11_SECTION="${VTK_X11_SECTION}\n"
+    VTK_X11_SECTION="${VTK_X11_SECTION}# Install system dependencies for PyVista/VTK rendering\n"
+    VTK_X11_SECTION="${VTK_X11_SECTION}RUN apt-get update && apt-get install -y --no-install-recommends \\\\\n"
+    VTK_X11_SECTION="${VTK_X11_SECTION}        libx11-6 \\\\\n"
+    VTK_X11_SECTION="${VTK_X11_SECTION}        libxext6 \\\\\n"
+    VTK_X11_SECTION="${VTK_X11_SECTION}        libxrender1 \\\\\n"
+    VTK_X11_SECTION="${VTK_X11_SECTION}        libxtst6 \\\\\n"
+    VTK_X11_SECTION="${VTK_X11_SECTION}        libxi6 \\\\\n"
+    VTK_X11_SECTION="${VTK_X11_SECTION}        libxrandr2 \\\\\n"
+    VTK_X11_SECTION="${VTK_X11_SECTION}        libxss1 \\\\\n"
+    VTK_X11_SECTION="${VTK_X11_SECTION}        libxcb1 \\\\\n"
+    VTK_X11_SECTION="${VTK_X11_SECTION}        libxcomposite1 \\\\\n"
+    VTK_X11_SECTION="${VTK_X11_SECTION}        libxcursor1 \\\\\n"
+    VTK_X11_SECTION="${VTK_X11_SECTION}        libxdamage1 \\\\\n"
+    VTK_X11_SECTION="${VTK_X11_SECTION}        libxfixes3 \\\\\n"
+    VTK_X11_SECTION="${VTK_X11_SECTION}        libxinerama1 \\\\\n"
+    VTK_X11_SECTION="${VTK_X11_SECTION}        libxmu6 \\\\\n"
+    VTK_X11_SECTION="${VTK_X11_SECTION}        libxpm4 \\\\\n"
+    VTK_X11_SECTION="${VTK_X11_SECTION}        libxaw7 \\\\\n"
+    VTK_X11_SECTION="${VTK_X11_SECTION}        libxft2 \\\\\n"
+    VTK_X11_SECTION="${VTK_X11_SECTION}        libfontconfig1 \\\\\n"
+    VTK_X11_SECTION="${VTK_X11_SECTION}        libfreetype6 \\\\\n"
+    VTK_X11_SECTION="${VTK_X11_SECTION}        libgl1-mesa-dri \\\\\n"
+    VTK_X11_SECTION="${VTK_X11_SECTION}        libglu1-mesa \\\\\n"
+    VTK_X11_SECTION="${VTK_X11_SECTION}        libglib2.0-0 \\\\\n"
+    VTK_X11_SECTION="${VTK_X11_SECTION}        libgthread-2.0-0 \\\\\n"
+    VTK_X11_SECTION="${VTK_X11_SECTION}        libgtk-3-0 \\\\\n"
+    VTK_X11_SECTION="${VTK_X11_SECTION}        libgdk-pixbuf-xlib-2.0-0 \\\\\n"
+    VTK_X11_SECTION="${VTK_X11_SECTION}        libcairo-gobject2 \\\\\n"
+    VTK_X11_SECTION="${VTK_X11_SECTION}        libpango-1.0-0 \\\\\n"
+    VTK_X11_SECTION="${VTK_X11_SECTION}        libpangocairo-1.0-0 \\\\\n"
+    VTK_X11_SECTION="${VTK_X11_SECTION}        libatk1.0-0 \\\\\n"
+    VTK_X11_SECTION="${VTK_X11_SECTION}        libcairo2 \\\\\n"
+    VTK_X11_SECTION="${VTK_X11_SECTION}        libpangoft2-1.0-0 \\\\\n"
+    VTK_X11_SECTION="${VTK_X11_SECTION}    && apt-get clean \\\\\n"
+    VTK_X11_SECTION="${VTK_X11_SECTION}    && rm -rf /var/lib/apt/lists/*\n"
+fi
+
 # Build environment variables section
 ENVIRONMENT_VARIABLES_SECTION=""
 if [ -n "$ENVIRONMENT_VARS" ] && [ "$ENVIRONMENT_VARS" != "{}" ]; then
@@ -175,6 +230,20 @@ sed -i.bak 's|{{#if REQUIREMENTS_FILE}}||g; s|{{/if}}||g' "$TEMP_FILE"
 rm -f "$TEMP_FILE.bak"
 
 # Now do template replacement
+# Handle VTK_X11_SECTION separately since it contains newlines
+if [ -n "$VTK_X11_SECTION" ]; then
+    # Use a temporary file to handle the replacement with newlines
+    echo -e "$VTK_X11_SECTION" > /tmp/vtk_x11_section.txt
+    # Replace the placeholder with the content from file
+    sed -i.bak "/{{VTK_X11_SECTION}}/r /tmp/vtk_x11_section.txt" "$TEMP_FILE"
+    sed -i.bak "s|{{VTK_X11_SECTION}}||g" "$TEMP_FILE"
+    rm -f "$TEMP_FILE.bak" /tmp/vtk_x11_section.txt
+else
+    # Remove the placeholder if VTK X11 is not needed
+    sed -i.bak "s|{{VTK_X11_SECTION}}||g" "$TEMP_FILE"
+    rm -f "$TEMP_FILE.bak"
+fi
+
 sed -e "s|{{BASE_IMAGE}}|$BASE_IMAGE|g" \
     -e "s|{{BASE_IMAGE_TAG}}|$BASE_IMAGE_TAG|g" \
     -e "s|{{DASHBOARD_NAME}}|$DASHBOARD_NAME|g" \

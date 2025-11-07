@@ -144,13 +144,6 @@ class ViewerManager {
             });
         }
 
-        // Dashboard selector change
-        const dashboardSelector = document.getElementById('dashboardSelector');
-        if (dashboardSelector) {
-            dashboardSelector.addEventListener('change', (e) => {
-                this.handleDashboardChange(e.target.value);
-            });
-        }
 
         // Refresh button
         const refreshButton = document.querySelector('[onclick="refreshDashboard()"]');
@@ -402,17 +395,7 @@ class ViewerManager {
         
         const dashboardHeader = document.createElement('div');
         dashboardHeader.className = 'dashboard-header';
-        dashboardHeader.innerHTML = `
-            <h4>${datasetName}</h4>
-            <div class="dashboard-controls">
-                <select id="dashboardSelector" class="form-select form-select-sm">
-                    ${this.generateDashboardOptions(datasetId)}
-                </select>
-                <button class="btn btn-sm btn-outline-secondary" onclick="refreshDashboard()">
-                    <i class="fas fa-refresh"></i>
-                </button>
-            </div>
-        `;
+        dashboardHeader.innerHTML = `<h4>${datasetName}</h4>`;
         
         const dashboardContent = document.createElement('div');
         dashboardContent.className = 'dashboard-content';
@@ -423,9 +406,6 @@ class ViewerManager {
         
         viewerContainer.innerHTML = '';
         viewerContainer.appendChild(dashboardContainer);
-        
-        // Setup dashboard selector
-        this.setupDashboardSelector(datasetId);
     }
 
     /**
@@ -457,30 +437,6 @@ class ViewerManager {
         return url;
     }
 
-    /**
-     * Generate dashboard options
-     */
-    generateDashboardOptions(datasetId) {
-        let options = '';
-        
-        Object.values(this.viewers).forEach(viewer => {
-            options += `<option value="${viewer.type}">${viewer.name}</option>`;
-        });
-        
-        return options;
-    }
-
-    /**
-     * Setup dashboard selector
-     */
-    setupDashboardSelector(datasetId) {
-        const selector = document.getElementById('dashboardSelector');
-        if (selector) {
-            selector.addEventListener('change', (e) => {
-                this.handleDashboardChange(e.target.value);
-            });
-        }
-    }
 
     /**
      * Show processing dashboard

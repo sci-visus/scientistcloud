@@ -15,6 +15,7 @@ ENV DOMAIN_NAME=${DOMAIN_NAME}
 # Echo build information
 RUN echo "DEPLOY SERVER: ${DEPLOY_SERVER}"
 
+{{VTK_X11_SECTION}}
 # Copy application code
 ENV APP_HOME=/app
 WORKDIR $APP_HOME

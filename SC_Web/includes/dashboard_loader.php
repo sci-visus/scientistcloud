@@ -59,20 +59,6 @@ function displayReadyDashboard($dataset, $viewerUrl, $dashboardType) {
     <div class="dashboard-container">
         <div class="dashboard-header">
             <h4><?php echo htmlspecialchars($dataset['name']); ?></h4>
-            <div class="dashboard-controls">
-                <select id="dashboardSelector" class="form-select form-select-sm">
-                    <?php
-                    $availableDashboards = getAvailableDashboards($dataset['id']);
-                    foreach ($availableDashboards as $dashboard) {
-                        $selected = $dashboard['type'] === $dashboardType ? 'selected' : '';
-                        echo "<option value=\"{$dashboard['type']}\" {$selected}>{$dashboard['name']}</option>";
-                    }
-                    ?>
-                </select>
-                <button class="btn btn-sm btn-outline-secondary" onclick="refreshDashboard()">
-                    <i class="fas fa-refresh"></i>
-                </button>
-            </div>
         </div>
         <div class="dashboard-content">
             <iframe id="dashboardFrame" 
@@ -310,12 +296,6 @@ if (!function_exists('formatFileSize')) {
     overflow: auto;
 }
 
-.dashboard-controls {
-    display: flex;
-    gap: 0.5rem;
-    align-items: center;
-}
-
 .processing-content,
 .unsupported-content,
 .error-content,
@@ -401,17 +381,4 @@ function onDashboardError() {
     console.error('Dashboard failed to load');
     alert('Failed to load dashboard. Please try again.');
 }
-
-// Handle dashboard selector change
-document.addEventListener('DOMContentLoaded', function() {
-    const selector = document.getElementById('dashboardSelector');
-    if (selector) {
-        selector.addEventListener('change', function() {
-            const datasetId = new URLSearchParams(window.location.search).get('dataset_id');
-            if (datasetId) {
-                loadDashboard(datasetId, this.value);
-            }
-        });
-    }
-});
 </script>

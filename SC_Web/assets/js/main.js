@@ -100,12 +100,6 @@ function setupEventListeners() {
         }
     });
     
-    // Dashboard selector change
-    const dashboardSelector = document.getElementById('dashboardSelector');
-    if (dashboardSelector) {
-        dashboardSelector.addEventListener('change', handleDashboardChange);
-    }
-    
     // Viewer type change
     const viewerType = document.getElementById('viewerType');
     if (viewerType) {
@@ -386,18 +380,6 @@ function loadDashboard(datasetId, datasetName, datasetUuid, datasetServer) {
                 </div>
             `;
         });
-}
-
-/**
- * Handle dashboard change
- */
-function handleDashboardChange(event) {
-    const dashboardType = event.target.value;
-    const datasetId = new URLSearchParams(window.location.search).get('dataset_id');
-    
-    if (datasetId) {
-        loadDashboard(datasetId, null, null, null, dashboardType);
-    }
 }
 
 /**
