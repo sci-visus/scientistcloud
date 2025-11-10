@@ -38,6 +38,11 @@ class SCLibClient {
             if ($data) {
                 curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($data));
             }
+        } elseif ($method === 'PUT') {
+            curl_setopt($ch, CURLOPT_CUSTOMREQUEST, 'PUT');
+            if ($data) {
+                curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($data));
+            }
         } elseif ($method === 'DELETE') {
             curl_setopt($ch, CURLOPT_CUSTOMREQUEST, 'DELETE');
         }
@@ -170,12 +175,37 @@ class SCLibClient {
     /**
      * Delete dataset
      */
-    public function deleteDataset($datasetId, $userId) {
+    public function deleteDataset($datasetId, $userEmail) {
         try {
-            $response = $this->makeRequest("/api/dataset/$datasetId", 'DELETE', null, ['user_id' => $userId]);
+            // Use the SCLib Dataset Management API endpoint: DELETE /api/v1/datasets/{identifier}
+            $params = [];
+            if ($userEmail) {
+                $params['user_email'] = $userEmail;
+            }
+            
+            $response = $this->makeRequest("/api/v1/datasets/$datasetId", 'DELETE', null, $params);
             return $response;
         } catch (Exception $e) {
             error_log("Failed to delete dataset: " . $e->getMessage());
+            return ['success' => false, 'error' => $e->getMessage()];
+        }
+    }
+    
+    /**
+     * Update dataset
+     */
+    public function updateDataset($datasetId, $updateData, $userEmail = null) {
+        try {
+            $params = [];
+            if ($userEmail) {
+                $params['user_email'] = $userEmail;
+            }
+            
+            // Use PUT method for updates
+            $response = $this->makeRequest("/api/v1/datasets/$datasetId", 'PUT', $updateData, $params);
+            return $response;
+        } catch (Exception $e) {
+            error_log("Failed to update dataset: " . $e->getMessage());
             return ['success' => false, 'error' => $e->getMessage()];
         }
     }
@@ -292,6 +322,75 @@ class SCLibClient {
             return ['success' => false, 'error' => $e->getMessage()];
         }
     }
+    
+    /**
+     * Share dataset with user
+     */
+    public function shareDatasetWithUser($datasetUuid, $userEmail, $ownerEmail, $googleDriveLink = '') {
+        try {
+            $data = [
+                'dataset_uuid' => $datasetUuid,
+                'user_email' => $userEmail,
+                'google_drive_link' => $googleDriveLink
+            ];
+            $response = $this->makeRequest('/api/v1/share/user', 'POST', $data, ['owner_email' => $ownerEmail]);
+            return $response;
+        } catch (Exception $e) {
+            error_log("Failed to share dataset with user: " . $e->getMessage());
+            return ['success' => false, 'error' => $e->getMessage()];
+        }
+    }
+    
+    /**
+     * Share dataset with team
+     */
+    public function shareDatasetWithTeam($datasetUuid, $teamName, $ownerEmail, $teamUuid = null, $googleDriveLink = '') {
+        try {
+            $data = [
+                'dataset_uuid' => $datasetUuid,
+                'team_name' => $teamName,
+                'google_drive_link' => $googleDriveLink
+            ];
+            if ($teamUuid) {
+                $data['team_uuid'] = $teamUuid;
+            }
+            $response = $this->makeRequest('/api/v1/share/team', 'POST', $data, ['owner_email' => $ownerEmail]);
+            return $response;
+        } catch (Exception $e) {
+            error_log("Failed to share dataset with team: " . $e->getMessage());
+            return ['success' => false, 'error' => $e->getMessage()];
+        }
+    }
+    
+    /**
+     * Get user teams
+     */
+    public function getUserTeams($userEmail) {
+        try {
+            $response = $this->makeRequest('/api/v1/teams/by-user', 'GET', null, ['user_email' => $userEmail]);
+            return $response;
+        } catch (Exception $e) {
+            error_log("Failed to get user teams: " . $e->getMessage());
+            return ['success' => false, 'error' => $e->getMessage(), 'teams' => []];
+        }
+    }
+    
+    /**
+     * Create a new team
+     */
+    public function createTeam($teamName, $ownerEmail, $emails = []) {
+        try {
+            $data = [
+                'team_name' => $teamName,
+                'emails' => $emails
+            ];
+            $response = $this->makeRequest('/api/v1/teams/create', 'POST', $data, ['owner_email' => $ownerEmail]);
+            return $response;
+        } catch (Exception $e) {
+            error_log("Failed to create team: " . $e->getMessage());
+            return ['success' => false, 'error' => $e->getMessage()];
+        }
+    }
 }
 
 // Global SCLib client instance
@@ -307,6 +406,19 @@ function getSCLibClient() {
         $sclib_client = new SCLibClient($api_url);
     }
     return $sclib_client;
+}
+
+/**
+ * Get SCLib client for sharing and team endpoints (port 5003)
+ */
+function getSCLibSharingClient() {
+    static $sharing_client = null;
+    if ($sharing_client === null) {
+        // Sharing endpoints use SCLIB_SHARING_URL (port 5003)
+        $sharing_url = getenv('SCLIB_SHARING_URL') ?: 'http://localhost:5003';
+        $sharing_client = new SCLibClient($sharing_url);
+    }
+    return $sharing_client;
 }
 
 /**

@@ -489,52 +489,199 @@ class DatasetManager {
         const detailsContainer = document.getElementById('datasetDetails');
         if (!detailsContainer) return;
 
+        // Format tags for display/editing
+        const tagsValue = Array.isArray(dataset.tags) ? dataset.tags.join(', ') : (dataset.tags || '');
+        
+        // Dashboard options (you may want to load these dynamically)
+        const dashboardOptions = [
+            'OpenVisusSlice',
+            '4D_Dashboard',
+            '3DVTK',
+            'magicscan',
+            'openvisus'
+        ];
+        
         const html = `
             <div class="dataset-details">
-                <h6><i class="fas fa-info-circle"></i> ${dataset.name}</h6>
-                <div class="details-grid">
-                    <div class="detail-item">
-                        <span class="detail-label">UUID:</span>
-                        <span class="detail-value">${dataset.uuid}</span>
+                <h6><i class="fas fa-info-circle"></i> Dataset Details</h6>
+                
+                <form id="datasetDetailsForm" class="dataset-details-form">
+                    <input type="hidden" name="dataset_id" value="${dataset.id || dataset.uuid}">
+                    
+                    <!-- Editable Fields -->
+                    <div class="editable-fields mb-3">
+                        <h6 class="text-primary"><i class="fas fa-edit"></i> Editable Fields</h6>
+                        
+                        <div class="mb-2">
+                            <label class="form-label small">Name:</label>
+                            <input type="text" class="form-control form-control-sm" name="name" 
+                                   value="${this.escapeHtml(dataset.name || '')}" 
+                                   placeholder="Dataset name">
+                        </div>
+                        
+                        <div class="mb-2">
+                            <label class="form-label small">Tags:</label>
+                            <input type="text" class="form-control form-control-sm" name="tags" 
+                                   value="${this.escapeHtml(tagsValue)}" 
+                                   placeholder="Comma-separated tags">
+                        </div>
+                        
+                        <div class="mb-2">
+                            <label class="form-label small">Folder:</label>
+                            <input type="text" class="form-control form-control-sm" name="folder_uuid" 
+                                   value="${this.escapeHtml(dataset.folder_uuid || '')}" 
+                                   placeholder="Folder UUID">
+                        </div>
+                        
+                        <div class="mb-2">
+                            <label class="form-label small">Group:</label>
+                            <input type="text" class="form-control form-control-sm" name="team_uuid" 
+                                   value="${this.escapeHtml(dataset.team_uuid || '')}" 
+                                   placeholder="Team/Group UUID">
+                        </div>
+                        
+                        <div class="mb-2">
+                            <label class="form-label small">Dimensions:</label>
+                            <input type="text" class="form-control form-control-sm" name="dimensions" 
+                                   value="${this.escapeHtml(dataset.dimensions || '')}" 
+                                   placeholder="e.g., 1024x1024x100">
+                        </div>
+                        
+                        <div class="mb-2">
+                            <label class="form-label small">Dashboard Preferred:</label>
+                            <select class="form-select form-select-sm" name="preferred_dashboard">
+                                ${dashboardOptions.map(opt => 
+                                    `<option value="${opt}" ${(dataset.preferred_dashboard || '').toLowerCase() === opt.toLowerCase() ? 'selected' : ''}>${opt}</option>`
+                                ).join('')}
+                            </select>
+                        </div>
+                        
+                        <button type="submit" class="btn btn-sm btn-primary mt-2">
+                            <i class="fas fa-save"></i> Save Changes
+                        </button>
                     </div>
-                    <div class="detail-item">
-                        <span class="detail-label">Size:</span>
-                        <span class="detail-value">${this.formatFileSize(dataset.data_size)}</span>
+                    
+                    <!-- Non-editable Fields -->
+                    <div class="readonly-fields">
+                        <h6 class="text-secondary"><i class="fas fa-info"></i> Other Data</h6>
+                        
+                        <div class="detail-item mb-1">
+                            <span class="detail-label">Size:</span>
+                            <span class="detail-value">${this.formatFileSize(dataset.data_size || 0)}</span>
+                        </div>
+                        
+                        <div class="detail-item mb-1">
+                            <span class="detail-label">Created:</span>
+                            <span class="detail-value">${this.formatDate(dataset.created_at || dataset.time)}</span>
+                        </div>
+                        
+                        <div class="detail-item mb-1">
+                            <span class="detail-label">Sensor:</span>
+                            <span class="detail-value">${this.escapeHtml(dataset.sensor || 'Unknown')}</span>
+                        </div>
+                        
+                        <div class="detail-item mb-1">
+                            <span class="detail-label">Status:</span>
+                            <span class="badge bg-${this.getStatusColor(dataset.status)}">${this.escapeHtml(dataset.status || 'unknown')}</span>
+                        </div>
+                        
+                        <div class="detail-item mb-1">
+                            <span class="detail-label">Compression Status:</span>
+                            <span class="badge bg-${this.getStatusColor(dataset.compression_status)}">${this.escapeHtml(dataset.compression_status || 'unknown')}</span>
+                        </div>
+                        
+                        <div class="detail-item mb-1">
+                            <span class="detail-label">UUID:</span>
+                            <span class="detail-value small text-muted">${this.escapeHtml(dataset.uuid || '')}</span>
+                        </div>
                     </div>
-                    <div class="detail-item">
-                        <span class="detail-label">Status:</span>
-                        <span class="badge bg-${this.getStatusColor(dataset.status)}">${dataset.status}</span>
+                    
+                    <div class="dataset-actions mt-3 pt-3 border-top">
+                        <button type="button" class="btn btn-sm btn-outline-secondary" data-action="share" data-dataset-id="${dataset.id || dataset.uuid}">
+                            <i class="fas fa-share"></i> Share
+                        </button>
+                        <button type="button" class="btn btn-sm btn-outline-danger" data-action="delete" data-dataset-id="${dataset.id || dataset.uuid}">
+                            <i class="fas fa-trash"></i> Delete
+                        </button>
                     </div>
-                    <div class="detail-item">
-                        <span class="detail-label">Sensor:</span>
-                        <span class="detail-value">${dataset.sensor}</span>
-                    </div>
-                    <div class="detail-item">
-                        <span class="detail-label">Created:</span>
-                        <span class="detail-value">${this.formatDate(dataset.created_at)}</span>
-                    </div>
-                    ${dataset.dimensions ? `
-                    <div class="detail-item">
-                        <span class="detail-label">Dimensions:</span>
-                        <span class="detail-value">${dataset.dimensions}</span>
-                    </div>
-                    ` : ''}
-                </div>
-                <div class="dataset-actions mt-3">
-                    <button class="btn btn-sm btn-primary" data-action="view" data-dataset-id="${dataset.id}">
-                        <i class="fas fa-eye"></i> View
-                    </button>
-                    <button class="btn btn-sm btn-outline-secondary" data-action="share" data-dataset-id="${dataset.id}">
-                        <i class="fas fa-share"></i> Share
-                    </button>
-                    <button class="btn btn-sm btn-outline-danger" data-action="delete" data-dataset-id="${dataset.id}">
-                        <i class="fas fa-trash"></i> Delete
-                    </button>
-                </div>
+                </form>
             </div>
         `;
 
         detailsContainer.innerHTML = html;
+        
+        // Attach form submit handler
+        const form = detailsContainer.querySelector('#datasetDetailsForm');
+        if (form) {
+            form.addEventListener('submit', (e) => {
+                e.preventDefault();
+                this.saveDatasetChanges(form, dataset.id || dataset.uuid);
+            });
+        }
+    }
+    
+    /**
+     * Save dataset changes
+     */
+    async saveDatasetChanges(form, datasetId) {
+        const formData = new FormData(form);
+        const updateData = {
+            dataset_id: datasetId,
+            name: formData.get('name'),
+            tags: formData.get('tags'),
+            folder_uuid: formData.get('folder_uuid'),
+            team_uuid: formData.get('team_uuid'),
+            dimensions: formData.get('dimensions'),
+            preferred_dashboard: formData.get('preferred_dashboard')
+        };
+        
+        // Show loading state
+        const submitBtn = form.querySelector('button[type="submit"]');
+        const originalText = submitBtn.innerHTML;
+        submitBtn.disabled = true;
+        submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Saving...';
+        
+        try {
+            const response = await fetch(`${getApiBasePath()}/update-dataset.php`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify(updateData)
+            });
+            
+            const data = await response.json();
+            
+            if (data.success) {
+                // Show success message
+                const alert = document.createElement('div');
+                alert.className = 'alert alert-success alert-dismissible fade show mt-2';
+                alert.innerHTML = `
+                    <i class="fas fa-check-circle"></i> Dataset updated successfully!
+                    <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                `;
+                form.insertBefore(alert, form.firstChild);
+                
+                // Reload dataset details to show updated data
+                setTimeout(() => {
+                    this.loadDatasetDetails(datasetId);
+                }, 1000);
+            } else {
+                throw new Error(data.error || 'Failed to update dataset');
+            }
+        } catch (error) {
+            console.error('Error saving dataset changes:', error);
+            const alert = document.createElement('div');
+            alert.className = 'alert alert-danger alert-dismissible fade show mt-2';
+            alert.innerHTML = `
+                <i class="fas fa-exclamation-circle"></i> Error: ${this.escapeHtml(error.message)}
+                <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+            `;
+            form.insertBefore(alert, form.firstChild);
+        } finally {
+            submitBtn.disabled = false;
+            submitBtn.innerHTML = originalText;
+        }
     }
 
     /**
@@ -653,29 +800,329 @@ class DatasetManager {
     }
 
     /**
-     * Share dataset
+     * Share dataset - shows share interface
      */
     async shareDataset(datasetId) {
+        const datasetUuid = this.currentDataset?.uuid || datasetId;
+        const datasetName = this.currentDataset?.name || 'Dataset';
+        
+        // Show share interface in viewerContainer
+        this.showShareInterface(datasetUuid, datasetName);
+    }
+    
+    /**
+     * Show share interface
+     */
+    async showShareInterface(datasetUuid, datasetName) {
+        const viewerContainer = document.getElementById('viewerContainer');
+        if (!viewerContainer) return;
+        
+        // Show loading state
+        viewerContainer.innerHTML = `
+            <div class="text-center">
+                <div class="spinner-border text-primary" role="status">
+                    <span class="visually-hidden">Loading...</span>
+                </div>
+                <p class="mt-2">Loading share options...</p>
+            </div>
+        `;
+        
+        // Load teams
+        let teams = [];
+        try {
+            const teamsResponse = await fetch(`${getApiBasePath()}/get-teams.php`);
+            const teamsData = await teamsResponse.json();
+            if (teamsData.success && teamsData.teams) {
+                teams = teamsData.teams;
+            }
+        } catch (error) {
+            console.warn('Could not load teams:', error);
+        }
+        
+        // Build share interface HTML
+        const html = `
+            <div class="share-interface container mt-4">
+                <div class="card">
+                    <div class="card-header bg-primary text-white">
+                        <h5 class="mb-0">
+                            <i class="fas fa-share-alt"></i> Share Dataset: ${this.escapeHtml(datasetName)}
+                        </h5>
+                    </div>
+                    <div class="card-body">
+                        <input type="hidden" id="share-dataset-uuid" value="${this.escapeHtml(datasetUuid)}">
+                        
+                        <!-- Share with Users Section -->
+                        <div class="mb-4">
+                            <h6 class="text-primary">
+                                <i class="fas fa-user"></i> Share with Users
+                            </h6>
+                            <p class="text-muted small">Enter email addresses to share this dataset with individual users.</p>
+                            
+                            <div id="user-email-entries">
+                                <div class="email-entry mb-2">
+                                    <div class="input-group">
+                                        <input type="email" class="form-control form-control-sm user-email-input" 
+                                               placeholder="user@example.com" 
+                                               data-entry-index="1">
+                                        <button type="button" class="btn btn-sm btn-outline-danger remove-email-btn" 
+                                                onclick="datasetManager.removeEmailEntry(1)" 
+                                                style="display: none;">
+                                            <i class="fas fa-times"></i>
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <button type="button" class="btn btn-sm btn-outline-secondary mt-2" 
+                                    onclick="datasetManager.addEmailEntry()">
+                                <i class="fas fa-plus"></i> Add Another Email
+                            </button>
+                            
+                            <button type="button" class="btn btn-sm btn-primary mt-2 ms-2" 
+                                    onclick="datasetManager.shareWithUsers()">
+                                <i class="fas fa-share"></i> Share with Users
+                            </button>
+                        </div>
+                        
+                        <hr>
+                        
+                        <!-- Share with Teams Section -->
+                        <div class="mb-4">
+                            <h6 class="text-primary">
+                                <i class="fas fa-users"></i> Share with Teams
+                            </h6>
+                            <p class="text-muted small">Select a team to share this dataset with all team members.</p>
+                            
+                            ${teams.length > 0 ? `
+                                <div class="mb-3">
+                                    <label class="form-label">Select Team:</label>
+                                    <select class="form-select" id="share-team-select">
+                                        <option value="">-- Select a Team --</option>
+                                        ${teams.map(team => `
+                                            <option value="${this.escapeHtml(team.team_name)}" 
+                                                    data-team-uuid="${this.escapeHtml(team.uuid || '')}">
+                                                ${this.escapeHtml(team.team_name)} ${team.is_owner ? '(Owner)' : ''}
+                                            </option>
+                                        `).join('')}
+                                    </select>
+                                </div>
+                                
+                                <button type="button" class="btn btn-sm btn-primary" 
+                                        onclick="datasetManager.shareWithTeam()">
+                                    <i class="fas fa-share"></i> Share with Team
+                                </button>
+                            ` : `
+                                <div class="alert alert-info">
+                                    <i class="fas fa-info-circle"></i> You are not a member of any teams. 
+                                    Create a team first to share datasets with teams.
+                                </div>
+                            `}
+                        </div>
+                        
+                        <hr>
+                        
+                        <!-- Actions -->
+                        <div class="d-flex justify-content-between">
+                            <button type="button" class="btn btn-secondary" 
+                                    onclick="datasetManager.closeShareInterface()">
+                                <i class="fas fa-times"></i> Close
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        `;
+        
+        viewerContainer.innerHTML = html;
+    }
+    
+    /**
+     * Add email entry
+     */
+    addEmailEntry() {
+        const container = document.getElementById('user-email-entries');
+        if (!container) return;
+        
+        const entries = container.querySelectorAll('.email-entry');
+        const nextIndex = entries.length + 1;
+        
+        const newEntry = document.createElement('div');
+        newEntry.className = 'email-entry mb-2';
+        newEntry.innerHTML = `
+            <div class="input-group">
+                <input type="email" class="form-control form-control-sm user-email-input" 
+                       placeholder="user@example.com" 
+                       data-entry-index="${nextIndex}">
+                <button type="button" class="btn btn-sm btn-outline-danger remove-email-btn" 
+                        onclick="datasetManager.removeEmailEntry(${nextIndex})">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+        `;
+        
+        container.appendChild(newEntry);
+        this.updateEmailEntryButtons();
+    }
+    
+    /**
+     * Remove email entry
+     */
+    removeEmailEntry(index) {
+        const entry = document.querySelector(`.email-entry input[data-entry-index="${index}"]`)?.closest('.email-entry');
+        if (entry) {
+            entry.remove();
+            this.updateEmailEntryButtons();
+        }
+    }
+    
+    /**
+     * Update email entry buttons visibility
+     */
+    updateEmailEntryButtons() {
+        const entries = document.querySelectorAll('.email-entry');
+        entries.forEach((entry, idx) => {
+            const removeBtn = entry.querySelector('.remove-email-btn');
+            if (removeBtn) {
+                removeBtn.style.display = entries.length > 1 ? 'block' : 'none';
+            }
+        });
+    }
+    
+    /**
+     * Share with users
+     */
+    async shareWithUsers() {
+        const datasetUuid = document.getElementById('share-dataset-uuid')?.value;
+        if (!datasetUuid) {
+            alert('Dataset UUID not found');
+            return;
+        }
+        
+        // Get all email inputs
+        const emailInputs = document.querySelectorAll('.user-email-input');
+        const emails = Array.from(emailInputs)
+            .map(input => input.value.trim())
+            .filter(email => email && this.isValidEmail(email));
+        
+        if (emails.length === 0) {
+            alert('Please enter at least one valid email address');
+            return;
+        }
+        
+        // Share with each user
+        const results = [];
+        for (const email of emails) {
+            try {
+                const response = await fetch(`${getApiBasePath()}/share-dataset.php`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        dataset_uuid: datasetUuid,
+                        user_email: email
+                    })
+                });
+                
+                const data = await response.json();
+                results.push({ email, success: data.success, error: data.error });
+            } catch (error) {
+                results.push({ email, success: false, error: error.message });
+            }
+        }
+        
+        // Show results
+        const successCount = results.filter(r => r.success).length;
+        const failCount = results.filter(r => !r.success).length;
+        
+        let message = `Sharing completed:\n`;
+        message += `✓ Successfully shared with ${successCount} user(s)\n`;
+        if (failCount > 0) {
+            message += `✗ Failed to share with ${failCount} user(s)\n\n`;
+            message += 'Errors:\n';
+            results.filter(r => !r.success).forEach(r => {
+                message += `  • ${r.email}: ${r.error || 'Unknown error'}\n`;
+            });
+        }
+        
+        alert(message);
+        
+        // Close interface if all successful
+        if (failCount === 0) {
+            this.closeShareInterface();
+        }
+    }
+    
+    /**
+     * Share with team
+     */
+    async shareWithTeam() {
+        const datasetUuid = document.getElementById('share-dataset-uuid')?.value;
+        const teamSelect = document.getElementById('share-team-select');
+        
+        if (!datasetUuid) {
+            alert('Dataset UUID not found');
+            return;
+        }
+        
+        if (!teamSelect || !teamSelect.value) {
+            alert('Please select a team');
+            return;
+        }
+        
+        const teamName = teamSelect.value;
+        const selectedOption = teamSelect.options[teamSelect.selectedIndex];
+        const teamUuid = selectedOption ? selectedOption.getAttribute('data-team-uuid') : null;
+        
         try {
             const response = await fetch(`${getApiBasePath()}/share-dataset.php`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
                 },
-                body: JSON.stringify({ dataset_id: datasetId })
+                body: JSON.stringify({
+                    dataset_uuid: datasetUuid,
+                    team_name: teamName,
+                    team_uuid: teamUuid
+                })
             });
-
+            
             const data = await response.json();
-
+            
             if (data.success) {
-                alert('Dataset shared successfully');
+                alert(`Dataset shared successfully with team: ${teamName}`);
+                this.closeShareInterface();
             } else {
-                alert('Error sharing dataset: ' + data.error);
+                alert(`Error sharing dataset: ${data.error || 'Unknown error'}`);
             }
         } catch (error) {
-            console.error('Error sharing dataset:', error);
-            alert('Error sharing dataset');
+            console.error('Error sharing dataset with team:', error);
+            alert('Error sharing dataset with team: ' + error.message);
         }
+    }
+    
+    /**
+     * Close share interface
+     */
+    closeShareInterface() {
+        const viewerContainer = document.getElementById('viewerContainer');
+        if (viewerContainer && this.currentDataset) {
+            // Reload the dashboard/viewer
+            this.loadDashboard(
+                this.currentDataset.id,
+                this.currentDataset.name,
+                this.currentDataset.uuid,
+                this.currentDataset.server
+            );
+        }
+    }
+    
+    /**
+     * Validate email
+     */
+    isValidEmail(email) {
+        const re = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+        return re.test(email);
     }
 
     /**

@@ -76,11 +76,13 @@ $preferredDashboard = getUserPreferredDashboard($user['id']);
           <!-- Options will be populated dynamically by viewer-manager.js -->
           <option value="">Loading dashboards...</option>
         </select>
-        <div class="btn-group" role="group" aria-label="Annotation tools">
-          <button type="button" class="btn btn-outline-light"><i class="fas fa-search-plus"></i></button>
-          <button type="button" class="btn btn-outline-light"><i class="fas fa-pen"></i></button>
-          <button type="button" class="btn btn-outline-light"><i class="fas fa-mouse-pointer"></i></button>
-          <button type="button" class="btn btn-outline-light"><i class="fas fa-filter"></i></button>
+        <div class="btn-group ms-3" role="group" aria-label="Dataset actions">
+          <button type="button" class="btn btn-outline-light" id="uploadDatasetBtn" title="Upload Dataset">
+            <i class="fas fa-upload"></i> Upload Dataset
+          </button>
+          <button type="button" class="btn btn-outline-light" id="createTeamBtn" title="Create Team">
+            <i class="fas fa-users"></i> Create Team
+          </button>
         </div>
       </div>
     </div>
@@ -106,5 +108,6 @@ $preferredDashboard = getUserPreferredDashboard($user['id']);
   <script src="assets/js/main.js"></script>
   <script src="assets/js/dataset-manager.js"></script>
   <script src="assets/js/viewer-manager.js"></script>
+  <script src="assets/js/upload-manager.js"></script>
 </body>
 </html>

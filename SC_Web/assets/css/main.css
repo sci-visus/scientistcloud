@@ -727,3 +727,96 @@ body {
     width: 100%;
   }
 }
+
+/* Upload Progress Widget */
+.upload-progress-widget {
+  position: fixed;
+  bottom: 20px;
+  right: 20px;
+  width: 350px;
+  max-height: 400px;
+  z-index: 1000;
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
+  border-radius: 0.5rem;
+  overflow: hidden;
+}
+
+.upload-progress-widget .card {
+  margin: 0;
+  border: 1px solid var(--panel-border);
+  background-color: var(--panel-bg);
+}
+
+.upload-progress-widget .card-header {
+  padding: 0.5rem 0.75rem;
+  cursor: pointer;
+}
+
+.upload-progress-widget .card-body {
+  max-height: 300px;
+  overflow-y: auto;
+  padding: 0.75rem;
+}
+
+.upload-progress-item {
+  padding: 0.5rem;
+  border-bottom: 1px solid var(--panel-border);
+}
+
+.upload-progress-item:last-child {
+  border-bottom: none;
+}
+
+/* Upload Interface Styles */
+.upload-interface {
+  max-width: 900px;
+  margin: 0 auto;
+}
+
+.upload-interface .nav-tabs {
+  border-bottom: 2px solid var(--panel-border);
+}
+
+.upload-interface .nav-link {
+  color: var(--fg-color);
+  border: none;
+  border-bottom: 2px solid transparent;
+  padding: 0.75rem 1rem;
+}
+
+.upload-interface .nav-link:hover {
+  border-bottom-color: var(--primary-color);
+  color: var(--primary-color);
+}
+
+.upload-interface .nav-link.active {
+  color: var(--primary-color);
+  border-bottom-color: var(--primary-color);
+  background-color: transparent;
+}
+
+.upload-interface .form-label {
+  color: var(--fg-color);
+  font-weight: 500;
+}
+
+.upload-interface .form-control,
+.upload-interface .form-select {
+  background-color: var(--panel-bg);
+  color: var(--fg-color);
+  border-color: var(--panel-border);
+}
+
+.upload-interface .form-control:focus,
+.upload-interface .form-select:focus {
+  background-color: var(--panel-bg);
+  color: var(--fg-color);
+  border-color: var(--primary-color);
+  box-shadow: 0 0 0 0.2rem rgba(0, 123, 255, 0.25);
+}
+
+.email-entry {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+}

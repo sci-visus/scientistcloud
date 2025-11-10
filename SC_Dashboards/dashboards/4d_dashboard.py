@@ -201,6 +201,23 @@ def create_tmp_dashboard(process_4dnexus):
 
     # Optional Plot1B controls
     enable_plot1b_toggle = Toggle(label="Enable Plot1B (duplicate map)", active=False, width=250)
+    
+    # Plot1B mode selector (similar to Plot1)
+    plot1b_mode_selector = RadioButtonGroup(
+        labels=["Single Dataset", "Ratio (Numerator/Denominator)"],
+        active=1,  # Default to ratio mode
+        width=400
+    )
+    
+    # Plot1B single dataset selector
+    plot1b_h5_selector = Select(
+        title="Plot1B Dataset (2D):",
+        value=plot1_h5_choices[0] if plot1_h5_choices else "No 2D datasets",
+        options=plot1_h5_choices if plot1_h5_choices else ["No 2D datasets"],
+        width=300
+    )
+    
+    # Plot1B ratio selectors
     plot1b_h5_selector_numerator = Select(
         title="Plot1B Numerator (2D):",
         value=default_numerator,
@@ -213,12 +230,43 @@ def create_tmp_dashboard(process_4dnexus):
         options=plot1_h5_choices if plot1_h5_choices else ["No 2D datasets"],
         width=300
     )
+    
+    # Initially hide all Plot1B selectors
+    plot1b_mode_selector.visible = False
+    plot1b_h5_selector.visible = False
     plot1b_h5_selector_numerator.visible = False
     plot1b_h5_selector_denominator.visible = False
+    
     def on_enable_plot1b(attr, old, new):
-        plot1b_h5_selector_numerator.visible = new
-        plot1b_h5_selector_denominator.visible = new
+        plot1b_mode_selector.visible = new
+        if new:
+            # Show selectors based on current mode
+            if plot1b_mode_selector.active == 0:  # Single dataset mode
+                plot1b_h5_selector.visible = True
+                plot1b_h5_selector_numerator.visible = False
+                plot1b_h5_selector_denominator.visible = False
+            else:  # Ratio mode
+                plot1b_h5_selector.visible = False
+                plot1b_h5_selector_numerator.visible = True
+                plot1b_h5_selector_denominator.visible = True
+        else:
+            plot1b_h5_selector.visible = False
+            plot1b_h5_selector_numerator.visible = False
+            plot1b_h5_selector_denominator.visible = False
+    
+    def on_plot1b_mode_change(attr, old, new):
+        if enable_plot1b_toggle.active:
+            if new == 0:  # Single dataset mode
+                plot1b_h5_selector.visible = True
+                plot1b_h5_selector_numerator.visible = False
+                plot1b_h5_selector_denominator.visible = False
+            else:  # Ratio mode
+                plot1b_h5_selector.visible = False
+                plot1b_h5_selector_numerator.visible = True
+                plot1b_h5_selector_denominator.visible = True
+    
     enable_plot1b_toggle.on_change("active", on_enable_plot1b)
+    plot1b_mode_selector.on_change("active", on_plot1b_mode_change)
 
     # Optional Plot2B controls
     enable_plot2b_toggle = Toggle(label="Enable Plot2B (duplicate probe)", active=False, width=250)
@@ -317,7 +365,7 @@ def create_tmp_dashboard(process_4dnexus):
                     return
                 print(f"Plot1 mode: Single dataset - {plot1_path}")
                 # Set single dataset
-                
+                process_4dnexus.plot1_single_dataset_picked = plot1_path  # Store single dataset path
                 process_4dnexus.presample_picked = None  # No ratio calculation
                 process_4dnexus.postsample_picked = None
             else:  # Ratio mode
@@ -330,23 +378,40 @@ def create_tmp_dashboard(process_4dnexus):
                     return
                 print(f"Plot1 mode: Ratio - {numerator_path} / {denominator_path}")
                 # Set ratio datasets
+                process_4dnexus.plot1_single_dataset_picked = None  # Clear single dataset when in ratio mode
                 process_4dnexus.presample_picked = numerator_path
                 process_4dnexus.postsample_picked = denominator_path
             
-            # Optional Plot1B (ratio-only duplicate)
+            # Optional Plot1B (supports both single dataset and ratio modes)
             if enable_plot1b_toggle.active:
-                numerator_b_selection = plot1b_h5_selector_numerator.value
-                denominator_b_selection = plot1b_h5_selector_denominator.value
-                numerator_b_path = extract_dataset_path(numerator_b_selection)
-                denominator_b_path = extract_dataset_path(denominator_b_selection)
-                if numerator_b_path != "No 2D datasets" and denominator_b_path != "No 2D datasets":
-                    process_4dnexus.presample_picked_b = numerator_b_path
-                    process_4dnexus.postsample_picked_b = denominator_b_path
-                    print(f"  Plot1B: {numerator_b_path} / {denominator_b_path}")
-                else:
-                    process_4dnexus.presample_picked_b = None
-                    process_4dnexus.postsample_picked_b = None
+                if plot1b_mode_selector.active == 0:  # Single dataset mode
+                    plot1b_selection = plot1b_h5_selector.value
+                    plot1b_path = extract_dataset_path(plot1b_selection)
+                    if plot1b_path != "No 2D datasets":
+                        process_4dnexus.plot1b_single_dataset_picked = plot1b_path
+                        process_4dnexus.presample_picked_b = None
+                        process_4dnexus.postsample_picked_b = None
+                        print(f"  Plot1B: {plot1b_path} (single dataset)")
+                    else:
+                        process_4dnexus.plot1b_single_dataset_picked = None
+                        process_4dnexus.presample_picked_b = None
+                        process_4dnexus.postsample_picked_b = None
+                else:  # Ratio mode
+                    numerator_b_selection = plot1b_h5_selector_numerator.value
+                    denominator_b_selection = plot1b_h5_selector_denominator.value
+                    numerator_b_path = extract_dataset_path(numerator_b_selection)
+                    denominator_b_path = extract_dataset_path(denominator_b_selection)
+                    if numerator_b_path != "No 2D datasets" and denominator_b_path != "No 2D datasets":
+                        process_4dnexus.plot1b_single_dataset_picked = None
+                        process_4dnexus.presample_picked_b = numerator_b_path
+                        process_4dnexus.postsample_picked_b = denominator_b_path
+                        print(f"  Plot1B: {numerator_b_path} / {denominator_b_path}")
+                    else:
+                        process_4dnexus.plot1b_single_dataset_picked = None
+                        process_4dnexus.presample_picked_b = None
+                        process_4dnexus.postsample_picked_b = None
             else:
+                process_4dnexus.plot1b_single_dataset_picked = None
                 process_4dnexus.presample_picked_b = None
                 process_4dnexus.postsample_picked_b = None
 
@@ -456,7 +521,7 @@ def create_tmp_dashboard(process_4dnexus):
         # Dataset selection section
         Div(text="<h2>4D Dashboard - Dataset Selection</h2>"),
         
-        # Plot1 mode selection
+        # ========== Plot 1 Configuration ==========
         Div(text="<h3>Plot1 Configuration:</h3>"),
         plot1_mode_selector,
         Div(text="<br>"),
@@ -466,26 +531,53 @@ def create_tmp_dashboard(process_4dnexus):
             column(plot1_h5_selector, width=300, name="single_dataset_selector"),
             column(plot1_h5_selector_numerator, width=300, name="numerator_selector"),
             column(plot1_h5_selector_denominator, width=300, name="denominator_selector"),
-            column(plot2_h5_selector, width=300),
             sizing_mode="stretch_width"
         ),
-
-        # Optional duplicates
-        Div(text="<h3>Optional Duplicates:</h3>"),
-        row(
-            column(enable_plot1b_toggle, plot1b_h5_selector_numerator, plot1b_h5_selector_denominator, width=320),
-            column(enable_plot2b_toggle, plot2b_h5_selector, width=320),
-        ),
         
-        # Coordinate selectors
-        Div(text="<h3>Coordinate Configuration (Optional):</h3>"),
+        # Plot1 coordinate selectors
         row(
             column(map_x_coords_selector, width=300),
             column(map_y_coords_selector, width=300),
+            sizing_mode="stretch_width"
+        ),
+        
+        # Plot1B (optional duplicate)
+        Div(text="<h3>Optional Plot1B (duplicate map):</h3>"),
+        row(
+            column(
+                enable_plot1b_toggle,
+                plot1b_mode_selector,
+                plot1b_h5_selector,
+                plot1b_h5_selector_numerator,
+                plot1b_h5_selector_denominator,
+                width=320
+            ),
+        ),
+        
+        Div(text="<hr>"),
+        
+        # ========== Plot 2 Configuration ==========
+        Div(text="<h3>Plot2 Configuration:</h3>"),
+        row(
+            column(plot2_h5_selector, width=300),
+            sizing_mode="stretch_width"
+        ),
+        
+        # Plot2 coordinate selectors
+        row(
             column(probe_x_coords_selector, width=300),
             column(probe_y_coords_selector, width=300),
             sizing_mode="stretch_width"
         ),
+        
+        # Plot2B (optional duplicate)
+        Div(text="<h3>Optional Plot2B (duplicate probe):</h3>"),
+        row(
+            column(enable_plot2b_toggle, plot2b_h5_selector, width=320),
+        ),
+        
+        Div(text="<hr>"),
+        
         column(initialize_plots_button, width=200),
         Div(text="<hr>"),
         
@@ -712,6 +804,8 @@ def create_dashboard(process_4dnexus):
 
             # Initialize rectangles for selection areas
         rect1 = Rectangle(0, 0, volume.shape[0] - 1, volume.shape[1] - 1)  # X,Y
+        # rect1b will be initialized after Plot1B is created
+        rect1b = None
         if is_3d_volume:
             # For 3D volume: rect2 represents the 1D probe dimension
             rect2 = Rectangle(0, 0, volume.shape[2] - 1, volume.shape[2] - 1)  # 1D probe
@@ -805,7 +899,41 @@ def create_dashboard(process_4dnexus):
 
         # Optionally create Plot1B below Plot1 if specified
         plot1b = None
-        if getattr(process_4dnexus, 'presample_picked_b', None) and getattr(process_4dnexus, 'postsample_picked_b', None):
+        # Check for single dataset mode first
+        if getattr(process_4dnexus, 'plot1b_single_dataset_picked', None):
+            try:
+                single_dataset_b = process_4dnexus.load_dataset_by_path(process_4dnexus.plot1b_single_dataset_picked)
+                if single_dataset_b is not None:
+                    # Flatten if needed and reshape
+                    if single_dataset_b.ndim > 1:
+                        single_dataset_b_flat = single_dataset_b.flatten()
+                    else:
+                        single_dataset_b_flat = single_dataset_b
+                    
+                    if single_dataset_b_flat.size == len(x_coords) * len(y_coords):
+                        preview_b_rect = np.reshape(single_dataset_b_flat, (len(x_coords), len(y_coords)))
+                        # Clean the data
+                        preview_b = np.nan_to_num(preview_b_rect, nan=0.0, posinf=0.0, neginf=0.0)
+                        # Normalize
+                        if np.max(preview_b) > np.min(preview_b):
+                            preview_b = (preview_b - np.min(preview_b)) / (np.max(preview_b) - np.min(preview_b))
+                        preview_b = preview_b.astype(np.float32)
+                        map_plot_b = MapPlot(x_coords, y_coords, preview_b, title="Plot1B - Map View")
+                        plot1b, source1b = map_plot_b.get_components()
+                        plot1b.xaxis.ticker = x_ticks
+                        plot1b.yaxis.ticker = y_ticks
+                        plot1b.xaxis.major_label_overrides = dict(zip(x_ticks, my_xticks))
+                        plot1b.yaxis.major_label_overrides = dict(zip(y_ticks, my_yticks))
+                        plot1b.xaxis.axis_label = "X Position"
+                        plot1b.yaxis.axis_label = "Y Position"
+                    else:
+                        print(f"Failed to build Plot1B: single dataset size mismatch ({single_dataset_b_flat.size} vs {len(x_coords) * len(y_coords)})")
+            except Exception as e:
+                print(f"Failed to build Plot1B (single dataset mode): {e}")
+                import traceback
+                traceback.print_exc()
+        # Check for ratio mode
+        elif getattr(process_4dnexus, 'presample_picked_b', None) and getattr(process_4dnexus, 'postsample_picked_b', None):
             try:
                 presample_b = process_4dnexus.load_dataset_by_path(process_4dnexus.presample_picked_b)
                 postsample_b = process_4dnexus.load_dataset_by_path(process_4dnexus.postsample_picked_b)
@@ -828,9 +956,15 @@ def create_dashboard(process_4dnexus):
                     plot1b.xaxis.axis_label = "X Position"
                     plot1b.yaxis.axis_label = "Y Position"
             except Exception as e:
-                print(f"Failed to build Plot1B: {e}")
+                print(f"Failed to build Plot1B (ratio mode): {e}")
+                import traceback
+                traceback.print_exc()
 
         print(f"[TIMING] preview b built: {time.time()-t0:.3f}s")
+        
+        # Initialize rect1b for Plot1B crosshairs if Plot1B exists
+        if 'plot1b' in locals() and plot1b is not None:
+            rect1b = Rectangle(0, 0, volume.shape[0] - 1, volume.shape[1] - 1)  # X,Y for Plot1B
 
         # Optionally create Plot2B below Plot2 if specified
         plot2b = None
@@ -908,10 +1042,22 @@ def create_dashboard(process_4dnexus):
             title="Color Palette:", value="Viridis256", options=palettes, width=200
         )
 
-        # Create color range controls with actual data ranges
-        map_min_val = float(preview.min())
-        map_max_val = float(preview.max())
-        print(f"Map data range: {map_min_val:.3f} to {map_max_val:.3f}")
+        # Helper function to calculate percentile-based ranges
+        def get_percentile_range(data):
+            """Calculate 1st and 99th percentiles for data range"""
+            if data is None or data.size == 0:
+                return 0.0, 1.0
+            data_flat = data.flatten() if data.ndim > 1 else data
+            data_flat = data_flat[~np.isnan(data_flat)]  # Remove NaN values
+            if data_flat.size == 0:
+                return 0.0, 1.0
+            p1 = float(np.percentile(data_flat, 1))
+            p99 = float(np.percentile(data_flat, 99))
+            return p1, p99
+        
+        # Create color range controls with percentile-based ranges
+        map_min_val, map_max_val = get_percentile_range(preview)
+        print(f"Map data range (1st-99th percentile): {map_min_val:.3f} to {map_max_val:.3f}")
         
         range1_min_input = TextInput(
             title="Map Range Min:", value=str(map_min_val), width=120
@@ -924,19 +1070,25 @@ def create_dashboard(process_4dnexus):
 
         # Create range inputs for Plot2 based on volume dimensionality
         if is_3d_volume:
-            # For 1D plots, use the initial 1D slice data
+            # For 1D plots, use the initial 1D slice data with percentiles
+            if initial_slice_1d is not None:
+                p2_min, p2_max = get_percentile_range(initial_slice_1d)
+            else:
+                p2_min, p2_max = 0.0, 1.0
             range2_min_input = TextInput(
-                title="Probe Range Min:", value=str(np.min(initial_slice_1d)), width=120
+                title="Probe Range Min:", value=str(p2_min), width=120
             )
             range2_max_input = TextInput(
-                title="Probe Range Max:", value=str(np.max(initial_slice_1d)), width=120
+                title="Probe Range Max:", value=str(p2_max), width=120
             )
         else:
-            # For 2D plots, use the initial 2D slice data
-            init_min = str(np.min(initial_slice)) if initial_slice is not None else "0"
-            init_max = str(np.max(initial_slice)) if initial_slice is not None else "1"
-            range2_min_input = TextInput(title="Probe Range Min:", value=init_min, width=120)
-            range2_max_input = TextInput(title="Probe Range Max:", value=init_max, width=120)
+            # For 2D plots, use the initial 2D slice data with percentiles
+            if initial_slice is not None:
+                p2_min, p2_max = get_percentile_range(initial_slice)
+            else:
+                p2_min, p2_max = 0.0, 1.0
+            range2_min_input = TextInput(title="Probe Range Min:", value=str(p2_min), width=120)
+            range2_max_input = TextInput(title="Probe Range Max:", value=str(p2_max), width=120)
 
         print(f"[TIMING] range 2 min/max built: {time.time()-t0:.3f}s")
 
@@ -946,16 +1098,33 @@ def create_dashboard(process_4dnexus):
         if 'plot2b' in locals() and plot2b is not None and 'source2b' in locals() and isinstance(source2b.data, dict) and 'image' in source2b.data:
             try:
                 img_b = source2b.data["image"][0]
+                p2b_min, p2b_max = get_percentile_range(img_b)
                 range2b_min_input = TextInput(
-                    title="Probe2B Range Min:", value=str(float(np.min(img_b))), width=120
+                    title="Probe2B Range Min:", value=str(p2b_min), width=120
                 )
                 range2b_max_input = TextInput(
-                    title="Probe2B Range Max:", value=str(float(np.max(img_b))), width=120
+                    title="Probe2B Range Max:", value=str(p2b_max), width=120
                 )
             except Exception:
                 pass
 
         print(f"[TIMING] range 2b min/max built: {time.time()-t0:.3f}s")
+        
+        # Create range inputs for Plot1B if it exists (2D map)
+        range1b_min_input = None
+        range1b_max_input = None
+        if 'plot1b' in locals() and plot1b is not None and 'source1b' in locals():
+            try:
+                img1b = source1b.data["image"][0]
+                p1b_min, p1b_max = get_percentile_range(img1b)
+                range1b_min_input = TextInput(
+                    title="Map1B Range Min:", value=str(p1b_min), width=120
+                )
+                range1b_max_input = TextInput(
+                    title="Map1B Range Max:", value=str(p1b_max), width=120
+                )
+            except Exception:
+                pass
 
         # Create range inputs for Plot3 (summed data)
         # Initialize with zeros since Plot3 starts empty
@@ -966,7 +1135,7 @@ def create_dashboard(process_4dnexus):
             title="Plot3 Range Max:", value="100", width=120
         )
 
-        # Create color mappers with actual data ranges (independent per plot)
+        # Create color mappers with percentile-based ranges (independent per plot)
         color_mapper1a = LinearColorMapper(
             palette="Viridis256", low=map_min_val, high=map_max_val
         )
@@ -976,9 +1145,13 @@ def create_dashboard(process_4dnexus):
             # For 1D plots, we don't need a color mapper
             color_mapper2a = None
         else:
-            # For 2D plots, create color mapper based on initial slice
+            # For 2D plots, create color mapper based on initial slice with percentiles
+            if initial_slice is not None:
+                p2_min, p2_max = get_percentile_range(initial_slice)
+            else:
+                p2_min, p2_max = 0.0, 1.0
             color_mapper2a = LinearColorMapper(
-                palette="Viridis256", low=np.min(initial_slice), high=np.max(initial_slice)
+                palette="Viridis256", low=p2_min, high=p2_max
             )
             
         # Create color mapper for Plot3 (works for both 3D and 4D volumes)
@@ -1028,11 +1201,10 @@ def create_dashboard(process_4dnexus):
         image_renderer1b = None
         color_mapper1b = None
         if 'plot1b' in locals() and plot1b is not None:
-            # Initialize Plot1B mapper with its own data range
+            # Initialize Plot1B mapper with its own data range using percentiles
             try:
                 img1b = source1b.data["image"][0]
-                cm_low = float(np.min(img1b[img1b > 0])) if np.any(img1b > 0) else float(np.min(img1b))
-                cm_high = float(np.max(img1b))
+                cm_low, cm_high = get_percentile_range(img1b)
             except Exception:
                 cm_low, cm_high = map_min_val, map_max_val
             color_mapper1b = LinearColorMapper(palette=color_mapper1a.palette, low=cm_low, high=cm_high)
@@ -1053,11 +1225,12 @@ def create_dashboard(process_4dnexus):
                 # 4D dataset → 2D image
                 try:
                     img2b = source2b.data["image"][0]
-                    cm2_low = float(np.min(img2b[img2b > 0])) if np.any(img2b > 0) else float(np.min(img2b))
-                    cm2_high = float(np.max(img2b))
+                    cm2_low, cm2_high = get_percentile_range(img2b)
                 except Exception:
-                    cm2_low, cm2_high = (float(np.min(initial_slice)) if not is_3d_volume else 0.0,
-                                         float(np.max(initial_slice)) if not is_3d_volume else 1.0)
+                    if not is_3d_volume and initial_slice is not None:
+                        cm2_low, cm2_high = get_percentile_range(initial_slice)
+                    else:
+                        cm2_low, cm2_high = 0.0, 1.0
                 color_mapper2b = LinearColorMapper(palette=(color_mapper2a.palette if color_mapper2a is not None else "Viridis256"), low=cm2_low, high=cm2_high)
                 image_renderer2b = plot2b.image("image", source=source2b, x="x", y="y", dw="dw", dh="dh", color_mapper=color_mapper2b)
             else:
@@ -1241,6 +1414,47 @@ def create_dashboard(process_4dnexus):
                 "x": [x_coord, x_coord],
                 "y": [y_coords.min(), y_coords.max()],
             }
+            
+            # Also update Plot1B crosshairs if it exists
+            if rect1b is not None and 'plot1b' in locals() and plot1b is not None:
+                draw_cross1b()
+        
+        def draw_cross1b():
+            """Draw crosshairs on Plot1B using the same coordinates as Plot1"""
+            if rect1b is None or 'plot1b' not in locals() or plot1b is None:
+                return
+            x_index = get_x_index()
+            x_coord = x_coords[x_index]
+            y_index = get_y_index()
+            y_coord = y_coords[y_index]
+
+            # Initialize crosshair lines if they don't exist
+            if rect1b.h1line is None:
+                rect1b.h1line = plot1b.line(x=[x_coords.min(), x_coords.max()], y=[y_coord, y_coord], line_color="yellow", line_width=2)
+            if rect1b.h2line is None:
+                rect1b.h2line = plot1b.line(x=[x_coords.min(), x_coords.max()], y=[y_coord, y_coord], line_color="yellow", line_width=2)
+            if rect1b.v1line is None:
+                rect1b.v1line = plot1b.line(x=[x_coord, x_coord], y=[y_coords.min(), y_coords.max()], line_color="yellow", line_width=2)
+            if rect1b.v2line is None:
+                rect1b.v2line = plot1b.line(x=[x_coord, x_coord], y=[y_coords.min(), y_coords.max()], line_color="yellow", line_width=2)
+            
+            # Update crosshair positions
+            rect1b.h1line.data_source.data = {
+                "x": [x_coords.min(), x_coords.max()],
+                "y": [y_coord, y_coord],
+            }
+            rect1b.h2line.data_source.data = {
+                "x": [x_coords.min(), x_coords.max()],
+                "y": [y_coord, y_coord],
+            }
+            rect1b.v1line.data_source.data = {
+                "x": [x_coord, x_coord],
+                "y": [y_coords.min(), y_coords.max()],
+            }
+            rect1b.v2line.data_source.data = {
+                "x": [x_coord, x_coord],
+                "y": [y_coords.min(), y_coords.max()],
+            }
         
         def set_colormap_range(plot, colorbar, color_mapper, min_val, max_val):
             color_mapper.low = min_val
@@ -1267,8 +1481,34 @@ def create_dashboard(process_4dnexus):
                     "dh": [volume.shape[3]],
                 }
             
-            # Update crosshairs
+            # Update crosshairs (this will also update Plot1B crosshairs)
             draw_cross1()
+        
+        def show_slice_b():
+            """Update Plot2B based on Plot1B crosshair position"""
+            if 'plot2b' not in locals() or plot2b is None:
+                return
+            # Get volume_b from process_4dnexus
+            volume_b_local = getattr(process_4dnexus, 'volume_dataset_b', None)
+            if volume_b_local is None:
+                return
+            x_index = get_x_index()
+            y_index = get_y_index()
+            
+            # Update Plot2B with new slice
+            if len(volume_b_local.shape) == 3:
+                # For 3D volume: update 1D line plot
+                update_1d_plot(volume_b_local, x_index, y_index, source2b, plot2b, process_4dnexus)
+            else:
+                # For 4D volume: update 2D image plot
+                new_slice_b = volume_b_local[x_index, y_index, :, :]
+                source2b.data = {
+                    "image": [new_slice_b],
+                    "x": [0],
+                    "y": [0],
+                    "dw": [volume_b_local.shape[2]],
+                    "dh": [volume_b_local.shape[3]],
+                }
         
         def on_plot1_tap(event):
             x_index = get_x_index(event.x)
@@ -1297,6 +1537,24 @@ def create_dashboard(process_4dnexus):
                 x_slider.value = x_coords[x_index]
                 y_slider.value = y_coords[y_index]
                 print(f"on_plot1_tap x_index={x_index}/{x_slider.value} y_index={y_index}/{y_slider.value}")
+                # This will trigger draw_cross1() which also updates Plot1B crosshairs
+        
+        def on_plot1b_tap(event):
+            """Handle clicks on Plot1B - update crosshairs and Plot2B"""
+            if rect1b is None or 'plot1b' not in locals() or plot1b is None:
+                return
+            x_index = get_x_index(event.x)
+            y_index = get_y_index(event.y)
+            
+            # Update sliders (which will update both Plot1 and Plot1B crosshairs)
+            x_slider.value = x_coords[x_index]
+            y_slider.value = y_coords[y_index]
+            
+            # Update Plot2B
+            if 'plot2b' in locals() and plot2b is not None:
+                show_slice_b()
+            
+            print(f"on_plot1b_tap x_index={x_index}/{x_slider.value} y_index={y_index}/{y_slider.value}")
         
         def on_plot2_tap(event):
             if is_3d_volume:
@@ -1404,6 +1662,31 @@ def create_dashboard(process_4dnexus):
             if min_val >= max_val:
                 return
             set_colormap_range(plot1, colorbar1, color_mapper1a, min_val, max_val)
+        
+        def on_range1b_input_change():
+            """Handle Plot1B range input changes"""
+            if 'range1b_min_input' not in locals() or range1b_min_input is None:
+                return
+            if 'plot1b' not in locals() or plot1b is None or 'color_mapper1b' not in locals() or color_mapper1b is None:
+                return
+            min_val = _parse_float_safe(range1b_min_input.value)
+            max_val = _parse_float_safe(range1b_max_input.value)
+            if min_val is None or max_val is None:
+                return
+            if min_val >= max_val:
+                return
+            # Update Plot1B mapper range
+            try:
+                color_mapper1b.low = min_val
+                color_mapper1b.high = max_val
+                # Keep renderer in sync
+                if len(plot1b.renderers) > 0:
+                    plot1b.renderers[0].glyph.color_mapper = color_mapper1b
+                # Update colorbar if created
+                if 'colorbar1b' in locals() and colorbar1b is not None:
+                    colorbar1b.color_mapper = color_mapper1b
+            except Exception:
+                pass
         
         def on_range2_input_change():
             min_val = _parse_float_safe(range2_min_input.value)
@@ -1897,10 +2180,11 @@ def create_dashboard(process_4dnexus):
                     plot2.x_range.end = float(np.max(xvals))
                     plot2.y_range.start = float(np.min(line))
                     plot2.y_range.end = float(np.max(line))
-                    # Reset numeric range inputs to data range
+                    # Reset numeric range inputs to percentile-based data range
                     try:
-                        range2_min_input.value = str(float(np.min(line)))
-                        range2_max_input.value = str(float(np.max(line)))
+                        p2_min, p2_max = get_percentile_range(line)
+                        range2_min_input.value = str(p2_min)
+                        range2_max_input.value = str(p2_max)
                     except Exception:
                         pass
                     # Clear 3D overlay selection and status
@@ -1916,10 +2200,11 @@ def create_dashboard(process_4dnexus):
                     # Match original ProbePlot orientation: dw=shape[2], dh=shape[3]
                     source2.data = {"image": [img], "x": [0], "y": [0], "dw": [img.shape[0]], "dh": [img.shape[1]]}
                     try:
-                        set_colormap_range(plot2, colorbar2, color_mapper2a, float(np.min(img)), float(np.max(img)))
-                        # Reset numeric range inputs to data range
-                        range2_min_input.value = str(float(np.min(img)))
-                        range2_max_input.value = str(float(np.max(img)))
+                        p2_min, p2_max = get_percentile_range(img)
+                        set_colormap_range(plot2, colorbar2, color_mapper2a, p2_min, p2_max)
+                        # Reset numeric range inputs to percentile-based data range
+                        range2_min_input.value = str(p2_min)
+                        range2_max_input.value = str(p2_max)
                     except Exception:
                         pass
                     # Clear any rectangle lines on Plot2
@@ -2040,14 +2325,16 @@ def create_dashboard(process_4dnexus):
                         source2b.data = {"image": [img], "x": [0], "y": [0], "dw": [img.shape[0]], "dh": [img.shape[1]]}
                         if 'color_mapper2b' in locals() and color_mapper2b is not None and 'colorbar2b' in locals():
                             try:
-                                set_colormap_range(plot2b, colorbar2b, color_mapper2b, float(np.min(img)), float(np.max(img)))
+                                p2b_min, p2b_max = get_percentile_range(img)
+                                set_colormap_range(plot2b, colorbar2b, color_mapper2b, p2b_min, p2b_max)
                             except Exception:
                                 pass
-                        # Reset Plot2B range inputs if present
+                        # Reset Plot2B range inputs if present (percentile-based)
                         if 'range2b_min_input' in locals() and range2b_min_input is not None:
                             try:
-                                range2b_min_input.value = str(float(np.min(img)))
-                                range2b_max_input.value = str(float(np.max(img)))
+                                p2b_min, p2b_max = get_percentile_range(img)
+                                range2b_min_input.value = str(p2b_min)
+                                range2b_max_input.value = str(p2b_max)
                             except Exception:
                                 pass
                     else:
@@ -2108,10 +2395,11 @@ def create_dashboard(process_4dnexus):
                 plot2.x_range.end = x_coords_1d.max()
                 plot2.y_range.start = slice.min()
                 plot2.y_range.end = slice.max()
-                # Update numeric range inputs to data range
+                # Update numeric range inputs to percentile-based data range
                 try:
-                    range2_min_input.value = str(float(np.min(slice)))
-                    range2_max_input.value = str(float(np.max(slice)))
+                    p2_min, p2_max = get_percentile_range(slice)
+                    range2_min_input.value = str(p2_min)
+                    range2_max_input.value = str(p2_max)
                 except Exception:
                     pass
             else:
@@ -2137,11 +2425,12 @@ def create_dashboard(process_4dnexus):
                     image=[slice], x=[0], y=[0], dw=[slice.shape[0]], dh=[slice.shape[1]]  # Revert dw/dh
                 )
                 
-                set_colormap_range(plot2, colorbar2, color_mapper2a, np.min(slice), np.max(slice))
-                # Update numeric range inputs to data range
+                p2_min, p2_max = get_percentile_range(slice)
+                set_colormap_range(plot2, colorbar2, color_mapper2a, p2_min, p2_max)
+                # Update numeric range inputs to percentile-based data range
                 try:
-                    range2_min_input.value = str(float(np.min(slice)))
-                    range2_max_input.value = str(float(np.max(slice)))
+                    range2_min_input.value = str(p2_min)
+                    range2_max_input.value = str(p2_max)
                 except Exception:
                     pass
             # Done status
@@ -2197,11 +2486,12 @@ def create_dashboard(process_4dnexus):
                     plot2b.x_range.end = x_coords_1d_b.max()
                     plot2b.y_range.start = slice_b.min()
                     plot2b.y_range.end = slice_b.max()
-                    # Update Plot2B numeric range inputs if present
+                    # Update Plot2B numeric range inputs if present (percentile-based)
                     if 'range2b_min_input' in locals() and range2b_min_input is not None:
                         try:
-                            range2b_min_input.value = str(float(np.min(slice_b)))
-                            range2b_max_input.value = str(float(np.max(slice_b)))
+                            p2b_min, p2b_max = get_percentile_range(slice_b)
+                            range2b_min_input.value = str(p2b_min)
+                            range2b_max_input.value = str(p2b_max)
                         except Exception:
                             pass
             else:
@@ -2215,12 +2505,14 @@ def create_dashboard(process_4dnexus):
                 if 'source2b' in locals():
                     source2b.data = dict(image=[slice_b], x=[0], y=[0], dw=[slice_b.shape[0]], dh=[slice_b.shape[1]])
                 if 'color_mapper2b' in locals() and color_mapper2b is not None and 'colorbar2b' in locals():
-                    set_colormap_range(plot2b, colorbar2b, color_mapper2b, float(np.min(slice_b)), float(np.max(slice_b)))
-                # Update Plot2B numeric range inputs if present
+                    p2b_min, p2b_max = get_percentile_range(slice_b)
+                    set_colormap_range(plot2b, colorbar2b, color_mapper2b, p2b_min, p2b_max)
+                # Update Plot2B numeric range inputs if present (percentile-based)
                 if 'range2b_min_input' in locals() and range2b_min_input is not None:
                     try:
-                        range2b_min_input.value = str(float(np.min(slice_b)))
-                        range2b_max_input.value = str(float(np.max(slice_b)))
+                        p2b_min, p2b_max = get_percentile_range(slice_b)
+                        range2b_min_input.value = str(p2b_min)
+                        range2b_max_input.value = str(p2b_max)
                     except Exception:
                         pass
             # Done status
@@ -2261,23 +2553,50 @@ def create_dashboard(process_4dnexus):
             _curdoc().add_next_tick_callback(_compute_plot2_image_work)
         
         def on_reset_ranges_click():
-            # Reset to actual data ranges
-            map_min = float(preview.min())
-            map_max = float(preview.max())
+            # Reset to percentile-based data ranges
+            map_min, map_max = get_percentile_range(preview)
             range1_min_input.value = str(map_min)
             range1_max_input.value = str(map_max)
             set_colormap_range(plot1, colorbar1, color_mapper1a, map_min, map_max)
             
+            # Reset Plot1B range if it exists
+            if 'range1b_min_input' in locals() and range1b_min_input is not None and 'source1b' in locals():
+                try:
+                    img1b = source1b.data["image"][0]
+                    p1b_min, p1b_max = get_percentile_range(img1b)
+                    range1b_min_input.value = str(p1b_min)
+                    range1b_max_input.value = str(p1b_max)
+                    if 'color_mapper1b' in locals() and color_mapper1b is not None:
+                        set_colormap_range(plot1b, colorbar1b, color_mapper1b, p1b_min, p1b_max)
+                except Exception:
+                    pass
+            
             if is_3d_volume:
-                # For 3D volumes: use initial 1D slice data
-                range2_min_input.value = str(np.min(initial_slice_1d))
-                range2_max_input.value = str(np.max(initial_slice_1d))
+                # For 3D volumes: use initial 1D slice data with percentiles
+                if initial_slice_1d is not None:
+                    p2_min, p2_max = get_percentile_range(initial_slice_1d)
+                    range2_min_input.value = str(p2_min)
+                    range2_max_input.value = str(p2_max)
                 # No color mapper for 1D plots
             else:
-                # For 4D volumes: use initial 2D slice data
-                range2_min_input.value = str(np.min(initial_slice))
-                range2_max_input.value = str(np.max(initial_slice))
-                set_colormap_range(plot2, colorbar2, color_mapper2a, np.min(initial_slice), np.max(initial_slice))
+                # For 4D volumes: use initial 2D slice data with percentiles
+                if initial_slice is not None:
+                    p2_min, p2_max = get_percentile_range(initial_slice)
+                    range2_min_input.value = str(p2_min)
+                    range2_max_input.value = str(p2_max)
+                    set_colormap_range(plot2, colorbar2, color_mapper2a, p2_min, p2_max)
+            
+            # Reset Plot2B range if it exists and is 2D
+            if 'range2b_min_input' in locals() and range2b_min_input is not None and 'source2b' in locals() and plot2b_is_2d:
+                try:
+                    img2b = source2b.data["image"][0]
+                    p2b_min, p2b_max = get_percentile_range(img2b)
+                    range2b_min_input.value = str(p2b_min)
+                    range2b_max_input.value = str(p2b_max)
+                    if 'color_mapper2b' in locals() and color_mapper2b is not None:
+                        set_colormap_range(plot2b, colorbar2b, color_mapper2b, p2b_min, p2b_max)
+                except Exception:
+                    pass
         
         def on_back_to_selection_click():
             # Clear the current dashboard and show the temporary dashboard
@@ -2303,13 +2622,24 @@ def create_dashboard(process_4dnexus):
         draw_cross1()
 
         # Add callbacks
-        x_slider.on_change("value", lambda attr, old, new: schedule_show_slice())
-        y_slider.on_change("value", lambda attr, old, new: schedule_show_slice())
+        def on_slider_change(attr, old, new):
+            """Handle slider changes - update both Plot1/Plot2 and Plot1B/Plot2B"""
+            schedule_show_slice()  # This updates Plot1 crosshairs (which also updates Plot1B) and Plot2
+            # Also update Plot2B if it exists
+            if 'plot2b' in locals() and plot2b is not None:
+                show_slice_b()
+        
+        x_slider.on_change("value", on_slider_change)
+        y_slider.on_change("value", on_slider_change)
         map1_color_scale_selector.on_change("active", on_map1_color_scale_change)
         map2_color_scale_selector.on_change("active", on_map2_color_scale_change)
         palette_selector.on_change("value", lambda attr, old, new: set_palette(new))
         range1_min_input.on_change("value", lambda attr, old, new: on_range1_input_change())
         range1_max_input.on_change("value", lambda attr, old, new: on_range1_input_change())
+        # Plot1B range handlers if present
+        if 'range1b_min_input' in locals() and range1b_min_input is not None:
+            range1b_min_input.on_change("value", lambda attr, old, new: on_range1b_input_change())
+            range1b_max_input.on_change("value", lambda attr, old, new: on_range1b_input_change())
         range2_min_input.on_change("value", lambda attr, old, new: on_range2_input_change())
         range2_max_input.on_change("value", lambda attr, old, new: on_range2_input_change())
         range3_min_input.on_change("value", lambda attr, old, new: on_range3_input_change())
@@ -2322,6 +2652,9 @@ def create_dashboard(process_4dnexus):
             range2b_max_input.on_change("value", lambda attr, old, new: on_range2b_input_change())
 
         plot1.on_event("tap", on_plot1_tap)
+        # Add tap handler for Plot1B if it exists
+        if 'plot1b' in locals() and plot1b is not None:
+            plot1b.on_event("tap", on_plot1b_tap)
         plot2.on_event("tap", on_plot2a_tap)
         plot2.on_event("doubletap", on_plot2a_doubletap)
         # Independent selection interactions on Plot2B if present
@@ -2346,6 +2679,8 @@ def create_dashboard(process_4dnexus):
             Div(text="<b>Map Shape:</b>", width=200),
             Div(text="<b>Map Range:</b>", width=200),
             row(range1_min_input, range1_max_input),
+            Div(text="<b>Map1B Range:</b>", width=200) if 'range1b_min_input' in locals() and range1b_min_input is not None else Div(text=""),
+            row(range1b_min_input, range1b_max_input) if 'range1b_min_input' in locals() and range1b_min_input is not None else Div(text=""),
             Div(text="<b>Map Color Scale:</b>", width=200),
             map1_color_scale_selector,
             Div(text="<b>Plot 2 Top (Probe 1) Range:</b>", width=200),
@@ -2371,7 +2706,12 @@ def create_dashboard(process_4dnexus):
         ])
 
         div_title = Div(text=f"<b>Dataset Name:</b><br>{process_4dnexus.nexus_filename}", width=400)
-        div_plot1 = Div(text=f"<b>Plot1:</b><br>{process_4dnexus.postsample_picked} / {process_4dnexus.presample_picked} <br> {process_4dnexus.x_coords_picked} and {process_4dnexus.y_coords_picked}", width=400)
+        # Display Plot1 info - handle both single dataset and ratio modes
+        if getattr(process_4dnexus, 'plot1_single_dataset_picked', None):
+            plot1_text = f"<b>Plot1:</b><br>{process_4dnexus.plot1_single_dataset_picked} (single dataset)<br> {process_4dnexus.x_coords_picked} and {process_4dnexus.y_coords_picked}"
+        else:
+            plot1_text = f"<b>Plot1:</b><br>{process_4dnexus.postsample_picked} / {process_4dnexus.presample_picked} <br> {process_4dnexus.x_coords_picked} and {process_4dnexus.y_coords_picked}"
+        div_plot1 = Div(text=plot1_text, width=400)
         # Include Plot2B selection info if present
         plot2b_info = ""
         try:
@@ -2435,8 +2775,12 @@ def create_dashboard(process_4dnexus):
         return dashboard_layout
         
     except Exception as e:
-        print(f"Error in create_dashboard: {e}")
-        return Div(text=f"<h2>Error Loading Dashboard</h2><p>Error: {e}</p>")
+        import traceback
+        error_msg = str(e) if e else "Unknown error"
+        print(f"Error in create_dashboard: {error_msg}")
+        print("Full traceback:")
+        traceback.print_exc()
+        return Div(text=f"<h2>Error Loading Dashboard</h2><p>Error: {error_msg}</p><pre>{traceback.format_exc()}</pre>")
 
 def find_nxs_files(directory):
     print(f"🔍 DEBUG: find_nxs_files() called with directory: {directory}")

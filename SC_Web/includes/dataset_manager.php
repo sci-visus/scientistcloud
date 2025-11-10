@@ -79,52 +79,50 @@ function getDatasetStatus($datasetId) {
  * Handles both MongoDB document format and API response format
  */
 function formatDataset($dataset) {
-    // Handle MongoDB document format (from SCLib_DatasetAPI)
-    if (isset($dataset['uuid'])) {
-        // Already in API format, but may need some adjustments
-        return [
-            'id' => $dataset['uuid'] ?? $dataset['id'] ?? '',
-            'name' => $dataset['name'] ?? 'Unnamed Dataset',
-            'uuid' => $dataset['uuid'] ?? $dataset['id'] ?? '',
-            'sensor' => $dataset['sensor'] ?? $dataset['metadata']['sensor'] ?? 'Unknown',
-            'status' => $dataset['status'] ?? $dataset['processing_status'] ?? 'unknown',
-            'compression_status' => $dataset['compression_status'] ?? $dataset['metadata']['compression_status'] ?? 'unknown',
-            'time' => $dataset['date_imported'] ?? $dataset['created_at'] ?? null,
-            'data_size' => $dataset['total_size'] ?? $dataset['raw_size'] ?? $dataset['file_size'] ?? 0,
-            'dimensions' => $dataset['dimensions'] ?? $dataset['metadata']['dimensions'] ?? '',
-            'google_drive_link' => $dataset['google_drive_link'] ?? $dataset['metadata']['google_drive_link'] ?? null,
-            'folder_uuid' => $dataset['folder_uuid'] ?? $dataset['metadata']['folder_uuid'] ?? '',
-            'team_uuid' => $dataset['team_uuid'] ?? $dataset['team_id'] ?? '',
-            'user_id' => $dataset['user'] ?? $dataset['user_id'] ?? '',
-            'tags' => $dataset['tags'] ?? $dataset['metadata']['tags'] ?? [],
-            'created_at' => $dataset['date_imported'] ?? $dataset['created_at'] ?? null,
-            'updated_at' => $dataset['date_updated'] ?? $dataset['updated_at'] ?? null,
-            'viewer_url' => $dataset['viewer_url'] ?? '',
-            'download_url' => $dataset['download_url'] ?? ''
-        ];
+    // Normalize tags - handle both array and string formats
+    $tags = $dataset['tags'] ?? $dataset['metadata']['tags'] ?? [];
+    if (is_string($tags)) {
+        // If tags is a string, try to parse it (could be comma-separated or JSON)
+        if (strpos($tags, '[') === 0) {
+            $tags = json_decode($tags, true) ?? [];
+        } else {
+            $tags = array_filter(array_map('trim', explode(',', $tags)));
+        }
+    }
+    if (!is_array($tags)) {
+        $tags = [];
     }
     
-    // Handle legacy format (from old API)
-    return [
-        'id' => $dataset['id'] ?? $dataset['uuid'] ?? '',
+    // Get data_size - prioritize MongoDB data_size field
+    $data_size = $dataset['data_size'] ?? $dataset['total_size'] ?? $dataset['raw_size'] ?? $dataset['file_size'] ?? 0;
+    
+    // Get created date - check multiple possible fields
+    $created_at = $dataset['time'] ?? $dataset['date_imported'] ?? $dataset['created_at'] ?? null;
+    
+    // Base dataset structure
+    $formatted = [
+        'id' => $dataset['uuid'] ?? $dataset['id'] ?? '',
         'name' => $dataset['name'] ?? 'Unnamed Dataset',
         'uuid' => $dataset['uuid'] ?? $dataset['id'] ?? '',
         'sensor' => $dataset['sensor'] ?? $dataset['metadata']['sensor'] ?? 'Unknown',
         'status' => $dataset['status'] ?? $dataset['processing_status'] ?? 'unknown',
         'compression_status' => $dataset['compression_status'] ?? $dataset['metadata']['compression_status'] ?? 'unknown',
-        'time' => $dataset['created_at'] ?? $dataset['date_imported'] ?? null,
-        'data_size' => $dataset['file_size'] ?? $dataset['total_size'] ?? $dataset['raw_size'] ?? 0,
+        'time' => $created_at,
+        'data_size' => $data_size,
         'dimensions' => $dataset['dimensions'] ?? $dataset['metadata']['dimensions'] ?? '',
         'google_drive_link' => $dataset['google_drive_link'] ?? $dataset['metadata']['google_drive_link'] ?? null,
         'folder_uuid' => $dataset['folder_uuid'] ?? $dataset['metadata']['folder_uuid'] ?? '',
         'team_uuid' => $dataset['team_uuid'] ?? $dataset['team_id'] ?? '',
-        'user_id' => $dataset['user'] ?? $dataset['user_id'] ?? '',
-        'tags' => $dataset['tags'] ?? $dataset['metadata']['tags'] ?? [],
-        'created_at' => $dataset['created_at'] ?? $dataset['date_imported'] ?? null,
-        'updated_at' => $dataset['updated_at'] ?? $dataset['date_updated'] ?? null,
+        'user_id' => $dataset['user'] ?? $dataset['user_email'] ?? $dataset['user_id'] ?? '',
+        'tags' => $tags,
+        'preferred_dashboard' => $dataset['preferred_dashboard'] ?? $dataset['metadata']['preferred_dashboard'] ?? '',
+        'created_at' => $created_at,
+        'updated_at' => $dataset['date_updated'] ?? $dataset['updated_at'] ?? null,
         'viewer_url' => $dataset['viewer_url'] ?? '',
         'download_url' => $dataset['download_url'] ?? ''
     ];
+    
+    return $formatted;
 }
 
 /**
@@ -242,23 +240,44 @@ function shareDataset($datasetId, $userId) {
 }
 
 /**
+ * Update dataset - delegate to SCLib
+ */
+function updateDataset($datasetId, $updateData) {
+    try {
+        $user = getCurrentUser();
+        if (!$user) {
+            return ['success' => false, 'error' => 'User not authenticated'];
+        }
+        
+        $sclib = getSCLibClient();
+        $result = $sclib->updateDataset($datasetId, $updateData, $user['email']);
+        
+        return $result;
+        
+    } catch (Exception $e) {
+        logMessage('ERROR', 'Failed to update dataset', ['dataset_id' => $datasetId, 'error' => $e->getMessage()]);
+        return ['success' => false, 'error' => $e->getMessage()];
+    }
+}
+
+/**
  * Delete dataset - delegate to SCLib
  */
 function deleteDataset($datasetId) {
     try {
         $user = getCurrentUser();
         if (!$user) {
-            return false;
+            return ['success' => false, 'error' => 'User not authenticated'];
         }
         
         $sclib = getSCLibClient();
-        $result = $sclib->deleteDataset($datasetId, $user['id']);
+        $result = $sclib->deleteDataset($datasetId, $user['email']);
         
-        return $result['success'] ?? false;
+        return $result;
         
     } catch (Exception $e) {
         logMessage('ERROR', 'Failed to delete dataset', ['dataset_id' => $datasetId, 'error' => $e->getMessage()]);
-        return false;
+        return ['success' => false, 'error' => $e->getMessage()];
     }
 }
 
