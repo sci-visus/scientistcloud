@@ -1210,18 +1210,34 @@ class DatasetManager {
 
     /**
      * Format file size
+     * Input is assumed to be in GB (as a float/numeric value from database)
+     * Converts and displays in the most appropriate unit (KB, MB, GB, TB)
      */
-    formatFileSize(bytes) {
-        if (bytes == 0) return '0 B';
+    formatFileSize(sizeGb) {
+        if (!sizeGb || sizeGb == 0) return '0 B';
         
+        // Ensure it's a number
+        const size = parseFloat(sizeGb);
+        if (isNaN(size) || size <= 0) return '0 B';
+        
+        // Convert GB to bytes for calculation
+        const bytes = size * 1024 * 1024 * 1024;
+        
+        // Determine the best unit to display
         const units = ['B', 'KB', 'MB', 'GB', 'TB'];
-        bytes = Math.max(bytes, 0);
         let pow = Math.floor((bytes ? Math.log(bytes) : 0) / Math.log(1024));
         pow = Math.min(pow, units.length - 1);
         
-        bytes = bytes / Math.pow(1024, pow);
+        // Convert to the appropriate unit
+        const value = bytes / Math.pow(1024, pow);
         
-        return Math.round(bytes * 100) / 100 + ' ' + units[pow];
+        // Format with appropriate decimal places
+        let decimals = 2;
+        if (pow === 0) decimals = 0; // Bytes - no decimals
+        else if (pow === 1) decimals = 1; // KB - 1 decimal
+        else if (pow >= 2) decimals = 2; // MB, GB, TB - 2 decimals
+        
+        return value.toFixed(decimals) + ' ' + units[pow];
     }
 
     /**

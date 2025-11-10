@@ -50,9 +50,23 @@ try {
         exit;
     }
 
-    // Get teams for user
+    // Get teams for user using SCLib Sharing and Team API
     $sharingClient = getSCLibSharingClient();
     $result = $sharingClient->getUserTeams($user['email']);
+    
+    // Ensure result has the expected format
+    if (!isset($result['success'])) {
+        // If result doesn't have success field, wrap it
+        $result = [
+            'success' => true,
+            'teams' => $result['teams'] ?? $result ?? []
+        ];
+    }
+    
+    // Ensure teams array exists
+    if (!isset($result['teams'])) {
+        $result['teams'] = [];
+    }
     
     ob_end_clean();
     echo json_encode($result);

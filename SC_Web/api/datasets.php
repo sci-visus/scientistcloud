@@ -87,8 +87,13 @@ try {
         ];
     }
     
-    // Helper function to convert data_size to bytes
-    function convertToBytes($size) {
+    // Helper function to convert data_size to GB (for total size calculation)
+    // Input can be:
+    // - Numeric value (assumed to be in GB) - new format
+    // - String with unit (e.g., "758.16 KB") - legacy format
+    // Returns: size in GB as float
+    function convertToGb($size) {
+        // If it's already a numeric value, assume it's in GB (new format)
         if (is_numeric($size)) {
             return (float)$size;
         }
@@ -97,7 +102,7 @@ try {
             return 0;
         }
         
-        // Remove whitespace and convert to uppercase
+        // Handle legacy string format (e.g., "758.16 KB", "1.5 GB")
         $size = trim(strtoupper($size));
         
         // Extract number and unit
@@ -105,28 +110,24 @@ try {
             $number = (float)$matches[1];
             $unit = $matches[2] ?? 'B';
             
-            // Convert to bytes
+            // Convert to GB
             switch ($unit) {
                 case 'KB':
                 case 'K':
-                    return $number * 1024;
+                    return $number / (1024 * 1024); // KB to GB
                 case 'MB':
                 case 'M':
-                    return $number * 1024 * 1024;
+                    return $number / 1024; // MB to GB
                 case 'GB':
                 case 'G':
-                    return $number * 1024 * 1024 * 1024;
+                    return $number; // Already in GB
                 case 'TB':
                 case 'T':
-                    return $number * 1024 * 1024 * 1024 * 1024;
+                    return $number * 1024; // TB to GB
                 default:
-                    return $number;
+                    // Assume bytes, convert to GB
+                    return $number / (1024 * 1024 * 1024);
             }
-        }
-        
-        // If it's just a number, return it
-        if (is_numeric($size)) {
-            return (float)$size;
         }
         
         return 0;
@@ -139,7 +140,7 @@ try {
     
     foreach (array_merge($allDatasets['my'], $allDatasets['shared'], $allDatasets['team']) as $dataset) {
         $dataSize = $dataset['data_size'] ?? 0;
-        $totalSize += convertToBytes($dataSize);
+        $totalSize += convertToGb($dataSize); // Add size in GB
         $status = $dataset['status'] ?? 'unknown';
         $statusCounts[$status] = ($statusCounts[$status] ?? 0) + 1;
     }

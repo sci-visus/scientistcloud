@@ -5,9 +5,8 @@
 
 // Helper function to get API base path
 function getUploadApiBasePath() {
-    const isLocal = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
-    // Upload API is typically on port 5001 (same as dataset API)
-    return isLocal ? 'http://localhost:5001' : (window.location.origin + '/api');
+    // Use the same API base path as other endpoints (PHP proxy)
+    return getApiBasePath();
 }
 
 class UploadManager {
@@ -79,12 +78,21 @@ class UploadManager {
 
         try {
             const teamsResponse = await fetch(`${getApiBasePath()}/get-teams.php`);
+            if (!teamsResponse.ok) {
+                throw new Error(`HTTP ${teamsResponse.status}: ${teamsResponse.statusText}`);
+            }
+            
             const teamsData = await teamsResponse.json();
-            if (teamsData.success) {
-                teams = teamsData.teams || [];
+            if (teamsData.success && teamsData.teams) {
+                teams = teamsData.teams;
+                console.log(`Loaded ${teams.length} team(s) for user`);
+            } else {
+                console.warn('Teams API returned unsuccessful response:', teamsData);
+                teams = [];
             }
         } catch (error) {
-            console.warn('Could not load teams:', error);
+            console.error('Could not load teams:', error);
+            teams = []; // Default to empty array on error
         }
 
         // Build upload interface HTML
@@ -695,10 +703,39 @@ class UploadManager {
                 if (uploadData.tags) uploadFormData.append('tags', uploadData.tags);
 
                 uploadPromises.push(
-                    fetch(`${getUploadApiBasePath()}/api/upload/upload`, {
+                    fetch(`${getUploadApiBasePath()}/upload-dataset.php`, {
                         method: 'POST',
                         body: uploadFormData
-                    }).then(response => response.json())
+                    }).then(async response => {
+                        const text = await response.text();
+                        
+                        // Log response for debugging
+                        console.log('Upload response status:', response.status);
+                        console.log('Upload response preview:', text.substring(0, 200));
+                        
+                        // Check if response is empty
+                        if (!text || text.trim().length === 0) {
+                            throw new Error('Empty response from server');
+                        }
+                        
+                        // Try to parse JSON
+                        try {
+                            // Remove any leading/trailing whitespace
+                            const cleanedText = text.trim();
+                            
+                            // Check if it looks like JSON
+                            if (cleanedText[0] !== '{' && cleanedText[0] !== '[') {
+                                console.error('Response does not start with JSON:', cleanedText.substring(0, 200));
+                                throw new Error('Response is not valid JSON. Server may have returned an error page.');
+                            }
+                            
+                            return JSON.parse(cleanedText);
+                        } catch (e) {
+                            console.error('JSON parse error:', e);
+                            console.error('Full response:', text);
+                            throw new Error('Invalid JSON response: ' + e.message + '. Response preview: ' + text.substring(0, 200));
+                        }
+                    })
                 );
             }
 
