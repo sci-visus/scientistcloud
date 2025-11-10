@@ -16,6 +16,7 @@ ob_start();
 // Disable error display to prevent output
 ini_set('display_errors', 0);
 ini_set('display_startup_errors', 0);
+error_reporting(E_ALL & ~E_WARNING & ~E_NOTICE & ~E_DEPRECATED);
 
 // Start session BEFORE including config.php to ensure session is available
 if (session_status() == PHP_SESSION_NONE) {
@@ -86,13 +87,59 @@ try {
         ];
     }
     
+    // Helper function to convert data_size to bytes
+    function convertToBytes($size) {
+        if (is_numeric($size)) {
+            return (float)$size;
+        }
+        
+        if (!is_string($size)) {
+            return 0;
+        }
+        
+        // Remove whitespace and convert to uppercase
+        $size = trim(strtoupper($size));
+        
+        // Extract number and unit
+        if (preg_match('/^([\d.]+)\s*([KMGT]?B?)$/', $size, $matches)) {
+            $number = (float)$matches[1];
+            $unit = $matches[2] ?? 'B';
+            
+            // Convert to bytes
+            switch ($unit) {
+                case 'KB':
+                case 'K':
+                    return $number * 1024;
+                case 'MB':
+                case 'M':
+                    return $number * 1024 * 1024;
+                case 'GB':
+                case 'G':
+                    return $number * 1024 * 1024 * 1024;
+                case 'TB':
+                case 'T':
+                    return $number * 1024 * 1024 * 1024 * 1024;
+                default:
+                    return $number;
+            }
+        }
+        
+        // If it's just a number, return it
+        if (is_numeric($size)) {
+            return (float)$size;
+        }
+        
+        return 0;
+    }
+    
     // Calculate stats
     $totalDatasets = count($allDatasets['my']) + count($allDatasets['shared']) + count($allDatasets['team']);
     $totalSize = 0;
     $statusCounts = [];
     
     foreach (array_merge($allDatasets['my'], $allDatasets['shared'], $allDatasets['team']) as $dataset) {
-        $totalSize += $dataset['data_size'] ?? 0;
+        $dataSize = $dataset['data_size'] ?? 0;
+        $totalSize += convertToBytes($dataSize);
         $status = $dataset['status'] ?? 'unknown';
         $statusCounts[$status] = ($statusCounts[$status] ?? 0) + 1;
     }
