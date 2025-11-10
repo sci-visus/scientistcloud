@@ -702,8 +702,12 @@ class UploadManager {
                 if (uploadData.team_uuid) uploadFormData.append('team_uuid', uploadData.team_uuid);
                 if (uploadData.tags) uploadFormData.append('tags', uploadData.tags);
 
+                // Build upload URL
+                const uploadUrl = `${getUploadApiBasePath()}/upload-dataset.php`;
+                console.log('Uploading to:', uploadUrl);
+                
                 uploadPromises.push(
-                    fetch(`${getUploadApiBasePath()}/upload-dataset.php`, {
+                    fetch(uploadUrl, {
                         method: 'POST',
                         body: uploadFormData
                     }).then(async response => {
@@ -735,6 +739,9 @@ class UploadManager {
                             console.error('Full response:', text);
                             throw new Error('Invalid JSON response: ' + e.message + '. Response preview: ' + text.substring(0, 200));
                         }
+                    }).catch(error => {
+                        console.error('Upload fetch error:', error);
+                        throw error;
                     })
                 );
             }

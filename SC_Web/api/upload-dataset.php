@@ -34,6 +34,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
 
 require_once(__DIR__ . '/../config.php');
 require_once(__DIR__ . '/../includes/auth.php');
+require_once(__DIR__ . '/../includes/sclib_client.php');
 
 try {
     // Check authentication
@@ -75,7 +76,11 @@ try {
     $tags = $_POST['tags'] ?? '';
 
     // Get SCLib Upload API URL from config
-    $uploadApiUrl = getenv('SCLIB_UPLOAD_URL') ?: getenv('SCLIB_API_URL') ?: 'http://localhost:5001';
+    // In Docker, use service name; locally, use localhost
+    $uploadApiUrl = getenv('SCLIB_UPLOAD_URL') ?: getenv('SCLIB_API_URL') ?: getenv('EXISTING_API_URL') ?: 'http://localhost:5001';
+    
+    // Log the API URL being used (for debugging)
+    error_log("Upload API URL: " . $uploadApiUrl);
     
     // Prepare multipart form data for forwarding to SCLib API
     $filePath = $_FILES['file']['tmp_name'];
@@ -105,9 +110,13 @@ try {
         $postData['tags'] = $tags;
     }
 
+    // Build the full upload endpoint URL
+    $uploadEndpoint = rtrim($uploadApiUrl, '/') . '/api/upload/upload';
+    error_log("Upload endpoint URL: " . $uploadEndpoint);
+
     // Forward request to SCLib Upload API
     $ch = curl_init();
-    curl_setopt($ch, CURLOPT_URL, $uploadApiUrl . '/api/upload/upload');
+    curl_setopt($ch, CURLOPT_URL, $uploadEndpoint);
     curl_setopt($ch, CURLOPT_POST, true);
     curl_setopt($ch, CURLOPT_POSTFIELDS, $postData);
     curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
@@ -124,7 +133,10 @@ try {
     curl_close($ch);
     
     // Log request details for debugging
-    error_log("Upload API request: URL=" . $uploadApiUrl . '/api/upload/upload' . ", HTTP_CODE=$httpCode, Response length=" . strlen($response));
+    error_log("Upload API request: URL=$uploadEndpoint, HTTP_CODE=$httpCode, Response length=" . strlen($response));
+    if ($httpCode >= 400) {
+        error_log("Upload API error response: " . substr($response, 0, 500));
+    }
 
     ob_end_clean();
 
@@ -140,6 +152,9 @@ try {
 
     // Check HTTP status
     if ($httpCode >= 400) {
+        // Log detailed error information
+        error_log("Upload API error - HTTP Code: $httpCode, URL: $uploadEndpoint, Response: " . substr($response, 0, 500));
+        
         http_response_code($httpCode);
         // Try to parse error response
         $errorData = json_decode($response, true);
@@ -147,13 +162,17 @@ try {
             echo json_encode([
                 'success' => false,
                 'error' => $errorData['detail'] ?? $errorData['error'] ?? 'Upload failed',
-                'message' => $errorData['message'] ?? null
+                'message' => $errorData['message'] ?? null,
+                'http_code' => $httpCode,
+                'api_url' => $uploadEndpoint
             ]);
         } else {
             echo json_encode([
                 'success' => false,
                 'error' => 'Upload failed',
-                'message' => $response
+                'message' => $response ? substr($response, 0, 200) : 'No response from server',
+                'http_code' => $httpCode,
+                'api_url' => $uploadEndpoint
             ]);
         }
         exit;
