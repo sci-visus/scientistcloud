@@ -1,6 +1,6 @@
 {
   "version": "1.0.0",
-  "last_updated": "2025-11-04",
+  "last_updated": "2025-11-11T15:48:34Z",
   "dashboards": [
     {
       "id": "3DPlotly",
@@ -10,7 +10,7 @@
       "description": "Dashboard description",
       "port": 8060,
       "nginx_path": "/dashboard/plotly",
-      "url_template": "/dashboard/plotly?uuid={uuid}&server={server}&name={name}",
+      "url_template": "/dashboard/plotly/?uuid={uuid}&server={server}&name={name}",
       "enabled": true,
       "config_file": "../dashboards/3DPlotly.json"
     },
@@ -27,7 +27,7 @@
       "config_file": "../dashboards/3DVTK.json"
     },
     {
-      "id": "4D_Dashboard",
+      "id": "4d_dashboard",
       "name": "4D Dashboard",
       "type": "dash",
       "display_name": "4D Dashboard",
@@ -39,7 +39,19 @@
       "config_file": "../dashboards/4d_dashboard.json"
     },
     {
-      "id": "Magicscan",
+      "id": "OpenVisusSlice",
+      "name": "OpenVisus Slice Dashboard",
+      "type": "dash",
+      "display_name": "OpenVisus Slice Dashboard",
+      "description": "Dashboard description",
+      "port": 8054,
+      "nginx_path": "/dashboard/OpenVisusSlice",
+      "url_template": "/dashboard/OpenVisusSlice/?uuid={uuid}&server={server}&name={name}",
+      "enabled": true,
+      "config_file": "../dashboards/OpenVisusSlice.json"
+    },
+    {
+      "id": "magicscan",
       "name": "MagicScan Dashboard",
       "type": "dash",
       "display_name": "MagicScan Dashboard",
@@ -49,18 +61,6 @@
       "url_template": "/dashboard/magicscan/?uuid={uuid}&server={server}&name={name}",
       "enabled": true,
       "config_file": "../dashboards/magicscan.json"
-    },
-    {
-      "id": "OpenVisusSlice",
-      "name": "OpenVisus Slice Explorer",
-      "type": "dash",
-      "display_name": "OpenVisus Slice Explorer",
-      "description": "Dashboard description",
-      "port": 8054,
-      "nginx_path": "/dashboard/OpenVisusSlice",
-      "url_template": "/dashboard/OpenVisusSlice/?uuid={uuid}&server={server}&name={name}",
-      "enabled": true,
-      "config_file": "../dashboards/OpenVisusSlice.json"
     }
   ]
 }

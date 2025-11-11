@@ -25,6 +25,7 @@ done
 
 # Source environment variables first
 ENV_FILE="$HOME/ScientistCloud2.0/SCLib_TryTest/env.scientistcloud"
+
 if [ -f "$ENV_FILE" ]; then
     echo "📋 Loading environment variables from $ENV_FILE..."
     set -o allexport

@@ -1,6 +1,6 @@
 # Dashboard Services - Auto-generated from dashboard-registry.json
 # DO NOT EDIT MANUALLY - Regenerate using scripts/generate_docker_compose.sh
-# Generated: Thu Nov  6 15:29:28 CST 2025
+# Generated: Tue Nov 11 11:17:01 CST 2025
 
 services:
   # 3D Plotly Dashboard
@@ -76,7 +76,7 @@ services:
     image: 4d_dashboard:latest
     build:
       context: ../SC_Dashboards/dashboards
-      dockerfile: 4D_Dashboard.Dockerfile
+      dockerfile: 4d_dashboard.Dockerfile
       args:
         D_GIT_TOKEN: ${D_GIT_TOKEN}
     environment:
@@ -102,40 +102,7 @@ services:
       start_period: 40s
     init: true
 
-  # MagicScan Dashboard
-  magicscan:
-    container_name: dashboard_magicscan
-    platform: linux/amd64
-    image: magicscan:latest
-    build:
-      context: ../SC_Dashboards/dashboards
-      dockerfile: Magicscan.Dockerfile
-      args:
-        D_GIT_TOKEN: ${D_GIT_TOKEN}
-    environment:
-      - SECRET_KEY=${SECRET_KEY}
-      - DEPLOY_SERVER=${DEPLOY_SERVER}
-      - DB_NAME=${DB_NAME}
-      - MONGO_URL=${MONGO_URL}
-      - DOMAIN_NAME=${DOMAIN_NAME}
-      - DASHBOARD_PORT=8053
-    ports:
-      - "8053:8053"
-    networks:
-      - docker_visstore_web
-    restart: unless-stopped
-    volumes:
-      - ${VISUS_DB}:/mnt/visus_db
-      - ${VISUS_DATASETS}:/mnt/visus_datasets
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8053/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 40s
-    init: true
-
-  # OpenVisus Slice Explorer
+  # OpenVisus Slice Dashboard
   openvisusslice:
     container_name: dashboard_openvisusslice
     platform: linux/amd64
@@ -162,6 +129,39 @@ services:
       - ${VISUS_DATASETS}:/mnt/visus_datasets
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8054/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    init: true
+
+  # MagicScan Dashboard
+  magicscan:
+    container_name: dashboard_magicscan
+    platform: linux/amd64
+    image: magicscan:latest
+    build:
+      context: ../SC_Dashboards/dashboards
+      dockerfile: magicscan.Dockerfile
+      args:
+        D_GIT_TOKEN: ${D_GIT_TOKEN}
+    environment:
+      - SECRET_KEY=${SECRET_KEY}
+      - DEPLOY_SERVER=${DEPLOY_SERVER}
+      - DB_NAME=${DB_NAME}
+      - MONGO_URL=${MONGO_URL}
+      - DOMAIN_NAME=${DOMAIN_NAME}
+      - DASHBOARD_PORT=8053
+    ports:
+      - "8053:8053"
+    networks:
+      - docker_visstore_web
+    restart: unless-stopped
+    volumes:
+      - ${VISUS_DB}:/mnt/visus_db
+      - ${VISUS_DATASETS}:/mnt/visus_datasets
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8053/health"]
       interval: 30s
       timeout: 10s
       retries: 3

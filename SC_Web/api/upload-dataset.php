@@ -74,6 +74,8 @@ try {
     $folder = $_POST['folder'] ?? null;
     $teamUuid = $_POST['team_uuid'] ?? null;
     $tags = $_POST['tags'] ?? '';
+    $datasetIdentifier = $_POST['dataset_identifier'] ?? null;
+    $addToExisting = isset($_POST['add_to_existing']) ? filter_var($_POST['add_to_existing'], FILTER_VALIDATE_BOOLEAN) : false;
 
     // Get SCLib Upload API URL from config
     // In Docker, use service name; locally, use localhost
@@ -108,6 +110,12 @@ try {
     }
     if ($tags) {
         $postData['tags'] = $tags;
+    }
+    if ($datasetIdentifier) {
+        $postData['dataset_identifier'] = $datasetIdentifier;
+    }
+    if ($addToExisting) {
+        $postData['add_to_existing'] = 'true';
     }
 
     // Build the full upload endpoint URL

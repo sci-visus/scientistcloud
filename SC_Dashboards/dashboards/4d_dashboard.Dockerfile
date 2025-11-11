@@ -16,6 +16,7 @@ ENV DOMAIN_NAME=${DOMAIN_NAME}
 # Echo build information
 RUN echo "DEPLOY SERVER: ${DEPLOY_SERVER}"
 
+
 # Copy application code
 ENV APP_HOME=/app
 WORKDIR $APP_HOME
@@ -48,10 +49,6 @@ RUN if [ -s requirements.txt ]; then \
         echo "No requirements to install (requirements.txt is empty)"; \
     fi
 
-#
-# Install additional requirements
-RUN python3 -m pip install --no-cache-dir bokeh==3.8.0 panel jupyter boto3 scikit-image bokeh[server] tornado>=6.1 markupsafe>=2.0 six>=1.16 packaging>=21.0 pyyaml>=5.4 python-dateutil>=2.8 babel>=2.9 click>=8.0 pillow>=8.0
-
 
 # Set environment variables from configuration
 
@@ -60,7 +57,7 @@ RUN python3 -m pip install --no-cache-dir bokeh==3.8.0 panel jupyter boto3 sciki
 EXPOSE 8052
 
 # Health check (if specified)
-#
+
 HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
   CMD curl -f http://localhost:8052/health || exit 1
 

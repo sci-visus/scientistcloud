@@ -33,12 +33,8 @@ COPY SCLib_Dashboards/utils_bokeh_auth.py ./utils_bokeh_auth.py
 # Copy shared utility: utils_bokeh_param.py
 COPY SCLib_Dashboards/utils_bokeh_param.py ./utils_bokeh_param.py
 # Copy shared utility: msc_py.cpython-310-x86_64-linux-gnu.so
-# Copy to both app directory and site-packages for Python to find it
 COPY SCLib_Dashboards/msc_py.cpython-310-x86_64-linux-gnu.so ./msc_py.cpython-310-x86_64-linux-gnu.so
-COPY SCLib_Dashboards/msc_py.cpython-310-x86_64-linux-gnu.so /usr/local/lib/python3.10/site-packages/msc_py.cpython-310-x86_64-linux-gnu.so
 
-# Set PYTHONPATH to include site-packages for msc_py library
-ENV PYTHONPATH="/usr/local/lib/python3.10/site-packages:${PYTHONPATH}"
 
 # Copy dashboard-specific files (flat structure)
 COPY magicscan.py ./

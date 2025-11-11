@@ -78,11 +78,6 @@ COPY SCLib_Dashboards/utils_bokeh_param.py ./utils_bokeh_param.py
 
 # Copy dashboard-specific files (flat structure)
 COPY 3DVTK.py ./
-# Copy health check server
-COPY health_check_server.py ./
-# Copy startup script
-COPY start_3dvtk.sh ./
-RUN chmod +x start_3dvtk.sh
 # Requirements file is always copied as requirements.txt in build context
 # (build script ensures it exists, even if empty)
 COPY requirements.txt ./requirements.txt
@@ -102,16 +97,15 @@ RUN python3 -m pip install --no-cache-dir pyvista>=0.44.0 vtk>=9.3.0 panel>=1.3.
 # Set environment variables from configuration
 
 
-# Expose dashboard port and health check port
-EXPOSE 8051 8052
+# Expose dashboard port
+EXPOSE 8051
 
 # Health check (if specified)
-# Health check server runs on port 8052
 
 HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
-  CMD curl -f http://localhost:8052/health || exit 1
+  CMD curl -f http://localhost:8051/health || exit 1
 
 
-# Run dashboard entry point using startup script
-CMD ["./start_3dvtk.sh"]
+# Run dashboard entry point
+CMD ["sh", "-c", "python3 -m bokeh serve ./3DVTK.py --allow-websocket-origin=$DOMAIN_NAME --allow-websocket-origin=127.0.0.1 --allow-websocket-origin=0.0.0.0 --port=8051 --address=0.0.0.0 --use-xheaders --session-token-expiration=86400"]
 

@@ -649,6 +649,17 @@ class UploadManager {
     }
 
     /**
+     * Generate a UUID v4
+     */
+    generateUUID() {
+        return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+            const r = Math.random() * 16 | 0;
+            const v = c === 'x' ? r : (r & 0x3 | 0x8);
+            return v.toString(16);
+        });
+    }
+
+    /**
      * Handle local file upload
      */
     async handleLocalUpload(form) {
@@ -688,8 +699,10 @@ class UploadManager {
             submitBtn.disabled = true;
             submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Uploading...';
 
-            // Upload each file (for now, we'll create separate datasets for each file)
-            // TODO: In the future, we can group files into a single dataset
+            // Generate a single UUID for all files to group them in the same dataset
+            const datasetUuid = this.generateUUID();
+            console.log(`Grouping ${files.length} file(s) under dataset UUID: ${datasetUuid}`);
+            
             const uploadPromises = [];
             
             for (let i = 0; i < files.length; i++) {
@@ -698,17 +711,27 @@ class UploadManager {
                 const uploadFormData = new FormData();
                 uploadFormData.append('file', file);
                 uploadFormData.append('user_email', userEmail);
-                uploadFormData.append('dataset_name', files.length > 1 ? `${uploadData.dataset_name}_${i + 1}` : uploadData.dataset_name);
+                uploadFormData.append('dataset_name', uploadData.dataset_name); // Use same name for all files
                 uploadFormData.append('sensor', uploadData.sensor);
                 uploadFormData.append('convert', uploadData.convert);
                 uploadFormData.append('is_public', uploadData.is_public);
                 if (uploadData.folder) uploadFormData.append('folder', uploadData.folder);
                 if (uploadData.team_uuid) uploadFormData.append('team_uuid', uploadData.team_uuid);
                 if (uploadData.tags) uploadFormData.append('tags', uploadData.tags);
+                
+                // Group files under the same dataset UUID
+                uploadFormData.append('dataset_identifier', datasetUuid);
+                if (i > 0) {
+                    // For files after the first, add to existing dataset
+                    uploadFormData.append('add_to_existing', 'true');
+                }
 
                 // Build upload URL
                 const uploadUrl = `${getUploadApiBasePath()}/upload-dataset.php`;
-                console.log('Uploading to:', uploadUrl);
+                console.log(`Uploading file ${i + 1}/${files.length} to: ${uploadUrl}`);
+                if (i > 0) {
+                    console.log(`  Adding to existing dataset: ${datasetUuid}`);
+                }
                 
                 uploadPromises.push(
                     fetch(uploadUrl, {
