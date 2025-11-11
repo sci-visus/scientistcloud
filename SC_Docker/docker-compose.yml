@@ -1,7 +1,6 @@
-version: '3.8'
-
 # ScientistCloud Data Portal - Unified Integration
 # Works with both VisusDataPortalPrivate and scientistCloudLib systems
+# Note: version field is not needed in Docker Compose v2+
 
 services:
   # Data Portal Application

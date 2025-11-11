@@ -218,6 +218,118 @@ class DatasetManager {
         }
         
         container.innerHTML = html;
+        
+        // Attach event listeners after rendering
+        this.attachDatasetEventListeners();
+    }
+    
+    /**
+     * Attach event listeners for dataset interactions
+     * Uses event delegation to handle dynamically rendered elements
+     */
+    attachDatasetEventListeners() {
+        // Use event delegation on the container to handle dynamically added elements
+        const container = document.querySelector('.dataset-list');
+        if (!container) return;
+        
+        // Remove existing listeners if any (by checking for a data attribute)
+        if (container.dataset.listenersAttached === 'true') {
+            return; // Already attached
+        }
+        container.dataset.listenersAttached = 'true';
+        
+        // Handle dataset clicks using event delegation
+        container.addEventListener('click', (e) => {
+            const link = e.target.closest('.dataset-link');
+            if (link) {
+                e.preventDefault();
+                
+                const datasetId = link.getAttribute('data-dataset-id');
+                const datasetName = link.getAttribute('data-dataset-name');
+                const datasetUuid = link.getAttribute('data-dataset-uuid');
+                const datasetServer = link.getAttribute('data-dataset-server');
+                
+                console.log('Dataset clicked:', { datasetId, datasetName, datasetUuid, datasetServer });
+                
+                // Update active state
+                document.querySelectorAll('.dataset-link').forEach((l) => {
+                    l.classList.remove('active');
+                });
+                link.classList.add('active');
+                
+                // Validate required fields
+                if (!datasetUuid) {
+                    console.error('Dataset UUID is missing! Cannot load dashboard.');
+                    alert('Error: Dataset UUID is missing. Please contact support.');
+                    return;
+                }
+                
+                // Store current dataset
+                this.currentDataset = {
+                    id: datasetId,
+                    name: datasetName,
+                    uuid: datasetUuid,
+                    server: datasetServer
+                };
+                
+                // Load dataset details
+                if (typeof loadDatasetDetails === 'function') {
+                    loadDatasetDetails(datasetId);
+                }
+                
+                // Load dashboard using viewer manager
+                if (window.viewerManager) {
+                    const viewerType = document.getElementById('viewerType');
+                    const dashboardType = viewerType ? viewerType.value : (Object.keys(window.viewerManager.viewers)[0] || 'OpenVisusSlice');
+                    
+                    console.log('Loading dashboard with UUID:', datasetUuid, 'dashboard type:', dashboardType);
+                    window.viewerManager.loadDashboard(datasetId, datasetName, datasetUuid, datasetServer, dashboardType);
+                } else if (typeof loadDashboard === 'function') {
+                    console.log('Using fallback loadDashboard with UUID:', datasetUuid);
+                    loadDashboard(datasetId, datasetName, datasetUuid, datasetServer);
+                } else {
+                    console.error('No dashboard loader available');
+                    alert('Error: Dashboard loader not available. Please refresh the page.');
+                }
+            }
+            
+            // Handle dataset files toggle using event delegation
+            const toggleButton = e.target.closest('.dataset-files-toggle');
+            if (toggleButton) {
+                e.stopPropagation(); // Prevent dataset selection
+                
+                const datasetUuid = toggleButton.getAttribute('data-dataset-uuid');
+                const filesContainer = document.getElementById('files-' + datasetUuid);
+                
+                if (!filesContainer) return;
+                
+                const isExpanded = filesContainer.style.display !== 'none';
+                
+                if (isExpanded) {
+                    // Collapse
+                    filesContainer.style.display = 'none';
+                    toggleButton.classList.remove('expanded');
+                    const chevron = toggleButton.querySelector('i');
+                    if (chevron) {
+                        chevron.style.transform = 'rotate(0deg)';
+                    }
+                } else {
+                    // Expand
+                    filesContainer.style.display = 'block';
+                    toggleButton.classList.add('expanded');
+                    const chevron = toggleButton.querySelector('i');
+                    if (chevron) {
+                        chevron.style.transform = 'rotate(90deg)';
+                    }
+                    
+                    // Load files if not already loaded
+                    const content = filesContainer.querySelector('.dataset-files-content');
+                    if (content && (content.innerHTML.includes('Loading files') || content.innerHTML.trim() === '')) {
+                        this.loadDatasetFilesIntoContainer(datasetUuid, content);
+                    }
+                }
+            }
+        });
     }
 
     /**
@@ -377,16 +489,26 @@ class DatasetManager {
         const fileIcon = this.getFileIcon(sensor);
         
         return `
-            <div class="dataset-item" data-dataset-id="${datasetId}">
-                <a class="nav-link dataset-link" href="javascript:void(0)" 
-                   data-dataset-id="${datasetId}"
-                   data-dataset-name="${datasetName}"
-                   data-dataset-uuid="${datasetUuid}"
-                   data-dataset-server="${datasetServer}">
-                    <i class="${fileIcon} me-2"></i>
-                    <span class="dataset-name">${datasetName}</span>
-                    <span class="badge bg-${statusColor} ms-2">${status}</span>
-                </a>
+            <div class="dataset-item" data-dataset-id="${datasetId}" data-dataset-uuid="${datasetUuid}">
+                <div class="dataset-header">
+                    <a class="nav-link dataset-link" href="javascript:void(0)" 
+                       data-dataset-id="${datasetId}"
+                       data-dataset-name="${datasetName}"
+                       data-dataset-uuid="${datasetUuid}"
+                       data-dataset-server="${datasetServer}">
+                        <i class="${fileIcon} me-2"></i>
+                        <span class="dataset-name">${datasetName}</span>
+                        <span class="badge bg-${statusColor} ms-2">${status}</span>
+                    </a>
+                    <button class="dataset-files-toggle" data-dataset-uuid="${datasetUuid}" title="Toggle files">
+                        <i class="fas fa-chevron-right"></i>
+                    </button>
+                </div>
+                <div class="dataset-files" id="files-${datasetUuid}" style="display: none;">
+                    <div class="dataset-files-content">
+                        <p class="text-muted small">Loading files...</p>
+                    </div>
+                </div>
             </div>
         `;
     }
