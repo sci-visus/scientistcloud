@@ -61,10 +61,12 @@ if [ "$DASHBOARDS_ONLY" = false ]; then
         pushd "$SCLIB_DOCKER_DIR"
         git fetch origin
         git reset --hard origin/main
+        # Clean containers, then rebuild and start
+        # Note: start.sh up already does 'build --no-cache auth fastapi', ensuring fresh build with latest code
         ./start.sh clean
         ./start.sh up
         popd
-        echo "✅ SCLib services started"
+        echo "✅ SCLib services started (FastAPI rebuilt with latest code)"
     else
         echo "⚠️ SCLib Docker directory not found: $SCLIB_DOCKER_DIR"
     fi
