@@ -1246,3 +1246,122 @@
 [11-Nov-2025 19:45:19 UTC] Upload API request: URL=http://sclib_fastapi:5001/api/upload/upload, HTTP_CODE=500, Response length=48
 [11-Nov-2025 19:45:19 UTC] Upload API error response: {"detail":"name 'relative_path' is not defined"}
 [11-Nov-2025 19:45:19 UTC] Upload API error - HTTP Code: 500, URL: http://sclib_fastapi:5001/api/upload/upload, Response: {"detail":"name 'relative_path' is not defined"}
+[11-Nov-2025 20:16:02 UTC] ✅ Using GuzzleHttp\Psr7\HttpFactory
+[11-Nov-2025 20:16:02 UTC] ✅ Using GuzzleHttp\Client
+[11-Nov-2025 20:16:06 UTC] ✅ Using GuzzleHttp\Psr7\HttpFactory
+[11-Nov-2025 20:16:06 UTC] ✅ Using GuzzleHttp\Client
+[11-Nov-2025 20:16:07 UTC] API Request: GET http://sclib_auth:8001/health
+[11-Nov-2025 20:16:07 UTC] HTTP Code: 200
+[11-Nov-2025 20:16:07 UTC] Response (first 500 chars): {"status":"healthy","service":"SCLib_Auth_Standalone"}
+[11-Nov-2025 20:16:07 UTC] Creating user at: http://sclib_auth:8001/api/auth/create-user
+[11-Nov-2025 20:16:07 UTC] User data: {"email":"amy@visus.net","name":"Amy Gooch","auth0_id":"google-oauth2|102515493501554578195","sub":"google-oauth2|102515493501554578195","picture":"https:\/\/lh3.googleusercontent.com\/a\/ACg8ocK-O-1oZ6Xz-TnfeEjCg0bJbjzvWA6xqXSC4U7gTYP5uFQXPQ=s96-c","email_verified":true,"auth0_metadata":{"given_name":"Amy","family_name":"Gooch","nickname":"amy","name":"Amy Gooch","picture":"https:\/\/lh3.googleusercontent.com\/a\/ACg8ocK-O-1oZ6Xz-TnfeEjCg0bJbjzvWA6xqXSC4U7gTYP5uFQXPQ=s96-c","updated_at":"2025-11-07T17:22:45.580Z","email":"amy@visus.net","email_verified":true,"iss":"https:\/\/dev-ep26akpb.auth0.com\/","aud":"Wy5lNzYVnDErayU9OmXQPFU5B99oHiI6","sub":"google-oauth2|102515493501554578195","iat":1762892182,"exp":1762928182,"sid":"2_JteWLpxc5QmD-kPa8dCEbsxo2JvuZm","nonce":"47a2c36e5476bc1acc69ad09df77fa31"}}
+[11-Nov-2025 20:16:08 UTC] API Request: POST http://sclib_auth:8001/api/auth/create-user
+[11-Nov-2025 20:16:08 UTC] HTTP Code: 200
+[11-Nov-2025 20:16:08 UTC] Response (first 500 chars): {"success":true,"user_id":"google-oauth2|102515493501554578195","user":{"id":"google-oauth2|102515493501554578195","user_id":"google-oauth2|102515493501554578195","email":"amy@visus.net","name":"Amy Gooch","picture":"https://lh3.googleusercontent.com/a/ACg8ocK-O-1oZ6Xz-TnfeEjCg0bJbjzvWA6xqXSC4U7gTYP5uFQXPQ=s96-c","email_verified":true,"created_at":"2025-11-11T17:17:28.973000","last_login":"2025-11-11T20:16:07.945000","preferences":{},"auth0_id":"google-oauth2|102515493501554578195"}}
+[11-Nov-2025 20:16:08 UTC] Create user response: {"success":true,"user_id":"google-oauth2|102515493501554578195","user":{"id":"google-oauth2|102515493501554578195","user_id":"google-oauth2|102515493501554578195","email":"amy@visus.net","name":"Amy Gooch","picture":"https:\/\/lh3.googleusercontent.com\/a\/ACg8ocK-O-1oZ6Xz-TnfeEjCg0bJbjzvWA6xqXSC4U7gTYP5uFQXPQ=s96-c","email_verified":true,"created_at":"2025-11-11T17:17:28.973000","last_login":"2025-11-11T20:16:07.945000","preferences":[],"auth0_id":"google-oauth2|102515493501554578195"}}
+[11-Nov-2025 20:16:08 UTC] API Request: GET http://sclib_fastapi:5001/api/datasets?user_id=google-oauth2%7C102515493501554578195
+[11-Nov-2025 20:16:08 UTC] HTTP Code: 200
+[11-Nov-2025 20:16:08 UTC] Response (first 500 chars): {"success":true,"datasets":[]}
+[11-Nov-2025 20:16:08 UTC] API Request: GET http://sclib_fastapi:5001/api/datasets?user_id=google-oauth2%7C102515493501554578195
+[11-Nov-2025 20:16:08 UTC] HTTP Code: 200
+[11-Nov-2025 20:16:08 UTC] Response (first 500 chars): {"success":true,"datasets":[]}
+[11-Nov-2025 20:16:08 UTC] API Request: GET http://sclib_fastapi:5001/api/datasets?user_id=google-oauth2%7C102515493501554578195
+[11-Nov-2025 20:16:08 UTC] HTTP Code: 200
+[11-Nov-2025 20:16:08 UTC] Response (first 500 chars): {"success":true,"datasets":[]}
+[11-Nov-2025 20:16:09 UTC] API Request: GET http://sclib_fastapi:5001/api/datasets?user_id=google-oauth2%7C102515493501554578195
+[11-Nov-2025 20:16:09 UTC] HTTP Code: 200
+[11-Nov-2025 20:16:09 UTC] Response (first 500 chars): {"success":true,"datasets":[]}
+[11-Nov-2025 20:16:09 UTC] API Request: GET http://sclib_fastapi:5001/api/datasets?user_id=google-oauth2%7C102515493501554578195
+[11-Nov-2025 20:16:09 UTC] HTTP Code: 200
+[11-Nov-2025 20:16:09 UTC] Response (first 500 chars): {"success":true,"datasets":[]}
+[11-Nov-2025 20:16:10 UTC] API Request: GET http://sclib_fastapi:5001/api/v1/datasets/by-user?user_email=amy%40visus.net
+[11-Nov-2025 20:16:10 UTC] HTTP Code: 200
+[11-Nov-2025 20:16:10 UTC] Response (first 500 chars): {"success":true,"datasets":{"my":[{"uuid":"244e3cd0-09fb-4c47-96cb-966297dd646b","name":"Sampad dir local upload","data_size":0,"folder":"Sampad","folder_uuid":"Sampad","time":null,"team":null,"team_uuid":null,"tags":"S,a,m,p,a,d, ,t,e,s,t,,, ,2,d, ","sensor":"TIFF RGB","status":"done","compression_status":"unknown","url":"http://localhost:8080/mod_visus?dataset=244e3cd0-09fb-4c47-96cb-966297dd646b&&server=false","google_drive_link":"","bucket":null,"prefix":null,"accesskey":null,"secretkey":nul
+[11-Nov-2025 20:16:10 UTC] Datasets API response: my=2, shared=0, team=0, total=2
+[11-Nov-2025 20:16:11 UTC] API Request: GET http://sclib_fastapi:5001/api/v1/datasets/by-user?user_email=amy%40visus.net
+[11-Nov-2025 20:16:11 UTC] HTTP Code: 200
+[11-Nov-2025 20:16:11 UTC] Response (first 500 chars): {"success":true,"datasets":{"my":[{"uuid":"244e3cd0-09fb-4c47-96cb-966297dd646b","name":"Sampad dir local upload","data_size":0,"folder":"Sampad","folder_uuid":"Sampad","time":null,"team":null,"team_uuid":null,"tags":"S,a,m,p,a,d, ,t,e,s,t,,, ,2,d, ","sensor":"TIFF RGB","status":"done","compression_status":"unknown","url":"http://localhost:8080/mod_visus?dataset=244e3cd0-09fb-4c47-96cb-966297dd646b&&server=false","google_drive_link":"","bucket":null,"prefix":null,"accesskey":null,"secretkey":nul
+[11-Nov-2025 20:16:11 UTC] API Request: GET http://sclib_fastapi:5001/api/v1/teams/by-user?user_email=amy%40visus.net
+[11-Nov-2025 20:16:11 UTC] HTTP Code: 404
+[11-Nov-2025 20:16:11 UTC] Response (first 500 chars): {"detail":"Not Found"}
+[11-Nov-2025 20:16:11 UTC] Failed to get user teams: API error (404): Not Found
+[11-Nov-2025 20:16:45 UTC] Upload API URL: http://sclib_fastapi:5001
+[11-Nov-2025 20:16:45 UTC] Upload endpoint URL: http://sclib_fastapi:5001/api/upload/upload
+[11-Nov-2025 20:16:45 UTC] Upload API request: URL=http://sclib_fastapi:5001/api/upload/upload, HTTP_CODE=500, Response length=48
+[11-Nov-2025 20:16:45 UTC] Upload API error response: {"detail":"name 'relative_path' is not defined"}
+[11-Nov-2025 20:16:45 UTC] Upload API error - HTTP Code: 500, URL: http://sclib_fastapi:5001/api/upload/upload, Response: {"detail":"name 'relative_path' is not defined"}
+[11-Nov-2025 20:16:45 UTC] Upload API URL: http://sclib_fastapi:5001
+[11-Nov-2025 20:16:45 UTC] Upload endpoint URL: http://sclib_fastapi:5001/api/upload/upload
+[11-Nov-2025 20:16:45 UTC] Upload API request: URL=http://sclib_fastapi:5001/api/upload/upload, HTTP_CODE=500, Response length=48
+[11-Nov-2025 20:16:45 UTC] Upload API error response: {"detail":"name 'relative_path' is not defined"}
+[11-Nov-2025 20:16:45 UTC] Upload API error - HTTP Code: 500, URL: http://sclib_fastapi:5001/api/upload/upload, Response: {"detail":"name 'relative_path' is not defined"}
+[11-Nov-2025 20:16:46 UTC] Upload API URL: http://sclib_fastapi:5001
+[11-Nov-2025 20:16:46 UTC] Upload endpoint URL: http://sclib_fastapi:5001/api/upload/upload
+[11-Nov-2025 20:16:46 UTC] Upload API request: URL=http://sclib_fastapi:5001/api/upload/upload, HTTP_CODE=500, Response length=48
+[11-Nov-2025 20:16:46 UTC] Upload API error response: {"detail":"name 'relative_path' is not defined"}
+[11-Nov-2025 20:16:46 UTC] Upload API error - HTTP Code: 500, URL: http://sclib_fastapi:5001/api/upload/upload, Response: {"detail":"name 'relative_path' is not defined"}
+[11-Nov-2025 20:16:46 UTC] Upload API URL: http://sclib_fastapi:5001
+[11-Nov-2025 20:16:46 UTC] Upload endpoint URL: http://sclib_fastapi:5001/api/upload/upload
+[11-Nov-2025 20:16:46 UTC] Upload API request: URL=http://sclib_fastapi:5001/api/upload/upload, HTTP_CODE=500, Response length=48
+[11-Nov-2025 20:16:46 UTC] Upload API error response: {"detail":"name 'relative_path' is not defined"}
+[11-Nov-2025 20:16:46 UTC] Upload API error - HTTP Code: 500, URL: http://sclib_fastapi:5001/api/upload/upload, Response: {"detail":"name 'relative_path' is not defined"}
+[11-Nov-2025 20:16:46 UTC] Upload API URL: http://sclib_fastapi:5001
+[11-Nov-2025 20:16:46 UTC] Upload endpoint URL: http://sclib_fastapi:5001/api/upload/upload
+[11-Nov-2025 20:16:46 UTC] Upload API request: URL=http://sclib_fastapi:5001/api/upload/upload, HTTP_CODE=500, Response length=48
+[11-Nov-2025 20:16:46 UTC] Upload API error response: {"detail":"name 'relative_path' is not defined"}
+[11-Nov-2025 20:16:46 UTC] Upload API error - HTTP Code: 500, URL: http://sclib_fastapi:5001/api/upload/upload, Response: {"detail":"name 'relative_path' is not defined"}
+[11-Nov-2025 20:16:46 UTC] Upload API URL: http://sclib_fastapi:5001
+[11-Nov-2025 20:16:46 UTC] Upload endpoint URL: http://sclib_fastapi:5001/api/upload/upload
+[11-Nov-2025 20:16:46 UTC] Upload API request: URL=http://sclib_fastapi:5001/api/upload/upload, HTTP_CODE=500, Response length=48
+[11-Nov-2025 20:16:46 UTC] Upload API error response: {"detail":"name 'relative_path' is not defined"}
+[11-Nov-2025 20:16:46 UTC] Upload API error - HTTP Code: 500, URL: http://sclib_fastapi:5001/api/upload/upload, Response: {"detail":"name 'relative_path' is not defined"}
+[11-Nov-2025 20:16:47 UTC] Upload API URL: http://sclib_fastapi:5001
+[11-Nov-2025 20:16:47 UTC] Upload endpoint URL: http://sclib_fastapi:5001/api/upload/upload
+[11-Nov-2025 20:16:47 UTC] Upload API request: URL=http://sclib_fastapi:5001/api/upload/upload, HTTP_CODE=500, Response length=48
+[11-Nov-2025 20:16:47 UTC] Upload API error response: {"detail":"name 'relative_path' is not defined"}
+[11-Nov-2025 20:16:47 UTC] Upload API error - HTTP Code: 500, URL: http://sclib_fastapi:5001/api/upload/upload, Response: {"detail":"name 'relative_path' is not defined"}
+[11-Nov-2025 20:16:47 UTC] Upload API URL: http://sclib_fastapi:5001
+[11-Nov-2025 20:16:47 UTC] Upload endpoint URL: http://sclib_fastapi:5001/api/upload/upload
+[11-Nov-2025 20:16:47 UTC] Upload API request: URL=http://sclib_fastapi:5001/api/upload/upload, HTTP_CODE=500, Response length=48
+[11-Nov-2025 20:16:47 UTC] Upload API error response: {"detail":"name 'relative_path' is not defined"}
+[11-Nov-2025 20:16:47 UTC] Upload API error - HTTP Code: 500, URL: http://sclib_fastapi:5001/api/upload/upload, Response: {"detail":"name 'relative_path' is not defined"}
+[11-Nov-2025 20:16:47 UTC] Upload API URL: http://sclib_fastapi:5001
+[11-Nov-2025 20:16:47 UTC] Upload endpoint URL: http://sclib_fastapi:5001/api/upload/upload
+[11-Nov-2025 20:16:47 UTC] Upload API request: URL=http://sclib_fastapi:5001/api/upload/upload, HTTP_CODE=500, Response length=48
+[11-Nov-2025 20:16:47 UTC] Upload API error response: {"detail":"name 'relative_path' is not defined"}
+[11-Nov-2025 20:16:47 UTC] Upload API error - HTTP Code: 500, URL: http://sclib_fastapi:5001/api/upload/upload, Response: {"detail":"name 'relative_path' is not defined"}
+[11-Nov-2025 20:16:47 UTC] Upload API URL: http://sclib_fastapi:5001
+[11-Nov-2025 20:16:47 UTC] Upload endpoint URL: http://sclib_fastapi:5001/api/upload/upload
+[11-Nov-2025 20:16:47 UTC] Upload API request: URL=http://sclib_fastapi:5001/api/upload/upload, HTTP_CODE=500, Response length=48
+[11-Nov-2025 20:16:47 UTC] Upload API error response: {"detail":"name 'relative_path' is not defined"}
+[11-Nov-2025 20:16:47 UTC] Upload API error - HTTP Code: 500, URL: http://sclib_fastapi:5001/api/upload/upload, Response: {"detail":"name 'relative_path' is not defined"}
+[11-Nov-2025 20:16:47 UTC] Upload API URL: http://sclib_fastapi:5001
+[11-Nov-2025 20:16:47 UTC] Upload endpoint URL: http://sclib_fastapi:5001/api/upload/upload
+[11-Nov-2025 20:16:47 UTC] Upload API request: URL=http://sclib_fastapi:5001/api/upload/upload, HTTP_CODE=500, Response length=48
+[11-Nov-2025 20:16:47 UTC] Upload API error response: {"detail":"name 'relative_path' is not defined"}
+[11-Nov-2025 20:16:47 UTC] Upload API error - HTTP Code: 500, URL: http://sclib_fastapi:5001/api/upload/upload, Response: {"detail":"name 'relative_path' is not defined"}
+[11-Nov-2025 20:16:48 UTC] Upload API URL: http://sclib_fastapi:5001
+[11-Nov-2025 20:16:48 UTC] Upload endpoint URL: http://sclib_fastapi:5001/api/upload/upload
+[11-Nov-2025 20:16:48 UTC] Upload API request: URL=http://sclib_fastapi:5001/api/upload/upload, HTTP_CODE=500, Response length=48
+[11-Nov-2025 20:16:48 UTC] Upload API error response: {"detail":"name 'relative_path' is not defined"}
+[11-Nov-2025 20:16:48 UTC] Upload API error - HTTP Code: 500, URL: http://sclib_fastapi:5001/api/upload/upload, Response: {"detail":"name 'relative_path' is not defined"}
+[11-Nov-2025 20:16:48 UTC] Upload API URL: http://sclib_fastapi:5001
+[11-Nov-2025 20:16:48 UTC] Upload endpoint URL: http://sclib_fastapi:5001/api/upload/upload
+[11-Nov-2025 20:16:48 UTC] Upload API request: URL=http://sclib_fastapi:5001/api/upload/upload, HTTP_CODE=500, Response length=48
+[11-Nov-2025 20:16:48 UTC] Upload API error response: {"detail":"name 'relative_path' is not defined"}
+[11-Nov-2025 20:16:48 UTC] Upload API error - HTTP Code: 500, URL: http://sclib_fastapi:5001/api/upload/upload, Response: {"detail":"name 'relative_path' is not defined"}
+[11-Nov-2025 20:16:48 UTC] Upload API URL: http://sclib_fastapi:5001
+[11-Nov-2025 20:16:48 UTC] Upload endpoint URL: http://sclib_fastapi:5001/api/upload/upload
+[11-Nov-2025 20:16:48 UTC] Upload API request: URL=http://sclib_fastapi:5001/api/upload/upload, HTTP_CODE=500, Response length=48
+[11-Nov-2025 20:16:48 UTC] Upload API error response: {"detail":"name 'relative_path' is not defined"}
+[11-Nov-2025 20:16:48 UTC] Upload API error - HTTP Code: 500, URL: http://sclib_fastapi:5001/api/upload/upload, Response: {"detail":"name 'relative_path' is not defined"}
+[11-Nov-2025 20:16:48 UTC] Upload API URL: http://sclib_fastapi:5001
+[11-Nov-2025 20:16:48 UTC] Upload endpoint URL: http://sclib_fastapi:5001/api/upload/upload
+[11-Nov-2025 20:16:48 UTC] Upload API request: URL=http://sclib_fastapi:5001/api/upload/upload, HTTP_CODE=500, Response length=48
+[11-Nov-2025 20:16:48 UTC] Upload API error response: {"detail":"name 'relative_path' is not defined"}
+[11-Nov-2025 20:16:48 UTC] Upload API error - HTTP Code: 500, URL: http://sclib_fastapi:5001/api/upload/upload, Response: {"detail":"name 'relative_path' is not defined"}
+[11-Nov-2025 20:16:48 UTC] Upload API URL: http://sclib_fastapi:5001
+[11-Nov-2025 20:16:48 UTC] Upload endpoint URL: http://sclib_fastapi:5001/api/upload/upload
+[11-Nov-2025 20:16:48 UTC] Upload API request: URL=http://sclib_fastapi:5001/api/upload/upload, HTTP_CODE=500, Response length=48
+[11-Nov-2025 20:16:48 UTC] Upload API error response: {"detail":"name 'relative_path' is not defined"}
+[11-Nov-2025 20:16:48 UTC] Upload API error - HTTP Code: 500, URL: http://sclib_fastapi:5001/api/upload/upload, Response: {"detail":"name 'relative_path' is not defined"}
