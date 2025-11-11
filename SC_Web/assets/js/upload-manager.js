@@ -201,12 +201,13 @@ class UploadManager {
                         <option value="">-- Select Sensor --</option>
                         <option value="IDX">IDX</option>
                         <option value="TIFF">TIFF</option>
-                        <option value="TIFF_RGB">TIFF RGB</option>
+                        <option value="TIFF RGB">TIFF RGB</option>
                         <option value="NETCDF">NETCDF</option>
                         <option value="HDF5">HDF5</option>
                         <option value="4D_NEXUS">4D_NEXUS</option>
-                        <option value="RGB DRONE">RGB DRONE</option>
-                        <option value="MapIR DRONE">MapIR DRONE</option>
+                        <option value="RGB">RGB</option>
+                        <option value="MAPIR">MAPIR</option>
+                        <option value="OTHER">OTHER</option>
                     </select>
                 </div>
 
@@ -306,12 +307,13 @@ class UploadManager {
                         <option value="">-- Select Sensor --</option>
                         <option value="IDX">IDX</option>
                         <option value="TIFF">TIFF</option>
-                        <option value="TIFF_RGB">TIFF RGB</option>
+                        <option value="TIFF RGB">TIFF RGB</option>
                         <option value="NETCDF">NETCDF</option>
                         <option value="HDF5">HDF5</option>
                         <option value="4D_NEXUS">4D_NEXUS</option>
-                        <option value="RGB DRONE">RGB DRONE</option>
-                        <option value="MapIR DRONE">MapIR DRONE</option>
+                        <option value="RGB">RGB</option>
+                        <option value="MAPIR">MAPIR</option>
+                        <option value="OTHER">OTHER</option>
                     </select>
                 </div>
 
@@ -429,12 +431,13 @@ class UploadManager {
                         <option value="">-- Select Sensor --</option>
                         <option value="IDX">IDX</option>
                         <option value="TIFF">TIFF</option>
-                        <option value="TIFF_RGB">TIFF RGB</option>
+                        <option value="TIFF RGB">TIFF RGB</option>
                         <option value="NETCDF">NETCDF</option>
                         <option value="HDF5">HDF5</option>
                         <option value="4D_NEXUS">4D_NEXUS</option>
-                        <option value="RGB DRONE">RGB DRONE</option>
-                        <option value="MapIR DRONE">MapIR DRONE</option>
+                        <option value="RGB">RGB</option>
+                        <option value="MAPIR">MAPIR</option>
+                        <option value="OTHER">OTHER</option>
                     </select>
                 </div>
 
@@ -525,12 +528,13 @@ class UploadManager {
                         <option value="">-- Select Sensor --</option>
                         <option value="IDX">IDX</option>
                         <option value="TIFF">TIFF</option>
-                        <option value="TIFF_RGB">TIFF RGB</option>
+                        <option value="TIFF RGB">TIFF RGB</option>
                         <option value="NETCDF">NETCDF</option>
                         <option value="HDF5">HDF5</option>
                         <option value="4D_NEXUS">4D_NEXUS</option>
-                        <option value="RGB DRONE">RGB DRONE</option>
-                        <option value="MapIR DRONE">MapIR DRONE</option>
+                        <option value="RGB">RGB</option>
+                        <option value="MAPIR">MAPIR</option>
+                        <option value="OTHER">OTHER</option>
                     </select>
                 </div>
 
