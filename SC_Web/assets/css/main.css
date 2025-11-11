@@ -834,3 +834,66 @@ body {
   gap: 0.5rem;
   align-items: center;
 }
+
+/* Dataset Files Browser Styles */
+.dataset-files-section {
+  flex-shrink: 0;
+  max-height: 40vh;
+  overflow-y: auto;
+}
+
+.file-directory {
+  margin-bottom: 0.5rem;
+}
+
+.file-dir-header {
+  display: flex;
+  align-items: center;
+  padding: 0.5rem;
+  cursor: pointer;
+  border-radius: 0.25rem;
+  transition: background-color 0.2s;
+  user-select: none;
+}
+
+.file-dir-header:hover {
+  background-color: rgba(255, 255, 255, 0.1);
+}
+
+.file-tree {
+  list-style: none;
+  padding-left: 0;
+  margin: 0.25rem 0;
+}
+
+.file-tree-item {
+  margin-bottom: 0.25rem;
+}
+
+.file-tree-dir,
+.file-tree-file {
+  display: flex;
+  align-items: center;
+  padding: 0.25rem 0.5rem;
+  border-radius: 0.25rem;
+  transition: background-color 0.2s;
+  cursor: pointer;
+  user-select: none;
+}
+
+.file-tree-dir:hover,
+.file-tree-file:hover {
+  background-color: rgba(255, 255, 255, 0.05);
+}
+
+.file-tree-dir i,
+.file-tree-file i {
+  width: 1em;
+  text-align: center;
+}
+
+.file-tree-file {
+  cursor: default;
+  color: var(--fg-color);
+  opacity: 0.9;
+}

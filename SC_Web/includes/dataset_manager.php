@@ -56,6 +56,32 @@ function getDatasetById($datasetId) {
 }
 
 /**
+ * Get dataset by UUID
+ */
+function getDatasetByUuid($datasetUuid) {
+    try {
+        $user = getCurrentUser();
+        if (!$user) {
+            return null;
+        }
+        
+        $sclib = getSCLibClient();
+        // Try to get dataset by UUID (identifier)
+        $dataset = $sclib->getDatasetDetails($datasetUuid, $user['id']);
+        
+        if ($dataset) {
+            return formatDataset($dataset);
+        }
+        
+        return null;
+        
+    } catch (Exception $e) {
+        logMessage('ERROR', 'Failed to get dataset by UUID', ['dataset_uuid' => $datasetUuid, 'error' => $e->getMessage()]);
+        return null;
+    }
+}
+
+/**
  * Get dataset status
  */
 function getDatasetStatus($datasetId) {

@@ -219,11 +219,15 @@ class UploadManager {
 
                 <div class="mb-3">
                     <label class="form-label">Folder:</label>
-                    <select class="form-select" name="folder_uuid">
+                    <select class="form-select" name="folder_uuid" id="localFolderSelect">
                         <option value="">-- No Folder --</option>
                         ${folders.map(f => `<option value="${this.escapeHtml(f.uuid)}">${this.escapeHtml(f.name)}</option>`).join('')}
                         <option value="__CREATE__">+ Create New Folder</option>
                     </select>
+                    <div id="localNewFolderInput" class="mt-2" style="display: none;">
+                        <input type="text" class="form-control" name="new_folder_name" 
+                               placeholder="Enter new folder name" id="localNewFolderName">
+                    </div>
                 </div>
 
                 <div class="mb-3">
@@ -325,11 +329,15 @@ class UploadManager {
 
                 <div class="mb-3">
                     <label class="form-label">Folder:</label>
-                    <select class="form-select" name="folder_uuid">
+                    <select class="form-select" name="folder_uuid" id="googleDriveFolderSelect">
                         <option value="">-- No Folder --</option>
                         ${folders.map(f => `<option value="${this.escapeHtml(f.uuid)}">${this.escapeHtml(f.name)}</option>`).join('')}
                         <option value="__CREATE__">+ Create New Folder</option>
                     </select>
+                    <div id="googleDriveNewFolderInput" class="mt-2" style="display: none;">
+                        <input type="text" class="form-control" name="new_folder_name" 
+                               placeholder="Enter new folder name" id="googleDriveNewFolderName">
+                    </div>
                 </div>
 
                 <div class="mb-3">
@@ -449,11 +457,15 @@ class UploadManager {
 
                 <div class="mb-3">
                     <label class="form-label">Folder:</label>
-                    <select class="form-select" name="folder_uuid">
+                    <select class="form-select" name="folder_uuid" id="s3FolderSelect">
                         <option value="">-- No Folder --</option>
                         ${folders.map(f => `<option value="${this.escapeHtml(f.uuid)}">${this.escapeHtml(f.name)}</option>`).join('')}
                         <option value="__CREATE__">+ Create New Folder</option>
                     </select>
+                    <div id="s3NewFolderInput" class="mt-2" style="display: none;">
+                        <input type="text" class="form-control" name="new_folder_name" 
+                               placeholder="Enter new folder name" id="s3NewFolderName">
+                    </div>
                 </div>
 
                 <div class="mb-3">
@@ -546,11 +558,15 @@ class UploadManager {
 
                 <div class="mb-3">
                     <label class="form-label">Folder:</label>
-                    <select class="form-select" name="folder_uuid">
+                    <select class="form-select" name="folder_uuid" id="remoteFolderSelect">
                         <option value="">-- No Folder --</option>
                         ${folders.map(f => `<option value="${this.escapeHtml(f.uuid)}">${this.escapeHtml(f.name)}</option>`).join('')}
                         <option value="__CREATE__">+ Create New Folder</option>
                     </select>
+                    <div id="remoteNewFolderInput" class="mt-2" style="display: none;">
+                        <input type="text" class="form-control" name="new_folder_name" 
+                               placeholder="Enter new folder name" id="remoteNewFolderName">
+                    </div>
                 </div>
 
                 <div class="mb-3">
@@ -600,6 +616,82 @@ class UploadManager {
     }
 
     /**
+     * Setup folder dropdown event listeners
+     */
+    setupFolderDropdownListeners() {
+        // Local upload form
+        const localFolderSelect = document.getElementById('localFolderSelect');
+        const localNewFolderInput = document.getElementById('localNewFolderInput');
+        if (localFolderSelect && localNewFolderInput) {
+            localFolderSelect.addEventListener('change', (e) => {
+                if (e.target.value === '__CREATE__') {
+                    localNewFolderInput.style.display = 'block';
+                } else {
+                    localNewFolderInput.style.display = 'none';
+                }
+            });
+        }
+
+        // Google Drive upload form
+        const googleDriveFolderSelect = document.getElementById('googleDriveFolderSelect');
+        const googleDriveNewFolderInput = document.getElementById('googleDriveNewFolderInput');
+        if (googleDriveFolderSelect && googleDriveNewFolderInput) {
+            googleDriveFolderSelect.addEventListener('change', (e) => {
+                if (e.target.value === '__CREATE__') {
+                    googleDriveNewFolderInput.style.display = 'block';
+                } else {
+                    googleDriveNewFolderInput.style.display = 'none';
+                }
+            });
+        }
+
+        // S3 upload form
+        const s3FolderSelect = document.getElementById('s3FolderSelect');
+        const s3NewFolderInput = document.getElementById('s3NewFolderInput');
+        if (s3FolderSelect && s3NewFolderInput) {
+            s3FolderSelect.addEventListener('change', (e) => {
+                if (e.target.value === '__CREATE__') {
+                    s3NewFolderInput.style.display = 'block';
+                } else {
+                    s3NewFolderInput.style.display = 'none';
+                }
+            });
+        }
+
+        // Remote upload form
+        const remoteFolderSelect = document.getElementById('remoteFolderSelect');
+        const remoteNewFolderInput = document.getElementById('remoteNewFolderInput');
+        if (remoteFolderSelect && remoteNewFolderInput) {
+            remoteFolderSelect.addEventListener('change', (e) => {
+                if (e.target.value === '__CREATE__') {
+                    remoteNewFolderInput.style.display = 'block';
+                } else {
+                    remoteNewFolderInput.style.display = 'none';
+                }
+            });
+        }
+    }
+
+    /**
+     * Get folder value from form (handles both existing folder UUID and new folder name)
+     */
+    getFolderValue(form) {
+        const formData = new FormData(form);
+        const folderUuid = formData.get('folder_uuid');
+        
+        if (folderUuid === '__CREATE__') {
+            // User wants to create a new folder - get the name from the input
+            const newFolderName = formData.get('new_folder_name');
+            if (newFolderName && newFolderName.trim()) {
+                return newFolderName.trim();
+            }
+            return null; // No folder name provided
+        }
+        
+        return folderUuid || null;
+    }
+
+    /**
      * Initialize local file input
      */
     initializeLocalFileInput() {
@@ -613,6 +705,9 @@ class UploadManager {
                 }
             });
         }
+
+        // Setup folder dropdown listeners
+        this.setupFolderDropdownListeners();
 
         // Setup form submission handlers
         const localForm = document.getElementById('localUploadForm');
@@ -684,7 +779,7 @@ class UploadManager {
             sensor: formData.get('sensor'),
             convert: formData.get('convert') === 'on',
             is_public: formData.get('is_public') === 'on',
-            folder: formData.get('folder_uuid') || null,
+            folder: this.getFolderValue(form),
             team_uuid: formData.get('team_uuid') || null,
             tags: formData.get('tags') || '',
             dimensions: formData.get('dimensions') || null,
@@ -848,7 +943,7 @@ class UploadManager {
                 sensor: formData.get('sensor'),
                 convert: formData.get('convert') === 'on',
                 is_public: formData.get('is_public') === 'on',
-                folder: formData.get('folder_uuid') || null,
+                folder: this.getFolderValue(form),
                 team_uuid: formData.get('team_uuid') || null
             };
 
@@ -926,7 +1021,7 @@ class UploadManager {
                 sensor: formData.get('sensor'),
                 convert: formData.get('convert') === 'on',
                 is_public: formData.get('is_public') === 'on',
-                folder: formData.get('folder_uuid') || null,
+                folder: this.getFolderValue(form),
                 team_uuid: formData.get('team_uuid') || null
             };
 
@@ -997,7 +1092,7 @@ class UploadManager {
                 sensor: formData.get('sensor'),
                 convert: false, // Remote server links typically don't need conversion
                 is_public: formData.get('is_public') === 'on',
-                folder: formData.get('folder_uuid') || null,
+                folder: this.getFolderValue(form),
                 team_uuid: formData.get('team_uuid') || null
             };
 

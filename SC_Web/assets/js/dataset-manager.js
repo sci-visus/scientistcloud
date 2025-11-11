@@ -392,6 +392,160 @@ class DatasetManager {
     }
 
     /**
+     * Load dataset files structure
+     */
+    async loadDatasetFiles(datasetUuid) {
+        if (!datasetUuid) {
+            return;
+        }
+
+        const filesContainer = document.getElementById('datasetFiles');
+        if (!filesContainer) {
+            return;
+        }
+
+        // Show loading state
+        filesContainer.innerHTML = `
+            <div class="text-center py-2">
+                <div class="spinner-border spinner-border-sm text-primary" role="status">
+                    <span class="visually-hidden">Loading...</span>
+                </div>
+            </div>
+        `;
+
+        try {
+            const response = await fetch(`${getApiBasePath()}/dataset-files.php?dataset_uuid=${datasetUuid}`);
+            const data = await response.json();
+
+            if (data.success) {
+                this.displayDatasetFiles(data);
+            } else {
+                filesContainer.innerHTML = `<p class="text-muted small">${data.error || 'Failed to load files'}</p>`;
+            }
+        } catch (error) {
+            console.error('Error loading dataset files:', error);
+            filesContainer.innerHTML = `<p class="text-muted small">Error loading files</p>`;
+        }
+    }
+
+    /**
+     * Display dataset files structure
+     */
+    displayDatasetFiles(data) {
+        const filesContainer = document.getElementById('datasetFiles');
+        if (!filesContainer) return;
+
+        let html = '';
+
+        // Upload directory
+        if (data.directories.upload.exists && data.directories.upload.files.length > 0) {
+            html += `<div class="file-directory mb-2">`;
+            html += `<div class="file-dir-header" data-bs-toggle="collapse" data-bs-target="#uploadFiles">`;
+            html += `<i class="fas fa-folder me-2"></i><strong>Upload</strong>`;
+            html += `<span class="badge bg-secondary ms-2">${this.countFiles(data.directories.upload.files)}</span>`;
+            html += `</div>`;
+            html += `<div class="collapse" id="uploadFiles">`;
+            html += this.renderFileTree(data.directories.upload.files, 'upload');
+            html += `</div>`;
+            html += `</div>`;
+        }
+
+        // Converted directory
+        if (data.directories.converted.exists && data.directories.converted.files.length > 0) {
+            html += `<div class="file-directory mb-2">`;
+            html += `<div class="file-dir-header" data-bs-toggle="collapse" data-bs-target="#convertedFiles">`;
+            html += `<i class="fas fa-folder me-2"></i><strong>Converted</strong>`;
+            html += `<span class="badge bg-secondary ms-2">${this.countFiles(data.directories.converted.files)}</span>`;
+            html += `</div>`;
+            html += `<div class="collapse" id="convertedFiles">`;
+            html += this.renderFileTree(data.directories.converted.files, 'converted');
+            html += `</div>`;
+            html += `</div>`;
+        }
+
+        if (!html) {
+            html = `<p class="text-muted small">No files found</p>`;
+        }
+
+        filesContainer.innerHTML = html;
+    }
+
+    /**
+     * Count total files (recursive)
+     */
+    countFiles(items) {
+        let count = 0;
+        for (const item of items) {
+            if (item.type === 'file') {
+                count++;
+            } else if (item.type === 'directory' && item.children) {
+                count += this.countFiles(item.children);
+            }
+        }
+        return count;
+    }
+
+    /**
+     * Render file tree recursively
+     */
+    renderFileTree(items, basePath = '', level = 0) {
+        let html = '<ul class="file-tree" style="list-style: none; padding-left: ' + (level * 1.5) + 'rem;">';
+        
+        for (const item of items) {
+            if (item.type === 'directory') {
+                const uniqueId = 'dir-' + basePath + '-' + item.path.replace(/[^a-zA-Z0-9]/g, '-');
+                html += `<li class="file-tree-item">`;
+                html += `<div class="file-tree-dir" data-bs-toggle="collapse" data-bs-target="#${uniqueId}">`;
+                html += `<i class="fas fa-folder me-1"></i>`;
+                html += `<span>${this.escapeHtml(item.name)}</span>`;
+                if (item.children && item.children.length > 0) {
+                    html += `<span class="badge bg-secondary ms-2">${item.children.length}</span>`;
+                }
+                html += `</div>`;
+                html += `<div class="collapse" id="${uniqueId}">`;
+                if (item.children && item.children.length > 0) {
+                    html += this.renderFileTree(item.children, basePath, level + 1);
+                }
+                html += `</div>`;
+                html += `</li>`;
+            } else {
+                html += `<li class="file-tree-item">`;
+                html += `<div class="file-tree-file">`;
+                html += `<i class="fas fa-file me-1"></i>`;
+                html += `<span>${this.escapeHtml(item.name)}</span>`;
+                if (item.size) {
+                    html += `<span class="text-muted small ms-2">(${this.formatFileSize(item.size)})</span>`;
+                }
+                html += `</div>`;
+                html += `</li>`;
+            }
+        }
+        
+        html += '</ul>';
+        return html;
+    }
+
+    /**
+     * Format file size
+     */
+    formatFileSize(bytes) {
+        if (bytes === 0) return '0 B';
+        const k = 1024;
+        const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
+        const i = Math.floor(Math.log(bytes) / Math.log(k));
+        return Math.round(bytes / Math.pow(k, i) * 100) / 100 + ' ' + sizes[i];
+    }
+
+    /**
+     * Escape HTML
+     */
+    escapeHtml(text) {
+        const div = document.createElement('div');
+        div.textContent = text;
+        return div.innerHTML;
+    }
+
+    /**
      * Handle dataset selection
      */
     async handleDatasetSelection(datasetLink) {
@@ -416,6 +570,11 @@ class DatasetManager {
 
         // Load dataset details
         this.loadDatasetDetails(datasetId);
+
+        // Load dataset files
+        if (datasetUuid) {
+            this.loadDatasetFiles(datasetUuid);
+        }
 
         // Determine appropriate dashboard and update dropdown
         // First check if we can determine from dataset details

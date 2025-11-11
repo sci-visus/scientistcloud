@@ -384,7 +384,8 @@ class SCLibClient {
                 'team_name' => $teamName,
                 'emails' => $emails
             ];
-            $response = $this->makeRequest('/api/v1/teams/create', 'POST', $data, ['owner_email' => $ownerEmail]);
+            // The API endpoint is POST /api/v1/teams with owner_email as query parameter
+            $response = $this->makeRequest('/api/v1/teams', 'POST', $data, ['owner_email' => $ownerEmail]);
             return $response;
         } catch (Exception $e) {
             error_log("Failed to create team: " . $e->getMessage());
@@ -409,27 +410,18 @@ function getSCLibClient() {
 }
 
 /**
- * Get SCLib client for sharing and team endpoints (port 5003)
+ * Get SCLib client for sharing and team endpoints
+ * Note: The Sharing API is mounted on the main FastAPI service (port 5001)
  */
 function getSCLibSharingClient() {
     static $sharing_client = null;
     if ($sharing_client === null) {
-        // Sharing endpoints use SCLIB_SHARING_URL (port 5003)
-        // If not set, try to use the main API URL (port 5001) as fallback
-        // In Docker, use service name instead of localhost
+        // Sharing endpoints are mounted on the main FastAPI service
+        // Use SCLIB_SHARING_URL if explicitly set, otherwise use main API URL
         $sharing_url = getenv('SCLIB_SHARING_URL');
         if (!$sharing_url) {
-            // Check if we're in Docker (service name available) or local
-            $main_api_url = getenv('SCLIB_API_URL') ?: getenv('EXISTING_API_URL');
-            if ($main_api_url && (strpos($main_api_url, 'sclib_fastapi') !== false || strpos($main_api_url, 'localhost') === false)) {
-                // In Docker - try using the same service but different port, or same service
-                // For now, try the main API service (port 5001) - Sharing API might be integrated
-                // If not, we'll need to add SCLIB_SHARING_URL to docker-compose
-                $sharing_url = $main_api_url; // Try same service first
-            } else {
-                // Local development - try port 5003
-                $sharing_url = 'http://localhost:5003';
-            }
+            // Use the same URL as the main API (Sharing API is mounted there)
+            $sharing_url = getenv('SCLIB_DATASET_URL') ?: getenv('SCLIB_API_URL') ?: getenv('EXISTING_API_URL') ?: 'http://localhost:5001';
         }
         $sharing_client = new SCLibClient($sharing_url);
     }

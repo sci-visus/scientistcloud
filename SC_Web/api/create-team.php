@@ -64,34 +64,65 @@ try {
     }
 
     // Create team using SCLib Sharing and Team API
-    $sharingClient = getSCLibSharingClient();
-    $result = $sharingClient->createTeam($teamName, $ownerEmail, $emails);
-    
-    if ($result['success'] ?? false) {
-        logMessage('INFO', 'Team created successfully', [
+    try {
+        $sharingClient = getSCLibSharingClient();
+        $result = $sharingClient->createTeam($teamName, $ownerEmail, $emails);
+        
+        // Check if the API call was successful
+        // The API returns {"success": true, "message": "...", "team": {...}}
+        if (isset($result['success']) && $result['success'] === true) {
+            logMessage('INFO', 'Team created successfully', [
+                'team_name' => $teamName,
+                'owner_email' => $ownerEmail,
+                'user_email' => $user['email'],
+                'team_uuid' => $result['team']['uuid'] ?? 'unknown'
+            ]);
+            
+            ob_end_clean();
+            echo json_encode([
+                'success' => true,
+                'message' => $result['message'] ?? 'Team created successfully',
+                'team' => $result['team'] ?? null
+            ]);
+            exit;
+        } else {
+            // API returned an error
+            $errorMessage = $result['error'] ?? $result['detail'] ?? $result['message'] ?? 'Failed to create team';
+            logMessage('ERROR', 'Team creation failed', [
+                'team_name' => $teamName,
+                'owner_email' => $ownerEmail,
+                'error' => $errorMessage,
+                'api_response' => $result
+            ]);
+            
+            ob_end_clean();
+            http_response_code(500);
+            echo json_encode([
+                'success' => false,
+                'error' => $errorMessage
+            ]);
+            exit;
+        }
+    } catch (Exception $apiException) {
+        // Exception from API client (connection error, etc.)
+        logMessage('ERROR', 'Team creation API call failed', [
             'team_name' => $teamName,
             'owner_email' => $ownerEmail,
-            'user_email' => $user['email']
+            'error' => $apiException->getMessage()
         ]);
         
-        ob_end_clean();
-        echo json_encode([
-            'success' => true,
-            'message' => 'Team created successfully',
-            'team' => $result['team'] ?? null
-        ]);
-    } else {
         ob_end_clean();
         http_response_code(500);
         echo json_encode([
             'success' => false,
-            'error' => $result['error'] ?? 'Failed to create team'
+            'error' => 'Failed to connect to team API: ' . $apiException->getMessage()
         ]);
+        exit;
     }
 
 } catch (Exception $e) {
     ob_end_clean();
-    logMessage('ERROR', 'Failed to create team', ['error' => $e->getMessage()]);
+    logMessage('ERROR', 'Failed to create team', ['error' => $e->getMessage(), 'trace' => $e->getTraceAsString()]);
     
     http_response_code(500);
     echo json_encode([
