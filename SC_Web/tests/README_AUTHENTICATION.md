@@ -1,80 +1,109 @@
-# Authentication for SC_Web Tests
+# Authentication for E2E Tests
 
-SC_Web requires authentication via Auth0 before uploads can be tested. Currently, the tests will get **401 authentication errors**, which is expected behavior.
+SC_Web requires authentication via Auth0. To run the full E2E tests (including conversion tests), you need to provide a valid session cookie.
 
-## Current Test Behavior
+## How Authentication Works
 
-- ✅ Tests connect to SC_Web successfully
-- ✅ Tests validate that PHP proxy responds correctly
-- ⚠️  Tests get 401 errors (authentication required) - this is **correct behavior**
+1. **User logs in** via Auth0 OAuth flow at `http://localhost:8080/login.php`
+2. **Auth0 authenticates** the user and redirects back to SC_Web
+3. **SC_Web creates a PHP session** and sets a `PHPSESSID` cookie
+4. **Tests use this cookie** to authenticate requests
 
-## Why 401 is Expected
+## Getting the Session Cookie
 
-SC_Web's `upload-dataset.php` checks authentication **before** checking for files:
+### Method 1: Manual (Recommended)
 
-```php
-if (!isAuthenticated()) {
-    http_response_code(401);
-    echo json_encode(['success' => false, 'error' => 'Authentication required']);
-    exit;
-}
-```
-
-This means:
-- **401 = Authentication required** (correct behavior)
-- **400 = Missing file** (only reached if authenticated)
-
-## Options for Full Testing
-
-### Option 1: Manual Session Cookie (Quick Testing)
-
-1. Login to SC_Web in browser: `http://localhost:8080`
-2. Get session cookie from browser dev tools
-3. Set environment variable:
+1. **Login to SC_Web**:
    ```bash
-   export SC_WEB_SESSION_COOKIE="your_phpsessid_value"
+   # Open in browser
+   open http://localhost:8080/login.php
+   # Or visit: http://localhost:8080/login.php
    ```
 
-### Option 2: Add Authentication Helper (Future Enhancement)
+2. **Complete Auth0 login** (enter credentials, authorize, etc.)
 
-Add a helper function that:
-1. Uses Auth0 API to get tokens
-2. Creates PHP session via callback
-3. Captures PHPSESSID cookie
-4. Passes cookie to test client
+3. **After successful login**, open browser DevTools:
+   - Press `F12` (or right-click → Inspect)
+   - Go to **Application** tab (Chrome) or **Storage** tab (Firefox)
+   - Expand **Cookies** → `http://localhost:8080`
+   - Find **PHPSESSID** cookie
+   - Copy its **Value**
 
-### Option 3: Test Without Authentication (Current)
+4. **Export the cookie**:
+   ```bash
+   export SC_WEB_SESSION_COOKIE="<paste_cookie_value_here>"
+   ```
 
-Current tests validate:
-- ✅ PHP proxy is accessible
-- ✅ PHP proxy returns proper JSON errors
-- ✅ Error handling works (401 for unauthenticated requests)
+5. **Run tests**:
+   ```bash
+   pytest test_upload_e2e.py -v
+   ```
 
-## Running Tests
+### Method 2: Using Helper Script
 
 ```bash
-# Tests will show 401 errors - this is expected
-pytest test_upload_e2e.py::TestSCWebErrorHandling -v
+# Run helper script (opens browser for you)
+python get_session_cookie.py
 
-# To see what happens with authentication, manually login first
-# then tests will show actual file validation errors
+# Then follow steps 3-5 from Method 1 above
 ```
 
-## What the Tests Validate
+## Cookie Format
 
-Even with 401 errors, the tests validate:
+The cookie value should look something like:
+```
+abc123def456ghi789jkl012mno345pqr678stu901vwx234yz
+```
 
-1. **Connection**: SC_Web is accessible
-2. **Response Format**: PHP returns valid JSON
-3. **Error Handling**: Proper error codes and messages
-4. **PHP Proxy**: The proxy layer is working correctly
+It's a long alphanumeric string (typically 26-32 characters for PHP sessions).
 
-## Next Steps
+## Important Notes
 
-To test actual upload functionality, you would need to:
-1. Implement Auth0 authentication flow in tests
-2. Or use a test user with pre-authenticated session
-3. Or add a test mode that bypasses auth (requires PHP changes)
+- **PHPSESSID vs Auth0 cookies**: SC_Web uses PHP's `PHPSESSID` cookie, not Auth0 session cookies directly. The PHP session is created after Auth0 authentication.
 
-For now, the tests successfully validate that the **PHP proxy layer is working correctly**, even if authentication is required.
+- **Cookie expiration**: PHP sessions typically expire after 24 minutes of inactivity. If tests fail with 401 errors, you may need to get a fresh cookie.
 
+- **Related code**: This is similar to how `utils_bokeh_auth.py` handles authentication for Bokeh dashboards, but for E2E tests we need the PHP session cookie from SC_Web.
+
+## Testing Without Authentication
+
+If you don't provide a cookie, tests will:
+- ✅ Still run
+- ⚠️ Skip tests that require authentication (with clear messages)
+- ✅ Validate that the PHP proxy correctly returns 401 errors
+
+This is useful for:
+- Testing error handling
+- Validating that authentication is enforced
+- CI/CD pipelines where you might not have interactive login
+
+## Troubleshooting
+
+### "401 Unauthorized" errors
+- **Cause**: Cookie expired or invalid
+- **Fix**: Get a fresh cookie (login again and copy new PHPSESSID)
+
+### "Could not connect to SC_Web"
+- **Cause**: SC_Web container not running
+- **Fix**: Start SC_Web: `docker ps | grep scientistcloud-portal`
+
+### Cookie not working
+- **Check**: Cookie value is correct (no extra spaces, quotes, etc.)
+- **Check**: Cookie is for the correct domain (localhost:8080)
+- **Check**: Session hasn't expired (login again)
+
+## Example
+
+```bash
+# 1. Get cookie (see steps above)
+export SC_WEB_SESSION_COOKIE="abc123def456ghi789..."
+
+# 2. Run all tests
+pytest test_upload_e2e.py -v
+
+# 3. Run specific test class
+pytest test_upload_e2e.py::TestSCWebConversion -v
+
+# 4. Run specific test
+pytest test_upload_e2e.py::TestSCWebConversion::test_scweb_conversion_status_transitions -v
+```

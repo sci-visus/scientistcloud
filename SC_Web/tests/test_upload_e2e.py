@@ -28,8 +28,9 @@ import sys
 import time
 import pytest
 import requests
+import hashlib
 from pathlib import Path
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, Callable
 from datetime import datetime
 
 # Add parent directory to path
@@ -78,30 +79,87 @@ class SCWebUploadClient:
         """
         Upload a file through SC_Web's PHP proxy.
         
+        For large files (>100MB), this will use chunked uploads automatically.
+        For very large files (GB to TB), consider using upload_file_chunked() directly.
+        
         This simulates what the frontend JavaScript does.
         """
+        file_size = os.path.getsize(file_path)
+        file_size_mb = file_size / (1024 * 1024)
+        file_size_gb = file_size / (1024 * 1024 * 1024)
+        
+        # Large file threshold (matches FastAPI LARGE_FILE_THRESHOLD)
+        LARGE_FILE_THRESHOLD = 100 * 1024 * 1024  # 100MB
+        
+        # For very large files (GB+), warn and suggest chunked upload
+        if file_size > LARGE_FILE_THRESHOLD:
+            print(f"   ⚠️  Large file detected: {file_size_gb:.2f} GB")
+            print(f"   Note: FastAPI backend supports chunked uploads for files > 100MB")
+            print(f"   However, PHP proxy has a 5-minute timeout which may be insufficient.")
+            print(f"   For files > 1GB, consider using direct FastAPI chunked upload API.")
+        
+        # For extremely large files (TB), use chunked upload directly
+        if file_size_gb > 1.0:
+            print(f"   📦 File is very large ({file_size_gb:.2f} GB), using chunked upload...")
+            return self.upload_file_chunked(
+                file_path, user_email, dataset_name, sensor, convert, is_public, folder, team_uuid, tags
+            )
+        
+        # For smaller files, use standard upload
         url = f"{self.base_url}{TestConfig.SC_WEB_UPLOAD_ENDPOINT}"
         
+        # Calculate timeout: at least 5 minutes, plus 2 seconds per MB
+        # For very large files, cap at 30 minutes
+        timeout = min(max(300, int(file_size_mb * 2)), 1800)
+        
+        print(f"   Uploading file: {os.path.basename(file_path)} ({file_size_mb:.1f} MB)")
+        print(f"   Using timeout: {timeout}s")
+        
         # Prepare form data (matching what upload-manager.js sends)
-        with open(file_path, 'rb') as f:
-            files = {'file': (os.path.basename(file_path), f, 'application/octet-stream')}
+        data = {
+            'user_email': user_email,
+            'dataset_name': dataset_name,
+            'sensor': sensor,
+            'convert': 'true' if convert else 'false',
+            'is_public': 'true' if is_public else 'false'
+        }
+        
+        if folder:
+            data['folder'] = folder
+        if team_uuid:
+            data['team_uuid'] = team_uuid
+        if tags:
+            data['tags'] = tags
+        
+        try:
+            # Open file and keep it open during the request
+            # requests library will handle the file streaming properly
+            with open(file_path, 'rb') as f:
+                files = {'file': (os.path.basename(file_path), f, 'application/octet-stream')}
+                
+                # Use a tuple for timeout: (connect_timeout, read_timeout)
+                # This gives more control over connection vs read timeouts
+                response = self.session.post(
+                    url, 
+                    files=files, 
+                    data=data, 
+                    timeout=(30, timeout),  # 30s connect, calculated read timeout
+                    stream=False  # Let requests handle streaming internally
+                )
             
-            data = {
-                'user_email': user_email,
-                'dataset_name': dataset_name,
-                'sensor': sensor,
-                'convert': 'true' if convert else 'false',
-                'is_public': 'true' if is_public else 'false'
-            }
-            
-            if folder:
-                data['folder'] = folder
-            if team_uuid:
-                data['team_uuid'] = team_uuid
-            if tags:
-                data['tags'] = tags
-            
-            response = self.session.post(url, files=files, data=data, timeout=300)
+        except requests.exceptions.Timeout as e:
+            raise TimeoutError(
+                f"Upload timeout after {timeout}s. "
+                f"File size: {file_size_mb:.1f} MB ({file_size_gb:.2f} GB). "
+                f"For large files, use upload_file_chunked() or direct FastAPI chunked upload API."
+            ) from e
+        except requests.exceptions.ConnectionError as e:
+            raise ConnectionError(
+                f"Connection error during upload: {e}. "
+                f"File size: {file_size_mb:.1f} MB ({file_size_gb:.2f} GB). "
+                f"This may indicate the file is too large for standard upload. "
+                f"Use upload_file_chunked() for files > 1GB."
+            ) from e
         
         # Check response
         response.raise_for_status()
@@ -118,6 +176,125 @@ class SCWebUploadClient:
             ) from e
         
         return result
+    
+    def upload_file_chunked(self, file_path: str, user_email: str, dataset_name: str,
+                           sensor: str, convert: bool = True, is_public: bool = False,
+                           folder: Optional[str] = None, team_uuid: Optional[str] = None,
+                           tags: Optional[str] = None) -> Dict[str, Any]:
+        """
+        Upload a large file using chunked uploads (for GB to TB sized files).
+        
+        This bypasses the PHP proxy and uses the FastAPI chunked upload API directly.
+        Supports files up to 10TB with 100MB chunks.
+        """
+        file_size = os.path.getsize(file_path)
+        file_size_gb = file_size / (1024 * 1024 * 1024)
+        CHUNK_SIZE = 100 * 1024 * 1024  # 100MB chunks (matches FastAPI)
+        
+        print(f"   📦 Using chunked upload for {file_size_gb:.2f} GB file")
+        print(f"   Chunk size: {CHUNK_SIZE / (1024*1024):.0f} MB")
+        
+        # Use FastAPI directly (bypass PHP proxy for large files)
+        api_url = os.getenv('SCLIB_API_URL', 'http://localhost:5001')
+        
+        # Calculate file hash (this can take time for large files)
+        print(f"   Calculating file hash...")
+        file_hash = self._calculate_file_hash(file_path)
+        print(f"   File hash: {file_hash[:16]}...")
+        
+        # Initiate chunked upload
+        initiate_url = f"{api_url}/api/upload/large/initiate"
+        total_chunks = (file_size + CHUNK_SIZE - 1) // CHUNK_SIZE
+        
+        initiate_data = {
+            'filename': os.path.basename(file_path),
+            'file_size': file_size,
+            'file_hash': file_hash,
+            'user_email': user_email,
+            'dataset_name': dataset_name,
+            'sensor': sensor,
+            'convert': convert,
+            'is_public': is_public
+        }
+        
+        if folder:
+            initiate_data['folder'] = folder
+        if team_uuid:
+            initiate_data['team_uuid'] = team_uuid
+        if tags:
+            initiate_data['tags'] = tags
+        
+        print(f"   Initiating upload session... ({total_chunks} chunks)")
+        response = self.session.post(initiate_url, json=initiate_data, timeout=60)
+        response.raise_for_status()
+        session_info = response.json()
+        
+        upload_id = session_info['upload_id']
+        print(f"   Upload ID: {upload_id}")
+        
+        # Upload chunks
+        print(f"   Uploading {total_chunks} chunks...")
+        with open(file_path, 'rb') as f:
+            for chunk_index in range(total_chunks):
+                # Read chunk
+                chunk_data = f.read(CHUNK_SIZE)
+                if not chunk_data:
+                    break
+                
+                # Calculate chunk hash
+                chunk_hash = hashlib.sha256(chunk_data).hexdigest()
+                
+                # Upload chunk
+                chunk_url = f"{api_url}/api/upload/large/chunk/{upload_id}/{chunk_index}"
+                files = {'chunk': (f'chunk_{chunk_index}', chunk_data, 'application/octet-stream')}
+                data = {'chunk_hash': chunk_hash}
+                
+                chunk_response = self.session.post(chunk_url, files=files, data=data, timeout=300)
+                chunk_response.raise_for_status()
+                
+                # Progress update
+                progress = ((chunk_index + 1) / total_chunks) * 100
+                if (chunk_index + 1) % 10 == 0 or chunk_index == total_chunks - 1:
+                    print(f"   Progress: {progress:.1f}% ({chunk_index + 1}/{total_chunks} chunks)")
+        
+        # Complete upload
+        complete_url = f"{api_url}/api/upload/large/complete/{upload_id}"
+        print(f"   Completing upload...")
+        complete_response = self.session.post(complete_url, timeout=60)
+        complete_response.raise_for_status()
+        result = complete_response.json()
+        
+        print(f"   ✅ Chunked upload completed!")
+        
+        # Return in same format as standard upload
+        return {
+            'job_id': upload_id,
+            'status': 'queued',
+            'message': f"Chunked upload completed: {os.path.basename(file_path)}",
+            'upload_type': 'chunked'
+        }
+    
+    def _calculate_file_hash(self, file_path: str) -> str:
+        """Calculate SHA-256 hash of a file."""
+        file_hash = hashlib.sha256()
+        file_size = os.path.getsize(file_path)
+        bytes_read = 0
+        
+        print(f"   Hashing file ({file_size / (1024**3):.2f} GB)...")
+        with open(file_path, 'rb') as f:
+            while True:
+                chunk = f.read(8192)
+                if not chunk:
+                    break
+                file_hash.update(chunk)
+                bytes_read += len(chunk)
+                
+                # Progress update every 100MB
+                if bytes_read % (100 * 1024 * 1024) == 0:
+                    progress = (bytes_read / file_size) * 100
+                    print(f"   Hash progress: {progress:.1f}%")
+        
+        return file_hash.hexdigest()
     
     def get_upload_status(self, job_id: str) -> Dict[str, Any]:
         """
@@ -318,16 +495,27 @@ def sc_web_client():
         pytest.skip(f"Could not connect to SC_Web at {base_url}. "
                    f"Is SC_Web running? Check with: docker ps | grep scientistcloud-portal")
     
-    # Note: SC_Web requires authentication via Auth0
-    # Tests will get 401 errors without authentication, which is expected behavior
-    # To fully test uploads, you would need to:
-    # 1. Login via Auth0 OAuth flow
-    # 2. Capture session cookie (PHPSESSID)
-    # 3. Pass cookie to SCWebUploadClient
-    # For now, tests will validate that the PHP proxy responds correctly
-    # (even if it's a 401 auth error, that's correct behavior)
+    # Get session cookie from environment variable if provided
+    # SC_Web uses PHP sessions (PHPSESSID) for authentication.
+    # To get the cookie:
+    #   1. Login to SC_Web: http://localhost:8080/login.php (complete Auth0 flow)
+    #   2. After login, open DevTools (F12) → Application → Cookies → http://localhost:8080
+    #   3. Copy the value of 'PHPSESSID' cookie
+    #   4. Export: export SC_WEB_SESSION_COOKIE="<cookie_value>"
+    #   5. Run tests: pytest test_upload_e2e.py -v
+    #
+    # Note: This is similar to how utils_bokeh_auth.py handles cookies for Bokeh dashboards,
+    # but for E2E tests we need the PHP session cookie (PHPSESSID) from SC_Web.
+    session_cookie = os.getenv('SC_WEB_SESSION_COOKIE', None)
     
-    return SCWebUploadClient(base_url)
+    if session_cookie:
+        print(f"✅ Using session cookie from environment variable")
+    else:
+        print(f"⚠️  No session cookie provided. Tests will skip on authentication errors.")
+        print(f"   To provide a cookie, set SC_WEB_SESSION_COOKIE environment variable.")
+        print(f"   See test_upload_e2e.py for instructions on how to get the cookie.")
+    
+    return SCWebUploadClient(base_url, session_cookie=session_cookie)
 
 
 class TestSCWebLocalUploads:
