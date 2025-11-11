@@ -98,12 +98,29 @@ class SCWebUploadClient:
             print(f"   However, PHP proxy has a 5-minute timeout which may be insufficient.")
             print(f"   For files > 1GB, consider using direct FastAPI chunked upload API.")
         
-        # For extremely large files (TB), use chunked upload directly
+        # For extremely large files (GB+), try chunked upload if FastAPI is available
+        # Note: FastAPI may not be exposed to host (only accessible within Docker network)
+        # In that case, we'll use PHP proxy which forwards to FastAPI internally
         if file_size_gb > 1.0:
-            print(f"   📦 File is very large ({file_size_gb:.2f} GB), using chunked upload...")
-            return self.upload_file_chunked(
-                file_path, user_email, dataset_name, sensor, convert, is_public, folder, team_uuid, tags
-            )
+            # Check if FastAPI is available for chunked uploads from host
+            api_url_working = self._get_fastapi_url()
+            if api_url_working:
+                print(f"   📦 File is very large ({file_size_gb:.2f} GB), using chunked upload via FastAPI...")
+                try:
+                    return self.upload_file_chunked(
+                        file_path, user_email, dataset_name, sensor, convert, is_public, folder, team_uuid, tags
+                    )
+                except Exception as e:
+                    print(f"   ⚠️  Chunked upload failed: {e}")
+                    print(f"   ⚠️  Falling back to PHP proxy (may timeout for {file_size_gb:.2f} GB file)")
+                    # Fall through to standard upload
+            else:
+                print(f"   ⚠️  FastAPI not accessible from host (only accessible within Docker network)")
+                print(f"   ⚠️  Using PHP proxy which will forward to FastAPI internally")
+                print(f"   ⚠️  WARNING: PHP proxy has 5-minute timeout - likely insufficient for {file_size_gb:.2f} GB file")
+                print(f"   ⚠️  To test large files, expose FastAPI port 5001 to host in docker-compose.yml")
+                print(f"   ⚠️  Or run tests from within Docker network")
+                # Fall through to standard upload through PHP proxy (will likely timeout)
         
         # For smaller files, use standard upload
         url = f"{self.base_url}{TestConfig.SC_WEB_UPLOAD_ENDPOINT}"
@@ -195,7 +212,13 @@ class SCWebUploadClient:
         print(f"   Chunk size: {CHUNK_SIZE / (1024*1024):.0f} MB")
         
         # Use FastAPI directly (bypass PHP proxy for large files)
-        api_url = os.getenv('SCLIB_API_URL', 'http://localhost:5001')
+        api_url_working = self._get_fastapi_url()
+        if not api_url_working:
+            raise ConnectionError(
+                f"Could not connect to FastAPI. "
+                f"Is the FastAPI service running? Check with: docker ps | grep sclib_fastapi"
+            )
+        print(f"   ✅ Connected to FastAPI at {api_url_working}")
         
         # Calculate file hash (this can take time for large files)
         print(f"   Calculating file hash...")
@@ -203,7 +226,7 @@ class SCWebUploadClient:
         print(f"   File hash: {file_hash[:16]}...")
         
         # Initiate chunked upload
-        initiate_url = f"{api_url}/api/upload/large/initiate"
+        initiate_url = f"{api_url_working}/api/upload/large/initiate"
         total_chunks = (file_size + CHUNK_SIZE - 1) // CHUNK_SIZE
         
         initiate_data = {
@@ -245,7 +268,7 @@ class SCWebUploadClient:
                 chunk_hash = hashlib.sha256(chunk_data).hexdigest()
                 
                 # Upload chunk
-                chunk_url = f"{api_url}/api/upload/large/chunk/{upload_id}/{chunk_index}"
+                chunk_url = f"{api_url_working}/api/upload/large/chunk/{upload_id}/{chunk_index}"
                 files = {'chunk': (f'chunk_{chunk_index}', chunk_data, 'application/octet-stream')}
                 data = {'chunk_hash': chunk_hash}
                 
@@ -258,7 +281,7 @@ class SCWebUploadClient:
                     print(f"   Progress: {progress:.1f}% ({chunk_index + 1}/{total_chunks} chunks)")
         
         # Complete upload
-        complete_url = f"{api_url}/api/upload/large/complete/{upload_id}"
+        complete_url = f"{api_url_working}/api/upload/large/complete/{upload_id}"
         print(f"   Completing upload...")
         complete_response = self.session.post(complete_url, timeout=60)
         complete_response.raise_for_status()
@@ -332,20 +355,21 @@ class SCWebUploadClient:
             
             # If not in status, try to find by job_id in dataset list
             # (This is a fallback - ideally job status should include dataset_uuid)
-            api_url = os.getenv('SCLIB_API_URL', 'http://localhost:5001')
-            url = f"{api_url}/api/v1/datasets"
-            params = {
-                'user_email': TestConfig.USER_EMAIL,
-                'limit': 10
-            }
-            
-            response = requests.get(url, params=params, timeout=10)
-            if response.status_code == 200:
-                datasets = response.json().get('datasets', [])
-                # Find most recent dataset (likely the one we just uploaded)
-                if datasets:
-                    # Sort by created_at if available, otherwise return first
-                    return datasets[0].get('uuid')
+            api_url = self._get_fastapi_url()
+            if api_url:
+                url = f"{api_url}/api/v1/datasets"
+                params = {
+                    'user_email': TestConfig.USER_EMAIL,
+                    'limit': 10
+                }
+                
+                response = requests.get(url, params=params, timeout=10)
+                if response.status_code == 200:
+                    datasets = response.json().get('datasets', [])
+                    # Find most recent dataset (likely the one we just uploaded)
+                    if datasets:
+                        # Sort by created_at if available, otherwise return first
+                        return datasets[0].get('uuid')
             
             return None
             
@@ -387,11 +411,32 @@ class SCWebUploadClient:
             f"Final status: {final_status.get('status')} after {max_wait} seconds"
         )
     
+    def _get_fastapi_url(self) -> Optional[str]:
+        """Get working FastAPI URL with localhost fallback."""
+        api_url = os.getenv('SCLIB_API_URL', 'http://localhost:5001')
+        api_urls = [api_url]
+        if 'localhost' in api_url:
+            api_urls.append(api_url.replace('localhost', '127.0.0.1'))
+        
+        for test_url in api_urls:
+            try:
+                response = requests.get(f"{test_url}/docs", timeout=2)
+                if response.status_code in [200, 404]:  # 404 is OK, means server is up
+                    return test_url
+            except Exception:
+                continue
+        
+        return None
+    
     def get_dataset_status(self, dataset_uuid: str) -> Dict[str, Any]:
         """Get dataset status from FastAPI."""
         try:
             # Use FastAPI endpoint directly (bypassing PHP proxy for testing)
-            api_url = os.getenv('SCLIB_API_URL', 'http://localhost:5001')
+            api_url = self._get_fastapi_url()
+            if not api_url:
+                print(f"Warning: Could not connect to FastAPI")
+                return {}
+            
             url = f"{api_url}/api/v1/datasets/{dataset_uuid}/status"
             params = {'user_email': TestConfig.USER_EMAIL}
             
@@ -406,7 +451,11 @@ class SCWebUploadClient:
         """Get dataset files (upload and converted) from FastAPI."""
         try:
             # Use FastAPI endpoint directly
-            api_url = os.getenv('SCLIB_API_URL', 'http://localhost:5001')
+            api_url = self._get_fastapi_url()
+            if not api_url:
+                print(f"Warning: Could not connect to FastAPI")
+                return {}
+            
             url = f"{api_url}/api/v1/datasets/{dataset_uuid}/files"
             params = {'user_email': TestConfig.USER_EMAIL}
             
