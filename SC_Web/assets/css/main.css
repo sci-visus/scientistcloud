@@ -283,6 +283,20 @@ body {
   overflow: hidden;
 }
 
+/* Allow scrolling when upload interface is shown */
+.viewer-container .upload-interface {
+  overflow-y: auto;
+  overflow-x: hidden;
+  max-height: 100%;
+  padding: 1rem;
+}
+
+/* Ensure upload interface container itself can scroll */
+.viewer-container .upload-interface .card {
+  max-height: calc(100vh - 2rem);
+  overflow-y: auto;
+}
+
 .viewer-container img {
   max-width: 100%;
   max-height: 100%;

@@ -1052,7 +1052,11 @@ class UploadManager {
             }
 
             try {
-                const response = await fetch(`${getUploadApiBasePath()}/api/upload/status/${jobId}`);
+                // Use PHP proxy for status polling
+                const response = await fetch(`${getApiBasePath()}/upload-status.php?job_id=${encodeURIComponent(jobId)}`);
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                }
                 const data = await response.json();
 
                 if (data.job_id) {
