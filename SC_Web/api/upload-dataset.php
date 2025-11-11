@@ -71,7 +71,8 @@ try {
     $sensor = $_POST['sensor'] ?? 'OTHER';
     $convert = isset($_POST['convert']) ? filter_var($_POST['convert'], FILTER_VALIDATE_BOOLEAN) : true;
     $isPublic = isset($_POST['is_public']) ? filter_var($_POST['is_public'], FILTER_VALIDATE_BOOLEAN) : false;
-    $folder = $_POST['folder'] ?? null;
+    $folder = $_POST['folder'] ?? null;  // UI organization metadata only, NOT for file system structure
+    $relativePath = $_POST['relative_path'] ?? null;  // For preserving directory structure in directory uploads
     $teamUuid = $_POST['team_uuid'] ?? null;
     $tags = $_POST['tags'] ?? '';
     $datasetIdentifier = $_POST['dataset_identifier'] ?? null;
@@ -103,7 +104,10 @@ try {
     ];
     
     if ($folder) {
-        $postData['folder'] = $folder;
+        $postData['folder'] = $folder;  // Metadata only - for UI organization
+    }
+    if ($relativePath) {
+        $postData['relative_path'] = $relativePath;  // For preserving directory structure
     }
     if ($teamUuid) {
         $postData['team_uuid'] = $teamUuid;

@@ -534,14 +534,22 @@ class DatasetManager {
             const response = await fetch(`${getApiBasePath()}/dataset-files.php?dataset_uuid=${datasetUuid}`);
             const data = await response.json();
 
+            console.log('Dataset files API response:', data);
+
             if (data.success) {
+                // Log file counts for debugging
+                const uploadCount = data.directories?.upload?.files?.length || 0;
+                const convertedCount = data.directories?.converted?.files?.length || 0;
+                console.log(`Files found - Upload: ${uploadCount}, Converted: ${convertedCount}`);
+                
                 container.innerHTML = this.renderDatasetFilesInline(data);
             } else {
+                console.error('Failed to load files:', data.error);
                 container.innerHTML = `<p class="text-muted small">${data.error || 'Failed to load files'}</p>`;
             }
         } catch (error) {
             console.error('Error loading dataset files:', error);
-            container.innerHTML = `<p class="text-muted small">Error loading files</p>`;
+            container.innerHTML = `<p class="text-muted small">Error loading files: ${error.message}</p>`;
         }
     }
 
@@ -591,7 +599,8 @@ class DatasetManager {
         let hasFiles = false;
         
         // Upload directory section
-        if (data.directories.upload.exists && data.directories.upload.files.length > 0) {
+        // Show section if directory exists, even if empty (user can see the structure)
+        if (data.directories.upload.exists) {
             hasFiles = true;
             const uploadId = 'upload-' + Date.now() + '-' + Math.random().toString(36).substr(2, 9);
             html += '<div class="file-directory-section mb-2">';
@@ -603,14 +612,19 @@ class DatasetManager {
             html += `</button>`;
             html += `<div class="collapse" id="${uploadId}">`;
             html += '<ul class="dataset-files-list" style="list-style: none; padding-left: 0;">';
-            html += this.renderFileTreeInline(data.directories.upload.files, 'upload', 0);
+            if (data.directories.upload.files.length > 0) {
+                html += this.renderFileTreeInline(data.directories.upload.files, 'upload', 0);
+            } else {
+                html += '<li class="text-muted small">No files in upload directory</li>';
+            }
             html += '</ul>';
             html += `</div>`;
             html += '</div>';
         }
         
         // Converted directory section
-        if (data.directories.converted.exists && data.directories.converted.files.length > 0) {
+        // Show section if directory exists, even if empty
+        if (data.directories.converted.exists) {
             hasFiles = true;
             const convertedId = 'converted-' + Date.now() + '-' + Math.random().toString(36).substr(2, 9);
             html += '<div class="file-directory-section mb-2">';
@@ -622,7 +636,11 @@ class DatasetManager {
             html += `</button>`;
             html += `<div class="collapse" id="${convertedId}">`;
             html += '<ul class="dataset-files-list" style="list-style: none; padding-left: 0;">';
-            html += this.renderFileTreeInline(data.directories.converted.files, 'converted', 0);
+            if (data.directories.converted.files.length > 0) {
+                html += this.renderFileTreeInline(data.directories.converted.files, 'converted', 0);
+            } else {
+                html += '<li class="text-muted small">No files in converted directory</li>';
+            }
             html += '</ul>';
             html += `</div>`;
             html += '</div>';

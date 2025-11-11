@@ -774,12 +774,15 @@ class UploadManager {
         }
 
         // Prepare upload data
+        const folderValue = this.getFolderValue(form);
+        console.log('Folder value from form:', folderValue);
+        
         const uploadData = {
             dataset_name: formData.get('name'),
             sensor: formData.get('sensor'),
             convert: formData.get('convert') === 'on',
             is_public: formData.get('is_public') === 'on',
-            folder: this.getFolderValue(form),
+            folder: folderValue,
             team_uuid: formData.get('team_uuid') || null,
             tags: formData.get('tags') || '',
             dimensions: formData.get('dimensions') || null,
@@ -843,11 +846,22 @@ class UploadManager {
                 uploadFormData.append('convert', uploadData.convert);
                 uploadFormData.append('is_public', uploadData.is_public);
                 
-                // Use relative path for directory uploads, otherwise use the folder from form
-                const folderToUse = isDirectoryUpload ? relativePath : uploadData.folder;
-                if (folderToUse) {
-                    uploadFormData.append('folder', folderToUse);
-                    console.log(`File ${i + 1}: Using folder path: ${folderToUse}`);
+                // Folder is ONLY for UI organization (metadata from dropdown), NOT for file system structure
+                // For directory uploads, directory structure is preserved via the relative path mechanism
+                // which is handled separately by the backend
+                if (uploadData.folder) {
+                    // Only use folder from dropdown - this is metadata for UI organization only
+                    uploadFormData.append('folder', uploadData.folder);
+                    console.log(`File ${i + 1}: Using folder for UI organization: ${uploadData.folder}`);
+                }
+                
+                // For directory uploads, preserve structure by including relative path in a separate parameter
+                // Note: This is separate from 'folder' which is only for UI organization
+                if (isDirectoryUpload && relativePath) {
+                    // The backend will use this to preserve directory structure in the file system
+                    // This is different from 'folder' which is metadata only
+                    uploadFormData.append('relative_path', relativePath);
+                    console.log(`File ${i + 1}: Directory upload - preserving structure with relative path: ${relativePath}`);
                 }
                 
                 if (uploadData.team_uuid) uploadFormData.append('team_uuid', uploadData.team_uuid);
