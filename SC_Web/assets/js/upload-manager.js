@@ -854,18 +854,17 @@ class UploadManager {
                 if (uploadData.tags) uploadFormData.append('tags', uploadData.tags);
                 
                 // Group files under the same dataset UUID
+                // For directory uploads, use the same dataset_identifier for all files
+                // The backend will use the identifier as the UUID directly (without add_to_existing)
+                // This avoids race conditions where the dataset doesn't exist yet
                 uploadFormData.append('dataset_identifier', datasetUuid);
-                if (i > 0) {
-                    // For files after the first, add to existing dataset
-                    uploadFormData.append('add_to_existing', 'true');
-                }
+                // Don't use add_to_existing for directory uploads - the backend handles it automatically
+                // when dataset_identifier is provided without add_to_existing
 
                 // Build upload URL
                 const uploadUrl = `${getUploadApiBasePath()}/upload-dataset.php`;
                 console.log(`Uploading file ${i + 1}/${files.length} to: ${uploadUrl}`);
-                if (i > 0) {
-                    console.log(`  Adding to existing dataset: ${datasetUuid}`);
-                }
+                console.log(`  Using dataset UUID: ${datasetUuid}`);
                 
                 uploadPromises.push(
                     fetch(uploadUrl, {
