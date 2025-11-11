@@ -75,14 +75,23 @@ function shouldExcludeFile($filename) {
 function scanDirectory($dir, $basePath = '') {
     $result = [];
     
-    if (!is_dir($dir) || !is_readable($dir)) {
+    if (!is_dir($dir)) {
+        error_log("scanDirectory: Not a directory: $dir");
+        return $result;
+    }
+    
+    if (!is_readable($dir)) {
+        error_log("scanDirectory: Directory not readable: $dir");
         return $result;
     }
     
     $items = scandir($dir);
     if ($items === false) {
+        error_log("scanDirectory: scandir failed for: $dir");
         return $result;
     }
+    
+    error_log("scanDirectory: Found " . count($items) . " items in $dir");
     
     foreach ($items as $item) {
         if ($item === '.' || $item === '..') {
@@ -107,8 +116,12 @@ function scanDirectory($dir, $basePath = '') {
         } else {
             // Check if file should be excluded
             if (shouldExcludeFile($item)) {
+                error_log("scanDirectory: Excluding file: $item");
                 continue; // Skip this file
             }
+            
+            // Log file being added
+            error_log("scanDirectory: Adding file: $item (path: $relativePath)");
             
             $result[] = [
                 'name' => $item,
@@ -182,9 +195,17 @@ try {
     $uploadDir = JOB_IN_DATA_DIR . '/' . $datasetUuid;
     $convertedDir = JOB_OUT_DATA_DIR . '/' . $datasetUuid;
 
+    // Log directory paths for debugging
+    error_log("Dataset files API - Upload dir: $uploadDir, exists: " . (is_dir($uploadDir) ? 'yes' : 'no'));
+    error_log("Dataset files API - Converted dir: $convertedDir, exists: " . (is_dir($convertedDir) ? 'yes' : 'no'));
+
     // Scan both directories
     $uploadFiles = scanDirectory($uploadDir, 'upload');
     $convertedFiles = scanDirectory($convertedDir, 'converted');
+    
+    // Log scan results for debugging
+    error_log("Dataset files API - Upload files count: " . count($uploadFiles));
+    error_log("Dataset files API - Converted files count: " . count($convertedFiles));
 
     // Format response
     $response = [
@@ -194,12 +215,16 @@ try {
             'upload' => [
                 'path' => $uploadDir,
                 'exists' => is_dir($uploadDir),
-                'files' => $uploadFiles
+                'readable' => is_readable($uploadDir),
+                'files' => $uploadFiles,
+                'file_count' => count($uploadFiles)
             ],
             'converted' => [
                 'path' => $convertedDir,
                 'exists' => is_dir($convertedDir),
-                'files' => $convertedFiles
+                'readable' => is_readable($convertedDir),
+                'files' => $convertedFiles,
+                'file_count' => count($convertedFiles)
             ]
         ]
     ];

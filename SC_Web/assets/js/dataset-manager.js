@@ -537,10 +537,19 @@ class DatasetManager {
             console.log('Dataset files API response:', data);
 
             if (data.success) {
-                // Log file counts for debugging
-                const uploadCount = data.directories?.upload?.files?.length || 0;
-                const convertedCount = data.directories?.converted?.files?.length || 0;
+                // Log detailed information for debugging
+                const uploadDir = data.directories?.upload;
+                const convertedDir = data.directories?.converted;
+                const uploadCount = uploadDir?.files?.length || 0;
+                const convertedCount = convertedDir?.files?.length || 0;
+                
                 console.log(`Files found - Upload: ${uploadCount}, Converted: ${convertedCount}`);
+                console.log(`Upload directory exists: ${uploadDir?.exists}, readable: ${uploadDir?.readable}, path: ${uploadDir?.path}`);
+                console.log(`Converted directory exists: ${convertedDir?.exists}, readable: ${convertedDir?.readable}, path: ${convertedDir?.path}`);
+                
+                if (uploadCount === 0 && uploadDir?.exists) {
+                    console.warn('Upload directory exists but no files found. Check if files are in subdirectories or excluded.');
+                }
                 
                 container.innerHTML = this.renderDatasetFilesInline(data);
             } else {
