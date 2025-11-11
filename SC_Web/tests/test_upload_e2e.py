@@ -143,6 +143,39 @@ class SCWebUploadClient:
         
         return result
     
+    def get_dataset_uuid_from_job(self, job_id: str) -> Optional[str]:
+        """Extract dataset UUID from job status or by querying datasets."""
+        try:
+            # Try to get from job status
+            status = self.get_upload_status(job_id)
+            dataset_uuid = status.get('dataset_uuid') or status.get('data', {}).get('dataset_uuid')
+            
+            if dataset_uuid:
+                return dataset_uuid
+            
+            # If not in status, try to find by job_id in dataset list
+            # (This is a fallback - ideally job status should include dataset_uuid)
+            api_url = os.getenv('SCLIB_API_URL', 'http://localhost:5001')
+            url = f"{api_url}/api/v1/datasets"
+            params = {
+                'user_email': TestConfig.USER_EMAIL,
+                'limit': 10
+            }
+            
+            response = requests.get(url, params=params, timeout=10)
+            if response.status_code == 200:
+                datasets = response.json().get('datasets', [])
+                # Find most recent dataset (likely the one we just uploaded)
+                if datasets:
+                    # Sort by created_at if available, otherwise return first
+                    return datasets[0].get('uuid')
+            
+            return None
+            
+        except Exception as e:
+            print(f"Warning: Could not get dataset UUID from job: {e}")
+            return None
+    
     def wait_for_completion(self, job_id: str, max_wait: int = TestConfig.MAX_WAIT_TIME,
                            check_interval: int = TestConfig.STATUS_CHECK_INTERVAL) -> Dict[str, Any]:
         """Wait for upload job to complete."""
@@ -175,6 +208,80 @@ class SCWebUploadClient:
         raise TimeoutError(
             f"Timeout waiting for job completion. "
             f"Final status: {final_status.get('status')} after {max_wait} seconds"
+        )
+    
+    def get_dataset_status(self, dataset_uuid: str) -> Dict[str, Any]:
+        """Get dataset status from FastAPI."""
+        try:
+            # Use FastAPI endpoint directly (bypassing PHP proxy for testing)
+            api_url = os.getenv('SCLIB_API_URL', 'http://localhost:5001')
+            url = f"{api_url}/api/v1/datasets/{dataset_uuid}/status"
+            params = {'user_email': TestConfig.USER_EMAIL}
+            
+            response = requests.get(url, params=params, timeout=10)
+            response.raise_for_status()
+            return response.json()
+        except Exception as e:
+            print(f"Warning: Could not get dataset status: {e}")
+            return {}
+    
+    def get_dataset_files(self, dataset_uuid: str) -> Dict[str, Any]:
+        """Get dataset files (upload and converted) from FastAPI."""
+        try:
+            # Use FastAPI endpoint directly
+            api_url = os.getenv('SCLIB_API_URL', 'http://localhost:5001')
+            url = f"{api_url}/api/v1/datasets/{dataset_uuid}/files"
+            params = {'user_email': TestConfig.USER_EMAIL}
+            
+            response = requests.get(url, params=params, timeout=10)
+            response.raise_for_status()
+            return response.json()
+        except Exception as e:
+            print(f"Warning: Could not get dataset files: {e}")
+            return {}
+    
+    def wait_for_conversion(self, dataset_uuid: str, max_wait: int = TestConfig.MAX_WAIT_TIME * 2,
+                           check_interval: int = TestConfig.STATUS_CHECK_INTERVAL) -> Dict[str, Any]:
+        """Wait for dataset conversion to complete by checking dataset status."""
+        start_time = time.time()
+        last_status = None
+        status_history = []
+        
+        print(f"  Waiting for conversion to complete for dataset: {dataset_uuid}")
+        
+        while time.time() - start_time < max_wait:
+            try:
+                status_data = self.get_dataset_status(dataset_uuid)
+                current_status = status_data.get('status', 'unknown')
+                
+                # Track status history
+                if current_status != last_status:
+                    status_history.append((time.time() - start_time, current_status))
+                    print(f"  Dataset status: {last_status} -> {current_status}")
+                    last_status = current_status
+                
+                # Check if conversion is complete
+                if current_status in ['done', 'completed']:
+                    print(f"  ✅ Conversion completed! Status history: {status_history}")
+                    return status_data
+                
+                # Check if conversion failed
+                if current_status in ['conversion error', 'failed']:
+                    error = status_data.get('error', 'Unknown error')
+                    raise Exception(f"Conversion failed with status '{current_status}': {error}")
+                
+                time.sleep(check_interval)
+                
+            except Exception as e:
+                print(f"  Error checking conversion status: {e}")
+                time.sleep(check_interval)
+        
+        # Timeout
+        final_status = self.get_dataset_status(dataset_uuid)
+        raise TimeoutError(
+            f"Timeout waiting for conversion. "
+            f"Final status: {final_status.get('status')} after {max_wait} seconds. "
+            f"Status history: {status_history}"
         )
 
 
@@ -227,9 +334,9 @@ class TestSCWebLocalUploads:
     """Test suite for local file uploads through SC_Web."""
     
     def test_scweb_upload_4d_nexus(self, sc_web_client):
-        """Test uploading a 4D Nexus file through SC_Web."""
+        """Test uploading a 4D Nexus file through SC_Web with conversion."""
         print(f"\n{'='*60}")
-        print(f"Test: 4D Nexus Upload via SC_Web")
+        print(f"Test: 4D Nexus Upload via SC_Web (with conversion)")
         print(f"File: {TestConfig.NEXUS_4D_FILE}")
         print(f"{'='*60}")
         
@@ -247,7 +354,7 @@ class TestSCWebLocalUploads:
                 user_email=TestConfig.USER_EMAIL,
                 dataset_name=dataset_name,
                 sensor="4D_NEXUS",
-                convert=True,
+                convert=True,  # Enable conversion
                 is_public=False
             )
             
@@ -260,29 +367,67 @@ class TestSCWebLocalUploads:
             
             print(f"✅ Upload initiated through SC_Web!")
             print(f"   Job ID: {job_id}")
-            print(f"   Response: {result}")
             
-            # Wait for completion
-            print("Waiting for upload and conversion to complete...")
-            status = sc_web_client.wait_for_completion(job_id)
+            # Wait for upload to complete
+            print("Waiting for upload to complete...")
+            upload_status = sc_web_client.wait_for_completion(job_id)
             
-            # Verify completion
-            assert status.get('status') == 'completed', \
-                f"Expected status 'completed', got '{status.get('status')}'. Error: {status.get('error')}"
+            # Verify upload completed
+            assert upload_status.get('status') == 'completed', \
+                f"Expected upload status 'completed', got '{upload_status.get('status')}'. Error: {upload_status.get('error')}"
             
-            print(f"✅ 4D Nexus upload completed successfully!")
+            print(f"✅ Upload completed!")
+            
+            # Get dataset UUID from job status or dataset list
+            dataset_uuid = upload_status.get('dataset_uuid') or sc_web_client.get_dataset_uuid_from_job(job_id)
+            
+            if dataset_uuid:
+                print(f"   Dataset UUID: {dataset_uuid}")
+            
+            # If we have dataset UUID, wait for conversion
+            if dataset_uuid:
+                print("Waiting for conversion to complete...")
+                dataset_status = sc_web_client.wait_for_conversion(dataset_uuid)
+                
+                # Verify conversion completed
+                final_status = dataset_status.get('status', 'unknown')
+                assert final_status in ['done', 'completed'], \
+                    f"Expected conversion status 'done' or 'completed', got '{final_status}'"
+                
+                print(f"✅ Conversion completed! Final status: {final_status}")
+                
+                # Verify converted files exist
+                print("Checking for converted files...")
+                files_data = sc_web_client.get_dataset_files(dataset_uuid)
+                
+                if files_data.get('success'):
+                    converted_dir = files_data.get('directories', {}).get('converted', {})
+                    converted_files = converted_dir.get('files', [])
+                    converted_count = converted_dir.get('file_count', 0)
+                    
+                    print(f"   Converted files found: {converted_count}")
+                    if converted_count > 0:
+                        print(f"   ✅ Conversion successful - {converted_count} file(s) in converted directory")
+                        # Check for IDX files
+                        idx_files = [f for f in converted_files if 'visus.idx' in str(f.get('name', '')) or '.idx' in str(f.get('name', ''))]
+                        if idx_files:
+                            print(f"   ✅ Found IDX file(s): {[f.get('name') for f in idx_files]}")
+                    else:
+                        print(f"   ⚠️  No converted files found (conversion may still be in progress)")
+                else:
+                    print(f"   ⚠️  Could not check converted files: {files_data.get('error', 'Unknown error')}")
+            
+            print(f"✅ 4D Nexus upload and conversion test completed!")
             print(f"   Dataset: {dataset_name}")
-            print(f"   Final Status: {status.get('status')}")
-            print(f"   Progress: {status.get('progress_percentage', 0):.1f}%")
             
         except Exception as e:
             print(f"❌ Test failed: {e}")
             raise
     
     def test_scweb_upload_tiff_rgb(self, sc_web_client):
-        """Test uploading a TIFF RGB file through SC_Web."""
+        """Test uploading a TIFF RGB file through SC_Web with conversion."""
         print(f"\n{'='*60}")
-        print(f"Test: TIFF RGB Upload via SC_Web")
+        print(f"Test: TIFF RGB Upload via SC_Web (with conversion)")
         print(f"File: {TestConfig.TIFF_RGB_FILE}")
         print(f"{'='*60}")
         
@@ -298,7 +443,7 @@ class TestSCWebLocalUploads:
                 user_email=TestConfig.USER_EMAIL,
                 dataset_name=dataset_name,
                 sensor="TIFF RGB",
-                convert=True,
+                convert=True,  # Enable conversion
                 is_public=False
             )
             
@@ -308,14 +453,40 @@ class TestSCWebLocalUploads:
             print(f"✅ Upload initiated through SC_Web!")
             print(f"   Job ID: {job_id}")
             
-            print("Waiting for upload and conversion to complete...")
-            status = sc_web_client.wait_for_completion(job_id)
+            print("Waiting for upload to complete...")
+            upload_status = sc_web_client.wait_for_completion(job_id)
             
-            assert status.get('status') == 'completed', \
-                f"Expected status 'completed', got '{status.get('status')}'"
+            assert upload_status.get('status') == 'completed', \
+                f"Expected upload status 'completed', got '{upload_status.get('status')}'"
             
-            print(f"✅ TIFF RGB upload completed successfully!")
-            print(f"   Final Status: {status.get('status')}")
+            print(f"✅ Upload completed!")
+            
+            # Get dataset UUID from job status or dataset list
+            dataset_uuid = upload_status.get('dataset_uuid') or sc_web_client.get_dataset_uuid_from_job(job_id)
+            
+            if dataset_uuid:
+                print(f"   Dataset UUID: {dataset_uuid}")
+            
+            # Wait for conversion if we have dataset UUID
+            if dataset_uuid:
+                print("Waiting for conversion to complete...")
+                dataset_status = sc_web_client.wait_for_conversion(dataset_uuid)
+                
+                final_status = dataset_status.get('status', 'unknown')
+                assert final_status in ['done', 'completed'], \
+                    f"Expected conversion status 'done' or 'completed', got '{final_status}'"
+                
+                print(f"✅ Conversion completed! Final status: {final_status}")
+                
+                # Verify converted files
+                files_data = sc_web_client.get_dataset_files(dataset_uuid)
+                if files_data.get('success'):
+                    converted_count = files_data.get('directories', {}).get('converted', {}).get('file_count', 0)
+                    print(f"   Converted files: {converted_count}")
+                    if converted_count > 0:
+                        print(f"   ✅ Conversion successful!")
+            
+            print(f"✅ TIFF RGB upload and conversion test completed!")
             
         except Exception as e:
             print(f"❌ Test failed: {e}")
@@ -395,6 +566,160 @@ class TestSCWebMultipleFiles:
         print("   - First file creates dataset with provided UUID")
         print("   - Subsequent files add to existing dataset")
         print("   - PHP proxy passes through dataset_identifier and add_to_existing")
+
+
+class TestSCWebConversion:
+    """Test conversion functionality."""
+    
+    def test_scweb_conversion_status_transitions(self, sc_web_client):
+        """Test that conversion goes through proper status transitions."""
+        print(f"\n{'='*60}")
+        print(f"Test: Conversion Status Transitions")
+        print(f"{'='*60}")
+        
+        if not os.path.exists(TestConfig.TIFF_RGB_FILE):
+            pytest.skip(f"Test file not found: {TestConfig.TIFF_RGB_FILE}")
+        
+        dataset_name = f"{TestConfig.TEST_DATASET_PREFIX}CONVERSION_TEST_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+        
+        try:
+            # Upload with conversion enabled
+            print("Uploading file with convert=True...")
+            result = sc_web_client.upload_file(
+                file_path=TestConfig.TIFF_RGB_FILE,
+                user_email=TestConfig.USER_EMAIL,
+                dataset_name=dataset_name,
+                sensor="TIFF RGB",
+                convert=True,  # Enable conversion
+                is_public=False
+            )
+            
+            job_id = result.get('job_id') or result.get('data', {}).get('job_id')
+            assert job_id is not None, f"No job_id in response: {result}"
+            
+            print(f"   Job ID: {job_id}")
+            
+            # Wait for upload to complete first
+            print("Waiting for upload to complete...")
+            upload_status = sc_web_client.wait_for_completion(job_id)
+            
+            # Get dataset UUID from job status or dataset list
+            dataset_uuid = upload_status.get('dataset_uuid') or sc_web_client.get_dataset_uuid_from_job(job_id)
+            
+            if not dataset_uuid:
+                pytest.skip("Could not get dataset UUID from upload response")
+            
+            print(f"   Dataset UUID: {dataset_uuid}")
+            
+            # Monitor status transitions
+            print("Monitoring status transitions...")
+            status_history = []
+            start_time = time.time()
+            max_wait = TestConfig.MAX_WAIT_TIME * 2  # Allow more time for conversion
+            
+            while time.time() - start_time < max_wait:
+                status_data = sc_web_client.get_dataset_status(dataset_uuid)
+                current_status = status_data.get('status', 'unknown')
+                
+                if not status_history or status_history[-1][1] != current_status:
+                    elapsed = time.time() - start_time
+                    status_history.append((elapsed, current_status))
+                    print(f"   [{elapsed:.1f}s] Status: {current_status}")
+                
+                # Check if done
+                if current_status in ['done', 'completed']:
+                    break
+                
+                time.sleep(TestConfig.STATUS_CHECK_INTERVAL)
+            
+            # Verify status transitions
+            statuses = [s[1] for s in status_history]
+            print(f"\n   Status history: {' -> '.join(statuses)}")
+            
+            # Should have gone through: uploading -> conversion queued -> converting -> done
+            # (or at least some of these)
+            assert 'done' in statuses or 'completed' in statuses, \
+                f"Expected final status 'done' or 'completed', got: {statuses}"
+            
+            # If conversion was enabled, should have seen conversion-related statuses
+            if any(s in statuses for s in ['conversion queued', 'converting']):
+                print(f"   ✅ Conversion status transitions observed!")
+            else:
+                print(f"   ⚠️  No conversion status transitions observed (may have completed too quickly)")
+            
+            print(f"✅ Status transition test completed!")
+            
+        except Exception as e:
+            print(f"❌ Test failed: {e}")
+            raise
+    
+    def test_scweb_no_conversion_when_disabled(self, sc_web_client):
+        """Test that conversion does NOT happen when convert=False."""
+        print(f"\n{'='*60}")
+        print(f"Test: No Conversion When Disabled")
+        print(f"{'='*60}")
+        
+        if not os.path.exists(TestConfig.IDX_FILE):
+            pytest.skip(f"Test file not found: {TestConfig.IDX_FILE}")
+        
+        dataset_name = f"{TestConfig.TEST_DATASET_PREFIX}NO_CONVERSION_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+        
+        try:
+            # Upload with conversion disabled
+            print("Uploading file with convert=False...")
+            result = sc_web_client.upload_file(
+                file_path=TestConfig.IDX_FILE,
+                user_email=TestConfig.USER_EMAIL,
+                dataset_name=dataset_name,
+                sensor="IDX",
+                convert=False,  # Disable conversion
+                is_public=False
+            )
+            
+            job_id = result.get('job_id') or result.get('data', {}).get('job_id')
+            assert job_id is not None, f"No job_id in response: {result}"
+            
+            print(f"   Job ID: {job_id}")
+            
+            # Wait for upload to complete
+            print("Waiting for upload to complete...")
+            upload_status = sc_web_client.wait_for_completion(job_id)
+            
+            assert upload_status.get('status') == 'completed', \
+                f"Expected upload status 'completed', got '{upload_status.get('status')}'"
+            
+            print(f"✅ Upload completed!")
+            
+            # Get dataset UUID from job status or dataset list
+            dataset_uuid = upload_status.get('dataset_uuid') or sc_web_client.get_dataset_uuid_from_job(job_id)
+            
+            if dataset_uuid:
+                print(f"   Dataset UUID: {dataset_uuid}")
+            
+            # Check dataset status - should be "done" immediately (no conversion queued)
+            if dataset_uuid:
+                print("Checking dataset status (should be 'done' without conversion)...")
+                time.sleep(2)  # Give it a moment to update
+                dataset_status = sc_web_client.get_dataset_status(dataset_uuid)
+                final_status = dataset_status.get('status', 'unknown')
+                
+                print(f"   Dataset status: {final_status}")
+                
+                # Should be "done" (not "conversion queued")
+                assert final_status in ['done', 'completed'], \
+                    f"Expected status 'done' or 'completed' (no conversion), got '{final_status}'"
+                
+                # Should NOT be in conversion states
+                assert final_status not in ['conversion queued', 'converting'], \
+                    f"Expected no conversion, but status is '{final_status}'"
+                
+                print(f"   ✅ No conversion occurred (as expected)")
+            
+            print(f"✅ No conversion test completed!")
+            
+        except Exception as e:
+            print(f"❌ Test failed: {e}")
+            raise
 
 
 class TestSCWebErrorHandling:

@@ -1646,3 +1646,63 @@
 [11-Nov-2025 20:38:35 UTC] API Request: GET http://sclib_fastapi:5001/api/v1/datasets/b05e27d7-91f7-4318-a81c-74551a2ca90a/files?user_email=amy%40visus.net
 [11-Nov-2025 20:38:35 UTC] HTTP Code: 200
 [11-Nov-2025 20:38:35 UTC] Response (first 500 chars): {"success":true,"dataset_uuid":"b05e27d7-91f7-4318-a81c-74551a2ca90a","files":[{"name":"002.JPG","path":"002.JPG","size":5259070,"size_human":"5.02 MB","modified":"2025-11-11T20:22:01"},{"name":"003.JPG","path":"003.JPG","size":5124572,"size_human":"4.89 MB","modified":"2025-11-11T20:22:03"},{"name":"001.JPG","path":"001.JPG","size":4973552,"size_human":"4.74 MB","modified":"2025-11-11T20:22:01"},{"name":"014.JPG","path":"014.JPG","size":4894023,"size_human":"4.67 MB","modified":"2025-11-11T20:2
+[11-Nov-2025 20:41:54 UTC] ✅ Using GuzzleHttp\Psr7\HttpFactory
+[11-Nov-2025 20:41:54 UTC] ✅ Using GuzzleHttp\Client
+[11-Nov-2025 20:41:58 UTC] ✅ Using GuzzleHttp\Psr7\HttpFactory
+[11-Nov-2025 20:41:58 UTC] ✅ Using GuzzleHttp\Client
+[11-Nov-2025 20:41:58 UTC] API Request: GET http://sclib_auth:8001/health
+[11-Nov-2025 20:41:58 UTC] HTTP Code: 200
+[11-Nov-2025 20:41:58 UTC] Response (first 500 chars): {"status":"healthy","service":"SCLib_Auth_Standalone"}
+[11-Nov-2025 20:41:58 UTC] Creating user at: http://sclib_auth:8001/api/auth/create-user
+[11-Nov-2025 20:41:58 UTC] User data: {"email":"amy@visus.net","name":"Amy Gooch","auth0_id":"google-oauth2|102515493501554578195","sub":"google-oauth2|102515493501554578195","picture":"https:\/\/lh3.googleusercontent.com\/a\/ACg8ocK-O-1oZ6Xz-TnfeEjCg0bJbjzvWA6xqXSC4U7gTYP5uFQXPQ=s96-c","email_verified":true,"auth0_metadata":{"given_name":"Amy","family_name":"Gooch","nickname":"amy","name":"Amy Gooch","picture":"https:\/\/lh3.googleusercontent.com\/a\/ACg8ocK-O-1oZ6Xz-TnfeEjCg0bJbjzvWA6xqXSC4U7gTYP5uFQXPQ=s96-c","updated_at":"2025-11-07T17:22:45.580Z","email":"amy@visus.net","email_verified":true,"iss":"https:\/\/dev-ep26akpb.auth0.com\/","aud":"Wy5lNzYVnDErayU9OmXQPFU5B99oHiI6","sub":"google-oauth2|102515493501554578195","iat":1762893734,"exp":1762929734,"sid":"2_JteWLpxc5QmD-kPa8dCEbsxo2JvuZm","nonce":"a9bd73d0b9882b01288762e0d02540c9"}}
+[11-Nov-2025 20:41:59 UTC] API Request: POST http://sclib_auth:8001/api/auth/create-user
+[11-Nov-2025 20:41:59 UTC] HTTP Code: 200
+[11-Nov-2025 20:41:59 UTC] Response (first 500 chars): {"success":true,"user_id":"google-oauth2|102515493501554578195","user":{"id":"google-oauth2|102515493501554578195","user_id":"google-oauth2|102515493501554578195","email":"amy@visus.net","name":"Amy Gooch","picture":"https://lh3.googleusercontent.com/a/ACg8ocK-O-1oZ6Xz-TnfeEjCg0bJbjzvWA6xqXSC4U7gTYP5uFQXPQ=s96-c","email_verified":true,"created_at":"2025-11-11T17:17:28.973000","last_login":"2025-11-11T20:41:59.362000","preferences":{},"auth0_id":"google-oauth2|102515493501554578195"}}
+[11-Nov-2025 20:41:59 UTC] Create user response: {"success":true,"user_id":"google-oauth2|102515493501554578195","user":{"id":"google-oauth2|102515493501554578195","user_id":"google-oauth2|102515493501554578195","email":"amy@visus.net","name":"Amy Gooch","picture":"https:\/\/lh3.googleusercontent.com\/a\/ACg8ocK-O-1oZ6Xz-TnfeEjCg0bJbjzvWA6xqXSC4U7gTYP5uFQXPQ=s96-c","email_verified":true,"created_at":"2025-11-11T17:17:28.973000","last_login":"2025-11-11T20:41:59.362000","preferences":[],"auth0_id":"google-oauth2|102515493501554578195"}}
+[11-Nov-2025 20:41:59 UTC] API Request: GET http://sclib_fastapi:5001/api/datasets?user_id=google-oauth2%7C102515493501554578195
+[11-Nov-2025 20:41:59 UTC] HTTP Code: 200
+[11-Nov-2025 20:41:59 UTC] Response (first 500 chars): {"success":true,"datasets":[]}
+[11-Nov-2025 20:42:00 UTC] API Request: GET http://sclib_fastapi:5001/api/datasets?user_id=google-oauth2%7C102515493501554578195
+[11-Nov-2025 20:42:00 UTC] HTTP Code: 200
+[11-Nov-2025 20:42:00 UTC] Response (first 500 chars): {"success":true,"datasets":[]}
+[11-Nov-2025 20:42:00 UTC] API Request: GET http://sclib_fastapi:5001/api/datasets?user_id=google-oauth2%7C102515493501554578195
+[11-Nov-2025 20:42:00 UTC] HTTP Code: 200
+[11-Nov-2025 20:42:00 UTC] Response (first 500 chars): {"success":true,"datasets":[]}
+[11-Nov-2025 20:42:00 UTC] API Request: GET http://sclib_fastapi:5001/api/datasets?user_id=google-oauth2%7C102515493501554578195
+[11-Nov-2025 20:42:00 UTC] HTTP Code: 200
+[11-Nov-2025 20:42:00 UTC] Response (first 500 chars): {"success":true,"datasets":[]}
+[11-Nov-2025 20:42:00 UTC] API Request: GET http://sclib_fastapi:5001/api/datasets?user_id=google-oauth2%7C102515493501554578195
+[11-Nov-2025 20:42:00 UTC] HTTP Code: 200
+[11-Nov-2025 20:42:00 UTC] Response (first 500 chars): {"success":true,"datasets":[]}
+[11-Nov-2025 20:42:01 UTC] API Request: GET http://sclib_fastapi:5001/api/v1/datasets/by-user?user_email=amy%40visus.net
+[11-Nov-2025 20:42:01 UTC] HTTP Code: 200
+[11-Nov-2025 20:42:01 UTC] Response (first 500 chars): {"success":true,"datasets":{"my":[{"uuid":"244e3cd0-09fb-4c47-96cb-966297dd646b","name":"Sampad dir local upload","data_size":0,"folder":"Sampad","folder_uuid":"Sampad","time":null,"team":null,"team_uuid":null,"tags":"S,a,m,p,a,d, ,t,e,s,t,,, ,2,d, ","sensor":"TIFF RGB","status":"done","compression_status":"unknown","url":"http://localhost:8080/mod_visus?dataset=244e3cd0-09fb-4c47-96cb-966297dd646b&&server=false","google_drive_link":"","bucket":null,"prefix":null,"accesskey":null,"secretkey":nul
+[11-Nov-2025 20:42:01 UTC] Datasets API response: my=3, shared=0, team=0, total=3
+[11-Nov-2025 20:42:03 UTC] API Request: GET http://sclib_fastapi:5001/api/v1/datasets/b05e27d7-91f7-4318-a81c-74551a2ca90a?user_email=amy%40visus.net
+[11-Nov-2025 20:42:03 UTC] HTTP Code: 200
+[11-Nov-2025 20:42:03 UTC] Response (first 500 chars): {"success":true,"identifier":"b05e27d7-91f7-4318-a81c-74551a2ca90a","resolved_uuid":"b05e27d7-91f7-4318-a81c-74551a2ca90a","dataset":{"_id":"69139ae98fde675e177eccc4","uuid":"b05e27d7-91f7-4318-a81c-74551a2ca90a","name":"tinytaylor16","slug":"amy-tinytaylor16-2025","id":21100,"user":"amy@visus.net","sensor":"RGB","convert":true,"is_public":true,"folder_uuid":"Taylor","team_uuid":null,"source_type":"local","source_path":"/tmp/tmps8047wnq/.DS_Store","destination_path":"/mnt/visus_datasets/upload/b
+[11-Nov-2025 20:42:03 UTC] PHP Warning:  Undefined array key "team_id" in /var/www/html/api/dataset-files.php on line 82
+[11-Nov-2025 20:42:03 UTC] API Request: GET http://sclib_fastapi:5001/api/v1/datasets/b05e27d7-91f7-4318-a81c-74551a2ca90a/files?user_email=amy%40visus.net
+[11-Nov-2025 20:42:03 UTC] HTTP Code: 200
+[11-Nov-2025 20:42:03 UTC] Response (first 500 chars): {"success":true,"dataset_uuid":"b05e27d7-91f7-4318-a81c-74551a2ca90a","directories":{"upload":{"path":"/mnt/visus_datasets/upload/b05e27d7-91f7-4318-a81c-74551a2ca90a","exists":true,"readable":true,"files":[{"name":"000.JPG","type":"file","path":"upload/000.JPG","size":5314534,"modified":1762892522.0},{"name":"001.JPG","type":"file","path":"upload/001.JPG","size":4973552,"modified":1762892521.0},{"name":"002.JPG","type":"file","path":"upload/002.JPG","size":5259070,"modified":1762892521.0},{"nam
+[11-Nov-2025 20:42:32 UTC] API Request: GET http://sclib_fastapi:5001/api/v1/datasets/2f5ada14-a20d-4e4b-97a4-73567588f2e8?user_email=amy%40visus.net
+[11-Nov-2025 20:42:32 UTC] HTTP Code: 200
+[11-Nov-2025 20:42:32 UTC] Response (first 500 chars): {"success":true,"identifier":"2f5ada14-a20d-4e4b-97a4-73567588f2e8","resolved_uuid":"2f5ada14-a20d-4e4b-97a4-73567588f2e8","dataset":{"_id":"69138f3ec883bd1d5fac98c2","uuid":"2f5ada14-a20d-4e4b-97a4-73567588f2e8","name":"Sampad dir local upload","slug":"amy-sampad-dir-local-upload-2025","id":34366,"user":"amy@visus.net","sensor":"TIFF RGB","convert":true,"is_public":true,"folder_uuid":"Sampad","team_uuid":"","source_type":"local","source_path":"/tmp/tmp1ii20_uh/sync.log.txt","destination_path":"
+[11-Nov-2025 20:42:32 UTC] PHP Warning:  Undefined array key "team_id" in /var/www/html/api/dataset-files.php on line 82
+[11-Nov-2025 20:42:32 UTC] API Request: GET http://sclib_fastapi:5001/api/v1/datasets/2f5ada14-a20d-4e4b-97a4-73567588f2e8/files?user_email=amy%40visus.net
+[11-Nov-2025 20:42:32 UTC] HTTP Code: 200
+[11-Nov-2025 20:42:32 UTC] Response (first 500 chars): {"success":true,"dataset_uuid":"2f5ada14-a20d-4e4b-97a4-73567588f2e8","directories":{"upload":{"path":"/mnt/visus_datasets/upload/2f5ada14-a20d-4e4b-97a4-73567588f2e8","exists":true,"readable":true,"files":[{"name":"1161_Panel2_7_12.tif","type":"file","path":"upload/1161_Panel2_7_12.tif","size":12583280,"modified":1762889534.0},{"name":"sync.log.txt","type":"file","path":"upload/sync.log.txt","size":3702,"modified":1762889534.0}],"file_count":2},"converted":{"path":"/mnt/visus_datasets/converted
+[11-Nov-2025 20:42:36 UTC] API Request: GET http://sclib_fastapi:5001/api/v1/datasets/244e3cd0-09fb-4c47-96cb-966297dd646b?user_email=amy%40visus.net
+[11-Nov-2025 20:42:36 UTC] HTTP Code: 200
+[11-Nov-2025 20:42:36 UTC] Response (first 500 chars): {"success":true,"identifier":"244e3cd0-09fb-4c47-96cb-966297dd646b","resolved_uuid":"244e3cd0-09fb-4c47-96cb-966297dd646b","dataset":{"_id":"6913872a9bf8fb1e1854ecee","uuid":"244e3cd0-09fb-4c47-96cb-966297dd646b","name":"Sampad dir local upload","slug":"amy-sampad-dir-local-upload-2025","id":66840,"user":"amy@visus.net","sensor":"TIFF RGB","convert":true,"is_public":true,"folder_uuid":"Sampad","team_uuid":null,"source_type":"local","source_path":"/tmp/tmp8ytcahfw/1161_Panel2_7_12.tif","destinati
+[11-Nov-2025 20:42:36 UTC] PHP Warning:  Undefined array key "team_id" in /var/www/html/api/dataset-files.php on line 82
+[11-Nov-2025 20:42:36 UTC] API Request: GET http://sclib_fastapi:5001/api/v1/datasets/244e3cd0-09fb-4c47-96cb-966297dd646b/files?user_email=amy%40visus.net
+[11-Nov-2025 20:42:36 UTC] HTTP Code: 200
+[11-Nov-2025 20:42:36 UTC] Response (first 500 chars): {"success":true,"dataset_uuid":"244e3cd0-09fb-4c47-96cb-966297dd646b","directories":{"upload":{"path":"/mnt/visus_datasets/upload/244e3cd0-09fb-4c47-96cb-966297dd646b","exists":true,"readable":true,"files":[{"name":"Sampad","type":"directory","path":"upload/Sampad","children":[{"name":"1161_Panel2_7_12.tif","type":"file","path":"upload/Sampad/1161_Panel2_7_12.tif","size":12583280,"modified":1762887466.0}]}],"file_count":1},"converted":{"path":"/mnt/visus_datasets/converted/244e3cd0-09fb-4c47-96c
+[11-Nov-2025 20:54:36 UTC] API Request: GET http://sclib_fastapi:5001/api/v1/datasets/by-user?user_email=amy%40visus.net
+[11-Nov-2025 20:54:36 UTC] HTTP Code: 200
+[11-Nov-2025 20:54:36 UTC] Response (first 500 chars): {"success":true,"datasets":{"my":[{"uuid":"244e3cd0-09fb-4c47-96cb-966297dd646b","name":"Sampad dir local upload","data_size":0,"folder":"Sampad","folder_uuid":"Sampad","time":null,"team":null,"team_uuid":null,"tags":"S,a,m,p,a,d, ,t,e,s,t,,, ,2,d, ","sensor":"TIFF RGB","status":"done","compression_status":"unknown","url":"http://localhost:8080/mod_visus?dataset=244e3cd0-09fb-4c47-96cb-966297dd646b&&server=false","google_drive_link":"","bucket":null,"prefix":null,"accesskey":null,"secretkey":nul
+[11-Nov-2025 20:54:36 UTC] API Request: GET http://sclib_fastapi:5001/api/v1/teams/by-user?user_email=amy%40visus.net
+[11-Nov-2025 20:54:36 UTC] HTTP Code: 404
+[11-Nov-2025 20:54:36 UTC] Response (first 500 chars): {"detail":"Not Found"}
+[11-Nov-2025 20:54:36 UTC] Failed to get user teams: API error (404): Not Found
