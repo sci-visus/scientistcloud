@@ -173,6 +173,25 @@ class SCLibClient {
     }
     
     /**
+     * List files in a dataset
+     * Returns hierarchical file structure from both upload and converted directories
+     */
+    public function listDatasetFiles($datasetId, $userEmail = null) {
+        try {
+            $params = [];
+            if ($userEmail) {
+                $params['user_email'] = $userEmail;
+            }
+            
+            $response = $this->makeRequest("/api/v1/datasets/$datasetId/files", 'GET', null, $params);
+            return $response;
+        } catch (Exception $e) {
+            error_log("Failed to list dataset files: " . $e->getMessage());
+            return ['success' => false, 'error' => $e->getMessage()];
+        }
+    }
+    
+    /**
      * Delete dataset
      */
     public function deleteDataset($datasetId, $userEmail) {
