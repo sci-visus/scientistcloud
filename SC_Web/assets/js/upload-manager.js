@@ -800,8 +800,40 @@ class UploadManager {
             
             const uploadPromises = [];
             
+            // Check if this is a directory upload (files have webkitRelativePath)
+            const isDirectoryUpload = files.length > 0 && files[0].webkitRelativePath && files[0].webkitRelativePath.includes('/');
+            let baseDirectoryName = null;
+            
+            if (isDirectoryUpload) {
+                // Extract the base directory name from the first file's path
+                // e.g., "Sampad/file1.tif" -> base is "Sampad"
+                const firstPath = files[0].webkitRelativePath;
+                baseDirectoryName = firstPath.split('/')[0];
+                console.log(`Directory upload detected. Base directory: ${baseDirectoryName}`);
+            }
+            
             for (let i = 0; i < files.length; i++) {
                 const file = files[i];
+                
+                // For directory uploads, extract the relative path without the base directory
+                // e.g., "Sampad/subdir/file.tif" -> "subdir/file.tif"
+                let relativePath = null;
+                if (isDirectoryUpload && file.webkitRelativePath) {
+                    const fullPath = file.webkitRelativePath;
+                    // Remove the base directory name from the path
+                    if (fullPath.startsWith(baseDirectoryName + '/')) {
+                        relativePath = fullPath.substring(baseDirectoryName.length + 1);
+                        // If relativePath is empty or just the filename, set to null (file goes in root)
+                        if (!relativePath || relativePath === file.name) {
+                            relativePath = null;
+                        } else {
+                            // Remove the filename from the path to get just the directory structure
+                            const pathParts = relativePath.split('/');
+                            pathParts.pop(); // Remove filename
+                            relativePath = pathParts.length > 0 ? pathParts.join('/') : null;
+                        }
+                    }
+                }
                 
                 const uploadFormData = new FormData();
                 uploadFormData.append('file', file);
@@ -810,7 +842,14 @@ class UploadManager {
                 uploadFormData.append('sensor', uploadData.sensor);
                 uploadFormData.append('convert', uploadData.convert);
                 uploadFormData.append('is_public', uploadData.is_public);
-                if (uploadData.folder) uploadFormData.append('folder', uploadData.folder);
+                
+                // Use relative path for directory uploads, otherwise use the folder from form
+                const folderToUse = isDirectoryUpload ? relativePath : uploadData.folder;
+                if (folderToUse) {
+                    uploadFormData.append('folder', folderToUse);
+                    console.log(`File ${i + 1}: Using folder path: ${folderToUse}`);
+                }
+                
                 if (uploadData.team_uuid) uploadFormData.append('team_uuid', uploadData.team_uuid);
                 if (uploadData.tags) uploadFormData.append('tags', uploadData.tags);
                 

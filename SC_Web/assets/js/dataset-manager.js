@@ -584,29 +584,71 @@ class DatasetManager {
 
     /**
      * Render dataset files inline (for dataset list integration)
+     * Shows upload and converted directories separately
      */
     renderDatasetFilesInline(data) {
-        let html = '<ul class="dataset-files-list" style="list-style: none; padding-left: 0;">';
-        
-        // Show files from both upload and converted directories
+        let html = '<div class="dataset-files-sections">';
         let hasFiles = false;
         
+        // Upload directory section
         if (data.directories.upload.exists && data.directories.upload.files.length > 0) {
             hasFiles = true;
-            html += this.renderFileTreeInline(data.directories.upload.files, '');
+            const uploadId = 'upload-' + Date.now() + '-' + Math.random().toString(36).substr(2, 9);
+            html += '<div class="file-directory-section mb-2">';
+            html += `<button class="dataset-file-toggle" data-bs-toggle="collapse" data-bs-target="#${uploadId}" style="background: none; border: none; color: var(--fg-color); cursor: pointer; padding: 0.25rem 0.5rem; display: flex; align-items: center; width: 100%; font-weight: 500;">`;
+            html += `<i class="fas fa-chevron-right me-2 file-chevron" style="font-size: 0.75rem; transition: transform 0.2s;"></i>`;
+            html += `<i class="fas fa-upload me-2"></i>`;
+            html += `<span>Upload</span>`;
+            html += `<span class="badge bg-secondary ms-2" style="font-size: 0.65rem;">${this.countFiles(data.directories.upload.files)}</span>`;
+            html += `</button>`;
+            html += `<div class="collapse" id="${uploadId}">`;
+            html += '<ul class="dataset-files-list" style="list-style: none; padding-left: 0;">';
+            html += this.renderFileTreeInline(data.directories.upload.files, 'upload', 0);
+            html += '</ul>';
+            html += `</div>`;
+            html += '</div>';
         }
         
+        // Converted directory section
         if (data.directories.converted.exists && data.directories.converted.files.length > 0) {
             hasFiles = true;
-            html += this.renderFileTreeInline(data.directories.converted.files, '');
+            const convertedId = 'converted-' + Date.now() + '-' + Math.random().toString(36).substr(2, 9);
+            html += '<div class="file-directory-section mb-2">';
+            html += `<button class="dataset-file-toggle" data-bs-toggle="collapse" data-bs-target="#${convertedId}" style="background: none; border: none; color: var(--fg-color); cursor: pointer; padding: 0.25rem 0.5rem; display: flex; align-items: center; width: 100%; font-weight: 500;">`;
+            html += `<i class="fas fa-chevron-right me-2 file-chevron" style="font-size: 0.75rem; transition: transform 0.2s;"></i>`;
+            html += `<i class="fas fa-cog me-2"></i>`;
+            html += `<span>Converted</span>`;
+            html += `<span class="badge bg-secondary ms-2" style="font-size: 0.65rem;">${this.countFiles(data.directories.converted.files)}</span>`;
+            html += `</button>`;
+            html += `<div class="collapse" id="${convertedId}">`;
+            html += '<ul class="dataset-files-list" style="list-style: none; padding-left: 0;">';
+            html += this.renderFileTreeInline(data.directories.converted.files, 'converted', 0);
+            html += '</ul>';
+            html += `</div>`;
+            html += '</div>';
         }
         
         if (!hasFiles) {
-            html += '<li class="text-muted small">No files found</li>';
+            html += '<p class="text-muted small">No files found</p>';
         }
         
-        html += '</ul>';
+        html += '</div>';
         return html;
+    }
+    
+    /**
+     * Count total files in a file tree (recursive)
+     */
+    countFiles(items) {
+        let count = 0;
+        for (const item of items) {
+            if (item.type === 'file') {
+                count++;
+            } else if (item.type === 'directory' && item.children) {
+                count += this.countFiles(item.children);
+            }
+        }
+        return count;
     }
 
     /**
