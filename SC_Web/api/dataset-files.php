@@ -39,7 +39,38 @@ require_once(__DIR__ . '/../includes/auth.php');
 require_once(__DIR__ . '/../includes/dataset_manager.php');
 
 /**
+ * Check if a file should be excluded based on configured patterns
+ */
+function shouldExcludeFile($filename) {
+    $excludedPatterns = defined('EXCLUDED_FILE_PATTERNS') ? EXCLUDED_FILE_PATTERNS : ['.bin'];
+    
+    foreach ($excludedPatterns as $pattern) {
+        // Handle wildcard patterns (e.g., '*.tmp')
+        if (strpos($pattern, '*') !== false) {
+            if (fnmatch($pattern, $filename, FNM_CASEFOLD)) {
+                return true;
+            }
+        } else {
+            // Handle extension patterns (e.g., '.bin' or 'bin')
+            // Normalize pattern: ensure it starts with a dot
+            $normalizedPattern = (substr($pattern, 0, 1) === '.') ? $pattern : '.' . $pattern;
+            
+            // Check if filename ends with the pattern (case-insensitive)
+            $filenameLower = strtolower($filename);
+            $patternLower = strtolower($normalizedPattern);
+            
+            if (substr($filenameLower, -strlen($patternLower)) === $patternLower) {
+                return true;
+            }
+        }
+    }
+    
+    return false;
+}
+
+/**
  * Recursively scan directory and return file structure
+ * Excludes files matching patterns defined in EXCLUDED_FILE_PATTERNS
  */
 function scanDirectory($dir, $basePath = '') {
     $result = [];
@@ -62,13 +93,23 @@ function scanDirectory($dir, $basePath = '') {
         $relativePath = $basePath ? $basePath . '/' . $item : $item;
         
         if (is_dir($fullPath)) {
-            $result[] = [
-                'name' => $item,
-                'type' => 'directory',
-                'path' => $relativePath,
-                'children' => scanDirectory($fullPath, $relativePath)
-            ];
+            // Recursively scan directory
+            $children = scanDirectory($fullPath, $relativePath);
+            // Only include directory if it has children (after filtering)
+            if (count($children) > 0) {
+                $result[] = [
+                    'name' => $item,
+                    'type' => 'directory',
+                    'path' => $relativePath,
+                    'children' => $children
+                ];
+            }
         } else {
+            // Check if file should be excluded
+            if (shouldExcludeFile($item)) {
+                continue; // Skip this file
+            }
+            
             $result[] = [
                 'name' => $item,
                 'type' => 'file',

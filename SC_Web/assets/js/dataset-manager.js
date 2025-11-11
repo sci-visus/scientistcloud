@@ -392,7 +392,39 @@ class DatasetManager {
     }
 
     /**
-     * Load dataset files structure
+     * Load dataset files structure into a specific container
+     */
+    async loadDatasetFilesIntoContainer(datasetUuid, container) {
+        if (!datasetUuid || !container) {
+            return;
+        }
+
+        // Show loading state
+        container.innerHTML = `
+            <div class="text-center py-2">
+                <div class="spinner-border spinner-border-sm text-primary" role="status">
+                    <span class="visually-hidden">Loading...</span>
+                </div>
+            </div>
+        `;
+
+        try {
+            const response = await fetch(`${getApiBasePath()}/dataset-files.php?dataset_uuid=${datasetUuid}`);
+            const data = await response.json();
+
+            if (data.success) {
+                container.innerHTML = this.renderDatasetFilesInline(data);
+            } else {
+                container.innerHTML = `<p class="text-muted small">${data.error || 'Failed to load files'}</p>`;
+            }
+        } catch (error) {
+            console.error('Error loading dataset files:', error);
+            container.innerHTML = `<p class="text-muted small">Error loading files</p>`;
+        }
+    }
+
+    /**
+     * Load dataset files structure (legacy method for separate files section)
      */
     async loadDatasetFiles(datasetUuid) {
         if (!datasetUuid) {
@@ -426,6 +458,74 @@ class DatasetManager {
             console.error('Error loading dataset files:', error);
             filesContainer.innerHTML = `<p class="text-muted small">Error loading files</p>`;
         }
+    }
+
+    /**
+     * Render dataset files inline (for dataset list integration)
+     */
+    renderDatasetFilesInline(data) {
+        let html = '<ul class="dataset-files-list" style="list-style: none; padding-left: 0;">';
+        
+        // Show files from both upload and converted directories
+        let hasFiles = false;
+        
+        if (data.directories.upload.exists && data.directories.upload.files.length > 0) {
+            hasFiles = true;
+            html += this.renderFileTreeInline(data.directories.upload.files, '');
+        }
+        
+        if (data.directories.converted.exists && data.directories.converted.files.length > 0) {
+            hasFiles = true;
+            html += this.renderFileTreeInline(data.directories.converted.files, '');
+        }
+        
+        if (!hasFiles) {
+            html += '<li class="text-muted small">No files found</li>';
+        }
+        
+        html += '</ul>';
+        return html;
+    }
+
+    /**
+     * Render file tree inline with collapsible folders
+     */
+    renderFileTreeInline(items, basePath = '', level = 0) {
+        let html = '';
+        const uniqueId = 'files-' + basePath.replace(/[^a-zA-Z0-9]/g, '-') + '-' + Date.now() + '-' + Math.random().toString(36).substr(2, 9);
+        
+        for (const item of items) {
+            if (item.type === 'directory') {
+                const dirId = uniqueId + '-dir-' + item.path.replace(/[^a-zA-Z0-9]/g, '-');
+                html += `<li class="dataset-file-item dataset-file-dir" style="padding-left: ${level * 1.5}rem;">`;
+                html += `<button class="dataset-file-toggle" data-bs-toggle="collapse" data-bs-target="#${dirId}" style="background: none; border: none; color: var(--fg-color); cursor: pointer; padding: 0.25rem 0.5rem; display: flex; align-items: center; width: 100%;">`;
+                html += `<i class="fas fa-chevron-right me-2 file-chevron" style="font-size: 0.75rem; transition: transform 0.2s;"></i>`;
+                html += `<i class="fas fa-folder me-2"></i>`;
+                html += `<span>${this.escapeHtml(item.name)}</span>`;
+                if (item.children && item.children.length > 0) {
+                    html += `<span class="badge bg-secondary ms-2" style="font-size: 0.65rem;">${item.children.length}</span>`;
+                }
+                html += `</button>`;
+                html += `<div class="collapse" id="${dirId}">`;
+                if (item.children && item.children.length > 0) {
+                    html += '<ul class="dataset-files-list" style="list-style: none; padding-left: 0;">';
+                    html += this.renderFileTreeInline(item.children, basePath, level + 1);
+                    html += '</ul>';
+                }
+                html += `</div>`;
+                html += '</li>';
+            } else {
+                html += `<li class="dataset-file-item dataset-file-file" style="padding-left: ${(level + 1) * 1.5}rem;">`;
+                html += `<i class="fas fa-file me-2"></i>`;
+                html += `<span>${this.escapeHtml(item.name)}</span>`;
+                if (item.size) {
+                    html += `<span class="text-muted small ms-2">(${this.formatFileSize(item.size)})</span>`;
+                }
+                html += '</li>';
+            }
+        }
+        
+        return html;
     }
 
     /**
@@ -570,11 +670,6 @@ class DatasetManager {
 
         // Load dataset details
         this.loadDatasetDetails(datasetId);
-
-        // Load dataset files
-        if (datasetUuid) {
-            this.loadDatasetFiles(datasetUuid);
-        }
 
         // Determine appropriate dashboard and update dropdown
         // First check if we can determine from dataset details

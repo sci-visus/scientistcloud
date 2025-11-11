@@ -112,18 +112,28 @@ function formatFileSize($bytes) {
         <?php else: ?>
             <!-- Root level datasets (no folder) -->
             <?php foreach ($rootDatasets as $dataset): ?>
-                <div class="dataset-item" data-dataset-id="<?php echo htmlspecialchars($dataset['id']); ?>">
-                    <a class="nav-link dataset-link" href="javascript:void(0)" 
-                       data-dataset-id="<?php echo htmlspecialchars($dataset['id']); ?>"
-                       data-dataset-name="<?php echo htmlspecialchars($dataset['name']); ?>"
-                       data-dataset-uuid="<?php echo htmlspecialchars($dataset['uuid']); ?>"
-                       data-dataset-server="<?php echo getDatasetServerFlag($dataset); ?>">
-                        <i class="<?php echo getFileFormatIcon($dataset['sensor']); ?> me-2"></i>
-                        <span class="dataset-name"><?php echo htmlspecialchars($dataset['name']); ?></span>
-                        <span class="badge bg-<?php echo getStatusColor($dataset['status']); ?> ms-2">
-                            <?php echo htmlspecialchars($dataset['status']); ?>
-                        </span>
-                    </a>
+                <div class="dataset-item" data-dataset-id="<?php echo htmlspecialchars($dataset['id']); ?>" data-dataset-uuid="<?php echo htmlspecialchars($dataset['uuid']); ?>">
+                    <div class="dataset-header">
+                        <a class="nav-link dataset-link" href="javascript:void(0)" 
+                           data-dataset-id="<?php echo htmlspecialchars($dataset['id']); ?>"
+                           data-dataset-name="<?php echo htmlspecialchars($dataset['name']); ?>"
+                           data-dataset-uuid="<?php echo htmlspecialchars($dataset['uuid']); ?>"
+                           data-dataset-server="<?php echo getDatasetServerFlag($dataset); ?>">
+                            <i class="<?php echo getFileFormatIcon($dataset['sensor']); ?> me-2"></i>
+                            <span class="dataset-name"><?php echo htmlspecialchars($dataset['name']); ?></span>
+                            <span class="badge bg-<?php echo getStatusColor($dataset['status']); ?> ms-2">
+                                <?php echo htmlspecialchars($dataset['status']); ?>
+                            </span>
+                        </a>
+                        <button class="dataset-files-toggle" data-dataset-uuid="<?php echo htmlspecialchars($dataset['uuid']); ?>" title="Toggle files">
+                            <i class="fas fa-chevron-right"></i>
+                        </button>
+                    </div>
+                    <div class="dataset-files" id="files-<?php echo htmlspecialchars($dataset['uuid']); ?>" style="display: none;">
+                        <div class="dataset-files-content">
+                            <p class="text-muted small">Loading files...</p>
+                        </div>
+                    </div>
                 </div>
             <?php endforeach; ?>
             
@@ -138,18 +148,28 @@ function formatFileSize($bytes) {
                         </summary>
                         <ul class="nested folder-datasets">
                             <?php foreach ($folderDatasets as $dataset): ?>
-                                <li class="dataset-item" data-dataset-id="<?php echo htmlspecialchars($dataset['id']); ?>">
-                                    <a class="nav-link dataset-link" href="javascript:void(0)" 
-                                       data-dataset-id="<?php echo htmlspecialchars($dataset['id']); ?>"
-                                       data-dataset-name="<?php echo htmlspecialchars($dataset['name']); ?>"
-                                       data-dataset-uuid="<?php echo htmlspecialchars($dataset['uuid']); ?>"
-                                       data-dataset-server="<?php echo getDatasetServerFlag($dataset); ?>">
-                                        <i class="<?php echo getFileFormatIcon($dataset['sensor']); ?> me-2"></i>
-                                        <span class="dataset-name"><?php echo htmlspecialchars($dataset['name']); ?></span>
-                                        <span class="badge bg-<?php echo getStatusColor($dataset['status']); ?> ms-2">
-                                            <?php echo htmlspecialchars($dataset['status']); ?>
-                                        </span>
-                                    </a>
+                                <li class="dataset-item" data-dataset-id="<?php echo htmlspecialchars($dataset['id']); ?>" data-dataset-uuid="<?php echo htmlspecialchars($dataset['uuid']); ?>">
+                                    <div class="dataset-header">
+                                        <a class="nav-link dataset-link" href="javascript:void(0)" 
+                                           data-dataset-id="<?php echo htmlspecialchars($dataset['id']); ?>"
+                                           data-dataset-name="<?php echo htmlspecialchars($dataset['name']); ?>"
+                                           data-dataset-uuid="<?php echo htmlspecialchars($dataset['uuid']); ?>"
+                                           data-dataset-server="<?php echo getDatasetServerFlag($dataset); ?>">
+                                            <i class="<?php echo getFileFormatIcon($dataset['sensor']); ?> me-2"></i>
+                                            <span class="dataset-name"><?php echo htmlspecialchars($dataset['name']); ?></span>
+                                            <span class="badge bg-<?php echo getStatusColor($dataset['status']); ?> ms-2">
+                                                <?php echo htmlspecialchars($dataset['status']); ?>
+                                            </span>
+                                        </a>
+                                        <button class="dataset-files-toggle" data-dataset-uuid="<?php echo htmlspecialchars($dataset['uuid']); ?>" title="Toggle files">
+                                            <i class="fas fa-chevron-right"></i>
+                                        </button>
+                                    </div>
+                                    <div class="dataset-files" id="files-<?php echo htmlspecialchars($dataset['uuid']); ?>" style="display: none;">
+                                        <div class="dataset-files-content">
+                                            <p class="text-muted small">Loading files...</p>
+                                        </div>
+                                    </div>
                                 </li>
                             <?php endforeach; ?>
                         </ul>
@@ -209,16 +229,26 @@ function formatFileSize($bytes) {
         <?php else: ?>
             <!-- Root level shared datasets -->
             <?php foreach ($sharedRootDatasets as $dataset): ?>
-                <div class="dataset-item" data-dataset-id="<?php echo htmlspecialchars($dataset['id']); ?>">
-                    <a class="nav-link dataset-link" href="javascript:void(0)" 
-                       data-dataset-id="<?php echo htmlspecialchars($dataset['id']); ?>"
-                       data-dataset-name="<?php echo htmlspecialchars($dataset['name']); ?>"
-                       data-dataset-uuid="<?php echo htmlspecialchars($dataset['uuid']); ?>"
-                       data-dataset-server="<?php echo getDatasetServerFlag($dataset); ?>">
-                        <i class="<?php echo getFileFormatIcon($dataset['sensor']); ?> me-2"></i>
-                        <span class="dataset-name"><?php echo htmlspecialchars($dataset['name']); ?></span>
-                        <span class="badge bg-info ms-2">Shared</span>
-                    </a>
+                <div class="dataset-item" data-dataset-id="<?php echo htmlspecialchars($dataset['id']); ?>" data-dataset-uuid="<?php echo htmlspecialchars($dataset['uuid']); ?>">
+                    <div class="dataset-header">
+                        <a class="nav-link dataset-link" href="javascript:void(0)" 
+                           data-dataset-id="<?php echo htmlspecialchars($dataset['id']); ?>"
+                           data-dataset-name="<?php echo htmlspecialchars($dataset['name']); ?>"
+                           data-dataset-uuid="<?php echo htmlspecialchars($dataset['uuid']); ?>"
+                           data-dataset-server="<?php echo getDatasetServerFlag($dataset); ?>">
+                            <i class="<?php echo getFileFormatIcon($dataset['sensor']); ?> me-2"></i>
+                            <span class="dataset-name"><?php echo htmlspecialchars($dataset['name']); ?></span>
+                            <span class="badge bg-info ms-2">Shared</span>
+                        </a>
+                        <button class="dataset-files-toggle" data-dataset-uuid="<?php echo htmlspecialchars($dataset['uuid']); ?>" title="Toggle files">
+                            <i class="fas fa-chevron-right"></i>
+                        </button>
+                    </div>
+                    <div class="dataset-files" id="files-<?php echo htmlspecialchars($dataset['uuid']); ?>" style="display: none;">
+                        <div class="dataset-files-content">
+                            <p class="text-muted small">Loading files...</p>
+                        </div>
+                    </div>
                 </div>
             <?php endforeach; ?>
             
@@ -233,16 +263,26 @@ function formatFileSize($bytes) {
                         </summary>
                         <ul class="nested folder-datasets">
                             <?php foreach ($folderDatasets as $dataset): ?>
-                                <li class="dataset-item" data-dataset-id="<?php echo htmlspecialchars($dataset['id']); ?>">
-                                    <a class="nav-link dataset-link" href="javascript:void(0)" 
-                                       data-dataset-id="<?php echo htmlspecialchars($dataset['id']); ?>"
-                                       data-dataset-name="<?php echo htmlspecialchars($dataset['name']); ?>"
-                                       data-dataset-uuid="<?php echo htmlspecialchars($dataset['uuid']); ?>"
-                                       data-dataset-server="<?php echo getDatasetServerFlag($dataset); ?>">
-                                        <i class="<?php echo getFileFormatIcon($dataset['sensor']); ?> me-2"></i>
-                                        <span class="dataset-name"><?php echo htmlspecialchars($dataset['name']); ?></span>
-                                        <span class="badge bg-info ms-2">Shared</span>
-                                    </a>
+                                <li class="dataset-item" data-dataset-id="<?php echo htmlspecialchars($dataset['id']); ?>" data-dataset-uuid="<?php echo htmlspecialchars($dataset['uuid']); ?>">
+                                    <div class="dataset-header">
+                                        <a class="nav-link dataset-link" href="javascript:void(0)" 
+                                           data-dataset-id="<?php echo htmlspecialchars($dataset['id']); ?>"
+                                           data-dataset-name="<?php echo htmlspecialchars($dataset['name']); ?>"
+                                           data-dataset-uuid="<?php echo htmlspecialchars($dataset['uuid']); ?>"
+                                           data-dataset-server="<?php echo getDatasetServerFlag($dataset); ?>">
+                                            <i class="<?php echo getFileFormatIcon($dataset['sensor']); ?> me-2"></i>
+                                            <span class="dataset-name"><?php echo htmlspecialchars($dataset['name']); ?></span>
+                                            <span class="badge bg-info ms-2">Shared</span>
+                                        </a>
+                                        <button class="dataset-files-toggle" data-dataset-uuid="<?php echo htmlspecialchars($dataset['uuid']); ?>" title="Toggle files">
+                                            <i class="fas fa-chevron-right"></i>
+                                        </button>
+                                    </div>
+                                    <div class="dataset-files" id="files-<?php echo htmlspecialchars($dataset['uuid']); ?>" style="display: none;">
+                                        <div class="dataset-files-content">
+                                            <p class="text-muted small">Loading files...</p>
+                                        </div>
+                                    </div>
                                 </li>
                             <?php endforeach; ?>
                         </ul>
@@ -305,16 +345,26 @@ function formatFileSize($bytes) {
         <?php else: ?>
             <!-- Root level team datasets -->
             <?php foreach ($teamRootDatasets as $dataset): ?>
-                <div class="dataset-item" data-dataset-id="<?php echo htmlspecialchars($dataset['id']); ?>">
-                    <a class="nav-link dataset-link" href="javascript:void(0)" 
-                       data-dataset-id="<?php echo htmlspecialchars($dataset['id']); ?>"
-                       data-dataset-name="<?php echo htmlspecialchars($dataset['name']); ?>"
-                       data-dataset-uuid="<?php echo htmlspecialchars($dataset['uuid']); ?>"
-                       data-dataset-server="<?php echo getDatasetServerFlag($dataset); ?>">
-                        <i class="<?php echo getFileFormatIcon($dataset['sensor']); ?> me-2"></i>
-                        <span class="dataset-name"><?php echo htmlspecialchars($dataset['name']); ?></span>
-                        <span class="badge bg-primary ms-2">Team</span>
-                    </a>
+                <div class="dataset-item" data-dataset-id="<?php echo htmlspecialchars($dataset['id']); ?>" data-dataset-uuid="<?php echo htmlspecialchars($dataset['uuid']); ?>">
+                    <div class="dataset-header">
+                        <a class="nav-link dataset-link" href="javascript:void(0)" 
+                           data-dataset-id="<?php echo htmlspecialchars($dataset['id']); ?>"
+                           data-dataset-name="<?php echo htmlspecialchars($dataset['name']); ?>"
+                           data-dataset-uuid="<?php echo htmlspecialchars($dataset['uuid']); ?>"
+                           data-dataset-server="<?php echo getDatasetServerFlag($dataset); ?>">
+                            <i class="<?php echo getFileFormatIcon($dataset['sensor']); ?> me-2"></i>
+                            <span class="dataset-name"><?php echo htmlspecialchars($dataset['name']); ?></span>
+                            <span class="badge bg-primary ms-2">Team</span>
+                        </a>
+                        <button class="dataset-files-toggle" data-dataset-uuid="<?php echo htmlspecialchars($dataset['uuid']); ?>" title="Toggle files">
+                            <i class="fas fa-chevron-right"></i>
+                        </button>
+                    </div>
+                    <div class="dataset-files" id="files-<?php echo htmlspecialchars($dataset['uuid']); ?>" style="display: none;">
+                        <div class="dataset-files-content">
+                            <p class="text-muted small">Loading files...</p>
+                        </div>
+                    </div>
                 </div>
             <?php endforeach; ?>
             
@@ -329,16 +379,26 @@ function formatFileSize($bytes) {
                         </summary>
                         <ul class="nested folder-datasets">
                             <?php foreach ($folderDatasets as $dataset): ?>
-                                <li class="dataset-item" data-dataset-id="<?php echo htmlspecialchars($dataset['id']); ?>">
-                                    <a class="nav-link dataset-link" href="javascript:void(0)" 
-                                       data-dataset-id="<?php echo htmlspecialchars($dataset['id']); ?>"
-                                       data-dataset-name="<?php echo htmlspecialchars($dataset['name']); ?>"
-                                       data-dataset-uuid="<?php echo htmlspecialchars($dataset['uuid']); ?>"
-                                       data-dataset-server="<?php echo getDatasetServerFlag($dataset); ?>">
-                                        <i class="<?php echo getFileFormatIcon($dataset['sensor']); ?> me-2"></i>
-                                        <span class="dataset-name"><?php echo htmlspecialchars($dataset['name']); ?></span>
-                                        <span class="badge bg-primary ms-2">Team</span>
-                                    </a>
+                                <li class="dataset-item" data-dataset-id="<?php echo htmlspecialchars($dataset['id']); ?>" data-dataset-uuid="<?php echo htmlspecialchars($dataset['uuid']); ?>">
+                                    <div class="dataset-header">
+                                        <a class="nav-link dataset-link" href="javascript:void(0)" 
+                                           data-dataset-id="<?php echo htmlspecialchars($dataset['id']); ?>"
+                                           data-dataset-name="<?php echo htmlspecialchars($dataset['name']); ?>"
+                                           data-dataset-uuid="<?php echo htmlspecialchars($dataset['uuid']); ?>"
+                                           data-dataset-server="<?php echo getDatasetServerFlag($dataset); ?>">
+                                            <i class="<?php echo getFileFormatIcon($dataset['sensor']); ?> me-2"></i>
+                                            <span class="dataset-name"><?php echo htmlspecialchars($dataset['name']); ?></span>
+                                            <span class="badge bg-primary ms-2">Team</span>
+                                        </a>
+                                        <button class="dataset-files-toggle" data-dataset-uuid="<?php echo htmlspecialchars($dataset['uuid']); ?>" title="Toggle files">
+                                            <i class="fas fa-chevron-right"></i>
+                                        </button>
+                                    </div>
+                                    <div class="dataset-files" id="files-<?php echo htmlspecialchars($dataset['uuid']); ?>" style="display: none;">
+                                        <div class="dataset-files-content">
+                                            <p class="text-muted small">Loading files...</p>
+                                        </div>
+                                    </div>
                                 </li>
                             <?php endforeach; ?>
                         </ul>
@@ -358,7 +418,87 @@ function formatFileSize($bytes) {
 }
 
 .dataset-item {
-    margin-bottom: 0.25rem;
+    margin-bottom: 0.5rem;
+}
+
+.dataset-header {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.dataset-header .dataset-link {
+    flex: 1;
+}
+
+.dataset-files-toggle {
+    background: none;
+    border: none;
+    color: var(--fg-color);
+    cursor: pointer;
+    padding: 0.25rem 0.5rem;
+    display: flex;
+    align-items: center;
+    transition: transform 0.2s;
+    opacity: 0.7;
+}
+
+.dataset-files-toggle:hover {
+    opacity: 1;
+}
+
+.dataset-files-toggle.expanded {
+    transform: rotate(90deg);
+}
+
+.dataset-files {
+    padding-left: 1.5rem;
+    margin-top: 0.25rem;
+    border-left: 2px solid var(--panel-border);
+}
+
+.dataset-files-content {
+    padding: 0.5rem 0;
+}
+
+.dataset-files-list {
+    list-style: none;
+    padding-left: 0;
+    margin: 0;
+}
+
+.dataset-file-item {
+    padding: 0.25rem 0.5rem;
+    display: flex;
+    align-items: center;
+    font-size: 0.875rem;
+    color: var(--fg-color);
+    opacity: 0.9;
+}
+
+.dataset-file-item:hover {
+    background-color: rgba(255, 255, 255, 0.05);
+    opacity: 1;
+}
+
+.dataset-file-toggle {
+    text-align: left;
+}
+
+.dataset-file-toggle:hover {
+    background-color: rgba(255, 255, 255, 0.05) !important;
+}
+
+.dataset-file-toggle[aria-expanded="true"] .file-chevron {
+    transform: rotate(90deg);
+}
+
+.dataset-file-dir {
+    font-weight: 500;
+}
+
+.dataset-file-file {
+    font-weight: normal;
 }
 
 .dataset-link {
@@ -512,6 +652,61 @@ document.addEventListener('DOMContentLoaded', function() {
                 alert('Error: Dashboard loader not available. Please refresh the page.');
             }
         });
+    });
+    
+    // Handle dataset files toggle
+    document.querySelectorAll('.dataset-files-toggle').forEach(function(button) {
+        button.addEventListener('click', function(e) {
+            e.stopPropagation(); // Prevent dataset selection
+            
+            const datasetUuid = this.getAttribute('data-dataset-uuid');
+            const filesContainer = document.getElementById('files-' + datasetUuid);
+            
+            if (!filesContainer) return;
+            
+            const isExpanded = filesContainer.style.display !== 'none';
+            
+            if (isExpanded) {
+                // Collapse
+                filesContainer.style.display = 'none';
+                this.classList.remove('expanded');
+            } else {
+                // Expand
+                filesContainer.style.display = 'block';
+                this.classList.add('expanded');
+                
+                // Load files if not already loaded
+                const content = filesContainer.querySelector('.dataset-files-content');
+                if (content && (content.innerHTML.includes('Loading files') || content.innerHTML.trim() === '')) {
+                    if (window.datasetManager && typeof window.datasetManager.loadDatasetFilesIntoContainer === 'function') {
+                        window.datasetManager.loadDatasetFilesIntoContainer(datasetUuid, content);
+                    }
+                }
+            }
+        });
+    });
+    
+    // Handle file tree folder collapse/expand (Bootstrap collapse events)
+    document.addEventListener('show.bs.collapse', function(e) {
+        const target = e.target;
+        const toggle = document.querySelector('[data-bs-target="#' + target.id + '"]');
+        if (toggle) {
+            const chevron = toggle.querySelector('.file-chevron');
+            if (chevron) {
+                chevron.style.transform = 'rotate(90deg)';
+            }
+        }
+    });
+    
+    document.addEventListener('hide.bs.collapse', function(e) {
+        const target = e.target;
+        const toggle = document.querySelector('[data-bs-target="#' + target.id + '"]');
+        if (toggle) {
+            const chevron = toggle.querySelector('.file-chevron');
+            if (chevron) {
+                chevron.style.transform = 'rotate(0deg)';
+            }
+        }
     });
     
     // Handle folder collapse/expand

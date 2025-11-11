@@ -60,17 +60,6 @@ $preferredDashboard = getUserPreferredDashboard($user['id']);
     <nav class="w-100 panel-content">
       <?php include 'includes/dataset_list.php'; ?>
     </nav>
-    <!-- Dataset Files Browser -->
-    <div class="dataset-files-section w-100 mt-3 border-top pt-3">
-      <a class="nav-link" data-bs-toggle="collapse" data-bs-target="#datasetFilesSection">
-        <span class="arrow-icon" id="arrow-files">&#9656;</span>Files
-      </a>
-      <div class="collapse ps-4 w-100" id="datasetFilesSection">
-        <div id="datasetFiles" class="small">
-          <p class="text-muted">Select a dataset to view files</p>
-        </div>
-      </div>
-    </div>
     <button class="collapse-btn left" id="toggleFolder">&#9664;</button>
     <button class="theme-toggle" id="themeToggle"><i class="fas fa-adjust"></i></button>
   </aside>

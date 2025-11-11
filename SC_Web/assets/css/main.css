@@ -836,12 +836,6 @@ body {
 }
 
 /* Dataset Files Browser Styles */
-.dataset-files-section {
-  flex-shrink: 0;
-  max-height: 40vh;
-  overflow-y: auto;
-}
-
 .file-directory {
   margin-bottom: 0.5rem;
 }

@@ -82,7 +82,18 @@ define('SUPPORTED_DASHBOARDS', ['OpenVisusSlice', '3DPlotly', '3DVTK', '4D_Dashb
 
 // File upload settings
 define('MAX_UPLOAD_SIZE', 500 * 1024 * 1024); // 500MB
-define('ALLOWED_EXTENSIONS', ['tiff', 'tif', 'hdf5', 'nc', 'nexus', 'json', 'csv']);
+define('ALLOWED_EXTENSIONS', ['tiff', 'tif','jpg', 'jpeg', 'hdf5', 'nc', 'nxs', 'nexus', 'json', 'csv']);
+
+// File browser settings - files to exclude from display
+// Can be file extensions (e.g., '.bin') or patterns (e.g., '*.tmp')
+// This can be exposed to users later via configuration UI
+define('EXCLUDED_FILE_PATTERNS', [
+    '.bin',           // Binary files
+    // Add more patterns here as needed:
+    // '.tmp',
+    // '.log',
+    // '*.cache',
+]);
 
 // Viewer settings
 define('VIEWER_TIMEOUT', 300); // 5 minutes
