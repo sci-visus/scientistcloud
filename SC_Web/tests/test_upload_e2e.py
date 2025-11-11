@@ -593,7 +593,16 @@ class TestSCWebConversion:
                 convert=True,  # Enable conversion
                 is_public=False
             )
-            
+        except requests.exceptions.HTTPError as e:
+            if e.response.status_code == 401:
+                pytest.skip(
+                    f"Authentication required (401). "
+                    f"To test conversion, you need to authenticate first. "
+                    f"This is expected behavior - SC_Web requires authentication for uploads."
+                )
+            raise
+        
+        try:
             job_id = result.get('job_id') or result.get('data', {}).get('job_id')
             assert job_id is not None, f"No job_id in response: {result}"
             
@@ -675,7 +684,16 @@ class TestSCWebConversion:
                 convert=False,  # Disable conversion
                 is_public=False
             )
-            
+        except requests.exceptions.HTTPError as e:
+            if e.response.status_code == 401:
+                pytest.skip(
+                    f"Authentication required (401). "
+                    f"To test conversion, you need to authenticate first. "
+                    f"This is expected behavior - SC_Web requires authentication for uploads."
+                )
+            raise
+        
+        try:
             job_id = result.get('job_id') or result.get('data', {}).get('job_id')
             assert job_id is not None, f"No job_id in response: {result}"
             

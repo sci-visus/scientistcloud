@@ -1706,3 +1706,7 @@
 [11-Nov-2025 20:54:36 UTC] HTTP Code: 404
 [11-Nov-2025 20:54:36 UTC] Response (first 500 chars): {"detail":"Not Found"}
 [11-Nov-2025 20:54:36 UTC] Failed to get user teams: API error (404): Not Found
+[11-Nov-2025 21:13:19 UTC] ✅ Using GuzzleHttp\Psr7\HttpFactory
+[11-Nov-2025 21:13:19 UTC] ✅ Using GuzzleHttp\Client
+[11-Nov-2025 21:13:50 UTC] ✅ Using GuzzleHttp\Psr7\HttpFactory
+[11-Nov-2025 21:13:50 UTC] ✅ Using GuzzleHttp\Client
