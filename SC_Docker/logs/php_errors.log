@@ -3076,3 +3076,250 @@
 [12-Nov-2025 16:53:32 UTC] Response (first 500 chars): {"success":true,"dataset_uuid":"c13670eb-a149-4a40-bd5d-76649dc202be","directories":{"upload":{"path":"/mnt/visus_datasets/upload/c13670eb-a149-4a40-bd5d-76649dc202be","exists":true,"readable":true,"files":[{"name":"upload_6914bac25df0d3.71703661_sync.log.txt","type":"file","path":"upload/upload_6914bac25df0d3.71703661_sync.log.txt","size":3702,"modified":1762966210.0},{"name":"upload_6914bac2d32479.00796846_1161_Panel2_7_12.tif","type":"file","path":"upload/upload_6914bac2d32479.00796846_1161_P
 [12-Nov-2025 16:53:32 UTC] PHP Warning:  Invalid "upload_max_filesize" setting. Invalid quantity "2T": unknown multiplier "T", interpreting as "2" for backwards compatibility in Unknown on line 0
 [12-Nov-2025 16:53:32 UTC] PHP Warning:  Invalid "post_max_size" setting. Invalid quantity "2T": unknown multiplier "T", interpreting as "2" for backwards compatibility in Unknown on line 0
+[12-Nov-2025 17:53:46 UTC] PHP Warning:  Invalid "upload_max_filesize" setting. Invalid quantity "2T": unknown multiplier "T", interpreting as "2" for backwards compatibility in Unknown on line 0
+[12-Nov-2025 17:53:46 UTC] PHP Warning:  Invalid "post_max_size" setting. Invalid quantity "2T": unknown multiplier "T", interpreting as "2" for backwards compatibility in Unknown on line 0
+[12-Nov-2025 17:53:46 UTC] ✅ Using GuzzleHttp\Psr7\HttpFactory
+[12-Nov-2025 17:53:46 UTC] ✅ Using GuzzleHttp\Client
+[12-Nov-2025 17:53:46 UTC] PHP Warning:  Invalid "upload_max_filesize" setting. Invalid quantity "2T": unknown multiplier "T", interpreting as "2" for backwards compatibility in Unknown on line 0
+[12-Nov-2025 17:53:46 UTC] PHP Warning:  Invalid "post_max_size" setting. Invalid quantity "2T": unknown multiplier "T", interpreting as "2" for backwards compatibility in Unknown on line 0
+[12-Nov-2025 17:53:52 UTC] ✅ Using GuzzleHttp\Psr7\HttpFactory
+[12-Nov-2025 17:53:52 UTC] ✅ Using GuzzleHttp\Client
+[12-Nov-2025 17:53:53 UTC] API Request: GET http://sclib_auth:8001/health
+[12-Nov-2025 17:53:53 UTC] HTTP Code: 200
+[12-Nov-2025 17:53:53 UTC] Response (first 500 chars): {"status":"healthy","service":"SCLib_Auth_Standalone"}
+[12-Nov-2025 17:53:53 UTC] Creating user at: http://sclib_auth:8001/api/auth/create-user
+[12-Nov-2025 17:53:53 UTC] User data: {"email":"amy@visus.net","name":"Amy Gooch","auth0_id":"google-oauth2|102515493501554578195","sub":"google-oauth2|102515493501554578195","picture":"https:\/\/lh3.googleusercontent.com\/a\/ACg8ocK-O-1oZ6Xz-TnfeEjCg0bJbjzvWA6xqXSC4U7gTYP5uFQXPQ=s96-c","email_verified":true,"auth0_metadata":{"given_name":"Amy","family_name":"Gooch","nickname":"amy","name":"Amy Gooch","picture":"https:\/\/lh3.googleusercontent.com\/a\/ACg8ocK-O-1oZ6Xz-TnfeEjCg0bJbjzvWA6xqXSC4U7gTYP5uFQXPQ=s96-c","updated_at":"2025-11-07T17:22:45.580Z","email":"amy@visus.net","email_verified":true,"iss":"https:\/\/dev-ep26akpb.auth0.com\/","aud":"Wy5lNzYVnDErayU9OmXQPFU5B99oHiI6","sub":"google-oauth2|102515493501554578195","iat":1762970048,"exp":1763006048,"sid":"2_JteWLpxc5QmD-kPa8dCEbsxo2JvuZm","nonce":"447bf12aceeeb131dc183209ef654901"}}
+[12-Nov-2025 17:53:54 UTC] API Request: POST http://sclib_auth:8001/api/auth/create-user
+[12-Nov-2025 17:53:54 UTC] HTTP Code: 200
+[12-Nov-2025 17:53:54 UTC] Response (first 500 chars): {"success":true,"user_id":"google-oauth2|102515493501554578195","user":{"id":"google-oauth2|102515493501554578195","user_id":"google-oauth2|102515493501554578195","email":"amy@visus.net","name":"Amy Gooch","picture":"https://lh3.googleusercontent.com/a/ACg8ocK-O-1oZ6Xz-TnfeEjCg0bJbjzvWA6xqXSC4U7gTYP5uFQXPQ=s96-c","email_verified":true,"created_at":"2025-11-11T17:17:28.973000","last_login":"2025-11-12T17:53:54.059000","preferences":{},"auth0_id":"google-oauth2|102515493501554578195"}}
+[12-Nov-2025 17:53:54 UTC] Create user response: {"success":true,"user_id":"google-oauth2|102515493501554578195","user":{"id":"google-oauth2|102515493501554578195","user_id":"google-oauth2|102515493501554578195","email":"amy@visus.net","name":"Amy Gooch","picture":"https:\/\/lh3.googleusercontent.com\/a\/ACg8ocK-O-1oZ6Xz-TnfeEjCg0bJbjzvWA6xqXSC4U7gTYP5uFQXPQ=s96-c","email_verified":true,"created_at":"2025-11-11T17:17:28.973000","last_login":"2025-11-12T17:53:54.059000","preferences":[],"auth0_id":"google-oauth2|102515493501554578195"}}
+[12-Nov-2025 17:53:54 UTC] PHP Warning:  Invalid "upload_max_filesize" setting. Invalid quantity "2T": unknown multiplier "T", interpreting as "2" for backwards compatibility in Unknown on line 0
+[12-Nov-2025 17:53:54 UTC] PHP Warning:  Invalid "post_max_size" setting. Invalid quantity "2T": unknown multiplier "T", interpreting as "2" for backwards compatibility in Unknown on line 0
+[12-Nov-2025 17:53:54 UTC] API Request: GET http://sclib_fastapi:5001/api/datasets?user_id=google-oauth2%7C102515493501554578195
+[12-Nov-2025 17:53:54 UTC] HTTP Code: 200
+[12-Nov-2025 17:53:54 UTC] Response (first 500 chars): {"success":true,"datasets":[]}
+[12-Nov-2025 17:53:54 UTC] API Request: GET http://sclib_fastapi:5001/api/datasets?user_id=google-oauth2%7C102515493501554578195
+[12-Nov-2025 17:53:54 UTC] HTTP Code: 0
+[12-Nov-2025 17:53:54 UTC] cURL Error: Failed to connect to sclib_fastapi port 5001 after 0 ms: Could not connect to server (errno: 7)
+[12-Nov-2025 17:53:54 UTC] Failed to get user datasets: cURL error: Failed to connect to sclib_fastapi port 5001 after 0 ms: Could not connect to server
+[12-Nov-2025 17:53:54 UTC] API Request: GET http://sclib_fastapi:5001/api/datasets?user_id=google-oauth2%7C102515493501554578195
+[12-Nov-2025 17:53:54 UTC] HTTP Code: 0
+[12-Nov-2025 17:53:54 UTC] cURL Error: Failed to connect to sclib_fastapi port 5001 after 0 ms: Could not connect to server (errno: 7)
+[12-Nov-2025 17:53:54 UTC] Failed to get user datasets: cURL error: Failed to connect to sclib_fastapi port 5001 after 0 ms: Could not connect to server
+[12-Nov-2025 17:53:54 UTC] API Request: GET http://sclib_fastapi:5001/api/datasets?user_id=google-oauth2%7C102515493501554578195
+[12-Nov-2025 17:53:54 UTC] HTTP Code: 0
+[12-Nov-2025 17:53:54 UTC] cURL Error: Failed to connect to sclib_fastapi port 5001 after 0 ms: Could not connect to server (errno: 7)
+[12-Nov-2025 17:53:54 UTC] Failed to get user datasets: cURL error: Failed to connect to sclib_fastapi port 5001 after 0 ms: Could not connect to server
+[12-Nov-2025 17:53:54 UTC] API Request: GET http://sclib_fastapi:5001/api/datasets?user_id=google-oauth2%7C102515493501554578195
+[12-Nov-2025 17:53:54 UTC] HTTP Code: 0
+[12-Nov-2025 17:53:54 UTC] cURL Error: Failed to connect to sclib_fastapi port 5001 after 0 ms: Could not connect to server (errno: 7)
+[12-Nov-2025 17:53:54 UTC] Failed to get user datasets: cURL error: Failed to connect to sclib_fastapi port 5001 after 0 ms: Could not connect to server
+[12-Nov-2025 17:53:54 UTC] PHP Warning:  Invalid "upload_max_filesize" setting. Invalid quantity "2T": unknown multiplier "T", interpreting as "2" for backwards compatibility in Unknown on line 0
+[12-Nov-2025 17:53:54 UTC] PHP Warning:  Invalid "post_max_size" setting. Invalid quantity "2T": unknown multiplier "T", interpreting as "2" for backwards compatibility in Unknown on line 0
+[12-Nov-2025 17:53:55 UTC] PHP Warning:  Invalid "upload_max_filesize" setting. Invalid quantity "2T": unknown multiplier "T", interpreting as "2" for backwards compatibility in Unknown on line 0
+[12-Nov-2025 17:53:55 UTC] PHP Warning:  Invalid "post_max_size" setting. Invalid quantity "2T": unknown multiplier "T", interpreting as "2" for backwards compatibility in Unknown on line 0
+[12-Nov-2025 17:53:55 UTC] API Request: GET http://sclib_fastapi:5001/api/v1/datasets/by-user?user_email=amy%40visus.net
+[12-Nov-2025 17:53:55 UTC] HTTP Code: 0
+[12-Nov-2025 17:53:55 UTC] cURL Error: Failed to connect to sclib_fastapi port 5001 after 0 ms: Could not connect to server (errno: 7)
+[12-Nov-2025 17:53:55 UTC] API Request: GET http://sclib_fastapi:5001/api/v1/datasets?user_email=amy%40visus.net
+[12-Nov-2025 17:53:55 UTC] HTTP Code: 0
+[12-Nov-2025 17:53:55 UTC] cURL Error: Failed to connect to sclib_fastapi port 5001 after 0 ms: Could not connect to server (errno: 7)
+[12-Nov-2025 17:53:55 UTC] Datasets API response: my=0, shared=0, team=0, total=0
+[12-Nov-2025 17:53:55 UTC] PHP Warning:  Invalid "upload_max_filesize" setting. Invalid quantity "2T": unknown multiplier "T", interpreting as "2" for backwards compatibility in Unknown on line 0
+[12-Nov-2025 17:53:55 UTC] PHP Warning:  Invalid "post_max_size" setting. Invalid quantity "2T": unknown multiplier "T", interpreting as "2" for backwards compatibility in Unknown on line 0
+[12-Nov-2025 17:54:01 UTC] API Request: GET http://sclib_fastapi:5001/api/v1/datasets/by-user?user_email=amy%40visus.net
+[12-Nov-2025 17:54:01 UTC] HTTP Code: 200
+[12-Nov-2025 17:54:01 UTC] Response (first 500 chars): {"success":true,"datasets":{"my":[{"uuid":"c13670eb-a149-4a40-bd5d-76649dc202be","name":"Sampad dir local upload","data_size":0,"folder":"Sampad","folder_uuid":"Sampad","time":null,"team":null,"team_uuid":null,"tags":"","sensor":"TIFF RGB","status":"conversion queued","compression_status":"unknown","url":"http://localhost:8080/mod_visus?dataset=c13670eb-a149-4a40-bd5d-76649dc202be&&server=false","google_drive_link":"","bucket":null,"prefix":null,"accesskey":null,"secretkey":null}],"shared":[],"t
+[12-Nov-2025 17:54:01 UTC] PHP Warning:  Invalid "upload_max_filesize" setting. Invalid quantity "2T": unknown multiplier "T", interpreting as "2" for backwards compatibility in Unknown on line 0
+[12-Nov-2025 17:54:01 UTC] PHP Warning:  Invalid "post_max_size" setting. Invalid quantity "2T": unknown multiplier "T", interpreting as "2" for backwards compatibility in Unknown on line 0
+[12-Nov-2025 17:54:01 UTC] API Request: GET http://sclib_fastapi:5001/api/v1/teams/by-user?user_email=amy%40visus.net
+[12-Nov-2025 17:54:01 UTC] HTTP Code: 404
+[12-Nov-2025 17:54:01 UTC] Response (first 500 chars): {"detail":"Not Found"}
+[12-Nov-2025 17:54:01 UTC] Failed to get user teams: API error (404): Not Found
+[12-Nov-2025 17:54:01 UTC] PHP Warning:  Invalid "upload_max_filesize" setting. Invalid quantity "2T": unknown multiplier "T", interpreting as "2" for backwards compatibility in Unknown on line 0
+[12-Nov-2025 17:54:01 UTC] PHP Warning:  Invalid "post_max_size" setting. Invalid quantity "2T": unknown multiplier "T", interpreting as "2" for backwards compatibility in Unknown on line 0
+[12-Nov-2025 17:54:24 UTC] PHP Warning:  Invalid "upload_max_filesize" setting. Invalid quantity "2T": unknown multiplier "T", interpreting as "2" for backwards compatibility in Unknown on line 0
+[12-Nov-2025 17:54:24 UTC] PHP Warning:  Invalid "post_max_size" setting. Invalid quantity "2T": unknown multiplier "T", interpreting as "2" for backwards compatibility in Unknown on line 0
+[12-Nov-2025 17:54:24 UTC] PHP upload settings - post_max_size: 2048G, upload_max_filesize: 2048G
+[12-Nov-2025 17:54:24 UTC] Upload API URL: http://sclib_fastapi:5001
+[12-Nov-2025 17:54:24 UTC] Optimization: Moved file to shared temp for path-based upload: /mnt/visus_datasets/tmp/upload_6914c9d08804d5.13033980_sync.log.txt
+[12-Nov-2025 17:54:24 UTC] Using optimized path-based upload endpoint: http://sclib_fastapi:5001/api/upload/upload-path
+[12-Nov-2025 17:54:24 UTC] Upload timeout set to 300s for file size: 0.0035305023193359 MB (3.4477561712265E-6 GB)
+[12-Nov-2025 17:54:24 UTC] Upload API request: URL=http://sclib_fastapi:5001/api/upload/upload-path, HTTP_CODE=200, Response length=186
+[12-Nov-2025 17:54:24 UTC] PHP Warning:  Invalid "upload_max_filesize" setting. Invalid quantity "2T": unknown multiplier "T", interpreting as "2" for backwards compatibility in Unknown on line 0
+[12-Nov-2025 17:54:24 UTC] PHP Warning:  Invalid "post_max_size" setting. Invalid quantity "2T": unknown multiplier "T", interpreting as "2" for backwards compatibility in Unknown on line 0
+[12-Nov-2025 17:54:24 UTC] PHP upload settings - post_max_size: 2048G, upload_max_filesize: 2048G
+[12-Nov-2025 17:54:24 UTC] Upload API URL: http://sclib_fastapi:5001
+[12-Nov-2025 17:54:25 UTC] Optimization: Moved file to shared temp for path-based upload: /mnt/visus_datasets/tmp/upload_6914c9d1000e00.51338621_1161_Panel2_7_12.tif
+[12-Nov-2025 17:54:25 UTC] Using optimized path-based upload endpoint: http://sclib_fastapi:5001/api/upload/upload-path
+[12-Nov-2025 17:54:25 UTC] Upload timeout set to 300s for file size: 12.000350952148 MB (0.011719092726707 GB)
+[12-Nov-2025 17:54:25 UTC] Upload API request: URL=http://sclib_fastapi:5001/api/upload/upload-path, HTTP_CODE=200, Response length=194
+[12-Nov-2025 17:54:25 UTC] PHP Warning:  Invalid "upload_max_filesize" setting. Invalid quantity "2T": unknown multiplier "T", interpreting as "2" for backwards compatibility in Unknown on line 0
+[12-Nov-2025 17:54:25 UTC] PHP Warning:  Invalid "post_max_size" setting. Invalid quantity "2T": unknown multiplier "T", interpreting as "2" for backwards compatibility in Unknown on line 0
+[12-Nov-2025 17:54:25 UTC] API Request: GET http://sclib_fastapi:5001/api/v1/datasets/by-user?user_email=amy%40visus.net
+[12-Nov-2025 17:54:25 UTC] HTTP Code: 200
+[12-Nov-2025 17:54:25 UTC] Response (first 500 chars): {"success":true,"datasets":{"my":[{"uuid":"c13670eb-a149-4a40-bd5d-76649dc202be","name":"Sampad dir local upload","data_size":0,"folder":"Sampad","folder_uuid":"Sampad","time":null,"team":null,"team_uuid":null,"tags":"","sensor":"TIFF RGB","status":"conversion queued","compression_status":"unknown","url":"http://localhost:8080/mod_visus?dataset=c13670eb-a149-4a40-bd5d-76649dc202be&&server=false","google_drive_link":"","bucket":null,"prefix":null,"accesskey":null,"secretkey":null},{"uuid":"20b598
+[12-Nov-2025 17:54:25 UTC] Datasets API response: my=2, shared=0, team=0, total=2
+[12-Nov-2025 17:54:25 UTC] PHP Warning:  Invalid "upload_max_filesize" setting. Invalid quantity "2T": unknown multiplier "T", interpreting as "2" for backwards compatibility in Unknown on line 0
+[12-Nov-2025 17:54:25 UTC] PHP Warning:  Invalid "post_max_size" setting. Invalid quantity "2T": unknown multiplier "T", interpreting as "2" for backwards compatibility in Unknown on line 0
+[12-Nov-2025 17:54:25 UTC] PHP Warning:  Invalid "upload_max_filesize" setting. Invalid quantity "2T": unknown multiplier "T", interpreting as "2" for backwards compatibility in Unknown on line 0
+[12-Nov-2025 17:54:25 UTC] PHP Warning:  Invalid "post_max_size" setting. Invalid quantity "2T": unknown multiplier "T", interpreting as "2" for backwards compatibility in Unknown on line 0
+[12-Nov-2025 17:54:25 UTC] PHP Warning:  Invalid "upload_max_filesize" setting. Invalid quantity "2T": unknown multiplier "T", interpreting as "2" for backwards compatibility in Unknown on line 0
+[12-Nov-2025 17:54:25 UTC] PHP Warning:  Invalid "post_max_size" setting. Invalid quantity "2T": unknown multiplier "T", interpreting as "2" for backwards compatibility in Unknown on line 0
+[12-Nov-2025 17:54:26 UTC] PHP Warning:  Invalid "upload_max_filesize" setting. Invalid quantity "2T": unknown multiplier "T", interpreting as "2" for backwards compatibility in Unknown on line 0
+[12-Nov-2025 17:54:26 UTC] PHP Warning:  Invalid "post_max_size" setting. Invalid quantity "2T": unknown multiplier "T", interpreting as "2" for backwards compatibility in Unknown on line 0
+[12-Nov-2025 17:54:27 UTC] PHP Warning:  Invalid "upload_max_filesize" setting. Invalid quantity "2T": unknown multiplier "T", interpreting as "2" for backwards compatibility in Unknown on line 0
+[12-Nov-2025 17:54:27 UTC] PHP Warning:  Invalid "post_max_size" setting. Invalid quantity "2T": unknown multiplier "T", interpreting as "2" for backwards compatibility in Unknown on line 0
+[12-Nov-2025 17:54:28 UTC] PHP Warning:  Invalid "upload_max_filesize" setting. Invalid quantity "2T": unknown multiplier "T", interpreting as "2" for backwards compatibility in Unknown on line 0
+[12-Nov-2025 17:54:28 UTC] PHP Warning:  Invalid "post_max_size" setting. Invalid quantity "2T": unknown multiplier "T", interpreting as "2" for backwards compatibility in Unknown on line 0
+[12-Nov-2025 17:54:28 UTC] PHP Warning:  Invalid "upload_max_filesize" setting. Invalid quantity "2T": unknown multiplier "T", interpreting as "2" for backwards compatibility in Unknown on line 0
+[12-Nov-2025 17:54:28 UTC] PHP Warning:  Invalid "post_max_size" setting. Invalid quantity "2T": unknown multiplier "T", interpreting as "2" for backwards compatibility in Unknown on line 0
+[12-Nov-2025 17:54:29 UTC] PHP Warning:  Invalid "upload_max_filesize" setting. Invalid quantity "2T": unknown multiplier "T", interpreting as "2" for backwards compatibility in Unknown on line 0
+[12-Nov-2025 17:54:29 UTC] PHP Warning:  Invalid "post_max_size" setting. Invalid quantity "2T": unknown multiplier "T", interpreting as "2" for backwards compatibility in Unknown on line 0
+[12-Nov-2025 17:54:29 UTC] PHP Warning:  Invalid "upload_max_filesize" setting. Invalid quantity "2T": unknown multiplier "T", interpreting as "2" for backwards compatibility in Unknown on line 0
+[12-Nov-2025 17:54:29 UTC] PHP Warning:  Invalid "post_max_size" setting. Invalid quantity "2T": unknown multiplier "T", interpreting as "2" for backwards compatibility in Unknown on line 0
+[12-Nov-2025 17:54:29 UTC] API Request: GET http://sclib_fastapi:5001/api/v1/datasets/by-user?user_email=amy%40visus.net
+[12-Nov-2025 17:54:29 UTC] HTTP Code: 200
+[12-Nov-2025 17:54:29 UTC] Response (first 500 chars): {"success":true,"datasets":{"my":[{"uuid":"c13670eb-a149-4a40-bd5d-76649dc202be","name":"Sampad dir local upload","data_size":0,"folder":"Sampad","folder_uuid":"Sampad","time":null,"team":null,"team_uuid":null,"tags":"","sensor":"TIFF RGB","status":"conversion queued","compression_status":"unknown","url":"http://localhost:8080/mod_visus?dataset=c13670eb-a149-4a40-bd5d-76649dc202be&&server=false","google_drive_link":"","bucket":null,"prefix":null,"accesskey":null,"secretkey":null},{"uuid":"20b598
+[12-Nov-2025 17:54:29 UTC] Datasets API response: my=2, shared=0, team=0, total=2
+[12-Nov-2025 17:54:29 UTC] PHP Warning:  Invalid "upload_max_filesize" setting. Invalid quantity "2T": unknown multiplier "T", interpreting as "2" for backwards compatibility in Unknown on line 0
+[12-Nov-2025 17:54:29 UTC] PHP Warning:  Invalid "post_max_size" setting. Invalid quantity "2T": unknown multiplier "T", interpreting as "2" for backwards compatibility in Unknown on line 0
+[12-Nov-2025 17:54:30 UTC] PHP Warning:  Invalid "upload_max_filesize" setting. Invalid quantity "2T": unknown multiplier "T", interpreting as "2" for backwards compatibility in Unknown on line 0
+[12-Nov-2025 17:54:30 UTC] PHP Warning:  Invalid "post_max_size" setting. Invalid quantity "2T": unknown multiplier "T", interpreting as "2" for backwards compatibility in Unknown on line 0
+[12-Nov-2025 17:54:31 UTC] API Request: GET http://sclib_fastapi:5001/api/v1/datasets/by-user?user_email=amy%40visus.net
+[12-Nov-2025 17:54:31 UTC] HTTP Code: 200
+[12-Nov-2025 17:54:31 UTC] Response (first 500 chars): {"success":true,"datasets":{"my":[{"uuid":"c13670eb-a149-4a40-bd5d-76649dc202be","name":"Sampad dir local upload","data_size":0,"folder":"Sampad","folder_uuid":"Sampad","time":null,"team":null,"team_uuid":null,"tags":"","sensor":"TIFF RGB","status":"conversion queued","compression_status":"unknown","url":"http://localhost:8080/mod_visus?dataset=c13670eb-a149-4a40-bd5d-76649dc202be&&server=false","google_drive_link":"","bucket":null,"prefix":null,"accesskey":null,"secretkey":null},{"uuid":"20b598
+[12-Nov-2025 17:54:31 UTC] Datasets API response: my=2, shared=0, team=0, total=2
+[12-Nov-2025 17:54:31 UTC] PHP Warning:  Invalid "upload_max_filesize" setting. Invalid quantity "2T": unknown multiplier "T", interpreting as "2" for backwards compatibility in Unknown on line 0
+[12-Nov-2025 17:54:31 UTC] PHP Warning:  Invalid "post_max_size" setting. Invalid quantity "2T": unknown multiplier "T", interpreting as "2" for backwards compatibility in Unknown on line 0
+[12-Nov-2025 17:54:44 UTC] MongoDB PHP extension not available
+[12-Nov-2025 17:54:44 UTC] MongoDB PHP extension not available
+[12-Nov-2025 17:54:44 UTC] MongoDB PHP extension not available
+[12-Nov-2025 17:54:44 UTC] PHP Warning:  Invalid "upload_max_filesize" setting. Invalid quantity "2T": unknown multiplier "T", interpreting as "2" for backwards compatibility in Unknown on line 0
+[12-Nov-2025 17:54:44 UTC] PHP Warning:  Invalid "post_max_size" setting. Invalid quantity "2T": unknown multiplier "T", interpreting as "2" for backwards compatibility in Unknown on line 0
+[12-Nov-2025 17:54:47 UTC] API Request: GET http://sclib_fastapi:5001/api/v1/datasets/c13670eb-a149-4a40-bd5d-76649dc202be?user_email=amy%40visus.net
+[12-Nov-2025 17:54:47 UTC] HTTP Code: 200
+[12-Nov-2025 17:54:47 UTC] Response (first 500 chars): {"success":true,"identifier":"c13670eb-a149-4a40-bd5d-76649dc202be","resolved_uuid":"c13670eb-a149-4a40-bd5d-76649dc202be","dataset":{"_id":"6914bac2d0d6bb3a8ff74fbe","uuid":"c13670eb-a149-4a40-bd5d-76649dc202be","name":"Sampad dir local upload","slug":"amy-sampad-dir-local-upload-2025","id":10521,"user":"amy@visus.net","user_id":"amy@visus.net","sensor":"TIFF RGB","convert":true,"is_public":true,"folder_uuid":"Sampad","team_uuid":null,"source_type":"local","source_path":"/mnt/visus_datasets/tmp
+[12-Nov-2025 17:54:47 UTC] PHP Warning:  Undefined array key "team_id" in /var/www/html/api/dataset-details.php on line 71
+[12-Nov-2025 17:54:47 UTC] PHP Warning:  Invalid "upload_max_filesize" setting. Invalid quantity "2T": unknown multiplier "T", interpreting as "2" for backwards compatibility in Unknown on line 0
+[12-Nov-2025 17:54:47 UTC] PHP Warning:  Invalid "post_max_size" setting. Invalid quantity "2T": unknown multiplier "T", interpreting as "2" for backwards compatibility in Unknown on line 0
+[12-Nov-2025 17:54:47 UTC] API Request: GET http://sclib_fastapi:5001/api/v1/datasets/c13670eb-a149-4a40-bd5d-76649dc202be?user_email=amy%40visus.net
+[12-Nov-2025 17:54:47 UTC] HTTP Code: 200
+[12-Nov-2025 17:54:47 UTC] Response (first 500 chars): {"success":true,"identifier":"c13670eb-a149-4a40-bd5d-76649dc202be","resolved_uuid":"c13670eb-a149-4a40-bd5d-76649dc202be","dataset":{"_id":"6914bac2d0d6bb3a8ff74fbe","uuid":"c13670eb-a149-4a40-bd5d-76649dc202be","name":"Sampad dir local upload","slug":"amy-sampad-dir-local-upload-2025","id":10521,"user":"amy@visus.net","user_id":"amy@visus.net","sensor":"TIFF RGB","convert":true,"is_public":true,"folder_uuid":"Sampad","team_uuid":null,"source_type":"local","source_path":"/mnt/visus_datasets/tmp
+[12-Nov-2025 17:54:47 UTC] PHP Warning:  Undefined array key "team_id" in /var/www/html/api/dataset-status.php on line 72
+[12-Nov-2025 17:54:47 UTC] API Request: GET http://sclib_fastapi:5001/api/v1/datasets/c13670eb-a149-4a40-bd5d-76649dc202be?user_email=amy%40visus.net
+[12-Nov-2025 17:54:47 UTC] HTTP Code: 200
+[12-Nov-2025 17:54:47 UTC] Response (first 500 chars): {"success":true,"identifier":"c13670eb-a149-4a40-bd5d-76649dc202be","resolved_uuid":"c13670eb-a149-4a40-bd5d-76649dc202be","dataset":{"_id":"6914bac2d0d6bb3a8ff74fbe","uuid":"c13670eb-a149-4a40-bd5d-76649dc202be","name":"Sampad dir local upload","slug":"amy-sampad-dir-local-upload-2025","id":10521,"user":"amy@visus.net","user_id":"amy@visus.net","sensor":"TIFF RGB","convert":true,"is_public":true,"folder_uuid":"Sampad","team_uuid":null,"source_type":"local","source_path":"/mnt/visus_datasets/tmp
+[12-Nov-2025 17:54:47 UTC] API Request: GET http://sclib_fastapi:5001/api/v1/datasets/c13670eb-a149-4a40-bd5d-76649dc202be?user_email=amy%40visus.net
+[12-Nov-2025 17:54:47 UTC] HTTP Code: 200
+[12-Nov-2025 17:54:47 UTC] Response (first 500 chars): {"success":true,"identifier":"c13670eb-a149-4a40-bd5d-76649dc202be","resolved_uuid":"c13670eb-a149-4a40-bd5d-76649dc202be","dataset":{"_id":"6914bac2d0d6bb3a8ff74fbe","uuid":"c13670eb-a149-4a40-bd5d-76649dc202be","name":"Sampad dir local upload","slug":"amy-sampad-dir-local-upload-2025","id":10521,"user":"amy@visus.net","user_id":"amy@visus.net","sensor":"TIFF RGB","convert":true,"is_public":true,"folder_uuid":"Sampad","team_uuid":null,"source_type":"local","source_path":"/mnt/visus_datasets/tmp
+[12-Nov-2025 17:54:47 UTC] PHP Warning:  Invalid "upload_max_filesize" setting. Invalid quantity "2T": unknown multiplier "T", interpreting as "2" for backwards compatibility in Unknown on line 0
+[12-Nov-2025 17:54:47 UTC] PHP Warning:  Invalid "post_max_size" setting. Invalid quantity "2T": unknown multiplier "T", interpreting as "2" for backwards compatibility in Unknown on line 0
+[12-Nov-2025 17:54:47 UTC] API Request: GET http://sclib_fastapi:5001/api/v1/datasets/c13670eb-a149-4a40-bd5d-76649dc202be?user_email=amy%40visus.net
+[12-Nov-2025 17:54:47 UTC] HTTP Code: 200
+[12-Nov-2025 17:54:47 UTC] Response (first 500 chars): {"success":true,"identifier":"c13670eb-a149-4a40-bd5d-76649dc202be","resolved_uuid":"c13670eb-a149-4a40-bd5d-76649dc202be","dataset":{"_id":"6914bac2d0d6bb3a8ff74fbe","uuid":"c13670eb-a149-4a40-bd5d-76649dc202be","name":"Sampad dir local upload","slug":"amy-sampad-dir-local-upload-2025","id":10521,"user":"amy@visus.net","user_id":"amy@visus.net","sensor":"TIFF RGB","convert":true,"is_public":true,"folder_uuid":"Sampad","team_uuid":null,"source_type":"local","source_path":"/mnt/visus_datasets/tmp
+[12-Nov-2025 17:54:47 UTC] PHP Warning:  Undefined array key "team_id" in /var/www/html/api/dataset-status.php on line 72
+[12-Nov-2025 17:54:48 UTC] API Request: GET http://sclib_fastapi:5001/api/v1/datasets/c13670eb-a149-4a40-bd5d-76649dc202be?user_email=amy%40visus.net
+[12-Nov-2025 17:54:48 UTC] HTTP Code: 200
+[12-Nov-2025 17:54:48 UTC] Response (first 500 chars): {"success":true,"identifier":"c13670eb-a149-4a40-bd5d-76649dc202be","resolved_uuid":"c13670eb-a149-4a40-bd5d-76649dc202be","dataset":{"_id":"6914bac2d0d6bb3a8ff74fbe","uuid":"c13670eb-a149-4a40-bd5d-76649dc202be","name":"Sampad dir local upload","slug":"amy-sampad-dir-local-upload-2025","id":10521,"user":"amy@visus.net","user_id":"amy@visus.net","sensor":"TIFF RGB","convert":true,"is_public":true,"folder_uuid":"Sampad","team_uuid":null,"source_type":"local","source_path":"/mnt/visus_datasets/tmp
+[12-Nov-2025 17:54:48 UTC] PHP Warning:  Invalid "upload_max_filesize" setting. Invalid quantity "2T": unknown multiplier "T", interpreting as "2" for backwards compatibility in Unknown on line 0
+[12-Nov-2025 17:54:48 UTC] PHP Warning:  Invalid "post_max_size" setting. Invalid quantity "2T": unknown multiplier "T", interpreting as "2" for backwards compatibility in Unknown on line 0
+[12-Nov-2025 17:54:48 UTC] API Request: GET http://sclib_fastapi:5001/api/v1/datasets/c13670eb-a149-4a40-bd5d-76649dc202be?user_email=amy%40visus.net
+[12-Nov-2025 17:54:48 UTC] HTTP Code: 200
+[12-Nov-2025 17:54:48 UTC] Response (first 500 chars): {"success":true,"identifier":"c13670eb-a149-4a40-bd5d-76649dc202be","resolved_uuid":"c13670eb-a149-4a40-bd5d-76649dc202be","dataset":{"_id":"6914bac2d0d6bb3a8ff74fbe","uuid":"c13670eb-a149-4a40-bd5d-76649dc202be","name":"Sampad dir local upload","slug":"amy-sampad-dir-local-upload-2025","id":10521,"user":"amy@visus.net","user_id":"amy@visus.net","sensor":"TIFF RGB","convert":true,"is_public":true,"folder_uuid":"Sampad","team_uuid":null,"source_type":"local","source_path":"/mnt/visus_datasets/tmp
+[12-Nov-2025 17:54:48 UTC] PHP Warning:  Undefined array key "team_id" in /var/www/html/api/dataset-details.php on line 71
+[12-Nov-2025 17:54:48 UTC] PHP Warning:  Invalid "upload_max_filesize" setting. Invalid quantity "2T": unknown multiplier "T", interpreting as "2" for backwards compatibility in Unknown on line 0
+[12-Nov-2025 17:54:48 UTC] PHP Warning:  Invalid "post_max_size" setting. Invalid quantity "2T": unknown multiplier "T", interpreting as "2" for backwards compatibility in Unknown on line 0
+[12-Nov-2025 17:54:48 UTC] API Request: GET http://sclib_fastapi:5001/api/v1/datasets/c13670eb-a149-4a40-bd5d-76649dc202be?user_email=amy%40visus.net
+[12-Nov-2025 17:54:48 UTC] HTTP Code: 200
+[12-Nov-2025 17:54:48 UTC] Response (first 500 chars): {"success":true,"identifier":"c13670eb-a149-4a40-bd5d-76649dc202be","resolved_uuid":"c13670eb-a149-4a40-bd5d-76649dc202be","dataset":{"_id":"6914bac2d0d6bb3a8ff74fbe","uuid":"c13670eb-a149-4a40-bd5d-76649dc202be","name":"Sampad dir local upload","slug":"amy-sampad-dir-local-upload-2025","id":10521,"user":"amy@visus.net","user_id":"amy@visus.net","sensor":"TIFF RGB","convert":true,"is_public":true,"folder_uuid":"Sampad","team_uuid":null,"source_type":"local","source_path":"/mnt/visus_datasets/tmp
+[12-Nov-2025 17:54:48 UTC] PHP Warning:  Undefined array key "team_id" in /var/www/html/api/dataset-details.php on line 71
+[12-Nov-2025 17:54:48 UTC] PHP Warning:  Invalid "upload_max_filesize" setting. Invalid quantity "2T": unknown multiplier "T", interpreting as "2" for backwards compatibility in Unknown on line 0
+[12-Nov-2025 17:54:48 UTC] PHP Warning:  Invalid "post_max_size" setting. Invalid quantity "2T": unknown multiplier "T", interpreting as "2" for backwards compatibility in Unknown on line 0
+[12-Nov-2025 17:54:48 UTC] API Request: GET http://sclib_fastapi:5001/api/v1/datasets/c13670eb-a149-4a40-bd5d-76649dc202be?user_email=amy%40visus.net
+[12-Nov-2025 17:54:48 UTC] HTTP Code: 200
+[12-Nov-2025 17:54:48 UTC] Response (first 500 chars): {"success":true,"identifier":"c13670eb-a149-4a40-bd5d-76649dc202be","resolved_uuid":"c13670eb-a149-4a40-bd5d-76649dc202be","dataset":{"_id":"6914bac2d0d6bb3a8ff74fbe","uuid":"c13670eb-a149-4a40-bd5d-76649dc202be","name":"Sampad dir local upload","slug":"amy-sampad-dir-local-upload-2025","id":10521,"user":"amy@visus.net","user_id":"amy@visus.net","sensor":"TIFF RGB","convert":true,"is_public":true,"folder_uuid":"Sampad","team_uuid":null,"source_type":"local","source_path":"/mnt/visus_datasets/tmp
+[12-Nov-2025 17:54:48 UTC] PHP Warning:  Undefined array key "team_id" in /var/www/html/api/dataset-details.php on line 71
+[12-Nov-2025 17:54:48 UTC] PHP Warning:  Invalid "upload_max_filesize" setting. Invalid quantity "2T": unknown multiplier "T", interpreting as "2" for backwards compatibility in Unknown on line 0
+[12-Nov-2025 17:54:48 UTC] PHP Warning:  Invalid "post_max_size" setting. Invalid quantity "2T": unknown multiplier "T", interpreting as "2" for backwards compatibility in Unknown on line 0
+[12-Nov-2025 17:54:49 UTC] API Request: GET http://sclib_fastapi:5001/api/v1/datasets/c13670eb-a149-4a40-bd5d-76649dc202be?user_email=amy%40visus.net
+[12-Nov-2025 17:54:49 UTC] HTTP Code: 200
+[12-Nov-2025 17:54:49 UTC] Response (first 500 chars): {"success":true,"identifier":"c13670eb-a149-4a40-bd5d-76649dc202be","resolved_uuid":"c13670eb-a149-4a40-bd5d-76649dc202be","dataset":{"_id":"6914bac2d0d6bb3a8ff74fbe","uuid":"c13670eb-a149-4a40-bd5d-76649dc202be","name":"Sampad dir local upload","slug":"amy-sampad-dir-local-upload-2025","id":10521,"user":"amy@visus.net","user_id":"amy@visus.net","sensor":"TIFF RGB","convert":true,"is_public":true,"folder_uuid":"Sampad","team_uuid":null,"source_type":"local","source_path":"/mnt/visus_datasets/tmp
+[12-Nov-2025 17:54:49 UTC] PHP Warning:  Undefined array key "team_id" in /var/www/html/api/dataset-status.php on line 72
+[12-Nov-2025 17:54:49 UTC] API Request: GET http://sclib_fastapi:5001/api/v1/datasets/c13670eb-a149-4a40-bd5d-76649dc202be?user_email=amy%40visus.net
+[12-Nov-2025 17:54:49 UTC] HTTP Code: 200
+[12-Nov-2025 17:54:49 UTC] Response (first 500 chars): {"success":true,"identifier":"c13670eb-a149-4a40-bd5d-76649dc202be","resolved_uuid":"c13670eb-a149-4a40-bd5d-76649dc202be","dataset":{"_id":"6914bac2d0d6bb3a8ff74fbe","uuid":"c13670eb-a149-4a40-bd5d-76649dc202be","name":"Sampad dir local upload","slug":"amy-sampad-dir-local-upload-2025","id":10521,"user":"amy@visus.net","user_id":"amy@visus.net","sensor":"TIFF RGB","convert":true,"is_public":true,"folder_uuid":"Sampad","team_uuid":null,"source_type":"local","source_path":"/mnt/visus_datasets/tmp
+[12-Nov-2025 17:54:49 UTC] PHP Warning:  Invalid "upload_max_filesize" setting. Invalid quantity "2T": unknown multiplier "T", interpreting as "2" for backwards compatibility in Unknown on line 0
+[12-Nov-2025 17:54:49 UTC] PHP Warning:  Invalid "post_max_size" setting. Invalid quantity "2T": unknown multiplier "T", interpreting as "2" for backwards compatibility in Unknown on line 0
+[12-Nov-2025 17:54:50 UTC] API Request: GET http://sclib_fastapi:5001/api/v1/datasets/c13670eb-a149-4a40-bd5d-76649dc202be?user_email=amy%40visus.net
+[12-Nov-2025 17:54:50 UTC] HTTP Code: 200
+[12-Nov-2025 17:54:50 UTC] Response (first 500 chars): {"success":true,"identifier":"c13670eb-a149-4a40-bd5d-76649dc202be","resolved_uuid":"c13670eb-a149-4a40-bd5d-76649dc202be","dataset":{"_id":"6914bac2d0d6bb3a8ff74fbe","uuid":"c13670eb-a149-4a40-bd5d-76649dc202be","name":"Sampad dir local upload","slug":"amy-sampad-dir-local-upload-2025","id":10521,"user":"amy@visus.net","user_id":"amy@visus.net","sensor":"TIFF RGB","convert":true,"is_public":true,"folder_uuid":"Sampad","team_uuid":null,"source_type":"local","source_path":"/mnt/visus_datasets/tmp
+[12-Nov-2025 17:54:50 UTC] PHP Warning:  Undefined array key "team_id" in /var/www/html/api/dataset-files.php on line 82
+[12-Nov-2025 17:54:50 UTC] API Request: GET http://sclib_fastapi:5001/api/v1/datasets/c13670eb-a149-4a40-bd5d-76649dc202be/files?user_email=amy%40visus.net
+[12-Nov-2025 17:54:50 UTC] HTTP Code: 200
+[12-Nov-2025 17:54:50 UTC] Response (first 500 chars): {"success":true,"dataset_uuid":"c13670eb-a149-4a40-bd5d-76649dc202be","directories":{"upload":{"path":"/mnt/visus_datasets/upload/c13670eb-a149-4a40-bd5d-76649dc202be","exists":true,"readable":true,"files":[{"name":"upload_6914bac25df0d3.71703661_sync.log.txt","type":"file","path":"upload/upload_6914bac25df0d3.71703661_sync.log.txt","size":3702,"modified":1762966210.0},{"name":"upload_6914bac2d32479.00796846_1161_Panel2_7_12.tif","type":"file","path":"upload/upload_6914bac2d32479.00796846_1161_P
+[12-Nov-2025 17:54:50 UTC] PHP Warning:  Invalid "upload_max_filesize" setting. Invalid quantity "2T": unknown multiplier "T", interpreting as "2" for backwards compatibility in Unknown on line 0
+[12-Nov-2025 17:54:50 UTC] PHP Warning:  Invalid "post_max_size" setting. Invalid quantity "2T": unknown multiplier "T", interpreting as "2" for backwards compatibility in Unknown on line 0
+[12-Nov-2025 17:54:53 UTC] API Request: GET http://sclib_fastapi:5001/api/v1/datasets/20b598cc-6310-417e-bac0-549abc0154cb?user_email=amy%40visus.net
+[12-Nov-2025 17:54:53 UTC] HTTP Code: 200
+[12-Nov-2025 17:54:53 UTC] Response (first 500 chars): {"success":true,"identifier":"20b598cc-6310-417e-bac0-549abc0154cb","resolved_uuid":"20b598cc-6310-417e-bac0-549abc0154cb","dataset":{"_id":"6914c9d06d2b828ec3a01289","uuid":"20b598cc-6310-417e-bac0-549abc0154cb","name":"Sampad dir local upload","slug":"amy-sampad-dir-local-upload-2025","id":64680,"user":"amy@visus.net","user_id":"amy@visus.net","sensor":"TIFF","convert":true,"is_public":true,"folder_uuid":"Sampad","team_uuid":null,"source_type":"local","source_path":"/mnt/visus_datasets/tmp/upl
+[12-Nov-2025 17:54:53 UTC] PHP Warning:  Undefined array key "team_id" in /var/www/html/api/dataset-files.php on line 82
+[12-Nov-2025 17:54:53 UTC] API Request: GET http://sclib_fastapi:5001/api/v1/datasets/20b598cc-6310-417e-bac0-549abc0154cb/files?user_email=amy%40visus.net
+[12-Nov-2025 17:54:53 UTC] HTTP Code: 200
+[12-Nov-2025 17:54:53 UTC] Response (first 500 chars): {"success":true,"dataset_uuid":"20b598cc-6310-417e-bac0-549abc0154cb","directories":{"upload":{"path":"/mnt/visus_datasets/upload/20b598cc-6310-417e-bac0-549abc0154cb","exists":true,"readable":true,"files":[{"name":"upload_6914c9d08804d5.13033980_sync.log.txt","type":"file","path":"upload/upload_6914c9d08804d5.13033980_sync.log.txt","size":3702,"modified":1762970064.0},{"name":"upload_6914c9d1000e00.51338621_1161_Panel2_7_12.tif","type":"file","path":"upload/upload_6914c9d1000e00.51338621_1161_P
+[12-Nov-2025 17:54:53 UTC] PHP Warning:  Invalid "upload_max_filesize" setting. Invalid quantity "2T": unknown multiplier "T", interpreting as "2" for backwards compatibility in Unknown on line 0
+[12-Nov-2025 17:54:53 UTC] PHP Warning:  Invalid "post_max_size" setting. Invalid quantity "2T": unknown multiplier "T", interpreting as "2" for backwards compatibility in Unknown on line 0
+[12-Nov-2025 17:55:06 UTC] API Request: GET http://sclib_fastapi:5001/api/v1/datasets/20b598cc-6310-417e-bac0-549abc0154cb?user_email=amy%40visus.net
+[12-Nov-2025 17:55:06 UTC] HTTP Code: 200
+[12-Nov-2025 17:55:06 UTC] Response (first 500 chars): {"success":true,"identifier":"20b598cc-6310-417e-bac0-549abc0154cb","resolved_uuid":"20b598cc-6310-417e-bac0-549abc0154cb","dataset":{"_id":"6914c9d06d2b828ec3a01289","uuid":"20b598cc-6310-417e-bac0-549abc0154cb","name":"Sampad dir local upload","slug":"amy-sampad-dir-local-upload-2025","id":64680,"user":"amy@visus.net","user_id":"amy@visus.net","sensor":"TIFF","convert":true,"is_public":true,"folder_uuid":"Sampad","team_uuid":null,"source_type":"local","source_path":"/mnt/visus_datasets/tmp/upl
+[12-Nov-2025 17:55:06 UTC] PHP Warning:  Undefined array key "team_id" in /var/www/html/api/dataset-status.php on line 72
+[12-Nov-2025 17:55:06 UTC] API Request: GET http://sclib_fastapi:5001/api/v1/datasets/20b598cc-6310-417e-bac0-549abc0154cb?user_email=amy%40visus.net
+[12-Nov-2025 17:55:06 UTC] HTTP Code: 200
+[12-Nov-2025 17:55:06 UTC] Response (first 500 chars): {"success":true,"identifier":"20b598cc-6310-417e-bac0-549abc0154cb","resolved_uuid":"20b598cc-6310-417e-bac0-549abc0154cb","dataset":{"_id":"6914c9d06d2b828ec3a01289","uuid":"20b598cc-6310-417e-bac0-549abc0154cb","name":"Sampad dir local upload","slug":"amy-sampad-dir-local-upload-2025","id":64680,"user":"amy@visus.net","user_id":"amy@visus.net","sensor":"TIFF","convert":true,"is_public":true,"folder_uuid":"Sampad","team_uuid":null,"source_type":"local","source_path":"/mnt/visus_datasets/tmp/upl
+[12-Nov-2025 17:55:06 UTC] API Request: GET http://sclib_fastapi:5001/api/v1/datasets/20b598cc-6310-417e-bac0-549abc0154cb?user_email=amy%40visus.net
+[12-Nov-2025 17:55:06 UTC] HTTP Code: 200
+[12-Nov-2025 17:55:06 UTC] Response (first 500 chars): {"success":true,"identifier":"20b598cc-6310-417e-bac0-549abc0154cb","resolved_uuid":"20b598cc-6310-417e-bac0-549abc0154cb","dataset":{"_id":"6914c9d06d2b828ec3a01289","uuid":"20b598cc-6310-417e-bac0-549abc0154cb","name":"Sampad dir local upload","slug":"amy-sampad-dir-local-upload-2025","id":64680,"user":"amy@visus.net","user_id":"amy@visus.net","sensor":"TIFF","convert":true,"is_public":true,"folder_uuid":"Sampad","team_uuid":null,"source_type":"local","source_path":"/mnt/visus_datasets/tmp/upl
+[12-Nov-2025 17:55:06 UTC] PHP Warning:  Invalid "upload_max_filesize" setting. Invalid quantity "2T": unknown multiplier "T", interpreting as "2" for backwards compatibility in Unknown on line 0
+[12-Nov-2025 17:55:06 UTC] PHP Warning:  Invalid "post_max_size" setting. Invalid quantity "2T": unknown multiplier "T", interpreting as "2" for backwards compatibility in Unknown on line 0
+[12-Nov-2025 17:55:06 UTC] API Request: GET http://sclib_fastapi:5001/api/v1/datasets/20b598cc-6310-417e-bac0-549abc0154cb?user_email=amy%40visus.net
+[12-Nov-2025 17:55:06 UTC] HTTP Code: 200
+[12-Nov-2025 17:55:06 UTC] Response (first 500 chars): {"success":true,"identifier":"20b598cc-6310-417e-bac0-549abc0154cb","resolved_uuid":"20b598cc-6310-417e-bac0-549abc0154cb","dataset":{"_id":"6914c9d06d2b828ec3a01289","uuid":"20b598cc-6310-417e-bac0-549abc0154cb","name":"Sampad dir local upload","slug":"amy-sampad-dir-local-upload-2025","id":64680,"user":"amy@visus.net","user_id":"amy@visus.net","sensor":"TIFF","convert":true,"is_public":true,"folder_uuid":"Sampad","team_uuid":null,"source_type":"local","source_path":"/mnt/visus_datasets/tmp/upl
+[12-Nov-2025 17:55:06 UTC] PHP Warning:  Undefined array key "team_id" in /var/www/html/api/dataset-details.php on line 71
+[12-Nov-2025 17:55:06 UTC] PHP Warning:  Invalid "upload_max_filesize" setting. Invalid quantity "2T": unknown multiplier "T", interpreting as "2" for backwards compatibility in Unknown on line 0
+[12-Nov-2025 17:55:06 UTC] PHP Warning:  Invalid "post_max_size" setting. Invalid quantity "2T": unknown multiplier "T", interpreting as "2" for backwards compatibility in Unknown on line 0
+[12-Nov-2025 17:55:07 UTC] API Request: GET http://sclib_fastapi:5001/api/v1/datasets/20b598cc-6310-417e-bac0-549abc0154cb?user_email=amy%40visus.net
+[12-Nov-2025 17:55:07 UTC] HTTP Code: 200
+[12-Nov-2025 17:55:07 UTC] Response (first 500 chars): {"success":true,"identifier":"20b598cc-6310-417e-bac0-549abc0154cb","resolved_uuid":"20b598cc-6310-417e-bac0-549abc0154cb","dataset":{"_id":"6914c9d06d2b828ec3a01289","uuid":"20b598cc-6310-417e-bac0-549abc0154cb","name":"Sampad dir local upload","slug":"amy-sampad-dir-local-upload-2025","id":64680,"user":"amy@visus.net","user_id":"amy@visus.net","sensor":"TIFF","convert":true,"is_public":true,"folder_uuid":"Sampad","team_uuid":null,"source_type":"local","source_path":"/mnt/visus_datasets/tmp/upl
+[12-Nov-2025 17:55:07 UTC] PHP Warning:  Undefined array key "team_id" in /var/www/html/api/dataset-status.php on line 72
+[12-Nov-2025 17:55:07 UTC] API Request: GET http://sclib_fastapi:5001/api/v1/datasets/20b598cc-6310-417e-bac0-549abc0154cb?user_email=amy%40visus.net
+[12-Nov-2025 17:55:07 UTC] HTTP Code: 200
+[12-Nov-2025 17:55:07 UTC] Response (first 500 chars): {"success":true,"identifier":"20b598cc-6310-417e-bac0-549abc0154cb","resolved_uuid":"20b598cc-6310-417e-bac0-549abc0154cb","dataset":{"_id":"6914c9d06d2b828ec3a01289","uuid":"20b598cc-6310-417e-bac0-549abc0154cb","name":"Sampad dir local upload","slug":"amy-sampad-dir-local-upload-2025","id":64680,"user":"amy@visus.net","user_id":"amy@visus.net","sensor":"TIFF","convert":true,"is_public":true,"folder_uuid":"Sampad","team_uuid":null,"source_type":"local","source_path":"/mnt/visus_datasets/tmp/upl
+[12-Nov-2025 17:55:07 UTC] PHP Warning:  Invalid "upload_max_filesize" setting. Invalid quantity "2T": unknown multiplier "T", interpreting as "2" for backwards compatibility in Unknown on line 0
+[12-Nov-2025 17:55:07 UTC] PHP Warning:  Invalid "post_max_size" setting. Invalid quantity "2T": unknown multiplier "T", interpreting as "2" for backwards compatibility in Unknown on line 0
+[12-Nov-2025 17:55:07 UTC] API Request: GET http://sclib_fastapi:5001/api/v1/datasets/20b598cc-6310-417e-bac0-549abc0154cb?user_email=amy%40visus.net
+[12-Nov-2025 17:55:07 UTC] HTTP Code: 200
+[12-Nov-2025 17:55:07 UTC] Response (first 500 chars): {"success":true,"identifier":"20b598cc-6310-417e-bac0-549abc0154cb","resolved_uuid":"20b598cc-6310-417e-bac0-549abc0154cb","dataset":{"_id":"6914c9d06d2b828ec3a01289","uuid":"20b598cc-6310-417e-bac0-549abc0154cb","name":"Sampad dir local upload","slug":"amy-sampad-dir-local-upload-2025","id":64680,"user":"amy@visus.net","user_id":"amy@visus.net","sensor":"TIFF","convert":true,"is_public":true,"folder_uuid":"Sampad","team_uuid":null,"source_type":"local","source_path":"/mnt/visus_datasets/tmp/upl
+[12-Nov-2025 17:55:07 UTC] PHP Warning:  Undefined array key "team_id" in /var/www/html/api/dataset-details.php on line 71
+[12-Nov-2025 17:55:07 UTC] PHP Warning:  Invalid "upload_max_filesize" setting. Invalid quantity "2T": unknown multiplier "T", interpreting as "2" for backwards compatibility in Unknown on line 0
+[12-Nov-2025 17:55:07 UTC] PHP Warning:  Invalid "post_max_size" setting. Invalid quantity "2T": unknown multiplier "T", interpreting as "2" for backwards compatibility in Unknown on line 0
+[12-Nov-2025 17:55:07 UTC] API Request: GET http://sclib_fastapi:5001/api/v1/datasets/20b598cc-6310-417e-bac0-549abc0154cb?user_email=amy%40visus.net
+[12-Nov-2025 17:55:07 UTC] HTTP Code: 200
+[12-Nov-2025 17:55:07 UTC] Response (first 500 chars): {"success":true,"identifier":"20b598cc-6310-417e-bac0-549abc0154cb","resolved_uuid":"20b598cc-6310-417e-bac0-549abc0154cb","dataset":{"_id":"6914c9d06d2b828ec3a01289","uuid":"20b598cc-6310-417e-bac0-549abc0154cb","name":"Sampad dir local upload","slug":"amy-sampad-dir-local-upload-2025","id":64680,"user":"amy@visus.net","user_id":"amy@visus.net","sensor":"TIFF","convert":true,"is_public":true,"folder_uuid":"Sampad","team_uuid":null,"source_type":"local","source_path":"/mnt/visus_datasets/tmp/upl
+[12-Nov-2025 17:55:07 UTC] PHP Warning:  Undefined array key "team_id" in /var/www/html/api/dataset-details.php on line 71
+[12-Nov-2025 17:55:07 UTC] PHP Warning:  Invalid "upload_max_filesize" setting. Invalid quantity "2T": unknown multiplier "T", interpreting as "2" for backwards compatibility in Unknown on line 0
+[12-Nov-2025 17:55:07 UTC] PHP Warning:  Invalid "post_max_size" setting. Invalid quantity "2T": unknown multiplier "T", interpreting as "2" for backwards compatibility in Unknown on line 0
+[12-Nov-2025 17:55:08 UTC] API Request: GET http://sclib_fastapi:5001/api/v1/datasets/20b598cc-6310-417e-bac0-549abc0154cb?user_email=amy%40visus.net
+[12-Nov-2025 17:55:08 UTC] HTTP Code: 200
+[12-Nov-2025 17:55:08 UTC] Response (first 500 chars): {"success":true,"identifier":"20b598cc-6310-417e-bac0-549abc0154cb","resolved_uuid":"20b598cc-6310-417e-bac0-549abc0154cb","dataset":{"_id":"6914c9d06d2b828ec3a01289","uuid":"20b598cc-6310-417e-bac0-549abc0154cb","name":"Sampad dir local upload","slug":"amy-sampad-dir-local-upload-2025","id":64680,"user":"amy@visus.net","user_id":"amy@visus.net","sensor":"TIFF","convert":true,"is_public":true,"folder_uuid":"Sampad","team_uuid":null,"source_type":"local","source_path":"/mnt/visus_datasets/tmp/upl
+[12-Nov-2025 17:55:08 UTC] PHP Warning:  Undefined array key "team_id" in /var/www/html/api/dataset-details.php on line 71
+[12-Nov-2025 17:55:08 UTC] PHP Warning:  Invalid "upload_max_filesize" setting. Invalid quantity "2T": unknown multiplier "T", interpreting as "2" for backwards compatibility in Unknown on line 0
+[12-Nov-2025 17:55:08 UTC] PHP Warning:  Invalid "post_max_size" setting. Invalid quantity "2T": unknown multiplier "T", interpreting as "2" for backwards compatibility in Unknown on line 0
+[12-Nov-2025 17:55:08 UTC] API Request: GET http://sclib_fastapi:5001/api/v1/datasets/20b598cc-6310-417e-bac0-549abc0154cb?user_email=amy%40visus.net
+[12-Nov-2025 17:55:08 UTC] HTTP Code: 200
+[12-Nov-2025 17:55:08 UTC] Response (first 500 chars): {"success":true,"identifier":"20b598cc-6310-417e-bac0-549abc0154cb","resolved_uuid":"20b598cc-6310-417e-bac0-549abc0154cb","dataset":{"_id":"6914c9d06d2b828ec3a01289","uuid":"20b598cc-6310-417e-bac0-549abc0154cb","name":"Sampad dir local upload","slug":"amy-sampad-dir-local-upload-2025","id":64680,"user":"amy@visus.net","user_id":"amy@visus.net","sensor":"TIFF","convert":true,"is_public":true,"folder_uuid":"Sampad","team_uuid":null,"source_type":"local","source_path":"/mnt/visus_datasets/tmp/upl
+[12-Nov-2025 17:55:08 UTC] PHP Warning:  Undefined array key "team_id" in /var/www/html/api/dataset-status.php on line 72
+[12-Nov-2025 17:55:08 UTC] API Request: GET http://sclib_fastapi:5001/api/v1/datasets/20b598cc-6310-417e-bac0-549abc0154cb?user_email=amy%40visus.net
+[12-Nov-2025 17:55:08 UTC] HTTP Code: 200
+[12-Nov-2025 17:55:08 UTC] Response (first 500 chars): {"success":true,"identifier":"20b598cc-6310-417e-bac0-549abc0154cb","resolved_uuid":"20b598cc-6310-417e-bac0-549abc0154cb","dataset":{"_id":"6914c9d06d2b828ec3a01289","uuid":"20b598cc-6310-417e-bac0-549abc0154cb","name":"Sampad dir local upload","slug":"amy-sampad-dir-local-upload-2025","id":64680,"user":"amy@visus.net","user_id":"amy@visus.net","sensor":"TIFF","convert":true,"is_public":true,"folder_uuid":"Sampad","team_uuid":null,"source_type":"local","source_path":"/mnt/visus_datasets/tmp/upl
+[12-Nov-2025 17:55:08 UTC] PHP Warning:  Invalid "upload_max_filesize" setting. Invalid quantity "2T": unknown multiplier "T", interpreting as "2" for backwards compatibility in Unknown on line 0
+[12-Nov-2025 17:55:08 UTC] PHP Warning:  Invalid "post_max_size" setting. Invalid quantity "2T": unknown multiplier "T", interpreting as "2" for backwards compatibility in Unknown on line 0

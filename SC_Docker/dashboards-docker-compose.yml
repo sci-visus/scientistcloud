@@ -1,6 +1,6 @@
 # Dashboard Services - Auto-generated from dashboard-registry.json
 # DO NOT EDIT MANUALLY - Regenerate using scripts/generate_docker_compose.sh
-# Generated: Wed Nov 12 10:44:22 CST 2025
+# Generated: Wed Nov 12 11:03:53 CST 2025
 
 services:
   # 3D Plotly Dashboard
