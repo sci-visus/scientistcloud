@@ -80,6 +80,9 @@ $preferredDashboard = getUserPreferredDashboard($user['id']);
           <button type="button" class="btn btn-outline-light" id="uploadDatasetBtn" title="Upload Dataset">
             <i class="fas fa-upload"></i> Upload Dataset
           </button>
+          <button type="button" class="btn btn-outline-light" id="viewJobsBtn" title="View Jobs">
+            <i class="fas fa-tasks"></i> View Jobs
+          </button>
           <button type="button" class="btn btn-outline-light" id="createTeamBtn" title="Create Team">
             <i class="fas fa-users"></i> Create Team
           </button>
@@ -109,5 +112,6 @@ $preferredDashboard = getUserPreferredDashboard($user['id']);
   <script src="assets/js/dataset-manager.js"></script>
   <script src="assets/js/viewer-manager.js"></script>
   <script src="assets/js/upload-manager.js"></script>
+  <script src="assets/js/job-manager.js"></script>
 </body>
 </html>
