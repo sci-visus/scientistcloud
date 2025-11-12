@@ -74,7 +74,13 @@ class DatasetManager {
             
             if (e.target.closest('[data-action="delete"]')) {
                 e.preventDefault();
-                this.deleteDataset(e.target.closest('[data-action="delete"]').dataset.datasetId);
+                const deleteButton = e.target.closest('[data-action="delete"]');
+                const datasetId = deleteButton.dataset.datasetId || deleteButton.getAttribute('data-dataset-id');
+                if (datasetId) {
+                    this.deleteDataset(datasetId);
+                } else {
+                    console.error('Could not find dataset ID for delete button');
+                }
             }
         });
 
@@ -1583,17 +1589,32 @@ class DatasetManager {
                     body: JSON.stringify({ dataset_id: datasetId })
                 });
 
-                const data = await response.json();
+                // Check if response is OK before trying to parse JSON
+                if (!response.ok) {
+                    const text = await response.text();
+                    console.error('Delete failed with status:', response.status, 'Response:', text);
+                    throw new Error(`Server error: ${response.status}`);
+                }
+
+                // Try to parse JSON, but handle HTML error responses
+                const text = await response.text();
+                let data;
+                try {
+                    data = JSON.parse(text);
+                } catch (parseError) {
+                    console.error('Failed to parse JSON response:', text);
+                    throw new Error('Server returned invalid response. Check console for details.');
+                }
 
                 if (data.success) {
                     alert('Dataset deleted successfully');
                     location.reload();
                 } else {
-                    alert('Error deleting dataset: ' + data.error);
+                    alert('Error deleting dataset: ' + (data.error || 'Unknown error'));
                 }
             } catch (error) {
                 console.error('Error deleting dataset:', error);
-                alert('Error deleting dataset');
+                alert('Error deleting dataset: ' + error.message);
             }
         }
     }

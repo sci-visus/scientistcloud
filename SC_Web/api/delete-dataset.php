@@ -15,6 +15,7 @@ ob_start();
 
 ini_set('display_errors', 0);
 ini_set('display_startup_errors', 0);
+error_reporting(E_ALL & ~E_WARNING & ~E_NOTICE & ~E_DEPRECATED);
 
 if (session_status() == PHP_SESSION_NONE) {
     session_start();
@@ -109,6 +110,7 @@ try {
     }
 
 } catch (Exception $e) {
+    ob_end_clean();
     logMessage('ERROR', 'Failed to delete dataset', ['dataset_id' => $datasetId ?? 'unknown', 'error' => $e->getMessage()]);
     
     http_response_code(500);
@@ -117,5 +119,18 @@ try {
         'error' => 'Internal server error',
         'message' => $e->getMessage()
     ]);
+    exit;
+} catch (Error $e) {
+    // Catch fatal errors (PHP 7+)
+    ob_end_clean();
+    logMessage('ERROR', 'Fatal error deleting dataset', ['dataset_id' => $datasetId ?? 'unknown', 'error' => $e->getMessage()]);
+    
+    http_response_code(500);
+    echo json_encode([
+        'success' => false,
+        'error' => 'Internal server error',
+        'message' => 'A fatal error occurred while deleting the dataset'
+    ]);
+    exit;
 }
 ?>
