@@ -106,7 +106,15 @@ class DatasetManager {
      */
     async loadDatasets() {
         try {
-            const response = await fetch(`${getApiBasePath()}/datasets.php`);
+            // Add cache-busting parameter to prevent stale data
+            const cacheBuster = new Date().getTime();
+            const response = await fetch(`${getApiBasePath()}/datasets.php?t=${cacheBuster}`, {
+                cache: 'no-store',
+                headers: {
+                    'Cache-Control': 'no-cache, no-store, must-revalidate',
+                    'Pragma': 'no-cache'
+                }
+            });
             
             // Get response text first to check for errors
             const responseText = await response.text();
