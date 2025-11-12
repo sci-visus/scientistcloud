@@ -81,7 +81,9 @@ define('DEFAULT_DASHBOARD', 'OpenVisusSlice');
 define('SUPPORTED_DASHBOARDS', ['OpenVisusSlice', '3DPlotly', '3DVTK', '4D_Dashboard', 'Magicscan']);
 
 // File upload settings
-define('MAX_UPLOAD_SIZE', 500 * 1024 * 1024); // 500MB
+// Very large limits for massive file uploads (TB+ datasets)
+// Matching previous uppyReceive.php configuration
+define('MAX_UPLOAD_SIZE', 2 * 1024 * 1024 * 1024 * 1024); // 2TB (for very large individual files)
 define('ALLOWED_EXTENSIONS', ['tiff', 'tif','jpg', 'jpeg', 'hdf5', 'nc', 'nxs', 'nexus', 'json', 'csv']);
 
 // File browser settings - files to exclude from display
@@ -185,8 +187,13 @@ function getConfig() {
 date_default_timezone_set('UTC');
 
 // Set memory limit for large datasets
-ini_set('memory_limit', '2G');
-ini_set('max_execution_time', 300);
+// Very large limits for massive file uploads (TB+ datasets)
+// Matching previous uppyReceive.php configuration
+ini_set('upload_max_filesize', '2T');
+ini_set('post_max_size', '2T');
+ini_set('max_execution_time', 0); // No time limit for large uploads
+ini_set('max_input_time', 0); // No time limit for large uploads
+ini_set('memory_limit', '4G'); // Increased memory for large file processing
 
 // CORS headers for API requests only (not for regular page requests)
 // Only output CORS headers if this is an API endpoint request

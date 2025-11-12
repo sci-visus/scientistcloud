@@ -1,0 +1,411 @@
+[12-Nov-2025 13:25:29 UTC] ✅ Using GuzzleHttp\Psr7\HttpFactory
+[12-Nov-2025 13:25:29 UTC] ✅ Using GuzzleHttp\Client
+[12-Nov-2025 13:25:33 UTC] ✅ Using GuzzleHttp\Psr7\HttpFactory
+[12-Nov-2025 13:25:33 UTC] ✅ Using GuzzleHttp\Client
+[12-Nov-2025 13:25:34 UTC] API Request: GET http://sclib_auth:8001/health
+[12-Nov-2025 13:25:34 UTC] HTTP Code: 200
+[12-Nov-2025 13:25:34 UTC] Response (first 500 chars): {"status":"healthy","service":"SCLib_Auth_Standalone"}
+[12-Nov-2025 13:25:34 UTC] Creating user at: http://sclib_auth:8001/api/auth/create-user
+[12-Nov-2025 13:25:34 UTC] User data: {"email":"amy@visus.net","name":"Amy Gooch","auth0_id":"google-oauth2|102515493501554578195","sub":"google-oauth2|102515493501554578195","picture":"https:\/\/lh3.googleusercontent.com\/a\/ACg8ocK-O-1oZ6Xz-TnfeEjCg0bJbjzvWA6xqXSC4U7gTYP5uFQXPQ=s96-c","email_verified":true,"auth0_metadata":{"given_name":"Amy","family_name":"Gooch","nickname":"amy","name":"Amy Gooch","picture":"https:\/\/lh3.googleusercontent.com\/a\/ACg8ocK-O-1oZ6Xz-TnfeEjCg0bJbjzvWA6xqXSC4U7gTYP5uFQXPQ=s96-c","updated_at":"2025-11-07T17:22:45.580Z","email":"amy@visus.net","email_verified":true,"iss":"https:\/\/dev-ep26akpb.auth0.com\/","aud":"Wy5lNzYVnDErayU9OmXQPFU5B99oHiI6","sub":"google-oauth2|102515493501554578195","iat":1762953949,"exp":1762989949,"sid":"2_JteWLpxc5QmD-kPa8dCEbsxo2JvuZm","nonce":"9ed2fb4611f34c69ab9d6bb988373381"}}
+[12-Nov-2025 13:25:34 UTC] API Request: POST http://sclib_auth:8001/api/auth/create-user
+[12-Nov-2025 13:25:34 UTC] HTTP Code: 200
+[12-Nov-2025 13:25:34 UTC] Response (first 500 chars): {"success":true,"user_id":"google-oauth2|102515493501554578195","user":{"id":"google-oauth2|102515493501554578195","user_id":"google-oauth2|102515493501554578195","email":"amy@visus.net","name":"Amy Gooch","picture":"https://lh3.googleusercontent.com/a/ACg8ocK-O-1oZ6Xz-TnfeEjCg0bJbjzvWA6xqXSC4U7gTYP5uFQXPQ=s96-c","email_verified":true,"created_at":"2025-11-11T17:17:28.973000","last_login":"2025-11-12T13:25:34.714000","preferences":{},"auth0_id":"google-oauth2|102515493501554578195"}}
+[12-Nov-2025 13:25:34 UTC] Create user response: {"success":true,"user_id":"google-oauth2|102515493501554578195","user":{"id":"google-oauth2|102515493501554578195","user_id":"google-oauth2|102515493501554578195","email":"amy@visus.net","name":"Amy Gooch","picture":"https:\/\/lh3.googleusercontent.com\/a\/ACg8ocK-O-1oZ6Xz-TnfeEjCg0bJbjzvWA6xqXSC4U7gTYP5uFQXPQ=s96-c","email_verified":true,"created_at":"2025-11-11T17:17:28.973000","last_login":"2025-11-12T13:25:34.714000","preferences":[],"auth0_id":"google-oauth2|102515493501554578195"}}
+[12-Nov-2025 13:25:35 UTC] API Request: GET http://sclib_fastapi:5001/api/datasets?user_id=google-oauth2%7C102515493501554578195
+[12-Nov-2025 13:25:35 UTC] HTTP Code: 200
+[12-Nov-2025 13:25:35 UTC] Response (first 500 chars): {"success":true,"datasets":[]}
+[12-Nov-2025 13:25:35 UTC] API Request: GET http://sclib_fastapi:5001/api/datasets?user_id=google-oauth2%7C102515493501554578195
+[12-Nov-2025 13:25:35 UTC] HTTP Code: 200
+[12-Nov-2025 13:25:35 UTC] Response (first 500 chars): {"success":true,"datasets":[]}
+[12-Nov-2025 13:25:35 UTC] API Request: GET http://sclib_fastapi:5001/api/datasets?user_id=google-oauth2%7C102515493501554578195
+[12-Nov-2025 13:25:35 UTC] HTTP Code: 200
+[12-Nov-2025 13:25:35 UTC] Response (first 500 chars): {"success":true,"datasets":[]}
+[12-Nov-2025 13:25:35 UTC] API Request: GET http://sclib_fastapi:5001/api/datasets?user_id=google-oauth2%7C102515493501554578195
+[12-Nov-2025 13:25:35 UTC] HTTP Code: 200
+[12-Nov-2025 13:25:35 UTC] Response (first 500 chars): {"success":true,"datasets":[]}
+[12-Nov-2025 13:25:35 UTC] API Request: GET http://sclib_fastapi:5001/api/datasets?user_id=google-oauth2%7C102515493501554578195
+[12-Nov-2025 13:25:35 UTC] HTTP Code: 200
+[12-Nov-2025 13:25:35 UTC] Response (first 500 chars): {"success":true,"datasets":[]}
+[12-Nov-2025 13:25:36 UTC] API Request: GET http://sclib_fastapi:5001/api/v1/datasets/by-user?user_email=amy%40visus.net
+[12-Nov-2025 13:25:36 UTC] HTTP Code: 200
+[12-Nov-2025 13:25:36 UTC] Response (first 500 chars): {"success":true,"datasets":{"my":[{"uuid":"0ab591c9-ad52-486a-abd5-82d36d62bd01","name":"AUTO_TEST_CONVERSION_TEST_20251111_152408","data_size":0,"folder":null,"folder_uuid":null,"time":null,"team":null,"team_uuid":null,"tags":"","sensor":"TIFF RGB","status":"done","compression_status":"unknown","url":"http://localhost:8080/mod_visus?dataset=0ab591c9-ad52-486a-abd5-82d36d62bd01&&server=false","google_drive_link":"","bucket":null,"prefix":null,"accesskey":null,"secretkey":null},{"uuid":"d04110db-
+[12-Nov-2025 13:25:36 UTC] Datasets API response: my=6, shared=0, team=0, total=6
+[12-Nov-2025 13:25:38 UTC] API Request: GET http://sclib_fastapi:5001/api/v1/datasets/by-user?user_email=amy%40visus.net
+[12-Nov-2025 13:25:38 UTC] HTTP Code: 200
+[12-Nov-2025 13:25:38 UTC] Response (first 500 chars): {"success":true,"datasets":{"my":[{"uuid":"0ab591c9-ad52-486a-abd5-82d36d62bd01","name":"AUTO_TEST_CONVERSION_TEST_20251111_152408","data_size":0,"folder":null,"folder_uuid":null,"time":null,"team":null,"team_uuid":null,"tags":"","sensor":"TIFF RGB","status":"done","compression_status":"unknown","url":"http://localhost:8080/mod_visus?dataset=0ab591c9-ad52-486a-abd5-82d36d62bd01&&server=false","google_drive_link":"","bucket":null,"prefix":null,"accesskey":null,"secretkey":null},{"uuid":"d04110db-
+[12-Nov-2025 13:25:38 UTC] API Request: GET http://sclib_fastapi:5001/api/v1/teams/by-user?user_email=amy%40visus.net
+[12-Nov-2025 13:25:38 UTC] HTTP Code: 404
+[12-Nov-2025 13:25:38 UTC] Response (first 500 chars): {"detail":"Not Found"}
+[12-Nov-2025 13:25:38 UTC] Failed to get user teams: API error (404): Not Found
+[12-Nov-2025 13:26:22 UTC] Upload API URL: http://sclib_fastapi:5001
+[12-Nov-2025 13:26:22 UTC] Upload endpoint URL: http://sclib_fastapi:5001/api/upload/upload
+[12-Nov-2025 13:26:22 UTC] Upload API request: URL=http://sclib_fastapi:5001/api/upload/upload, HTTP_CODE=200, Response length=155
+[12-Nov-2025 13:26:22 UTC] Upload API URL: http://sclib_fastapi:5001
+[12-Nov-2025 13:26:22 UTC] Upload endpoint URL: http://sclib_fastapi:5001/api/upload/upload
+[12-Nov-2025 13:26:23 UTC] Upload API request: URL=http://sclib_fastapi:5001/api/upload/upload, HTTP_CODE=200, Response length=153
+[12-Nov-2025 13:26:23 UTC] Upload API URL: http://sclib_fastapi:5001
+[12-Nov-2025 13:26:23 UTC] Upload endpoint URL: http://sclib_fastapi:5001/api/upload/upload
+[12-Nov-2025 13:26:23 UTC] Upload API request: URL=http://sclib_fastapi:5001/api/upload/upload, HTTP_CODE=200, Response length=153
+[12-Nov-2025 13:26:23 UTC] Upload API URL: http://sclib_fastapi:5001
+[12-Nov-2025 13:26:23 UTC] Upload endpoint URL: http://sclib_fastapi:5001/api/upload/upload
+[12-Nov-2025 13:26:24 UTC] Upload API request: URL=http://sclib_fastapi:5001/api/upload/upload, HTTP_CODE=200, Response length=153
+[12-Nov-2025 13:26:24 UTC] Upload API URL: http://sclib_fastapi:5001
+[12-Nov-2025 13:26:24 UTC] Upload endpoint URL: http://sclib_fastapi:5001/api/upload/upload
+[12-Nov-2025 13:26:24 UTC] Upload API request: URL=http://sclib_fastapi:5001/api/upload/upload, HTTP_CODE=200, Response length=153
+[12-Nov-2025 13:26:24 UTC] Upload API URL: http://sclib_fastapi:5001
+[12-Nov-2025 13:26:24 UTC] Upload endpoint URL: http://sclib_fastapi:5001/api/upload/upload
+[12-Nov-2025 13:26:24 UTC] Upload API request: URL=http://sclib_fastapi:5001/api/upload/upload, HTTP_CODE=200, Response length=153
+[12-Nov-2025 13:26:25 UTC] Upload API URL: http://sclib_fastapi:5001
+[12-Nov-2025 13:26:25 UTC] Upload endpoint URL: http://sclib_fastapi:5001/api/upload/upload
+[12-Nov-2025 13:26:25 UTC] Upload API request: URL=http://sclib_fastapi:5001/api/upload/upload, HTTP_CODE=200, Response length=153
+[12-Nov-2025 13:26:25 UTC] Upload API URL: http://sclib_fastapi:5001
+[12-Nov-2025 13:26:25 UTC] Upload endpoint URL: http://sclib_fastapi:5001/api/upload/upload
+[12-Nov-2025 13:26:25 UTC] Upload API request: URL=http://sclib_fastapi:5001/api/upload/upload, HTTP_CODE=200, Response length=153
+[12-Nov-2025 13:26:25 UTC] Upload API URL: http://sclib_fastapi:5001
+[12-Nov-2025 13:26:25 UTC] Upload endpoint URL: http://sclib_fastapi:5001/api/upload/upload
+[12-Nov-2025 13:26:26 UTC] Upload API request: URL=http://sclib_fastapi:5001/api/upload/upload, HTTP_CODE=200, Response length=153
+[12-Nov-2025 13:26:26 UTC] Upload API URL: http://sclib_fastapi:5001
+[12-Nov-2025 13:26:26 UTC] Upload endpoint URL: http://sclib_fastapi:5001/api/upload/upload
+[12-Nov-2025 13:26:26 UTC] Upload API request: URL=http://sclib_fastapi:5001/api/upload/upload, HTTP_CODE=200, Response length=153
+[12-Nov-2025 13:26:26 UTC] Upload API URL: http://sclib_fastapi:5001
+[12-Nov-2025 13:26:26 UTC] Upload endpoint URL: http://sclib_fastapi:5001/api/upload/upload
+[12-Nov-2025 13:26:26 UTC] Upload API request: URL=http://sclib_fastapi:5001/api/upload/upload, HTTP_CODE=200, Response length=153
+[12-Nov-2025 13:26:27 UTC] Upload API URL: http://sclib_fastapi:5001
+[12-Nov-2025 13:26:27 UTC] Upload endpoint URL: http://sclib_fastapi:5001/api/upload/upload
+[12-Nov-2025 13:26:27 UTC] Upload API request: URL=http://sclib_fastapi:5001/api/upload/upload, HTTP_CODE=200, Response length=153
+[12-Nov-2025 13:26:27 UTC] Upload API URL: http://sclib_fastapi:5001
+[12-Nov-2025 13:26:27 UTC] Upload endpoint URL: http://sclib_fastapi:5001/api/upload/upload
+[12-Nov-2025 13:26:27 UTC] Upload API request: URL=http://sclib_fastapi:5001/api/upload/upload, HTTP_CODE=200, Response length=153
+[12-Nov-2025 13:26:27 UTC] Upload API URL: http://sclib_fastapi:5001
+[12-Nov-2025 13:26:27 UTC] Upload endpoint URL: http://sclib_fastapi:5001/api/upload/upload
+[12-Nov-2025 13:26:28 UTC] Upload API request: URL=http://sclib_fastapi:5001/api/upload/upload, HTTP_CODE=200, Response length=153
+[12-Nov-2025 13:26:28 UTC] Upload API URL: http://sclib_fastapi:5001
+[12-Nov-2025 13:26:28 UTC] Upload endpoint URL: http://sclib_fastapi:5001/api/upload/upload
+[12-Nov-2025 13:26:28 UTC] Upload API request: URL=http://sclib_fastapi:5001/api/upload/upload, HTTP_CODE=200, Response length=153
+[12-Nov-2025 13:26:28 UTC] Upload API URL: http://sclib_fastapi:5001
+[12-Nov-2025 13:26:28 UTC] Upload endpoint URL: http://sclib_fastapi:5001/api/upload/upload
+[12-Nov-2025 13:26:28 UTC] Upload API request: URL=http://sclib_fastapi:5001/api/upload/upload, HTTP_CODE=200, Response length=153
+[12-Nov-2025 13:26:31 UTC] API Request: GET http://sclib_fastapi:5001/api/v1/datasets/by-user?user_email=amy%40visus.net
+[12-Nov-2025 13:26:31 UTC] HTTP Code: 200
+[12-Nov-2025 13:26:31 UTC] Response (first 500 chars): {"success":true,"datasets":{"my":[{"uuid":"0ab591c9-ad52-486a-abd5-82d36d62bd01","name":"AUTO_TEST_CONVERSION_TEST_20251111_152408","data_size":0,"folder":null,"folder_uuid":null,"time":null,"team":null,"team_uuid":null,"tags":"","sensor":"TIFF RGB","status":"done","compression_status":"unknown","url":"http://localhost:8080/mod_visus?dataset=0ab591c9-ad52-486a-abd5-82d36d62bd01&&server=false","google_drive_link":"","bucket":null,"prefix":null,"accesskey":null,"secretkey":null},{"uuid":"d04110db-
+[12-Nov-2025 13:26:31 UTC] Datasets API response: my=7, shared=0, team=0, total=7
+[12-Nov-2025 13:26:32 UTC] API Request: GET http://sclib_fastapi:5001/api/v1/datasets/by-user?user_email=amy%40visus.net
+[12-Nov-2025 13:26:32 UTC] HTTP Code: 200
+[12-Nov-2025 13:26:32 UTC] Response (first 500 chars): {"success":true,"datasets":{"my":[{"uuid":"0ab591c9-ad52-486a-abd5-82d36d62bd01","name":"AUTO_TEST_CONVERSION_TEST_20251111_152408","data_size":0,"folder":null,"folder_uuid":null,"time":null,"team":null,"team_uuid":null,"tags":"","sensor":"TIFF RGB","status":"done","compression_status":"unknown","url":"http://localhost:8080/mod_visus?dataset=0ab591c9-ad52-486a-abd5-82d36d62bd01&&server=false","google_drive_link":"","bucket":null,"prefix":null,"accesskey":null,"secretkey":null},{"uuid":"d04110db-
+[12-Nov-2025 13:26:32 UTC] Datasets API response: my=7, shared=0, team=0, total=7
+[12-Nov-2025 13:26:34 UTC] API Request: GET http://sclib_fastapi:5001/api/v1/datasets/by-user?user_email=amy%40visus.net
+[12-Nov-2025 13:26:34 UTC] HTTP Code: 200
+[12-Nov-2025 13:26:34 UTC] Response (first 500 chars): {"success":true,"datasets":{"my":[{"uuid":"0ab591c9-ad52-486a-abd5-82d36d62bd01","name":"AUTO_TEST_CONVERSION_TEST_20251111_152408","data_size":0,"folder":null,"folder_uuid":null,"time":null,"team":null,"team_uuid":null,"tags":"","sensor":"TIFF RGB","status":"done","compression_status":"unknown","url":"http://localhost:8080/mod_visus?dataset=0ab591c9-ad52-486a-abd5-82d36d62bd01&&server=false","google_drive_link":"","bucket":null,"prefix":null,"accesskey":null,"secretkey":null},{"uuid":"d04110db-
+[12-Nov-2025 13:26:34 UTC] Datasets API response: my=7, shared=0, team=0, total=7
+[12-Nov-2025 13:26:36 UTC] API Request: GET http://sclib_fastapi:5001/api/v1/datasets/by-user?user_email=amy%40visus.net
+[12-Nov-2025 13:26:36 UTC] HTTP Code: 200
+[12-Nov-2025 13:26:36 UTC] Response (first 500 chars): {"success":true,"datasets":{"my":[{"uuid":"0ab591c9-ad52-486a-abd5-82d36d62bd01","name":"AUTO_TEST_CONVERSION_TEST_20251111_152408","data_size":0,"folder":null,"folder_uuid":null,"time":null,"team":null,"team_uuid":null,"tags":"","sensor":"TIFF RGB","status":"done","compression_status":"unknown","url":"http://localhost:8080/mod_visus?dataset=0ab591c9-ad52-486a-abd5-82d36d62bd01&&server=false","google_drive_link":"","bucket":null,"prefix":null,"accesskey":null,"secretkey":null},{"uuid":"d04110db-
+[12-Nov-2025 13:26:36 UTC] Datasets API response: my=7, shared=0, team=0, total=7
+[12-Nov-2025 13:26:37 UTC] API Request: GET http://sclib_fastapi:5001/api/v1/datasets/by-user?user_email=amy%40visus.net
+[12-Nov-2025 13:26:37 UTC] HTTP Code: 200
+[12-Nov-2025 13:26:37 UTC] Response (first 500 chars): {"success":true,"datasets":{"my":[{"uuid":"0ab591c9-ad52-486a-abd5-82d36d62bd01","name":"AUTO_TEST_CONVERSION_TEST_20251111_152408","data_size":0,"folder":null,"folder_uuid":null,"time":null,"team":null,"team_uuid":null,"tags":"","sensor":"TIFF RGB","status":"done","compression_status":"unknown","url":"http://localhost:8080/mod_visus?dataset=0ab591c9-ad52-486a-abd5-82d36d62bd01&&server=false","google_drive_link":"","bucket":null,"prefix":null,"accesskey":null,"secretkey":null},{"uuid":"d04110db-
+[12-Nov-2025 13:26:37 UTC] Datasets API response: my=7, shared=0, team=0, total=7
+[12-Nov-2025 13:26:38 UTC] API Request: GET http://sclib_fastapi:5001/api/v1/datasets/by-user?user_email=amy%40visus.net
+[12-Nov-2025 13:26:38 UTC] HTTP Code: 200
+[12-Nov-2025 13:26:38 UTC] Response (first 500 chars): {"success":true,"datasets":{"my":[{"uuid":"0ab591c9-ad52-486a-abd5-82d36d62bd01","name":"AUTO_TEST_CONVERSION_TEST_20251111_152408","data_size":0,"folder":null,"folder_uuid":null,"time":null,"team":null,"team_uuid":null,"tags":"","sensor":"TIFF RGB","status":"done","compression_status":"unknown","url":"http://localhost:8080/mod_visus?dataset=0ab591c9-ad52-486a-abd5-82d36d62bd01&&server=false","google_drive_link":"","bucket":null,"prefix":null,"accesskey":null,"secretkey":null},{"uuid":"d04110db-
+[12-Nov-2025 13:26:38 UTC] Datasets API response: my=7, shared=0, team=0, total=7
+[12-Nov-2025 13:26:39 UTC] API Request: GET http://sclib_fastapi:5001/api/v1/datasets/by-user?user_email=amy%40visus.net
+[12-Nov-2025 13:26:39 UTC] HTTP Code: 200
+[12-Nov-2025 13:26:39 UTC] Response (first 500 chars): {"success":true,"datasets":{"my":[{"uuid":"0ab591c9-ad52-486a-abd5-82d36d62bd01","name":"AUTO_TEST_CONVERSION_TEST_20251111_152408","data_size":0,"folder":null,"folder_uuid":null,"time":null,"team":null,"team_uuid":null,"tags":"","sensor":"TIFF RGB","status":"done","compression_status":"unknown","url":"http://localhost:8080/mod_visus?dataset=0ab591c9-ad52-486a-abd5-82d36d62bd01&&server=false","google_drive_link":"","bucket":null,"prefix":null,"accesskey":null,"secretkey":null},{"uuid":"d04110db-
+[12-Nov-2025 13:26:39 UTC] Datasets API response: my=7, shared=0, team=0, total=7
+[12-Nov-2025 13:26:39 UTC] API Request: GET http://sclib_fastapi:5001/api/v1/datasets/by-user?user_email=amy%40visus.net
+[12-Nov-2025 13:26:39 UTC] HTTP Code: 200
+[12-Nov-2025 13:26:39 UTC] Response (first 500 chars): {"success":true,"datasets":{"my":[{"uuid":"0ab591c9-ad52-486a-abd5-82d36d62bd01","name":"AUTO_TEST_CONVERSION_TEST_20251111_152408","data_size":0,"folder":null,"folder_uuid":null,"time":null,"team":null,"team_uuid":null,"tags":"","sensor":"TIFF RGB","status":"done","compression_status":"unknown","url":"http://localhost:8080/mod_visus?dataset=0ab591c9-ad52-486a-abd5-82d36d62bd01&&server=false","google_drive_link":"","bucket":null,"prefix":null,"accesskey":null,"secretkey":null},{"uuid":"d04110db-
+[12-Nov-2025 13:26:39 UTC] Datasets API response: my=7, shared=0, team=0, total=7
+[12-Nov-2025 13:26:40 UTC] API Request: GET http://sclib_fastapi:5001/api/v1/datasets/by-user?user_email=amy%40visus.net
+[12-Nov-2025 13:26:40 UTC] HTTP Code: 200
+[12-Nov-2025 13:26:40 UTC] Response (first 500 chars): {"success":true,"datasets":{"my":[{"uuid":"0ab591c9-ad52-486a-abd5-82d36d62bd01","name":"AUTO_TEST_CONVERSION_TEST_20251111_152408","data_size":0,"folder":null,"folder_uuid":null,"time":null,"team":null,"team_uuid":null,"tags":"","sensor":"TIFF RGB","status":"done","compression_status":"unknown","url":"http://localhost:8080/mod_visus?dataset=0ab591c9-ad52-486a-abd5-82d36d62bd01&&server=false","google_drive_link":"","bucket":null,"prefix":null,"accesskey":null,"secretkey":null},{"uuid":"d04110db-
+[12-Nov-2025 13:26:40 UTC] Datasets API response: my=7, shared=0, team=0, total=7
+[12-Nov-2025 13:26:40 UTC] API Request: GET http://sclib_fastapi:5001/api/v1/datasets/by-user?user_email=amy%40visus.net
+[12-Nov-2025 13:26:40 UTC] HTTP Code: 200
+[12-Nov-2025 13:26:40 UTC] Response (first 500 chars): {"success":true,"datasets":{"my":[{"uuid":"0ab591c9-ad52-486a-abd5-82d36d62bd01","name":"AUTO_TEST_CONVERSION_TEST_20251111_152408","data_size":0,"folder":null,"folder_uuid":null,"time":null,"team":null,"team_uuid":null,"tags":"","sensor":"TIFF RGB","status":"done","compression_status":"unknown","url":"http://localhost:8080/mod_visus?dataset=0ab591c9-ad52-486a-abd5-82d36d62bd01&&server=false","google_drive_link":"","bucket":null,"prefix":null,"accesskey":null,"secretkey":null},{"uuid":"d04110db-
+[12-Nov-2025 13:26:40 UTC] Datasets API response: my=7, shared=0, team=0, total=7
+[12-Nov-2025 13:26:41 UTC] API Request: GET http://sclib_fastapi:5001/api/v1/datasets/by-user?user_email=amy%40visus.net
+[12-Nov-2025 13:26:41 UTC] HTTP Code: 200
+[12-Nov-2025 13:26:41 UTC] Response (first 500 chars): {"success":true,"datasets":{"my":[{"uuid":"0ab591c9-ad52-486a-abd5-82d36d62bd01","name":"AUTO_TEST_CONVERSION_TEST_20251111_152408","data_size":0,"folder":null,"folder_uuid":null,"time":null,"team":null,"team_uuid":null,"tags":"","sensor":"TIFF RGB","status":"done","compression_status":"unknown","url":"http://localhost:8080/mod_visus?dataset=0ab591c9-ad52-486a-abd5-82d36d62bd01&&server=false","google_drive_link":"","bucket":null,"prefix":null,"accesskey":null,"secretkey":null},{"uuid":"d04110db-
+[12-Nov-2025 13:26:41 UTC] Datasets API response: my=7, shared=0, team=0, total=7
+[12-Nov-2025 13:26:41 UTC] API Request: GET http://sclib_fastapi:5001/api/v1/datasets/by-user?user_email=amy%40visus.net
+[12-Nov-2025 13:26:41 UTC] HTTP Code: 200
+[12-Nov-2025 13:26:41 UTC] Response (first 500 chars): {"success":true,"datasets":{"my":[{"uuid":"0ab591c9-ad52-486a-abd5-82d36d62bd01","name":"AUTO_TEST_CONVERSION_TEST_20251111_152408","data_size":0,"folder":null,"folder_uuid":null,"time":null,"team":null,"team_uuid":null,"tags":"","sensor":"TIFF RGB","status":"done","compression_status":"unknown","url":"http://localhost:8080/mod_visus?dataset=0ab591c9-ad52-486a-abd5-82d36d62bd01&&server=false","google_drive_link":"","bucket":null,"prefix":null,"accesskey":null,"secretkey":null},{"uuid":"d04110db-
+[12-Nov-2025 13:26:41 UTC] Datasets API response: my=7, shared=0, team=0, total=7
+[12-Nov-2025 13:26:42 UTC] API Request: GET http://sclib_fastapi:5001/api/v1/datasets/by-user?user_email=amy%40visus.net
+[12-Nov-2025 13:26:42 UTC] HTTP Code: 200
+[12-Nov-2025 13:26:42 UTC] Response (first 500 chars): {"success":true,"datasets":{"my":[{"uuid":"0ab591c9-ad52-486a-abd5-82d36d62bd01","name":"AUTO_TEST_CONVERSION_TEST_20251111_152408","data_size":0,"folder":null,"folder_uuid":null,"time":null,"team":null,"team_uuid":null,"tags":"","sensor":"TIFF RGB","status":"done","compression_status":"unknown","url":"http://localhost:8080/mod_visus?dataset=0ab591c9-ad52-486a-abd5-82d36d62bd01&&server=false","google_drive_link":"","bucket":null,"prefix":null,"accesskey":null,"secretkey":null},{"uuid":"d04110db-
+[12-Nov-2025 13:26:42 UTC] Datasets API response: my=7, shared=0, team=0, total=7
+[12-Nov-2025 13:26:42 UTC] API Request: GET http://sclib_fastapi:5001/api/v1/datasets/by-user?user_email=amy%40visus.net
+[12-Nov-2025 13:26:42 UTC] HTTP Code: 200
+[12-Nov-2025 13:26:42 UTC] Response (first 500 chars): {"success":true,"datasets":{"my":[{"uuid":"0ab591c9-ad52-486a-abd5-82d36d62bd01","name":"AUTO_TEST_CONVERSION_TEST_20251111_152408","data_size":0,"folder":null,"folder_uuid":null,"time":null,"team":null,"team_uuid":null,"tags":"","sensor":"TIFF RGB","status":"done","compression_status":"unknown","url":"http://localhost:8080/mod_visus?dataset=0ab591c9-ad52-486a-abd5-82d36d62bd01&&server=false","google_drive_link":"","bucket":null,"prefix":null,"accesskey":null,"secretkey":null},{"uuid":"d04110db-
+[12-Nov-2025 13:26:42 UTC] Datasets API response: my=7, shared=0, team=0, total=7
+[12-Nov-2025 13:26:42 UTC] API Request: GET http://sclib_fastapi:5001/api/v1/datasets/by-user?user_email=amy%40visus.net
+[12-Nov-2025 13:26:42 UTC] HTTP Code: 200
+[12-Nov-2025 13:26:42 UTC] Response (first 500 chars): {"success":true,"datasets":{"my":[{"uuid":"0ab591c9-ad52-486a-abd5-82d36d62bd01","name":"AUTO_TEST_CONVERSION_TEST_20251111_152408","data_size":0,"folder":null,"folder_uuid":null,"time":null,"team":null,"team_uuid":null,"tags":"","sensor":"TIFF RGB","status":"done","compression_status":"unknown","url":"http://localhost:8080/mod_visus?dataset=0ab591c9-ad52-486a-abd5-82d36d62bd01&&server=false","google_drive_link":"","bucket":null,"prefix":null,"accesskey":null,"secretkey":null},{"uuid":"d04110db-
+[12-Nov-2025 13:26:42 UTC] Datasets API response: my=7, shared=0, team=0, total=7
+[12-Nov-2025 13:26:43 UTC] API Request: GET http://sclib_fastapi:5001/api/v1/datasets/by-user?user_email=amy%40visus.net
+[12-Nov-2025 13:26:43 UTC] HTTP Code: 200
+[12-Nov-2025 13:26:43 UTC] Response (first 500 chars): {"success":true,"datasets":{"my":[{"uuid":"0ab591c9-ad52-486a-abd5-82d36d62bd01","name":"AUTO_TEST_CONVERSION_TEST_20251111_152408","data_size":0,"folder":null,"folder_uuid":null,"time":null,"team":null,"team_uuid":null,"tags":"","sensor":"TIFF RGB","status":"done","compression_status":"unknown","url":"http://localhost:8080/mod_visus?dataset=0ab591c9-ad52-486a-abd5-82d36d62bd01&&server=false","google_drive_link":"","bucket":null,"prefix":null,"accesskey":null,"secretkey":null},{"uuid":"d04110db-
+[12-Nov-2025 13:26:43 UTC] Datasets API response: my=7, shared=0, team=0, total=7
+[12-Nov-2025 13:26:53 UTC] API Request: GET http://sclib_fastapi:5001/api/v1/datasets/db9b7e61-7d86-4aa8-a7ba-a19c73862983?user_email=amy%40visus.net
+[12-Nov-2025 13:26:53 UTC] HTTP Code: 200
+[12-Nov-2025 13:26:53 UTC] Response (first 500 chars): {"success":true,"identifier":"db9b7e61-7d86-4aa8-a7ba-a19c73862983","resolved_uuid":"db9b7e61-7d86-4aa8-a7ba-a19c73862983","dataset":{"_id":"69148afe346f163ef2a33449","uuid":"db9b7e61-7d86-4aa8-a7ba-a19c73862983","name":"taylor","slug":"amy-taylor-2025","id":82606,"user":"amy@visus.net","sensor":"RGB","convert":true,"is_public":true,"folder_uuid":"Taylor","team_uuid":null,"source_type":"local","source_path":"/tmp/tmpb3_g9v3x/.DS_Store","destination_path":"/mnt/visus_datasets/upload/db9b7e61-7d86
+[12-Nov-2025 13:26:53 UTC] PHP Warning:  Undefined array key "team_id" in /var/www/html/api/dataset-files.php on line 82
+[12-Nov-2025 13:26:53 UTC] API Request: GET http://sclib_fastapi:5001/api/v1/datasets/db9b7e61-7d86-4aa8-a7ba-a19c73862983/files?user_email=amy%40visus.net
+[12-Nov-2025 13:26:53 UTC] HTTP Code: 200
+[12-Nov-2025 13:26:53 UTC] Response (first 500 chars): {"success":true,"dataset_uuid":"db9b7e61-7d86-4aa8-a7ba-a19c73862983","directories":{"upload":{"path":"/mnt/visus_datasets/upload/db9b7e61-7d86-4aa8-a7ba-a19c73862983","exists":true,"readable":true,"files":[{"name":"000.JPG","type":"file","path":"upload/000.JPG","size":5314534,"modified":1762953983.0},{"name":"001.JPG","type":"file","path":"upload/001.JPG","size":4973552,"modified":1762953984.0},{"name":"002.JPG","type":"file","path":"upload/002.JPG","size":5259070,"modified":1762953984.0},{"nam
+[12-Nov-2025 13:27:01 UTC] API Request: GET http://sclib_fastapi:5001/api/v1/datasets/by-user?user_email=amy%40visus.net
+[12-Nov-2025 13:27:01 UTC] HTTP Code: 200
+[12-Nov-2025 13:27:01 UTC] Response (first 500 chars): {"success":true,"datasets":{"my":[{"uuid":"0ab591c9-ad52-486a-abd5-82d36d62bd01","name":"AUTO_TEST_CONVERSION_TEST_20251111_152408","data_size":0,"folder":null,"folder_uuid":null,"time":null,"team":null,"team_uuid":null,"tags":"","sensor":"TIFF RGB","status":"done","compression_status":"unknown","url":"http://localhost:8080/mod_visus?dataset=0ab591c9-ad52-486a-abd5-82d36d62bd01&&server=false","google_drive_link":"","bucket":null,"prefix":null,"accesskey":null,"secretkey":null},{"uuid":"d04110db-
+[12-Nov-2025 13:27:02 UTC] API Request: GET http://sclib_fastapi:5001/api/v1/teams/by-user?user_email=amy%40visus.net
+[12-Nov-2025 13:27:02 UTC] HTTP Code: 404
+[12-Nov-2025 13:27:02 UTC] Response (first 500 chars): {"detail":"Not Found"}
+[12-Nov-2025 13:27:02 UTC] Failed to get user teams: API error (404): Not Found
+[12-Nov-2025 13:28:38 UTC] Upload API URL: http://sclib_fastapi:5001
+[12-Nov-2025 13:28:38 UTC] Upload endpoint URL: http://sclib_fastapi:5001/api/upload/upload
+[12-Nov-2025 13:28:39 UTC] Upload API request: URL=http://sclib_fastapi:5001/api/upload/upload, HTTP_CODE=200, Response length=222
+[12-Nov-2025 13:28:39 UTC] Upload API URL: http://sclib_fastapi:5001
+[12-Nov-2025 13:28:39 UTC] Upload endpoint URL: http://sclib_fastapi:5001/api/upload/upload
+[12-Nov-2025 13:28:40 UTC] Upload API request: URL=http://sclib_fastapi:5001/api/upload/upload, HTTP_CODE=200, Response length=222
+[12-Nov-2025 13:28:40 UTC] Upload API URL: http://sclib_fastapi:5001
+[12-Nov-2025 13:28:40 UTC] Upload endpoint URL: http://sclib_fastapi:5001/api/upload/upload
+[12-Nov-2025 13:28:41 UTC] Upload API request: URL=http://sclib_fastapi:5001/api/upload/upload, HTTP_CODE=200, Response length=222
+[12-Nov-2025 13:28:41 UTC] Upload API URL: http://sclib_fastapi:5001
+[12-Nov-2025 13:28:41 UTC] Upload endpoint URL: http://sclib_fastapi:5001/api/upload/upload
+[12-Nov-2025 13:28:41 UTC] Upload API request: URL=http://sclib_fastapi:5001/api/upload/upload, HTTP_CODE=200, Response length=222
+[12-Nov-2025 13:28:41 UTC] Upload API URL: http://sclib_fastapi:5001
+[12-Nov-2025 13:28:41 UTC] Upload endpoint URL: http://sclib_fastapi:5001/api/upload/upload
+[12-Nov-2025 13:28:42 UTC] Upload API request: URL=http://sclib_fastapi:5001/api/upload/upload, HTTP_CODE=200, Response length=222
+[12-Nov-2025 13:28:42 UTC] Upload API URL: http://sclib_fastapi:5001
+[12-Nov-2025 13:28:42 UTC] Upload endpoint URL: http://sclib_fastapi:5001/api/upload/upload
+[12-Nov-2025 13:28:43 UTC] Upload API request: URL=http://sclib_fastapi:5001/api/upload/upload, HTTP_CODE=200, Response length=222
+[12-Nov-2025 13:28:43 UTC] Upload API URL: http://sclib_fastapi:5001
+[12-Nov-2025 13:28:43 UTC] Upload endpoint URL: http://sclib_fastapi:5001/api/upload/upload
+[12-Nov-2025 13:28:43 UTC] Upload API request: URL=http://sclib_fastapi:5001/api/upload/upload, HTTP_CODE=200, Response length=222
+[12-Nov-2025 13:28:44 UTC] Upload API URL: http://sclib_fastapi:5001
+[12-Nov-2025 13:28:44 UTC] Upload endpoint URL: http://sclib_fastapi:5001/api/upload/upload
+[12-Nov-2025 13:28:44 UTC] Upload API request: URL=http://sclib_fastapi:5001/api/upload/upload, HTTP_CODE=200, Response length=222
+[12-Nov-2025 13:28:45 UTC] Upload API URL: http://sclib_fastapi:5001
+[12-Nov-2025 13:28:45 UTC] Upload endpoint URL: http://sclib_fastapi:5001/api/upload/upload
+[12-Nov-2025 13:28:45 UTC] Upload API request: URL=http://sclib_fastapi:5001/api/upload/upload, HTTP_CODE=200, Response length=155
+[12-Nov-2025 13:28:45 UTC] Upload API URL: http://sclib_fastapi:5001
+[12-Nov-2025 13:28:45 UTC] Upload endpoint URL: http://sclib_fastapi:5001/api/upload/upload
+[12-Nov-2025 13:28:46 UTC] Upload API request: URL=http://sclib_fastapi:5001/api/upload/upload, HTTP_CODE=200, Response length=222
+[12-Nov-2025 13:28:46 UTC] Upload API URL: http://sclib_fastapi:5001
+[12-Nov-2025 13:28:46 UTC] Upload endpoint URL: http://sclib_fastapi:5001/api/upload/upload
+[12-Nov-2025 13:28:47 UTC] Upload API request: URL=http://sclib_fastapi:5001/api/upload/upload, HTTP_CODE=200, Response length=222
+[12-Nov-2025 13:28:47 UTC] Upload API URL: http://sclib_fastapi:5001
+[12-Nov-2025 13:28:47 UTC] Upload endpoint URL: http://sclib_fastapi:5001/api/upload/upload
+[12-Nov-2025 13:28:48 UTC] Upload API request: URL=http://sclib_fastapi:5001/api/upload/upload, HTTP_CODE=200, Response length=222
+[12-Nov-2025 13:28:48 UTC] Upload API URL: http://sclib_fastapi:5001
+[12-Nov-2025 13:28:48 UTC] Upload endpoint URL: http://sclib_fastapi:5001/api/upload/upload
+[12-Nov-2025 13:28:49 UTC] Upload API request: URL=http://sclib_fastapi:5001/api/upload/upload, HTTP_CODE=200, Response length=222
+[12-Nov-2025 13:28:49 UTC] Upload API URL: http://sclib_fastapi:5001
+[12-Nov-2025 13:28:49 UTC] Upload endpoint URL: http://sclib_fastapi:5001/api/upload/upload
+[12-Nov-2025 13:28:50 UTC] Upload API request: URL=http://sclib_fastapi:5001/api/upload/upload, HTTP_CODE=200, Response length=222
+[12-Nov-2025 13:28:50 UTC] Upload API URL: http://sclib_fastapi:5001
+[12-Nov-2025 13:28:50 UTC] Upload endpoint URL: http://sclib_fastapi:5001/api/upload/upload
+[12-Nov-2025 13:28:51 UTC] Upload API request: URL=http://sclib_fastapi:5001/api/upload/upload, HTTP_CODE=200, Response length=222
+[12-Nov-2025 13:28:51 UTC] Upload API URL: http://sclib_fastapi:5001
+[12-Nov-2025 13:28:51 UTC] Upload endpoint URL: http://sclib_fastapi:5001/api/upload/upload
+[12-Nov-2025 13:28:52 UTC] Upload API request: URL=http://sclib_fastapi:5001/api/upload/upload, HTTP_CODE=200, Response length=222
+[12-Nov-2025 13:28:52 UTC] Upload API URL: http://sclib_fastapi:5001
+[12-Nov-2025 13:28:52 UTC] Upload endpoint URL: http://sclib_fastapi:5001/api/upload/upload
+[12-Nov-2025 13:28:52 UTC] Upload API request: URL=http://sclib_fastapi:5001/api/upload/upload, HTTP_CODE=200, Response length=222
+[12-Nov-2025 13:28:53 UTC] Upload API URL: http://sclib_fastapi:5001
+[12-Nov-2025 13:28:53 UTC] Upload endpoint URL: http://sclib_fastapi:5001/api/upload/upload
+[12-Nov-2025 13:28:53 UTC] Upload API request: URL=http://sclib_fastapi:5001/api/upload/upload, HTTP_CODE=200, Response length=222
+[12-Nov-2025 13:28:53 UTC] Upload API URL: http://sclib_fastapi:5001
+[12-Nov-2025 13:28:53 UTC] Upload endpoint URL: http://sclib_fastapi:5001/api/upload/upload
+[12-Nov-2025 13:28:54 UTC] Upload API request: URL=http://sclib_fastapi:5001/api/upload/upload, HTTP_CODE=200, Response length=222
+[12-Nov-2025 13:28:54 UTC] Upload API URL: http://sclib_fastapi:5001
+[12-Nov-2025 13:28:54 UTC] Upload endpoint URL: http://sclib_fastapi:5001/api/upload/upload
+[12-Nov-2025 13:28:55 UTC] Upload API request: URL=http://sclib_fastapi:5001/api/upload/upload, HTTP_CODE=200, Response length=222
+[12-Nov-2025 13:28:55 UTC] Upload API URL: http://sclib_fastapi:5001
+[12-Nov-2025 13:28:55 UTC] Upload endpoint URL: http://sclib_fastapi:5001/api/upload/upload
+[12-Nov-2025 13:28:56 UTC] Upload API request: URL=http://sclib_fastapi:5001/api/upload/upload, HTTP_CODE=200, Response length=222
+[12-Nov-2025 13:28:56 UTC] Upload API URL: http://sclib_fastapi:5001
+[12-Nov-2025 13:28:56 UTC] Upload endpoint URL: http://sclib_fastapi:5001/api/upload/upload
+[12-Nov-2025 13:28:57 UTC] Upload API request: URL=http://sclib_fastapi:5001/api/upload/upload, HTTP_CODE=200, Response length=222
+[12-Nov-2025 13:28:57 UTC] Upload API URL: http://sclib_fastapi:5001
+[12-Nov-2025 13:28:57 UTC] Upload endpoint URL: http://sclib_fastapi:5001/api/upload/upload
+[12-Nov-2025 13:28:57 UTC] Upload API request: URL=http://sclib_fastapi:5001/api/upload/upload, HTTP_CODE=200, Response length=222
+[12-Nov-2025 13:28:58 UTC] Upload API URL: http://sclib_fastapi:5001
+[12-Nov-2025 13:28:58 UTC] Upload endpoint URL: http://sclib_fastapi:5001/api/upload/upload
+[12-Nov-2025 13:28:58 UTC] Upload API request: URL=http://sclib_fastapi:5001/api/upload/upload, HTTP_CODE=200, Response length=222
+[12-Nov-2025 13:28:59 UTC] Upload API URL: http://sclib_fastapi:5001
+[12-Nov-2025 13:28:59 UTC] Upload endpoint URL: http://sclib_fastapi:5001/api/upload/upload
+[12-Nov-2025 13:28:59 UTC] Upload API request: URL=http://sclib_fastapi:5001/api/upload/upload, HTTP_CODE=200, Response length=222
+[12-Nov-2025 13:29:00 UTC] Upload API URL: http://sclib_fastapi:5001
+[12-Nov-2025 13:29:00 UTC] Upload endpoint URL: http://sclib_fastapi:5001/api/upload/upload
+[12-Nov-2025 13:29:00 UTC] Upload API request: URL=http://sclib_fastapi:5001/api/upload/upload, HTTP_CODE=200, Response length=222
+[12-Nov-2025 13:29:01 UTC] Upload API URL: http://sclib_fastapi:5001
+[12-Nov-2025 13:29:01 UTC] Upload endpoint URL: http://sclib_fastapi:5001/api/upload/upload
+[12-Nov-2025 13:29:01 UTC] Upload API request: URL=http://sclib_fastapi:5001/api/upload/upload, HTTP_CODE=200, Response length=222
+[12-Nov-2025 13:29:01 UTC] Upload API URL: http://sclib_fastapi:5001
+[12-Nov-2025 13:29:01 UTC] Upload endpoint URL: http://sclib_fastapi:5001/api/upload/upload
+[12-Nov-2025 13:29:01 UTC] PHP Warning:  Cannot modify header information - headers already sent in /var/www/html/config.php on line 200
+[12-Nov-2025 13:29:01 UTC] PHP Warning:  Cannot modify header information - headers already sent in /var/www/html/config.php on line 201
+[12-Nov-2025 13:29:01 UTC] PHP Warning:  Cannot modify header information - headers already sent in /var/www/html/config.php on line 202
+[12-Nov-2025 13:29:02 UTC] Upload API request: URL=http://sclib_fastapi:5001/api/upload/upload, HTTP_CODE=200, Response length=222
+[12-Nov-2025 13:29:02 UTC] Upload API URL: http://sclib_fastapi:5001
+[12-Nov-2025 13:29:02 UTC] Upload endpoint URL: http://sclib_fastapi:5001/api/upload/upload
+[12-Nov-2025 13:29:03 UTC] Upload API request: URL=http://sclib_fastapi:5001/api/upload/upload, HTTP_CODE=200, Response length=222
+[12-Nov-2025 13:29:03 UTC] Upload API URL: http://sclib_fastapi:5001
+[12-Nov-2025 13:29:03 UTC] Upload endpoint URL: http://sclib_fastapi:5001/api/upload/upload
+[12-Nov-2025 13:29:04 UTC] Upload API request: URL=http://sclib_fastapi:5001/api/upload/upload, HTTP_CODE=200, Response length=222
+[12-Nov-2025 13:29:04 UTC] Upload API URL: http://sclib_fastapi:5001
+[12-Nov-2025 13:29:04 UTC] Upload endpoint URL: http://sclib_fastapi:5001/api/upload/upload
+[12-Nov-2025 13:29:05 UTC] Upload API request: URL=http://sclib_fastapi:5001/api/upload/upload, HTTP_CODE=200, Response length=222
+[12-Nov-2025 13:29:06 UTC] Upload API URL: http://sclib_fastapi:5001
+[12-Nov-2025 13:29:06 UTC] Upload endpoint URL: http://sclib_fastapi:5001/api/upload/upload
+[12-Nov-2025 13:29:06 UTC] Upload API request: URL=http://sclib_fastapi:5001/api/upload/upload, HTTP_CODE=200, Response length=222
+[12-Nov-2025 13:29:07 UTC] Upload API URL: http://sclib_fastapi:5001
+[12-Nov-2025 13:29:07 UTC] Upload endpoint URL: http://sclib_fastapi:5001/api/upload/upload
+[12-Nov-2025 13:29:07 UTC] Upload API request: URL=http://sclib_fastapi:5001/api/upload/upload, HTTP_CODE=200, Response length=222
+[12-Nov-2025 13:29:08 UTC] Upload API URL: http://sclib_fastapi:5001
+[12-Nov-2025 13:29:08 UTC] Upload endpoint URL: http://sclib_fastapi:5001/api/upload/upload
+[12-Nov-2025 13:29:08 UTC] Upload API request: URL=http://sclib_fastapi:5001/api/upload/upload, HTTP_CODE=200, Response length=222
+[12-Nov-2025 13:29:09 UTC] Upload API URL: http://sclib_fastapi:5001
+[12-Nov-2025 13:29:09 UTC] Upload endpoint URL: http://sclib_fastapi:5001/api/upload/upload
+[12-Nov-2025 13:29:10 UTC] Upload API request: URL=http://sclib_fastapi:5001/api/upload/upload, HTTP_CODE=200, Response length=222
+[12-Nov-2025 13:29:10 UTC] Upload API URL: http://sclib_fastapi:5001
+[12-Nov-2025 13:29:10 UTC] Upload endpoint URL: http://sclib_fastapi:5001/api/upload/upload
+[12-Nov-2025 13:29:11 UTC] Upload API request: URL=http://sclib_fastapi:5001/api/upload/upload, HTTP_CODE=200, Response length=222
+[12-Nov-2025 13:29:11 UTC] Upload API URL: http://sclib_fastapi:5001
+[12-Nov-2025 13:29:11 UTC] Upload endpoint URL: http://sclib_fastapi:5001/api/upload/upload
+[12-Nov-2025 13:29:12 UTC] Upload API request: URL=http://sclib_fastapi:5001/api/upload/upload, HTTP_CODE=200, Response length=222
+[12-Nov-2025 13:29:13 UTC] Upload API URL: http://sclib_fastapi:5001
+[12-Nov-2025 13:29:13 UTC] Upload endpoint URL: http://sclib_fastapi:5001/api/upload/upload
+[12-Nov-2025 13:29:13 UTC] Upload API request: URL=http://sclib_fastapi:5001/api/upload/upload, HTTP_CODE=200, Response length=222
+[12-Nov-2025 13:29:13 UTC] Upload API URL: http://sclib_fastapi:5001
+[12-Nov-2025 13:29:13 UTC] Upload endpoint URL: http://sclib_fastapi:5001/api/upload/upload
+[12-Nov-2025 13:29:14 UTC] Upload API request: URL=http://sclib_fastapi:5001/api/upload/upload, HTTP_CODE=200, Response length=222
+[12-Nov-2025 13:29:14 UTC] Upload API URL: http://sclib_fastapi:5001
+[12-Nov-2025 13:29:14 UTC] Upload endpoint URL: http://sclib_fastapi:5001/api/upload/upload
+[12-Nov-2025 13:29:15 UTC] Upload API request: URL=http://sclib_fastapi:5001/api/upload/upload, HTTP_CODE=200, Response length=222
+[12-Nov-2025 13:29:15 UTC] Upload API URL: http://sclib_fastapi:5001
+[12-Nov-2025 13:29:15 UTC] Upload endpoint URL: http://sclib_fastapi:5001/api/upload/upload
+[12-Nov-2025 13:29:16 UTC] Upload API request: URL=http://sclib_fastapi:5001/api/upload/upload, HTTP_CODE=200, Response length=222
+[12-Nov-2025 13:29:17 UTC] Upload API URL: http://sclib_fastapi:5001
+[12-Nov-2025 13:29:17 UTC] Upload endpoint URL: http://sclib_fastapi:5001/api/upload/upload
+[12-Nov-2025 13:29:17 UTC] Upload API request: URL=http://sclib_fastapi:5001/api/upload/upload, HTTP_CODE=200, Response length=222
+[12-Nov-2025 13:29:18 UTC] Upload API URL: http://sclib_fastapi:5001
+[12-Nov-2025 13:29:18 UTC] Upload endpoint URL: http://sclib_fastapi:5001/api/upload/upload
+[12-Nov-2025 13:29:18 UTC] Upload API request: URL=http://sclib_fastapi:5001/api/upload/upload, HTTP_CODE=200, Response length=222
+[12-Nov-2025 13:29:19 UTC] Upload API URL: http://sclib_fastapi:5001
+[12-Nov-2025 13:29:19 UTC] Upload endpoint URL: http://sclib_fastapi:5001/api/upload/upload
+[12-Nov-2025 13:29:19 UTC] Upload API request: URL=http://sclib_fastapi:5001/api/upload/upload, HTTP_CODE=200, Response length=222
+[12-Nov-2025 13:29:20 UTC] Upload API URL: http://sclib_fastapi:5001
+[12-Nov-2025 13:29:20 UTC] Upload endpoint URL: http://sclib_fastapi:5001/api/upload/upload
+[12-Nov-2025 13:29:21 UTC] Upload API request: URL=http://sclib_fastapi:5001/api/upload/upload, HTTP_CODE=200, Response length=222
+[12-Nov-2025 13:29:21 UTC] Upload API URL: http://sclib_fastapi:5001
+[12-Nov-2025 13:29:21 UTC] Upload endpoint URL: http://sclib_fastapi:5001/api/upload/upload
+[12-Nov-2025 13:29:21 UTC] Upload API request: URL=http://sclib_fastapi:5001/api/upload/upload, HTTP_CODE=200, Response length=222
+[12-Nov-2025 13:29:22 UTC] Upload API URL: http://sclib_fastapi:5001
+[12-Nov-2025 13:29:22 UTC] Upload endpoint URL: http://sclib_fastapi:5001/api/upload/upload
+[12-Nov-2025 13:29:22 UTC] PHP Warning:  Cannot modify header information - headers already sent in /var/www/html/config.php on line 200
+[12-Nov-2025 13:29:22 UTC] PHP Warning:  Cannot modify header information - headers already sent in /var/www/html/config.php on line 201
+[12-Nov-2025 13:29:22 UTC] PHP Warning:  Cannot modify header information - headers already sent in /var/www/html/config.php on line 202
+[12-Nov-2025 13:29:22 UTC] Upload API request: URL=http://sclib_fastapi:5001/api/upload/upload, HTTP_CODE=200, Response length=222
+[12-Nov-2025 13:29:22 UTC] Upload API URL: http://sclib_fastapi:5001
+[12-Nov-2025 13:29:22 UTC] Upload endpoint URL: http://sclib_fastapi:5001/api/upload/upload
+[12-Nov-2025 13:29:23 UTC] Upload API request: URL=http://sclib_fastapi:5001/api/upload/upload, HTTP_CODE=200, Response length=222
+[12-Nov-2025 13:29:25 UTC] Upload API URL: http://sclib_fastapi:5001
+[12-Nov-2025 13:29:25 UTC] Upload endpoint URL: http://sclib_fastapi:5001/api/upload/upload
+[12-Nov-2025 13:29:25 UTC] Upload API request: URL=http://sclib_fastapi:5001/api/upload/upload, HTTP_CODE=200, Response length=222
+[12-Nov-2025 13:29:26 UTC] Upload API URL: http://sclib_fastapi:5001
+[12-Nov-2025 13:29:26 UTC] Upload endpoint URL: http://sclib_fastapi:5001/api/upload/upload
+[12-Nov-2025 13:29:27 UTC] Upload API request: URL=http://sclib_fastapi:5001/api/upload/upload, HTTP_CODE=200, Response length=222
+[12-Nov-2025 13:29:27 UTC] Upload API URL: http://sclib_fastapi:5001
+[12-Nov-2025 13:29:27 UTC] Upload endpoint URL: http://sclib_fastapi:5001/api/upload/upload
+[12-Nov-2025 13:29:27 UTC] Upload API request: URL=http://sclib_fastapi:5001/api/upload/upload, HTTP_CODE=200, Response length=222
+[12-Nov-2025 13:29:28 UTC] Upload API URL: http://sclib_fastapi:5001
+[12-Nov-2025 13:29:28 UTC] Upload endpoint URL: http://sclib_fastapi:5001/api/upload/upload
+[12-Nov-2025 13:29:28 UTC] Upload API request: URL=http://sclib_fastapi:5001/api/upload/upload, HTTP_CODE=200, Response length=155
+[12-Nov-2025 13:29:29 UTC] Upload API URL: http://sclib_fastapi:5001
+[12-Nov-2025 13:29:29 UTC] Upload endpoint URL: http://sclib_fastapi:5001/api/upload/upload
+[12-Nov-2025 13:29:29 UTC] Upload API request: URL=http://sclib_fastapi:5001/api/upload/upload, HTTP_CODE=200, Response length=166
+[12-Nov-2025 13:29:30 UTC] Upload API URL: http://sclib_fastapi:5001
+[12-Nov-2025 13:29:30 UTC] Upload endpoint URL: http://sclib_fastapi:5001/api/upload/upload
+[12-Nov-2025 13:29:30 UTC] Upload API request: URL=http://sclib_fastapi:5001/api/upload/upload, HTTP_CODE=200, Response length=155
+[12-Nov-2025 13:29:30 UTC] Upload API URL: http://sclib_fastapi:5001
+[12-Nov-2025 13:29:30 UTC] Upload endpoint URL: http://sclib_fastapi:5001/api/upload/upload
+[12-Nov-2025 13:29:31 UTC] Upload API request: URL=http://sclib_fastapi:5001/api/upload/upload, HTTP_CODE=200, Response length=155
+[12-Nov-2025 13:29:32 UTC] Upload API URL: http://sclib_fastapi:5001
+[12-Nov-2025 13:29:32 UTC] Upload endpoint URL: http://sclib_fastapi:5001/api/upload/upload
+[12-Nov-2025 13:29:32 UTC] Upload API request: URL=http://sclib_fastapi:5001/api/upload/upload, HTTP_CODE=200, Response length=155
+[12-Nov-2025 13:29:33 UTC] Upload API URL: http://sclib_fastapi:5001
+[12-Nov-2025 13:29:33 UTC] Upload endpoint URL: http://sclib_fastapi:5001/api/upload/upload
+[12-Nov-2025 13:29:33 UTC] Upload API request: URL=http://sclib_fastapi:5001/api/upload/upload, HTTP_CODE=200, Response length=155
+[12-Nov-2025 13:29:34 UTC] Upload API URL: http://sclib_fastapi:5001
+[12-Nov-2025 13:29:34 UTC] Upload endpoint URL: http://sclib_fastapi:5001/api/upload/upload
+[12-Nov-2025 13:29:35 UTC] Upload API request: URL=http://sclib_fastapi:5001/api/upload/upload, HTTP_CODE=200, Response length=155
+[12-Nov-2025 13:29:35 UTC] Upload API URL: http://sclib_fastapi:5001
+[12-Nov-2025 13:29:35 UTC] Upload endpoint URL: http://sclib_fastapi:5001/api/upload/upload
+[12-Nov-2025 13:29:36 UTC] Upload API request: URL=http://sclib_fastapi:5001/api/upload/upload, HTTP_CODE=200, Response length=155
+[12-Nov-2025 13:29:37 UTC] Upload API URL: http://sclib_fastapi:5001
+[12-Nov-2025 13:29:37 UTC] Upload endpoint URL: http://sclib_fastapi:5001/api/upload/upload
+[12-Nov-2025 13:29:37 UTC] Upload API request: URL=http://sclib_fastapi:5001/api/upload/upload, HTTP_CODE=200, Response length=155
+[12-Nov-2025 13:29:38 UTC] Upload API URL: http://sclib_fastapi:5001
+[12-Nov-2025 13:29:38 UTC] Upload endpoint URL: http://sclib_fastapi:5001/api/upload/upload
+[12-Nov-2025 13:29:39 UTC] Upload API request: URL=http://sclib_fastapi:5001/api/upload/upload, HTTP_CODE=200, Response length=155
+[12-Nov-2025 13:29:40 UTC] Upload API URL: http://sclib_fastapi:5001
+[12-Nov-2025 13:29:40 UTC] Upload endpoint URL: http://sclib_fastapi:5001/api/upload/upload
+[12-Nov-2025 13:29:40 UTC] Upload API request: URL=http://sclib_fastapi:5001/api/upload/upload, HTTP_CODE=200, Response length=155
+[12-Nov-2025 13:29:41 UTC] Upload API URL: http://sclib_fastapi:5001
+[12-Nov-2025 13:29:41 UTC] Upload endpoint URL: http://sclib_fastapi:5001/api/upload/upload
+[12-Nov-2025 13:29:41 UTC] Upload API request: URL=http://sclib_fastapi:5001/api/upload/upload, HTTP_CODE=200, Response length=155
+[12-Nov-2025 13:29:42 UTC] Upload API URL: http://sclib_fastapi:5001
+[12-Nov-2025 13:29:42 UTC] Upload endpoint URL: http://sclib_fastapi:5001/api/upload/upload
+[12-Nov-2025 13:29:43 UTC] Upload API request: URL=http://sclib_fastapi:5001/api/upload/upload, HTTP_CODE=200, Response length=155
+[12-Nov-2025 13:29:43 UTC] Upload API URL: http://sclib_fastapi:5001
+[12-Nov-2025 13:29:43 UTC] Upload endpoint URL: http://sclib_fastapi:5001/api/upload/upload
+[12-Nov-2025 13:29:44 UTC] Upload API request: URL=http://sclib_fastapi:5001/api/upload/upload, HTTP_CODE=200, Response length=155
+[12-Nov-2025 13:29:44 UTC] Upload API URL: http://sclib_fastapi:5001
+[12-Nov-2025 13:29:44 UTC] Upload endpoint URL: http://sclib_fastapi:5001/api/upload/upload
+[12-Nov-2025 13:29:45 UTC] Upload API request: URL=http://sclib_fastapi:5001/api/upload/upload, HTTP_CODE=200, Response length=155
+[12-Nov-2025 13:29:45 UTC] Upload API URL: http://sclib_fastapi:5001
+[12-Nov-2025 13:29:45 UTC] Upload endpoint URL: http://sclib_fastapi:5001/api/upload/upload
+[12-Nov-2025 13:29:46 UTC] Upload API request: URL=http://sclib_fastapi:5001/api/upload/upload, HTTP_CODE=200, Response length=155
+[12-Nov-2025 13:29:47 UTC] Upload API URL: http://sclib_fastapi:5001
+[12-Nov-2025 13:29:47 UTC] Upload endpoint URL: http://sclib_fastapi:5001/api/upload/upload
+[12-Nov-2025 13:29:47 UTC] Upload API request: URL=http://sclib_fastapi:5001/api/upload/upload, HTTP_CODE=200, Response length=155
+[12-Nov-2025 13:29:48 UTC] Upload API URL: http://sclib_fastapi:5001
+[12-Nov-2025 13:29:48 UTC] Upload endpoint URL: http://sclib_fastapi:5001/api/upload/upload
+[12-Nov-2025 13:29:49 UTC] Upload API request: URL=http://sclib_fastapi:5001/api/upload/upload, HTTP_CODE=200, Response length=155
+[12-Nov-2025 13:29:50 UTC] Upload API URL: http://sclib_fastapi:5001
+[12-Nov-2025 13:29:50 UTC] Upload endpoint URL: http://sclib_fastapi:5001/api/upload/upload
+[12-Nov-2025 13:29:50 UTC] Upload API request: URL=http://sclib_fastapi:5001/api/upload/upload, HTTP_CODE=200, Response length=155
+[12-Nov-2025 13:29:51 UTC] Upload API URL: http://sclib_fastapi:5001
+[12-Nov-2025 13:29:51 UTC] Upload endpoint URL: http://sclib_fastapi:5001/api/upload/upload
+[12-Nov-2025 13:29:51 UTC] Upload API request: URL=http://sclib_fastapi:5001/api/upload/upload, HTTP_CODE=200, Response length=155
+[12-Nov-2025 13:29:52 UTC] Upload API URL: http://sclib_fastapi:5001
+[12-Nov-2025 13:29:52 UTC] Upload endpoint URL: http://sclib_fastapi:5001/api/upload/upload
+[12-Nov-2025 13:29:53 UTC] Upload API request: URL=http://sclib_fastapi:5001/api/upload/upload, HTTP_CODE=200, Response length=155
+[12-Nov-2025 13:29:53 UTC] Upload API URL: http://sclib_fastapi:5001
+[12-Nov-2025 13:29:53 UTC] Upload endpoint URL: http://sclib_fastapi:5001/api/upload/upload
+[12-Nov-2025 13:29:54 UTC] Upload API request: URL=http://sclib_fastapi:5001/api/upload/upload, HTTP_CODE=200, Response length=155
+[12-Nov-2025 13:29:55 UTC] Upload API URL: http://sclib_fastapi:5001
+[12-Nov-2025 13:29:55 UTC] Upload endpoint URL: http://sclib_fastapi:5001/api/upload/upload
+[12-Nov-2025 13:29:55 UTC] Upload API request: URL=http://sclib_fastapi:5001/api/upload/upload, HTTP_CODE=200, Response length=155
+[12-Nov-2025 13:29:56 UTC] Upload API URL: http://sclib_fastapi:5001
+[12-Nov-2025 13:29:56 UTC] Upload endpoint URL: http://sclib_fastapi:5001/api/upload/upload
+[12-Nov-2025 13:29:56 UTC] Upload API request: URL=http://sclib_fastapi:5001/api/upload/upload, HTTP_CODE=200, Response length=155
+[12-Nov-2025 13:29:57 UTC] Upload API URL: http://sclib_fastapi:5001
+[12-Nov-2025 13:29:57 UTC] Upload endpoint URL: http://sclib_fastapi:5001/api/upload/upload
+[12-Nov-2025 13:29:57 UTC] Upload API request: URL=http://sclib_fastapi:5001/api/upload/upload, HTTP_CODE=200, Response length=155
+[12-Nov-2025 13:29:57 UTC] Upload API URL: http://sclib_fastapi:5001
+[12-Nov-2025 13:29:57 UTC] Upload endpoint URL: http://sclib_fastapi:5001/api/upload/upload
+[12-Nov-2025 13:29:58 UTC] Upload API request: URL=http://sclib_fastapi:5001/api/upload/upload, HTTP_CODE=200, Response length=155
+[12-Nov-2025 13:29:58 UTC] Upload API URL: http://sclib_fastapi:5001
+[12-Nov-2025 13:29:58 UTC] Upload endpoint URL: http://sclib_fastapi:5001/api/upload/upload
+[12-Nov-2025 13:29:58 UTC] Upload API request: URL=http://sclib_fastapi:5001/api/upload/upload, HTTP_CODE=200, Response length=155
+[12-Nov-2025 13:29:59 UTC] Upload API URL: http://sclib_fastapi:5001
+[12-Nov-2025 13:29:59 UTC] Upload endpoint URL: http://sclib_fastapi:5001/api/upload/upload
+[12-Nov-2025 13:29:59 UTC] Upload API request: URL=http://sclib_fastapi:5001/api/upload/upload, HTTP_CODE=200, Response length=155
+[12-Nov-2025 13:29:59 UTC] Upload API URL: http://sclib_fastapi:5001
+[12-Nov-2025 13:29:59 UTC] Upload endpoint URL: http://sclib_fastapi:5001/api/upload/upload
+[12-Nov-2025 13:30:00 UTC] Upload API request: URL=http://sclib_fastapi:5001/api/upload/upload, HTTP_CODE=200, Response length=155

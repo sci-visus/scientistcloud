@@ -98,10 +98,13 @@ RUN echo '<VirtualHost *:80>\n\
 </VirtualHost>' > /etc/apache2/sites-available/000-default.conf
 
 # Configure PHP
-RUN echo 'memory_limit = 2G\n\
-max_execution_time = 300\n\
-upload_max_filesize = 500M\n\
-post_max_size = 500M\n\
+# Very large limits for massive file uploads (TB+ datasets)
+# Matching previous uppyReceive.php configuration
+RUN echo 'memory_limit = 4G\n\
+max_execution_time = 0\n\
+max_input_time = 0\n\
+upload_max_filesize = 2T\n\
+post_max_size = 2T\n\
 max_input_vars = 3000\n\
 date.timezone = UTC\n\
 session.cookie_httponly = 1\n\

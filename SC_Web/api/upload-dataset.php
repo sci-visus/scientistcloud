@@ -135,7 +135,23 @@ try {
     curl_setopt($ch, CURLOPT_HTTPHEADER, [
         'Accept: application/json'
     ]);
-    curl_setopt($ch, CURLOPT_TIMEOUT, 300); // 5 minute timeout for large files
+    // Calculate timeout based on file size
+    // For very large files (TB+), use very long timeouts
+    // Base timeout: 5 minutes, plus 2 seconds per MB
+    // For files > 1GB, use longer timeout (up to 2 hours for very large files)
+    $fileSizeMB = $fileSize / (1024 * 1024);
+    $fileSizeGB = $fileSize / (1024 * 1024 * 1024);
+    
+    if ($fileSizeGB > 1.0) {
+        // For files > 1GB: 10 minutes base + 1 minute per GB, capped at 2 hours
+        $calculatedTimeout = min(max(600, intval($fileSizeGB * 60)), 7200); // 10 min to 2 hours
+    } else {
+        // For smaller files: 5 minutes base + 2 seconds per MB
+        $calculatedTimeout = min(max(300, intval($fileSizeMB * 2)), 600); // 5 min to 10 min
+    }
+    
+    curl_setopt($ch, CURLOPT_TIMEOUT, $calculatedTimeout);
+    error_log("Upload timeout set to {$calculatedTimeout}s for file size: {$fileSizeMB} MB ({$fileSizeGB} GB)");
     curl_setopt($ch, CURLOPT_VERBOSE, false); // Set to true for debugging
     
     $response = curl_exec($ch);

@@ -171,12 +171,26 @@ Waiting for upload and conversion to complete...
     pytest test_upload_e2e.py -v
 ```
 
+## Large File Testing
+
+**Important**: For testing large files (GB+), see [README_LARGE_FILES.md](README_LARGE_FILES.md) for:
+- Production system capabilities (handles files up to 10TB via chunked uploads)
+- Testing limitations (PHP proxy timeout for large files)
+- Recommendations for test file sizes
+- How to enable large file testing
+
+**Quick Summary**:
+- ✅ **Production system CAN handle large files** via FastAPI chunked uploads
+- ⚠️ **E2E tests have limitations** when FastAPI not accessible from host
+- 💡 **Use smaller files for testing** (< 500MB recommended)
+- 🔧 **For large file testing**, expose FastAPI port or run tests from Docker network
+
 ## Next Steps
 
 1. **Add Authentication**: Implement session cookie handling for authenticated tests
 2. **Add More Error Cases**: Test more error scenarios
 3. **Add Remote Uploads**: Test remote link uploads through SC_Web
-4. **Add Performance Tests**: Test large file uploads
+4. **Add Performance Tests**: Test large file uploads (see README_LARGE_FILES.md)
 5. **Add Concurrent Tests**: Test multiple simultaneous uploads
 
 ## Related Files
