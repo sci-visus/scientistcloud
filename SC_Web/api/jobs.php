@@ -60,17 +60,40 @@ try {
     $limit = isset($_GET['limit']) ? intval($_GET['limit']) : 50;
     $offset = isset($_GET['offset']) ? intval($_GET['offset']) : 0;
 
-    // Get jobs from MongoDB (FastAPI jobs endpoint may not be available)
-    // This is more reliable for now
+    // Get jobs from MongoDB
+    // Conversion jobs don't have user_email, so we need to find them via datasets
     $jobs = getJobsFromMongoDB($userEmail, $status, $limit, $offset);
 
-    // Also get conversion jobs from job queue
+    // Also get conversion jobs from job queue (these don't have user_email field)
     try {
         $conversionJobs = getConversionJobs($userEmail, $limit);
         // Merge conversion jobs with upload jobs
         $jobs = array_merge($jobs, $conversionJobs);
     } catch (Exception $e) {
         error_log("Error getting conversion jobs: " . $e->getMessage());
+    }
+
+    // Also get datasets with "conversion queued" status (jobs may not exist yet)
+    try {
+        $queuedDatasets = getQueuedConversionDatasets($userEmail, $limit);
+        // Convert dataset status to job-like format
+        foreach ($queuedDatasets as $dataset) {
+            $jobs[] = [
+                'job_id' => 'dataset_' . $dataset['uuid'],
+                'id' => 'dataset_' . $dataset['uuid'],
+                'job_type' => 'dataset_conversion',
+                'status' => 'queued', // Map "conversion queued" to "queued"
+                'dataset_uuid' => $dataset['uuid'],
+                'dataset_name' => $dataset['name'] ?? $dataset['dataset_name'] ?? 'Unnamed Dataset',
+                'created_at' => isset($dataset['created_at']) ? (is_object($dataset['created_at']) ? $dataset['created_at']->toDateTime()->format('c') : $dataset['created_at']) : null,
+                'updated_at' => isset($dataset['updated_at']) ? (is_object($dataset['updated_at']) ? $dataset['updated_at']->toDateTime()->format('c') : $dataset['updated_at']) : null,
+                'completed_at' => null,
+                'progress_percentage' => 0,
+                'error' => null
+            ];
+        }
+    } catch (Exception $e) {
+        error_log("Error getting queued conversion datasets: " . $e->getMessage());
     }
 
     // Sort by created_at (most recent first)
@@ -145,16 +168,24 @@ function getJobsFromMongoDB($userEmail, $status = null, $limit = 50, $offset = 0
         // Convert MongoDB documents to arrays
         $result = [];
         foreach ($jobs as $job) {
+            // Map job status: 'pending' -> 'queued', 'running' -> 'processing'
+            $jobStatus = $job['status'] ?? 'unknown';
+            if ($jobStatus === 'pending') {
+                $jobStatus = 'queued';
+            } elseif ($jobStatus === 'running') {
+                $jobStatus = 'processing';
+            }
+            
             $result[] = [
                 'job_id' => $job['job_id'] ?? null,
                 'id' => $job['job_id'] ?? null,
                 'job_type' => $job['job_type'] ?? 'unknown',
-                'status' => $job['status'] ?? 'unknown',
+                'status' => $jobStatus,
                 'dataset_uuid' => $job['dataset_uuid'] ?? null,
                 'dataset_name' => $job['dataset_name'] ?? null,
-                'created_at' => isset($job['created_at']) ? $job['created_at']->toDateTime()->format('c') : null,
-                'updated_at' => isset($job['updated_at']) ? $job['updated_at']->toDateTime()->format('c') : null,
-                'completed_at' => isset($job['completed_at']) ? $job['completed_at']->toDateTime()->format('c') : null,
+                'created_at' => isset($job['created_at']) ? (is_object($job['created_at']) ? $job['created_at']->toDateTime()->format('c') : $job['created_at']) : null,
+                'updated_at' => isset($job['updated_at']) ? (is_object($job['updated_at']) ? $job['updated_at']->toDateTime()->format('c') : $job['updated_at']) : null,
+                'completed_at' => isset($job['completed_at']) ? (is_object($job['completed_at']) ? $job['completed_at']->toDateTime()->format('c') : $job['completed_at']) : null,
                 'progress_percentage' => $job['progress_percentage'] ?? 0,
                 'error' => $job['error'] ?? null
             ];
@@ -209,15 +240,23 @@ function getConversionJobs($userEmail, $limit = 50) {
         
         $result = [];
         foreach ($conversionJobs as $job) {
+            // Map job status: 'pending' -> 'queued', 'running' -> 'processing'
+            $jobStatus = $job['status'] ?? 'unknown';
+            if ($jobStatus === 'pending') {
+                $jobStatus = 'queued';
+            } elseif ($jobStatus === 'running') {
+                $jobStatus = 'processing';
+            }
+            
             $result[] = [
                 'job_id' => $job['job_id'] ?? null,
                 'id' => $job['job_id'] ?? null,
                 'job_type' => 'dataset_conversion',
-                'status' => $job['status'] ?? 'unknown',
+                'status' => $jobStatus,
                 'dataset_uuid' => $job['dataset_uuid'] ?? null,
-                'created_at' => isset($job['created_at']) ? $job['created_at']->toDateTime()->format('c') : null,
-                'updated_at' => isset($job['updated_at']) ? $job['updated_at']->toDateTime()->format('c') : null,
-                'completed_at' => isset($job['completed_at']) ? $job['completed_at']->toDateTime()->format('c') : null,
+                'created_at' => isset($job['created_at']) ? (is_object($job['created_at']) ? $job['created_at']->toDateTime()->format('c') : $job['created_at']) : null,
+                'updated_at' => isset($job['updated_at']) ? (is_object($job['updated_at']) ? $job['updated_at']->toDateTime()->format('c') : $job['updated_at']) : null,
+                'completed_at' => isset($job['completed_at']) ? (is_object($job['completed_at']) ? $job['completed_at']->toDateTime()->format('c') : $job['completed_at']) : null,
                 'progress_percentage' => $job['progress_percentage'] ?? 0,
                 'error' => $job['error'] ?? null
             ];
@@ -226,6 +265,42 @@ function getConversionJobs($userEmail, $limit = 50) {
         return $result;
     } catch (Exception $e) {
         error_log("Error getting conversion jobs: " . $e->getMessage());
+        return [];
+    }
+}
+
+/**
+ * Get datasets with "conversion queued" status (jobs may not exist in jobs collection yet)
+ */
+function getQueuedConversionDatasets($userEmail, $limit = 50) {
+    try {
+        // Get MongoDB connection from config
+        $mongo_url = defined('MONGO_URL') ? MONGO_URL : (getenv('MONGO_URL') ?: 'mongodb://localhost:27017');
+        $db_name = defined('DB_NAME') ? DB_NAME : (getenv('DB_NAME') ?: 'scientistcloud');
+        
+        // Check if MongoDB extension is available
+        if (!class_exists('MongoDB\Client')) {
+            error_log("MongoDB PHP extension not available");
+            return [];
+        }
+        
+        // Use MongoDB PHP extension
+        $mongo_client = new MongoDB\Client($mongo_url);
+        $db = $mongo_client->selectDatabase($db_name);
+        $datasets_collection = $db->selectCollection('visstoredatas');
+        
+        // Find datasets owned by user with "conversion queued" status
+        $datasets = $datasets_collection->find([
+            'user_id' => $userEmail,
+            'status' => ['$in' => ['conversion queued', 'converting']]
+        ])
+        ->sort(['created_at' => -1])
+        ->limit($limit)
+        ->toArray();
+        
+        return $datasets;
+    } catch (Exception $e) {
+        error_log("Error getting queued conversion datasets: " . $e->getMessage());
         return [];
     }
 }
