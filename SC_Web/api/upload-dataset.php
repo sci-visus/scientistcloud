@@ -36,6 +36,46 @@ require_once(__DIR__ . '/../config.php');
 require_once(__DIR__ . '/../includes/auth.php');
 require_once(__DIR__ . '/../includes/sclib_client.php');
 
+// Verify PHP upload settings (these should be set in .htaccess or php.ini)
+// Note: ini_set() cannot change post_max_size or upload_max_filesize (PHP_INI_SYSTEM)
+$post_max_size = ini_get('post_max_size');
+$upload_max_filesize = ini_get('upload_max_filesize');
+
+// Log current settings for debugging
+error_log("PHP upload settings - post_max_size: $post_max_size, upload_max_filesize: $upload_max_filesize");
+
+// Check if Content-Length exceeds post_max_size
+if (isset($_SERVER['CONTENT_LENGTH'])) {
+    $content_length = intval($_SERVER['CONTENT_LENGTH']);
+    $post_max_bytes = parse_size($post_max_size);
+    
+    if ($content_length > $post_max_bytes) {
+        ob_end_clean();
+        http_response_code(413);
+        echo json_encode([
+            'success' => false,
+            'error' => "File too large. Content-Length ($content_length bytes) exceeds post_max_size ($post_max_size = $post_max_bytes bytes). Please check PHP configuration."
+        ]);
+        exit;
+    }
+}
+
+// Helper function to parse size strings like "2T", "10G", "100M"
+function parse_size($size) {
+    $size = trim($size);
+    $last = strtolower($size[strlen($size)-1]);
+    $value = floatval($size);
+    
+    switch($last) {
+        case 't': $value *= 1024;
+        case 'g': $value *= 1024;
+        case 'm': $value *= 1024;
+        case 'k': $value *= 1024;
+    }
+    
+    return intval($value);
+}
+
 try {
     // Check authentication
     if (!isAuthenticated()) {
