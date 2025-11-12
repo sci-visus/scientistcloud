@@ -220,7 +220,13 @@ function getConversionJobs($userEmail, $limit = 50) {
         $datasets_collection = $db->selectCollection('visstoredatas');
         
         // Get conversion jobs for datasets owned by this user
-        $userDatasets = $datasets_collection->find(['user_id' => $userEmail])->toArray();
+        // Note: Dataset uses 'user' field (email), not 'user_id'
+        $userDatasets = $datasets_collection->find([
+            '$or' => [
+                ['user' => $userEmail],  // Primary field name
+                ['user_id' => $userEmail]  // Fallback for compatibility
+            ]
+        ])->toArray();
         $datasetUuids = array_map(function($ds) {
             return $ds['uuid'] ?? null;
         }, $userDatasets);
@@ -290,8 +296,12 @@ function getQueuedConversionDatasets($userEmail, $limit = 50) {
         $datasets_collection = $db->selectCollection('visstoredatas');
         
         // Find datasets owned by user with "conversion queued" status
+        // Note: Dataset uses 'user' field (email), not 'user_id'
         $datasets = $datasets_collection->find([
-            'user_id' => $userEmail,
+            '$or' => [
+                ['user' => $userEmail],  // Primary field name
+                ['user_id' => $userEmail]  // Fallback for compatibility
+            ],
             'status' => ['$in' => ['conversion queued', 'converting']]
         ])
         ->sort(['created_at' => -1])
