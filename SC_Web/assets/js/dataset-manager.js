@@ -307,6 +307,20 @@ class DatasetManager {
                 }
             }
             
+            // Handle retry conversion button using event delegation
+            const retryButton = e.target.closest('.retry-conversion-btn');
+            if (retryButton) {
+                e.stopPropagation(); // Prevent dataset selection
+                
+                const datasetUuid = retryButton.getAttribute('data-dataset-uuid');
+                const datasetName = retryButton.getAttribute('data-dataset-name');
+                
+                if (datasetUuid) {
+                    this.retryConversion(datasetUuid, datasetName, retryButton);
+                }
+                return;
+            }
+            
             // Handle dataset files toggle using event delegation
             const toggleButton = e.target.closest('.dataset-files-toggle');
             if (toggleButton) {
@@ -502,6 +516,14 @@ class DatasetManager {
         const statusColor = this.getStatusColor(status);
         const fileIcon = this.getFileIcon(sensor);
         
+        // Determine if retry button should be shown
+        // Show retry for: failed, conversion failed, or any status containing "failed" or "error"
+        const showRetry = status && (
+            status.toLowerCase().includes('failed') || 
+            status.toLowerCase().includes('error') ||
+            status === 'conversion failed'
+        );
+        
         return `
             <div class="dataset-item" data-dataset-id="${datasetId}" data-dataset-uuid="${datasetUuid}">
                 <div class="dataset-header">
@@ -514,9 +536,19 @@ class DatasetManager {
                         <span class="dataset-name">${datasetName}</span>
                         <span class="badge bg-${statusColor} ms-2">${status}</span>
                     </a>
-                    <button class="dataset-files-toggle" data-dataset-uuid="${datasetUuid}" title="Toggle files">
-                        <i class="fas fa-chevron-right"></i>
-                    </button>
+                    <div class="dataset-actions ms-2">
+                        ${showRetry ? `
+                            <button class="btn btn-sm btn-warning retry-conversion-btn" 
+                                    data-dataset-uuid="${datasetUuid}"
+                                    data-dataset-name="${datasetName}"
+                                    title="Retry conversion">
+                                <i class="fas fa-redo"></i> Retry
+                            </button>
+                        ` : ''}
+                        <button class="btn btn-sm btn-link dataset-files-toggle" data-dataset-uuid="${datasetUuid}" title="Toggle files">
+                            <i class="fas fa-chevron-right"></i>
+                        </button>
+                    </div>
                 </div>
                 <div class="dataset-files" id="files-${datasetUuid}" style="display: none;">
                     <div class="dataset-files-content">
@@ -1584,6 +1616,72 @@ class DatasetManager {
     }
 
     /**
+     * Retry conversion for a failed dataset
+     */
+    async retryConversion(datasetUuid, datasetName, buttonElement) {
+        if (!datasetUuid) {
+            alert('Dataset UUID not found');
+            return;
+        }
+
+        // Confirm retry
+        if (!confirm(`Retry conversion for "${datasetName}"?\n\nThis will reset the status to "conversion queued" and the background service will process it again.`)) {
+            return;
+        }
+
+        // Disable button and show loading state
+        const originalHTML = buttonElement.innerHTML;
+        buttonElement.disabled = true;
+        buttonElement.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Retrying...';
+
+        try {
+            const response = await fetch(`${getApiBasePath()}/retry-conversion.php`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ dataset_uuid: datasetUuid })
+            });
+
+            // Check if response is OK before trying to parse JSON
+            if (!response.ok) {
+                const text = await response.text();
+                console.error('Retry failed with status:', response.status, 'Response:', text);
+                throw new Error(`Server error: ${response.status}`);
+            }
+
+            // Try to parse JSON, but handle HTML error responses
+            const text = await response.text();
+            let data;
+            try {
+                data = JSON.parse(text);
+            } catch (parseError) {
+                console.error('Failed to parse JSON response:', text);
+                throw new Error('Server returned invalid response. Check console for details.');
+            }
+
+            if (data.success) {
+                // Show success message
+                alert(`Conversion retry triggered successfully!\n\nDataset "${datasetName}" has been queued for conversion. The background service will process it shortly.`);
+                
+                // Reload datasets to show updated status
+                this.loadDatasets();
+            } else {
+                alert('Error retrying conversion: ' + (data.error || data.message || 'Unknown error'));
+                // Restore button
+                buttonElement.disabled = false;
+                buttonElement.innerHTML = originalHTML;
+            }
+        } catch (error) {
+            console.error('Error retrying conversion:', error);
+            alert('Error retrying conversion: ' + error.message);
+            // Restore button
+            buttonElement.disabled = false;
+            buttonElement.innerHTML = originalHTML;
+        }
+    }
+
+    /**
      * Delete dataset
      */
     async deleteDataset(datasetId) {
@@ -1653,15 +1751,37 @@ class DatasetManager {
      * Get status color
      */
     getStatusColor(status) {
-        const colors = {
-            'done': 'success',
-            'Ready': 'success',
-            'processing': 'warning',
-            'error': 'danger',
-            'pending': 'info'
-        };
+        if (!status) return 'secondary';
         
-        return colors[status] || 'secondary';
+        const statusLower = status.toLowerCase();
+        
+        // Success statuses
+        if (statusLower === 'done' || statusLower === 'ready' || statusLower === 'completed') {
+            return 'success';
+        }
+        
+        // Warning/processing statuses
+        if (statusLower.includes('processing') || 
+            statusLower.includes('converting') || 
+            statusLower.includes('queued') ||
+            statusLower === 'pending' ||
+            statusLower === 'uploading') {
+            return 'warning';
+        }
+        
+        // Error/failed statuses
+        if (statusLower.includes('failed') || 
+            statusLower.includes('error') ||
+            statusLower === 'error') {
+            return 'danger';
+        }
+        
+        // Info statuses
+        if (statusLower === 'info' || statusLower === 'pending') {
+            return 'info';
+        }
+        
+        return 'secondary';
     }
 
     /**
