@@ -956,7 +956,19 @@ class UploadManager {
             // Wait for all uploads to complete (or fail)
             const results = await Promise.allSettled(uploadPromises);
             const successful = results.filter(r => r.status === 'fulfilled' && r.value && r.value.job_id).map(r => r.value);
-            const failed = results.filter(r => r.status === 'rejected' || !r.value || !r.value.job_id);
+            
+            // Map failed results back to their file indices
+            const failedFiles = [];
+            results.forEach((result, index) => {
+                if (result.status === 'rejected' || !result.value || !result.value.job_id) {
+                    failedFiles.push({
+                        fileIndex: index,
+                        file: files[index],
+                        error: result.status === 'rejected' ? result.reason?.message : 'Upload failed',
+                        result: result.value
+                    });
+                }
+            });
 
             // Track successful uploads
             successful.forEach(result => {
@@ -965,6 +977,26 @@ class UploadManager {
 
             submitBtn.disabled = false;
             submitBtn.innerHTML = originalText;
+
+            // Update status message - uploads are queued
+            if (this.currentUploadSession) {
+                const statusText = document.getElementById('uploadModalStatusText');
+                if (statusText) {
+                    if (successful.length > 0) {
+                        statusText.textContent = `✅ ${successful.length} file(s) queued successfully. Uploads continue in background. Safe to close.`;
+                        document.getElementById('uploadModalStatusMessage').className = 'flex-grow-1 text-success small';
+                    }
+                }
+            }
+
+            // Retry failed uploads automatically (in background)
+            if (failedFiles.length > 0) {
+                // Don't await - let retries happen in background
+                this.retryFailedUploads(failedFiles, uploadData, userEmail, datasetUuid, isDirectoryUpload, baseDirectoryName)
+                    .catch(error => {
+                        console.error('Error during retry process:', error);
+                    });
+            }
 
             // Don't close upload interface automatically - let user see the modal
             // The modal will show all results and allow user to close when ready
@@ -1418,7 +1450,10 @@ class UploadManager {
                         </div>
                     </div>
                     <div class="modal-footer">
-                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal" id="uploadModalCloseBtn" disabled>
+                        <div class="flex-grow-1 text-muted small" id="uploadModalStatusMessage">
+                            <i class="fas fa-info-circle"></i> <span id="uploadModalStatusText">Uploads are queued and will continue in the background. You can safely close this window.</span>
+                        </div>
+                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal" id="uploadModalCloseBtn">
                             Close
                         </button>
                         <button type="button" class="btn btn-primary" onclick="uploadManager.closeUploadInterface()" id="uploadModalViewJobsBtn" style="display: none;">
@@ -1446,7 +1481,9 @@ class UploadManager {
             totalFiles: totalFiles,
             completedFiles: 0,
             failedFiles: 0,
-            files: []
+            files: [],
+            maxRetries: 5,
+            retryDelay: 2000 // 2 seconds between retries
         };
 
         // Update modal content
@@ -1458,8 +1495,10 @@ class UploadManager {
         document.getElementById('uploadModalOverallStatus').textContent = 'Initializing...';
         document.getElementById('uploadModalOverallStatus').className = 'badge bg-info';
         document.getElementById('uploadModalFileList').innerHTML = '<p class="text-muted text-center">Preparing uploads...</p>';
-        document.getElementById('uploadModalCloseBtn').disabled = true;
+        document.getElementById('uploadModalCloseBtn').disabled = false; // Allow closing - uploads continue in background
         document.getElementById('uploadModalViewJobsBtn').style.display = 'none';
+        document.getElementById('uploadModalStatusText').textContent = 'Preparing uploads...';
+        document.getElementById('uploadModalStatusMessage').className = 'flex-grow-1 text-muted small';
 
         // Show modal
         this.uploadModal.show();
@@ -1468,15 +1507,16 @@ class UploadManager {
     /**
      * Update upload modal with file progress
      */
-    updateUploadModalFile(fileIndex, fileName, status, jobId = null, error = null) {
+    updateUploadModalFile(fileIndex, fileName, status, jobId = null, error = null, retryCount = 0) {
         if (!this.currentUploadSession) return;
 
         const fileInfo = {
             index: fileIndex,
             name: fileName,
-            status: status, // 'queued', 'uploading', 'completed', 'failed'
+            status: status, // 'queued', 'uploading', 'completed', 'failed', 'retrying'
             jobId: jobId,
-            error: error
+            error: error,
+            retryCount: retryCount
         };
 
         // Find existing file info before updating
@@ -1488,7 +1528,14 @@ class UploadManager {
             if (existingFile.status === 'completed') {
                 this.currentUploadSession.completedFiles--;
             } else if (existingFile.status === 'failed') {
-                this.currentUploadSession.failedFiles--;
+                // Only decrement if moving away from failed state
+                if (status !== 'failed') {
+                    this.currentUploadSession.failedFiles--;
+                }
+            }
+            // Preserve retry count if not explicitly set
+            if (retryCount === 0 && existingFile.retryCount) {
+                fileInfo.retryCount = existingFile.retryCount;
             }
         }
         
@@ -1499,12 +1546,13 @@ class UploadManager {
             this.currentUploadSession.files.push(fileInfo);
         }
         
-        // Increment new status count
+        // Increment new status count (only for final states)
         if (status === 'completed') {
             this.currentUploadSession.completedFiles++;
         } else if (status === 'failed') {
             this.currentUploadSession.failedFiles++;
         }
+        // Note: 'retrying' and 'uploading' are intermediate states, not counted separately
 
         // Update modal display
         this.renderUploadModal();
@@ -1520,7 +1568,7 @@ class UploadManager {
         const total = session.totalFiles;
         const completed = session.completedFiles;
         const failed = session.failedFiles;
-        const inProgress = session.files.filter(f => f.status === 'uploading' || f.status === 'queued').length;
+        const inProgress = session.files.filter(f => f.status === 'uploading' || f.status === 'queued' || f.status === 'retrying').length;
         
         // Calculate overall progress
         const progress = total > 0 ? Math.round(((completed + failed) / total) * 100) : 0;
@@ -1544,8 +1592,14 @@ class UploadManager {
             statusBadge.textContent = 'Completed';
             statusBadge.className = 'badge bg-success';
         } else if (inProgress > 0) {
-            statusBadge.textContent = `Uploading (${inProgress} active)`;
-            statusBadge.className = 'badge bg-primary';
+            const retrying = session.files.filter(f => f.status === 'retrying').length;
+            if (retrying > 0) {
+                statusBadge.textContent = `Retrying (${retrying} files)`;
+                statusBadge.className = 'badge bg-warning';
+            } else {
+                statusBadge.textContent = `Uploading (${inProgress} active)`;
+                statusBadge.className = 'badge bg-primary';
+            }
         } else {
             statusBadge.textContent = 'Processing...';
             statusBadge.className = 'badge bg-info';
@@ -1560,10 +1614,14 @@ class UploadManager {
             session.files.sort((a, b) => a.index - b.index).forEach(file => {
                 const statusColor = file.status === 'completed' ? 'success' :
                                   file.status === 'failed' ? 'danger' :
+                                  file.status === 'retrying' ? 'warning' :
                                   file.status === 'uploading' ? 'primary' : 'secondary';
                 const statusIcon = file.status === 'completed' ? 'fa-check-circle' :
                                  file.status === 'failed' ? 'fa-times-circle' :
+                                 file.status === 'retrying' ? 'fa-redo fa-spin' :
                                  file.status === 'uploading' ? 'fa-spinner fa-spin' : 'fa-clock';
+                
+                const retryInfo = file.retryCount > 0 ? ` (retry ${file.retryCount}/${session.maxRetries})` : '';
                 
                 html += `
                     <div class="list-group-item">
@@ -1574,9 +1632,10 @@ class UploadManager {
                                     <span class="small">${this.escapeHtml(file.name)}</span>
                                 </div>
                                 ${file.jobId ? `<small class="text-muted d-block mt-1">Job ID: ${file.jobId}</small>` : ''}
-                                ${file.error ? `<small class="text-danger d-block mt-1">Error: ${this.escapeHtml(file.error)}</small>` : ''}
+                                ${file.error ? `<small class="text-danger d-block mt-1">Error: ${this.escapeHtml(file.error)}${retryInfo}</small>` : ''}
+                                ${file.status === 'retrying' ? `<small class="text-warning d-block mt-1">Retrying... (attempt ${file.retryCount}/${session.maxRetries})</small>` : ''}
                             </div>
-                            <span class="badge bg-${statusColor}">${file.status}</span>
+                            <span class="badge bg-${statusColor}">${file.status}${retryInfo}</span>
                         </div>
                     </div>
                 `;
@@ -1585,10 +1644,190 @@ class UploadManager {
             fileList.innerHTML = html;
         }
 
-        // Enable close button if all done
+        // Update status message based on current state
+        const statusMessage = document.getElementById('uploadModalStatusMessage');
+        const statusText = document.getElementById('uploadModalStatusText');
+        
         if (completed + failed === total && total > 0) {
+            // All uploads finished (completed or failed)
             document.getElementById('uploadModalCloseBtn').disabled = false;
             document.getElementById('uploadModalViewJobsBtn').style.display = 'inline-block';
+            
+            if (failed > 0) {
+                statusText.textContent = `⚠️ ${failed} file(s) failed after ${session.maxRetries} retries. Check errors above.`;
+                statusMessage.className = 'flex-grow-1 text-warning small';
+                
+                // Show warning in file list
+                const fileList = document.getElementById('uploadModalFileList');
+                // Remove existing warning if any
+                const existingWarning = fileList.querySelector('.alert-warning');
+                if (!existingWarning) {
+                    const warningHtml = `
+                        <div class="alert alert-warning mt-3" role="alert">
+                            <i class="fas fa-exclamation-triangle"></i>
+                            <strong>Warning:</strong> ${failed} file(s) failed to upload after ${session.maxRetries} retry attempts.
+                            Please check the errors above and try uploading those files again.
+                        </div>
+                    `;
+                    fileList.insertAdjacentHTML('beforeend', warningHtml);
+                }
+            } else {
+                statusText.textContent = '✅ All uploads completed successfully!';
+                statusMessage.className = 'flex-grow-1 text-success small';
+            }
+        } else if (inProgress > 0) {
+            // Uploads still in progress
+            const retrying = session.files.filter(f => f.status === 'retrying').length;
+            if (retrying > 0) {
+                statusText.textContent = `🔄 Retrying ${retrying} file(s)... Uploads continue in background. Safe to close.`;
+                statusMessage.className = 'flex-grow-1 text-warning small';
+            } else {
+                statusText.textContent = `📤 ${inProgress} upload(s) in progress. Uploads continue in background. Safe to close.`;
+                statusMessage.className = 'flex-grow-1 text-info small';
+            }
+            document.getElementById('uploadModalCloseBtn').disabled = false; // Always allow closing
+        } else {
+            // Initial state or all queued
+            statusText.textContent = '✅ Uploads are queued and will continue in the background. You can safely close this window.';
+            statusMessage.className = 'flex-grow-1 text-success small';
+            document.getElementById('uploadModalCloseBtn').disabled = false;
+        }
+    }
+
+    /**
+     * Retry failed uploads automatically
+     */
+    async retryFailedUploads(failedFiles, uploadData, userEmail, datasetUuid, isDirectoryUpload, baseDirectoryName) {
+        if (!this.currentUploadSession || failedFiles.length === 0) return;
+
+        const maxRetries = this.currentUploadSession.maxRetries;
+        const retryDelay = this.currentUploadSession.retryDelay;
+
+        // Group files by retry attempt
+        for (let attempt = 1; attempt <= maxRetries; attempt++) {
+            // Get files that still need retrying
+            const filesToRetry = failedFiles.filter(f => {
+                const fileInfo = this.currentUploadSession.files.find(fi => fi.index === f.fileIndex);
+                return fileInfo && fileInfo.status === 'failed' && fileInfo.retryCount < attempt;
+            });
+
+            if (filesToRetry.length === 0) break;
+
+            // Update status to retrying
+            filesToRetry.forEach(f => {
+                const fileInfo = this.currentUploadSession.files.find(fi => fi.index === f.fileIndex);
+                if (fileInfo) {
+                    this.updateUploadModalFile(f.fileIndex, fileInfo.name, 'retrying', null, null, attempt);
+                }
+            });
+
+            // Wait before retrying
+            if (attempt > 1) {
+                await new Promise(resolve => setTimeout(resolve, retryDelay));
+            }
+
+            // Retry each file
+            const retryPromises = filesToRetry.map(async (failedFile) => {
+                const file = failedFile.file;
+                const fileIndex = failedFile.fileIndex;
+                const fileName = file.name;
+
+                try {
+                    // Prepare upload form data (same as original upload)
+                    const uploadFormData = new FormData();
+                    uploadFormData.append('file', file);
+                    uploadFormData.append('user_email', userEmail);
+                    uploadFormData.append('dataset_name', uploadData.dataset_name);
+                    uploadFormData.append('sensor', uploadData.sensor);
+                    uploadFormData.append('convert', uploadData.convert);
+                    uploadFormData.append('is_public', uploadData.is_public);
+                    
+                    if (uploadData.folder) {
+                        uploadFormData.append('folder', uploadData.folder);
+                    }
+                    
+                    // Handle directory uploads
+                    if (isDirectoryUpload && file.webkitRelativePath) {
+                        const fullPath = file.webkitRelativePath;
+                        let relativePath = null;
+                        if (fullPath.startsWith(baseDirectoryName + '/')) {
+                            relativePath = fullPath.substring(baseDirectoryName.length + 1);
+                            if (!relativePath || relativePath === file.name) {
+                                relativePath = null;
+                            } else {
+                                const pathParts = relativePath.split('/');
+                                pathParts.pop();
+                                relativePath = pathParts.length > 0 ? pathParts.join('/') : null;
+                            }
+                        }
+                        if (relativePath) {
+                            uploadFormData.append('relative_path', relativePath);
+                        }
+                    }
+                    
+                    if (uploadData.team_uuid) uploadFormData.append('team_uuid', uploadData.team_uuid);
+                    if (uploadData.tags) uploadFormData.append('tags', uploadData.tags);
+                    uploadFormData.append('dataset_identifier', datasetUuid);
+
+                    const uploadUrl = `${getUploadApiBasePath()}/upload-dataset.php`;
+                    
+                    // Mark as uploading
+                    this.updateUploadModalFile(fileIndex, fileName, 'uploading', null, null, attempt);
+
+                    const response = await fetch(uploadUrl, {
+                        method: 'POST',
+                        body: uploadFormData
+                    });
+
+                    const text = await response.text();
+                    
+                    if (!text || text.trim().length === 0) {
+                        throw new Error('Empty response from server');
+                    }
+
+                    const cleanedText = text.trim();
+                    if (cleanedText[0] !== '{' && cleanedText[0] !== '[') {
+                        throw new Error('Response is not valid JSON');
+                    }
+
+                    const result = JSON.parse(cleanedText);
+
+                    if (result.job_id && response.status === 200) {
+                        // Success!
+                        this.updateUploadModalFile(fileIndex, fileName, 'completed', result.job_id, null, attempt);
+                        this.trackUpload(result.job_id, uploadData.dataset_name);
+                        return { success: true, fileIndex, result };
+                    } else {
+                        // Still failed
+                        const errorMsg = result.error || result.message || 'Upload failed';
+                        this.updateUploadModalFile(fileIndex, fileName, 'failed', null, errorMsg, attempt);
+                        return { success: false, fileIndex, error: errorMsg };
+                    }
+                } catch (error) {
+                    const errorMsg = error.message || 'Network error';
+                    this.updateUploadModalFile(fileIndex, fileName, 'failed', null, errorMsg, attempt);
+                    return { success: false, fileIndex, error: errorMsg };
+                }
+            });
+
+            // Wait for all retries to complete
+            await Promise.all(retryPromises);
+
+            // Check if all files are now successful
+            const stillFailed = failedFiles.filter(f => {
+                const fileInfo = this.currentUploadSession.files.find(fi => fi.index === f.fileIndex);
+                return fileInfo && fileInfo.status === 'failed';
+            });
+
+            if (stillFailed.length === 0) {
+                // All files succeeded!
+                break;
+            }
+        }
+
+        // Refresh dataset list after retries
+        if (window.datasetManager) {
+            window.datasetManager.loadDatasets();
         }
     }
 

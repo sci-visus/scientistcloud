@@ -19,6 +19,8 @@ services:
       - ../../scientistCloudLib:/var/www/scientistCloudLib
       # Mount SC_Dashboards for dashboard config access
       - ../SC_Dashboards:/var/www/SC_Dashboards
+      # Mount shared datasets volume for optimized uploads (reduces file copies)
+      - ${VISUS_DATASETS}:/mnt/visus_datasets
       # Mount existing system files if needed
       #- /home/amy/VisStoreClone/visus-dataportal-private:/var/www/html/existing-system:ro
     environment:

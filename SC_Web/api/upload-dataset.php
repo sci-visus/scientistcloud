@@ -130,24 +130,75 @@ try {
     // Log the API URL being used (for debugging)
     error_log("Upload API URL: " . $uploadApiUrl);
     
-    // Prepare multipart form data for forwarding to SCLib API
+    // OPTIMIZATION: Reduce file copies by using path-based upload when possible
+    // Strategy:
+    // 1. For large files (>100MB): Use chunked uploads (writes directly to final destination)
+    // 2. For smaller files: Move PHP temp to shared location and use path-based endpoint
+    // This eliminates the FastAPI temp copy, reducing from 3 copies to 2 copies
+    
     $filePath = $_FILES['file']['tmp_name'];
     $fileName = $_FILES['file']['name'];
     $fileSize = $_FILES['file']['size'];
+    $fileSizeMB = $fileSize / (1024 * 1024);
+    $fileSizeGB = $fileSize / (1024 * 1024 * 1024);
     
-    // Create CURLFile for file upload
-    $cfile = new CURLFile($filePath, $_FILES['file']['type'], $fileName);
+    // Large file threshold (100MB) - use chunked uploads which write directly to destination
+    $LARGE_FILE_THRESHOLD = 100 * 1024 * 1024; // 100MB
     
-    // Prepare POST data
-    $postData = [
-        'file' => $cfile,
-        'user_email' => $userEmail,
-        'dataset_name' => $datasetName,
-        'sensor' => $sensor,
-        'convert' => $convert ? 'true' : 'false',
-        'is_public' => $isPublic ? 'true' : 'false'
-    ];
+    // Shared temp directory that both PHP and FastAPI can access
+    $sharedTempDir = '/mnt/visus_datasets/tmp';
     
+    // For files > 100MB, we'll use chunked uploads (handled by frontend)
+    // For smaller files, optimize by using path-based upload
+    $usePathBasedUpload = false;
+    $sharedTempPath = null;
+    
+    if ($fileSize < $LARGE_FILE_THRESHOLD && is_dir($sharedTempDir) && is_writable($sharedTempDir)) {
+        // Move PHP temp file to shared location for path-based upload
+        // This eliminates FastAPI's temp copy
+        $sharedTempPath = $sharedTempDir . '/' . uniqid('upload_', true) . '_' . basename($fileName);
+        
+        if (move_uploaded_file($filePath, $sharedTempPath)) {
+            $usePathBasedUpload = true;
+            error_log("Optimization: Moved file to shared temp for path-based upload: $sharedTempPath");
+        } else {
+            error_log("Warning: Failed to move file to shared temp, falling back to content upload");
+            $sharedTempPath = null;
+        }
+    }
+    
+    if ($usePathBasedUpload) {
+        // Use path-based upload endpoint (eliminates FastAPI temp copy)
+        $uploadEndpoint = rtrim($uploadApiUrl, '/') . '/api/upload/upload-path';
+        error_log("Using optimized path-based upload endpoint: $uploadEndpoint");
+        
+        $postData = [
+            'file_path' => $sharedTempPath,
+            'user_email' => $userEmail,
+            'dataset_name' => $datasetName,
+            'sensor' => $sensor,
+            'convert' => $convert ? 'true' : 'false',
+            'is_public' => $isPublic ? 'true' : 'false'
+        ];
+    } else {
+        // Fallback to content-based upload (for large files or if shared temp unavailable)
+        $uploadEndpoint = rtrim($uploadApiUrl, '/') . '/api/upload/upload';
+        error_log("Using content-based upload endpoint: $uploadEndpoint");
+        
+        // Create CURLFile for file upload
+        $cfile = new CURLFile($filePath, $_FILES['file']['type'], $fileName);
+        
+        $postData = [
+            'file' => $cfile,
+            'user_email' => $userEmail,
+            'dataset_name' => $datasetName,
+            'sensor' => $sensor,
+            'convert' => $convert ? 'true' : 'false',
+            'is_public' => $isPublic ? 'true' : 'false'
+        ];
+    }
+    
+    // Add optional parameters
     if ($folder) {
         $postData['folder'] = $folder;  // Metadata only - for UI organization
     }
@@ -166,10 +217,6 @@ try {
     if ($addToExisting) {
         $postData['add_to_existing'] = 'true';
     }
-
-    // Build the full upload endpoint URL
-    $uploadEndpoint = rtrim($uploadApiUrl, '/') . '/api/upload/upload';
-    error_log("Upload endpoint URL: " . $uploadEndpoint);
 
     // Forward request to SCLib Upload API
     $ch = curl_init();
@@ -223,6 +270,16 @@ try {
         exit;
     }
 
+    // Clean up shared temp file if we used path-based upload and there was an error
+    if ($usePathBasedUpload && $sharedTempPath && file_exists($sharedTempPath)) {
+        if ($httpCode >= 400) {
+            // Error occurred, clean up temp file
+            @unlink($sharedTempPath);
+            error_log("Cleaned up shared temp file after error: $sharedTempPath");
+        }
+        // Note: If successful, FastAPI will handle cleanup when it moves the file to final destination
+    }
+    
     // Check HTTP status
     if ($httpCode >= 400) {
         // Log detailed error information
