@@ -80,6 +80,7 @@ RUN echo '<VirtualHost *:80>\n\
     <Directory /var/www/html>\n\
         AllowOverride All\n\
         Require all granted\n\
+        LimitRequestBody 2199023255552\n\
     </Directory>\n\
     \n\
     # Custom error pages\n\
@@ -99,12 +100,14 @@ RUN echo '<VirtualHost *:80>\n\
 
 # Configure PHP
 # Very large limits for massive file uploads (TB+ datasets)
-# Matching previous uppyReceive.php configuration
+# Based on previous portal php.ini configuration
+# Note: post_max_size must be >= upload_max_filesize
 RUN echo 'memory_limit = 4G\n\
 max_execution_time = 0\n\
 max_input_time = 0\n\
 upload_max_filesize = 2T\n\
 post_max_size = 2T\n\
+max_file_uploads = 2000\n\
 max_input_vars = 3000\n\
 date.timezone = UTC\n\
 session.cookie_httponly = 1\n\
@@ -123,6 +126,7 @@ ServerName scientistcloud.com\n\
     <Directory /var/www/html>\n\
         AllowOverride All\n\
         Require all granted\n\
+        LimitRequestBody 2199023255552\n\
     </Directory>\n\
 </VirtualHost>' > /etc/apache2/sites-available/000-default.conf
 

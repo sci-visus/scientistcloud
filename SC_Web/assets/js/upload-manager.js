@@ -13,6 +13,8 @@ class UploadManager {
     constructor() {
         this.activeUploads = new Map(); // job_id -> upload info
         this.progressWidget = null;
+        this.uploadModal = null; // Upload progress modal
+        this.currentUploadSession = null; // Current upload session data
         this.initialize();
     }
 
@@ -22,6 +24,7 @@ class UploadManager {
     initialize() {
         this.setupEventListeners();
         this.createProgressWidget();
+        this.createUploadModal();
     }
 
     /**
@@ -797,6 +800,9 @@ class UploadManager {
             submitBtn.disabled = true;
             submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Uploading...';
 
+            // Show upload progress modal
+            this.showUploadModal(uploadData.dataset_name, files.length);
+
             // Generate a single UUID for all files to group them in the same dataset
             const datasetUuid = this.generateUUID();
             console.log(`Grouping ${files.length} file(s) under dataset UUID: ${datasetUuid}`);
@@ -880,11 +886,21 @@ class UploadManager {
                 console.log(`Uploading file ${i + 1}/${files.length} to: ${uploadUrl}`);
                 console.log(`  Using dataset UUID: ${datasetUuid}`);
                 
+                // Track file upload with index
+                const fileIndex = i;
+                const fileName = file.name;
+                
+                // Mark file as queued
+                this.updateUploadModalFile(fileIndex, fileName, 'queued');
+                
                 uploadPromises.push(
                     fetch(uploadUrl, {
                         method: 'POST',
                         body: uploadFormData
                     }).then(async response => {
+                        // Mark file as uploading
+                        this.updateUploadModalFile(fileIndex, fileName, 'uploading');
+                        
                         const text = await response.text();
                         
                         // Log response for debugging
@@ -907,22 +923,40 @@ class UploadManager {
                                 throw new Error('Response is not valid JSON. Server may have returned an error page.');
                             }
                             
-                            return JSON.parse(cleanedText);
+                            const result = JSON.parse(cleanedText);
+                            
+                            // Check if upload was successful
+                            if (result.job_id && response.status === 200) {
+                                // Mark file as completed
+                                this.updateUploadModalFile(fileIndex, fileName, 'completed', result.job_id);
+                                return result;
+                            } else {
+                                // Mark file as failed
+                                const errorMsg = result.error || result.message || 'Upload failed';
+                                this.updateUploadModalFile(fileIndex, fileName, 'failed', null, errorMsg);
+                                return result;
+                            }
                         } catch (e) {
                             console.error('JSON parse error:', e);
                             console.error('Full response:', text);
-                            throw new Error('Invalid JSON response: ' + e.message + '. Response preview: ' + text.substring(0, 200));
+                            const errorMsg = 'Invalid JSON response: ' + e.message;
+                            this.updateUploadModalFile(fileIndex, fileName, 'failed', null, errorMsg);
+                            throw new Error(errorMsg + '. Response preview: ' + text.substring(0, 200));
                         }
                     }).catch(error => {
                         console.error('Upload fetch error:', error);
+                        // Mark file as failed
+                        const errorMsg = error.message || 'Network error';
+                        this.updateUploadModalFile(fileIndex, fileName, 'failed', null, errorMsg);
                         throw error;
                     })
                 );
             }
 
-            const results = await Promise.all(uploadPromises);
-            const successful = results.filter(r => r.job_id);
-            const failed = results.filter(r => !r.job_id);
+            // Wait for all uploads to complete (or fail)
+            const results = await Promise.allSettled(uploadPromises);
+            const successful = results.filter(r => r.status === 'fulfilled' && r.value && r.value.job_id).map(r => r.value);
+            const failed = results.filter(r => r.status === 'rejected' || !r.value || !r.value.job_id);
 
             // Track successful uploads
             successful.forEach(result => {
@@ -932,20 +966,11 @@ class UploadManager {
             submitBtn.disabled = false;
             submitBtn.innerHTML = originalText;
 
-            if (successful.length > 0) {
-                const message = successful.length === 1 
-                    ? `Upload started! Job ID: ${successful[0].job_id}\nYou can continue using the app. Check the progress widget.`
-                    : `${successful.length} upload(s) started!\nYou can continue using the app. Check the progress widget.`;
-                
-                if (failed.length > 0) {
-                    alert(message + `\n\n${failed.length} file(s) failed to upload.`);
-                } else {
-                    alert(message);
-                }
-                
-                this.closeUploadInterface();
-            } else {
-                throw new Error('All uploads failed');
+            // Don't close upload interface automatically - let user see the modal
+            // The modal will show all results and allow user to close when ready
+            // Refresh dataset list if any uploads succeeded
+            if (successful.length > 0 && window.datasetManager) {
+                window.datasetManager.loadDatasets();
             }
         } catch (error) {
             console.error('Error uploading file:', error);
@@ -1344,6 +1369,226 @@ class UploadManager {
             if (body) {
                 body.style.display = body.style.display === 'none' ? 'block' : 'none';
             }
+        }
+    }
+
+    /**
+     * Create upload progress modal
+     */
+    createUploadModal() {
+        const modal = document.createElement('div');
+        modal.id = 'uploadProgressModal';
+        modal.className = 'modal fade';
+        modal.setAttribute('tabindex', '-1');
+        modal.setAttribute('aria-labelledby', 'uploadProgressModalLabel');
+        modal.setAttribute('aria-hidden', 'true');
+        modal.innerHTML = `
+            <div class="modal-dialog modal-lg modal-dialog-scrollable">
+                <div class="modal-content">
+                    <div class="modal-header bg-primary text-white">
+                        <h5 class="modal-title" id="uploadProgressModalLabel">
+                            <i class="fas fa-upload"></i> Upload Progress
+                        </h5>
+                        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                    </div>
+                    <div class="modal-body">
+                        <div class="mb-3">
+                            <div class="d-flex justify-content-between align-items-center mb-2">
+                                <span><strong>Dataset:</strong> <span id="uploadModalDatasetName">-</span></span>
+                                <span class="badge bg-info" id="uploadModalOverallStatus">Initializing...</span>
+                            </div>
+                            <div class="progress" style="height: 25px;">
+                                <div class="progress-bar progress-bar-striped progress-bar-animated" 
+                                     role="progressbar" 
+                                     id="uploadModalOverallProgress"
+                                     style="width: 0%"
+                                     aria-valuenow="0" 
+                                     aria-valuemin="0" 
+                                     aria-valuemax="100">
+                                    <span id="uploadModalProgressText">0%</span>
+                                </div>
+                            </div>
+                            <div class="mt-2 small text-muted">
+                                <span id="uploadModalFileCount">0</span> of <span id="uploadModalTotalFiles">0</span> files completed
+                            </div>
+                        </div>
+                        <hr>
+                        <div class="upload-file-list" id="uploadModalFileList" style="max-height: 400px; overflow-y: auto;">
+                            <p class="text-muted text-center">No files uploaded yet...</p>
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal" id="uploadModalCloseBtn" disabled>
+                            Close
+                        </button>
+                        <button type="button" class="btn btn-primary" onclick="uploadManager.closeUploadInterface()" id="uploadModalViewJobsBtn" style="display: none;">
+                            View Jobs
+                        </button>
+                    </div>
+                </div>
+            </div>
+        `;
+        document.body.appendChild(modal);
+        this.uploadModal = new bootstrap.Modal(modal);
+    }
+
+    /**
+     * Show upload progress modal
+     */
+    showUploadModal(datasetName, totalFiles) {
+        if (!this.uploadModal) {
+            this.createUploadModal();
+        }
+
+        // Initialize session data
+        this.currentUploadSession = {
+            datasetName: datasetName,
+            totalFiles: totalFiles,
+            completedFiles: 0,
+            failedFiles: 0,
+            files: []
+        };
+
+        // Update modal content
+        document.getElementById('uploadModalDatasetName').textContent = datasetName;
+        document.getElementById('uploadModalTotalFiles').textContent = totalFiles;
+        document.getElementById('uploadModalFileCount').textContent = '0';
+        document.getElementById('uploadModalOverallProgress').style.width = '0%';
+        document.getElementById('uploadModalProgressText').textContent = '0%';
+        document.getElementById('uploadModalOverallStatus').textContent = 'Initializing...';
+        document.getElementById('uploadModalOverallStatus').className = 'badge bg-info';
+        document.getElementById('uploadModalFileList').innerHTML = '<p class="text-muted text-center">Preparing uploads...</p>';
+        document.getElementById('uploadModalCloseBtn').disabled = true;
+        document.getElementById('uploadModalViewJobsBtn').style.display = 'none';
+
+        // Show modal
+        this.uploadModal.show();
+    }
+
+    /**
+     * Update upload modal with file progress
+     */
+    updateUploadModalFile(fileIndex, fileName, status, jobId = null, error = null) {
+        if (!this.currentUploadSession) return;
+
+        const fileInfo = {
+            index: fileIndex,
+            name: fileName,
+            status: status, // 'queued', 'uploading', 'completed', 'failed'
+            jobId: jobId,
+            error: error
+        };
+
+        // Find existing file info before updating
+        const existingIndex = this.currentUploadSession.files.findIndex(f => f.index === fileIndex);
+        const existingFile = existingIndex >= 0 ? this.currentUploadSession.files[existingIndex] : null;
+
+        // Update counts (decrement old status if it was completed/failed)
+        if (existingFile) {
+            if (existingFile.status === 'completed') {
+                this.currentUploadSession.completedFiles--;
+            } else if (existingFile.status === 'failed') {
+                this.currentUploadSession.failedFiles--;
+            }
+        }
+        
+        // Update or add file info
+        if (existingIndex >= 0) {
+            this.currentUploadSession.files[existingIndex] = fileInfo;
+        } else {
+            this.currentUploadSession.files.push(fileInfo);
+        }
+        
+        // Increment new status count
+        if (status === 'completed') {
+            this.currentUploadSession.completedFiles++;
+        } else if (status === 'failed') {
+            this.currentUploadSession.failedFiles++;
+        }
+
+        // Update modal display
+        this.renderUploadModal();
+    }
+
+    /**
+     * Render upload modal content
+     */
+    renderUploadModal() {
+        if (!this.currentUploadSession) return;
+
+        const session = this.currentUploadSession;
+        const total = session.totalFiles;
+        const completed = session.completedFiles;
+        const failed = session.failedFiles;
+        const inProgress = session.files.filter(f => f.status === 'uploading' || f.status === 'queued').length;
+        
+        // Calculate overall progress
+        const progress = total > 0 ? Math.round(((completed + failed) / total) * 100) : 0;
+        
+        // Update overall progress bar
+        const progressBar = document.getElementById('uploadModalOverallProgress');
+        const progressText = document.getElementById('uploadModalProgressText');
+        progressBar.style.width = `${progress}%`;
+        progressBar.setAttribute('aria-valuenow', progress);
+        progressText.textContent = `${progress}%`;
+
+        // Update file count
+        document.getElementById('uploadModalFileCount').textContent = completed + failed;
+
+        // Update status badge
+        const statusBadge = document.getElementById('uploadModalOverallStatus');
+        if (failed === total && total > 0) {
+            statusBadge.textContent = 'All Failed';
+            statusBadge.className = 'badge bg-danger';
+        } else if (completed === total && total > 0) {
+            statusBadge.textContent = 'Completed';
+            statusBadge.className = 'badge bg-success';
+        } else if (inProgress > 0) {
+            statusBadge.textContent = `Uploading (${inProgress} active)`;
+            statusBadge.className = 'badge bg-primary';
+        } else {
+            statusBadge.textContent = 'Processing...';
+            statusBadge.className = 'badge bg-info';
+        }
+
+        // Render file list
+        const fileList = document.getElementById('uploadModalFileList');
+        if (session.files.length === 0) {
+            fileList.innerHTML = '<p class="text-muted text-center">Preparing uploads...</p>';
+        } else {
+            let html = '<div class="list-group">';
+            session.files.sort((a, b) => a.index - b.index).forEach(file => {
+                const statusColor = file.status === 'completed' ? 'success' :
+                                  file.status === 'failed' ? 'danger' :
+                                  file.status === 'uploading' ? 'primary' : 'secondary';
+                const statusIcon = file.status === 'completed' ? 'fa-check-circle' :
+                                 file.status === 'failed' ? 'fa-times-circle' :
+                                 file.status === 'uploading' ? 'fa-spinner fa-spin' : 'fa-clock';
+                
+                html += `
+                    <div class="list-group-item">
+                        <div class="d-flex justify-content-between align-items-start">
+                            <div class="flex-grow-1">
+                                <div class="d-flex align-items-center">
+                                    <i class="fas ${statusIcon} text-${statusColor} me-2"></i>
+                                    <span class="small">${this.escapeHtml(file.name)}</span>
+                                </div>
+                                ${file.jobId ? `<small class="text-muted d-block mt-1">Job ID: ${file.jobId}</small>` : ''}
+                                ${file.error ? `<small class="text-danger d-block mt-1">Error: ${this.escapeHtml(file.error)}</small>` : ''}
+                            </div>
+                            <span class="badge bg-${statusColor}">${file.status}</span>
+                        </div>
+                    </div>
+                `;
+            });
+            html += '</div>';
+            fileList.innerHTML = html;
+        }
+
+        // Enable close button if all done
+        if (completed + failed === total && total > 0) {
+            document.getElementById('uploadModalCloseBtn').disabled = false;
+            document.getElementById('uploadModalViewJobsBtn').style.display = 'inline-block';
         }
     }
 

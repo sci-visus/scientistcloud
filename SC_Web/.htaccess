@@ -1,13 +1,16 @@
 # PHP Configuration for Large File Uploads
 # These settings must be in .htaccess because ini_set() cannot change PHP_INI_SYSTEM directives
+# Based on previous portal php.ini configuration
 
 # Very large limits for massive file uploads (TB+ datasets)
 # 2TB = 2048GB (PHP may not support "T" suffix, so using GB)
+# Note: post_max_size must be >= upload_max_filesize
 php_value upload_max_filesize 2048G
 php_value post_max_size 2048G
 php_value max_execution_time 0
 php_value max_input_time 0
 php_value memory_limit 4096M
+php_value max_file_uploads 2000
 
 # Allow large POST requests
 php_value max_input_vars 3000

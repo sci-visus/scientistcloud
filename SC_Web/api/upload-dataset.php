@@ -120,7 +120,12 @@ try {
 
     // Get SCLib Upload API URL from config
     // In Docker, use service name; locally, use localhost
-    $uploadApiUrl = getenv('SCLIB_UPLOAD_URL') ?: getenv('SCLIB_API_URL') ?: getenv('EXISTING_API_URL') ?: 'http://localhost:5001';
+    // Try multiple fallback options for Docker networking
+    $uploadApiUrl = getenv('SCLIB_UPLOAD_URL') 
+        ?: getenv('SCLIB_API_URL') 
+        ?: getenv('EXISTING_API_URL')
+        ?: (getenv('DOCKER_ENV') ? 'http://sclib_fastapi:5001' : 'http://localhost:5001')
+        ?: 'http://localhost:5001';
     
     // Log the API URL being used (for debugging)
     error_log("Upload API URL: " . $uploadApiUrl);
