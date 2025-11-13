@@ -705,6 +705,20 @@ class UploadManager {
                 const files = e.target.files;
                 if (files.length > 0) {
                     console.log(`Selected ${files.length} file(s) for upload`);
+                    // Log file types to help debug
+                    const fileTypes = Array.from(files).map(f => ({
+                        name: f.name,
+                        type: f.type,
+                        extension: f.name.split('.').pop().toLowerCase()
+                    }));
+                    console.log('File details:', fileTypes);
+                    // Check for .nxs files specifically
+                    const nxsFiles = Array.from(files).filter(f => f.name.toLowerCase().endsWith('.nxs'));
+                    if (nxsFiles.length > 0) {
+                        console.log(`✅ Found ${nxsFiles.length} .nxs file(s):`, nxsFiles.map(f => f.name));
+                    } else {
+                        console.log('⚠️  No .nxs files found in selection');
+                    }
                 }
             });
         }
@@ -821,8 +835,22 @@ class UploadManager {
                 console.log(`Directory upload detected. Base directory: ${baseDirectoryName}`);
             }
             
+            // Log all files being processed
+            console.log(`Processing ${files.length} file(s) for upload`);
+            const fileExtensions = Array.from(files).map(f => f.name.split('.').pop().toLowerCase());
+            console.log('File extensions:', [...new Set(fileExtensions)]);
+            const nxsFiles = Array.from(files).filter(f => f.name.toLowerCase().endsWith('.nxs'));
+            if (nxsFiles.length > 0) {
+                console.log(`✅ Processing ${nxsFiles.length} .nxs file(s):`, nxsFiles.map(f => f.name));
+            }
+            
             for (let i = 0; i < files.length; i++) {
                 const file = files[i];
+                
+                // Log each file being processed
+                if (file.name.toLowerCase().endsWith('.nxs')) {
+                    console.log(`📦 Processing .nxs file ${i + 1}/${files.length}: ${file.name}`);
+                }
                 
                 // For directory uploads, extract the relative path without the base directory
                 // e.g., "Sampad/subdir/file.tif" -> "subdir/file.tif"
@@ -929,6 +957,10 @@ class UploadManager {
                             if (result.job_id && response.status === 200) {
                                 // Mark file as completed
                                 this.updateUploadModalFile(fileIndex, fileName, 'completed', result.job_id);
+                                // Log .nxs file uploads specifically
+                                if (fileName.toLowerCase().endsWith('.nxs')) {
+                                    console.log(`✅ .nxs file uploaded successfully: ${fileName}, job_id: ${result.job_id}`);
+                                }
                                 return result;
                             } else {
                                 // Mark file as failed
@@ -971,9 +1003,22 @@ class UploadManager {
             });
 
             // Track successful uploads
+            console.log(`Tracking ${successful.length} successful upload(s) in activeUploads`);
             successful.forEach(result => {
+                console.log(`Adding to activeUploads: job_id=${result.job_id}, dataset=${uploadData.dataset_name}`);
                 this.trackUpload(result.job_id, uploadData.dataset_name);
             });
+            
+            // Verify .nxs files were tracked
+            const nxsUploads = successful.filter(r => {
+                const fileIndex = results.findIndex(res => res.status === 'fulfilled' && res.value === r);
+                return fileIndex >= 0 && files[fileIndex] && files[fileIndex].name.toLowerCase().endsWith('.nxs');
+            });
+            if (nxsUploads.length > 0) {
+                console.log(`✅ Tracked ${nxsUploads.length} .nxs file upload(s) in activeUploads`);
+            } else if (nxsFiles.length > 0) {
+                console.warn(`⚠️  ${nxsFiles.length} .nxs file(s) were processed but none were successfully tracked in activeUploads`);
+            }
 
             submitBtn.disabled = false;
             submitBtn.innerHTML = originalText;
