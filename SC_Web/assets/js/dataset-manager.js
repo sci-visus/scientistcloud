@@ -526,26 +526,26 @@ class DatasetManager {
         
         return `
             <div class="dataset-item" data-dataset-id="${datasetId}" data-dataset-uuid="${datasetUuid}">
-                <div class="dataset-header">
-                    <a class="nav-link dataset-link" href="javascript:void(0)" 
+                <div class="dataset-header d-flex align-items-center">
+                    <a class="nav-link dataset-link flex-grow-1" href="javascript:void(0)" 
                        data-dataset-id="${datasetId}"
                        data-dataset-name="${datasetName}"
                        data-dataset-uuid="${datasetUuid}"
                        data-dataset-server="${datasetServer}">
                         <i class="${fileIcon} me-2"></i>
                         <span class="dataset-name">${datasetName}</span>
-                        <span class="badge bg-${statusColor} ms-2">${status}</span>
                     </a>
-                    <div class="dataset-actions ms-2">
+                    <div class="dataset-actions d-flex align-items-center gap-2 ms-2">
+                        <span class="badge bg-${statusColor}">${status}</span>
                         ${showRetry ? `
                             <button class="btn btn-sm btn-warning retry-conversion-btn" 
                                     data-dataset-uuid="${datasetUuid}"
                                     data-dataset-name="${datasetName}"
                                     title="Retry conversion">
-                                <i class="fas fa-redo"></i> Retry
+                                Retry
                             </button>
                         ` : ''}
-                        <button class="btn btn-sm btn-link dataset-files-toggle" data-dataset-uuid="${datasetUuid}" title="Toggle files">
+                        <button class="btn btn-sm btn-link dataset-files-toggle p-0" data-dataset-uuid="${datasetUuid}" title="Toggle files">
                             <i class="fas fa-chevron-right"></i>
                         </button>
                     </div>
@@ -684,7 +684,6 @@ class DatasetManager {
             html += '<div class="file-directory-section mb-2">';
             html += `<button class="dataset-file-toggle" data-bs-toggle="collapse" data-bs-target="#${convertedId}" style="background: none; border: none; color: var(--fg-color); cursor: pointer; padding: 0.25rem 0.5rem; display: flex; align-items: center; width: 100%; font-weight: 500;">`;
             html += `<i class="fas fa-chevron-right me-2 file-chevron" style="font-size: 0.75rem; transition: transform 0.2s;"></i>`;
-            html += `<i class="fas fa-cog me-2"></i>`;
             html += `<span>Converted</span>`;
             html += `<span class="badge bg-secondary ms-2" style="font-size: 0.65rem;">${this.countFiles(data.directories.converted.files)}</span>`;
             html += `</button>`;
