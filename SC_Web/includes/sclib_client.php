@@ -110,10 +110,27 @@ class SCLibClient {
     
     /**
      * Get user's datasets
+     * Note: Datasets are stored with 'user' or 'user_email' fields, not 'user_id'.
+     * This method now uses user_email for correct querying.
      */
     public function getUserDatasets($userId) {
         try {
-            $response = $this->makeRequest('/api/datasets', 'GET', null, ['user_id' => $userId]);
+            // Get current user to access email (datasets use email, not numeric ID)
+            $userEmail = null;
+            if (function_exists('getCurrentUser')) {
+                $user = getCurrentUser();
+                $userEmail = $user['email'] ?? null;
+            }
+            
+            // Prefer user_email, fallback to user_id for backward compatibility
+            $params = [];
+            if ($userEmail) {
+                $params['user_email'] = $userEmail;
+            } else {
+                $params['user_id'] = $userId;
+            }
+            
+            $response = $this->makeRequest('/api/datasets', 'GET', null, $params);
             return $response['datasets'] ?? [];
         } catch (Exception $e) {
             error_log("Failed to get user datasets: " . $e->getMessage());

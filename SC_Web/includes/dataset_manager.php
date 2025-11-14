@@ -10,10 +10,12 @@ require_once(__DIR__ . '/sclib_client.php');
 
 /**
  * Get user's datasets
+ * Note: Now uses user_email internally for correct querying (datasets use 'user' or 'user_email' fields, not 'user_id')
  */
 function getUserDatasets($userId) {
     try {
         $sclib = getSCLibClient();
+        // getUserDatasets() now automatically uses user_email if available
         $datasets = $sclib->getUserDatasets($userId);
         
         // Format datasets for portal
