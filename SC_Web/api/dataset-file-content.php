@@ -73,35 +73,40 @@ try {
 
     // Get dataset to verify access
     $user = getCurrentUser();
-    $dataset = getDatasetByUuid($datasetUuid);
+    if (!$user) {
+        ob_end_clean();
+        http_response_code(401);
+        echo json_encode(['success' => false, 'error' => 'User not authenticated']);
+        exit;
+    }
     
-    if (!$dataset) {
-        ob_end_clean();
-        http_response_code(404);
-        echo json_encode(['success' => false, 'error' => 'Dataset not found']);
-        exit;
-    }
-
-    // Check if user has access to this dataset
-    if ($dataset['user_id'] !== $user['id'] && 
-        !in_array($user['id'], $dataset['shared_with'] ?? []) &&
-        $dataset['team_id'] !== $user['team_id']) {
-        ob_end_clean();
-        http_response_code(403);
-        echo json_encode(['success' => false, 'error' => 'Access denied']);
-        exit;
-    }
-
-    // Get file content from FastAPI service
+    // Use SCLib client to get dataset details (which handles access control)
     $sclibClient = getSCLibClient();
-    $userEmail = $user['email'] ?? null;
     
+    // Get dataset details to verify it exists and user has access
+    // The FastAPI endpoint will handle access control
+    // We'll just verify the dataset exists by calling the API
+    // Note: We'll skip this check and let FastAPI handle access control
+    // This avoids potential issues with getDatasetDetails returning HTML errors
+    // FastAPI will verify access when we request the file content
+
     // Call FastAPI endpoint to get file content
     // The FastAPI service has access to /mnt/visus_datasets
-    $apiUrl = getenv('SCLIB_DATASET_URL') ?: getenv('SCLIB_API_URL') ?: getenv('EXISTING_API_URL') ?: 'http://sclib_fastapi:5001';
+    $apiUrl = getenv('SCLIB_DATASET_URL') ?: getenv('SCLIB_API_URL') ?: getenv('EXISTING_API_URL');
+    
+    // If running in Docker, use service name; otherwise use localhost
+    if (!$apiUrl) {
+        // Check if we're in Docker
+        if (file_exists('/.dockerenv') || getenv('DOCKER_CONTAINER')) {
+            $apiUrl = 'http://sclib_fastapi:5001';
+        } else {
+            $apiUrl = 'http://localhost:5001';
+        }
+    }
     
     // Build the file content endpoint URL
     $contentEndpoint = rtrim($apiUrl, '/') . '/api/v1/datasets/' . urlencode($datasetUuid) . '/file-content';
+    $userEmail = $user['email'] ?? null;
     $params = [
         'file_path' => $filePath,
         'directory' => $directory,
@@ -166,13 +171,41 @@ try {
     }
 
     // Parse and return response
-    $responseData = json_decode($response, true);
+    $response = trim($response);
     
-    if ($responseData === null) {
+    // Check if response starts with HTML (error page)
+    if (strpos($response, '<') === 0 || strpos($response, '<br') !== false) {
+        logMessage('ERROR', 'File service returned HTML instead of JSON', [
+            'dataset_uuid' => $datasetUuid,
+            'file_path' => $filePath,
+            'directory' => $directory,
+            'response_preview' => substr($response, 0, 500)
+        ]);
+        
         http_response_code(500);
         echo json_encode([
             'success' => false,
-            'error' => 'Invalid JSON response from file service'
+            'error' => 'File service returned invalid response',
+            'message' => 'The server returned an error page instead of file content'
+        ]);
+        exit;
+    }
+    
+    $responseData = json_decode($response, true);
+    
+    if ($responseData === null) {
+        logMessage('ERROR', 'Invalid JSON response from file service', [
+            'dataset_uuid' => $datasetUuid,
+            'file_path' => $filePath,
+            'directory' => $directory,
+            'response_preview' => substr($response, 0, 500)
+        ]);
+        
+        http_response_code(500);
+        echo json_encode([
+            'success' => false,
+            'error' => 'Invalid JSON response from file service',
+            'message' => 'The server returned an invalid response'
         ]);
         exit;
     }

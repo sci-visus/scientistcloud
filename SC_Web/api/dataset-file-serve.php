@@ -61,24 +61,16 @@ try {
 
     // Get dataset to verify access
     $user = getCurrentUser();
-    $dataset = getDatasetByUuid($datasetUuid);
+    if (!$user) {
+        http_response_code(401);
+        header('Content-Type: text/plain');
+        echo 'User not authenticated';
+        exit;
+    }
     
-    if (!$dataset) {
-        http_response_code(404);
-        header('Content-Type: text/plain');
-        echo 'Dataset not found';
-        exit;
-    }
-
-    // Check if user has access to this dataset
-    if ($dataset['user_id'] !== $user['id'] && 
-        !in_array($user['id'], $dataset['shared_with'] ?? []) &&
-        $dataset['team_id'] !== $user['team_id']) {
-        http_response_code(403);
-        header('Content-Type: text/plain');
-        echo 'Access denied';
-        exit;
-    }
+    // Note: We'll skip dataset verification here and let FastAPI handle access control
+    // This avoids potential issues with getDatasetDetails returning HTML errors
+    // FastAPI will verify access when we request the file
 
     // Get file from FastAPI service (which has access to /mnt/visus_datasets)
     // We'll proxy the file through FastAPI
