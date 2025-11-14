@@ -155,48 +155,69 @@ function setupEventListeners() {
     });
     
     // Quick action buttons (from welcome screen) - use event delegation
-    // This ensures buttons work even if they're added dynamically
+    // These buttons should trigger the same actions as the toolbar buttons
     document.addEventListener('click', function(e) {
-        // Upload button
+        // Upload button - trigger upload manager
         if (e.target && (e.target.id === 'quickUploadBtn' || e.target.closest('#quickUploadBtn'))) {
             e.preventDefault();
-            const uploadBtn = document.getElementById('uploadDatasetBtn');
-            if (uploadBtn) {
-                uploadBtn.click();
+            e.stopPropagation();
+            if (window.uploadManager) {
+                window.uploadManager.showUploadInterface();
             } else {
-                console.warn('Upload button not found');
+                // Fallback: try to click the toolbar button
+                const uploadBtn = document.getElementById('uploadDatasetBtn');
+                if (uploadBtn) {
+                    uploadBtn.click();
+                } else {
+                    console.warn('Upload manager and button not found');
+                }
             }
         }
         
-        // View Jobs button
+        // View Jobs button - trigger job manager
         if (e.target && (e.target.id === 'quickViewJobsBtn' || e.target.closest('#quickViewJobsBtn'))) {
             e.preventDefault();
-            const viewJobsBtn = document.getElementById('viewJobsBtn');
-            if (viewJobsBtn) {
-                viewJobsBtn.click();
+            e.stopPropagation();
+            if (window.jobManager) {
+                window.jobManager.showJobsInterface();
             } else {
-                console.warn('View Jobs button not found');
+                // Fallback: try to click the toolbar button
+                const viewJobsBtn = document.getElementById('viewJobsBtn');
+                if (viewJobsBtn) {
+                    viewJobsBtn.click();
+                } else {
+                    console.warn('Job manager and button not found');
+                }
             }
         }
         
-        // Create Team button
+        // Create Team button - trigger upload manager
         if (e.target && (e.target.id === 'quickCreateTeamBtn' || e.target.closest('#quickCreateTeamBtn'))) {
             e.preventDefault();
-            const createTeamBtn = document.getElementById('createTeamBtn');
-            if (createTeamBtn) {
-                createTeamBtn.click();
+            e.stopPropagation();
+            if (window.uploadManager) {
+                window.uploadManager.showCreateTeamInterface();
             } else {
-                console.warn('Create Team button not found');
+                // Fallback: try to click the toolbar button
+                const createTeamBtn = document.getElementById('createTeamBtn');
+                if (createTeamBtn) {
+                    createTeamBtn.click();
+                } else {
+                    console.warn('Upload manager and create team button not found');
+                }
             }
         }
         
         // Settings button
         if (e.target && (e.target.id === 'quickSettingsBtn' || e.target.closest('#quickSettingsBtn'))) {
             e.preventDefault();
+            e.stopPropagation();
             const settingsBtn = document.getElementById('settingsBtn');
             if (settingsBtn && !settingsBtn.disabled) {
                 // Settings not implemented yet
                 alert('Settings feature coming soon!');
+            } else if (settingsBtn && settingsBtn.disabled) {
+                alert('Settings feature is not yet available');
             }
         }
     });

@@ -974,9 +974,31 @@ class DatasetManager {
     /**
      * Display dataset details
      */
-    displayDatasetDetails(dataset) {
+    async displayDatasetDetails(dataset) {
         const detailsContainer = document.getElementById('datasetDetails');
         if (!detailsContainer) return;
+
+        // Show loading state
+        detailsContainer.innerHTML = `
+            <div class="text-center">
+                <div class="spinner-border spinner-border-sm text-primary" role="status">
+                    <span class="visually-hidden">Loading...</span>
+                </div>
+                <p class="small text-muted mt-2">Loading folder options...</p>
+            </div>
+        `;
+
+        // Load folders
+        let folders = [];
+        try {
+            const foldersResponse = await fetch(`${getApiBasePath()}/get-folders.php`);
+            const foldersData = await foldersResponse.json();
+            if (foldersData.success) {
+                folders = foldersData.folders || [];
+            }
+        } catch (error) {
+            console.warn('Could not load folders:', error);
+        }
 
         // Format tags for display/editing
         const tagsValue = Array.isArray(dataset.tags) ? dataset.tags.join(', ') : (dataset.tags || '');
@@ -989,6 +1011,13 @@ class DatasetManager {
             'magicscan',
             'openvisus'
         ];
+        
+        // Build folder options HTML
+        const folderOptions = `
+            <option value="">-- No Folder --</option>
+            ${folders.map(f => `<option value="${this.escapeHtml(f.uuid)}" ${(dataset.folder_uuid || '') === f.uuid ? 'selected' : ''}>${this.escapeHtml(f.name)}</option>`).join('')}
+            <option value="__CREATE__">+ Create New Folder</option>
+        `;
         
         const html = `
             <div class="dataset-details">
@@ -1017,9 +1046,13 @@ class DatasetManager {
                         
                         <div class="mb-2">
                             <label class="form-label small">Folder:</label>
-                            <input type="text" class="form-control form-control-sm" name="folder_uuid" 
-                                   value="${this.escapeHtml(dataset.folder_uuid || '')}" 
-                                   placeholder="Folder UUID">
+                            <select class="form-select form-select-sm" name="folder_uuid" id="datasetFolderSelect">
+                                ${folderOptions}
+                            </select>
+                            <div id="datasetNewFolderInput" class="mt-2" style="display: none;">
+                                <input type="text" class="form-control form-control-sm" name="new_folder_name" 
+                                       placeholder="Enter new folder name" id="datasetNewFolderName">
+                            </div>
                         </div>
                         
                         <div class="mb-2">
@@ -1099,6 +1132,19 @@ class DatasetManager {
 
         detailsContainer.innerHTML = html;
         
+        // Attach folder dropdown event listener
+        const folderSelect = detailsContainer.querySelector('#datasetFolderSelect');
+        const newFolderInput = detailsContainer.querySelector('#datasetNewFolderInput');
+        if (folderSelect && newFolderInput) {
+            folderSelect.addEventListener('change', (e) => {
+                if (e.target.value === '__CREATE__') {
+                    newFolderInput.style.display = 'block';
+                } else {
+                    newFolderInput.style.display = 'none';
+                }
+            });
+        }
+        
         // Attach form submit handler
         const form = detailsContainer.querySelector('#datasetDetailsForm');
         if (form) {
@@ -1114,11 +1160,26 @@ class DatasetManager {
      */
     async saveDatasetChanges(form, datasetId) {
         const formData = new FormData(form);
+        
+        // Handle folder creation if needed
+        // When __CREATE__ is selected, use the folder name as the folder_uuid
+        // (folders are identified by their name/UUID in the system)
+        let folderUuid = formData.get('folder_uuid');
+        if (folderUuid === '__CREATE__') {
+            const newFolderName = formData.get('new_folder_name');
+            if (!newFolderName || !newFolderName.trim()) {
+                alert('Please enter a folder name');
+                return;
+            }
+            // Use the folder name as the UUID (folders are identified by name)
+            folderUuid = newFolderName.trim();
+        }
+        
         const updateData = {
             dataset_id: datasetId,
             name: formData.get('name'),
             tags: formData.get('tags'),
-            folder_uuid: formData.get('folder_uuid'),
+            folder_uuid: folderUuid || null, // Allow null to remove folder
             team_uuid: formData.get('team_uuid'),
             dimensions: formData.get('dimensions'),
             preferred_dashboard: formData.get('preferred_dashboard')
