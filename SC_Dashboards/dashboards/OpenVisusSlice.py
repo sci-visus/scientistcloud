@@ -209,18 +209,38 @@ elif server in ['true', '%20true', ' true']:
     print(f'🔍 DEBUG: Final dataset_url: {dataset_url}')
     print('loading server data...')
 else:
-    # When server='false', use direct file path to converted directory
-    # OpenVisus needs a direct path to the IDX file, not a mod_visus URL
+    # When server='false', use direct file path to the IDX file
+    # OpenVisus needs a direct path to the visus.idx file, not just the directory
     if save_dir:
-        # Use the save_dir (converted directory) if available
-        dataset_url = save_dir
-        print(f'Using converted directory: {dataset_url}')
+        # Construct full path to visus.idx file in the converted directory
+        idx_path = os.path.join(save_dir, 'visus.idx')
+        if os.path.exists(idx_path):
+            dataset_url = idx_path
+            print(f'Using converted IDX file: {dataset_url}')
+        else:
+            # If visus.idx doesn't exist, try using the directory (OpenVisus might find it)
+            dataset_url = save_dir
+            print(f'⚠️ visus.idx not found in {save_dir}, using directory path: {dataset_url}')
+    elif base_dir:
+        # Construct full path to visus.idx file in the converted directory
+        idx_path = os.path.join(base_dir, 'visus.idx')
+        if os.path.exists(idx_path):
+            dataset_url = idx_path
+            print(f'Using converted IDX file: {dataset_url}')
+        else:
+            # If visus.idx doesn't exist, try using the directory (OpenVisus might find it)
+            dataset_url = base_dir
+            print(f'⚠️ visus.idx not found in {save_dir}, using directory path: {dataset_url}')
     else:
         # Fallback: construct path from UUID
         converted_path = f"/mnt/visus_datasets/converted/{uuid}"
-        if os.path.exists(converted_path):
+        idx_path = os.path.join(converted_path, 'visus.idx')
+        if os.path.exists(idx_path):
+            dataset_url = idx_path
+            print(f'Using constructed converted IDX path: {dataset_url}')
+        elif os.path.exists(converted_path):
             dataset_url = converted_path
-            print(f'Using constructed converted path: {dataset_url}')
+            print(f'Using constructed converted directory: {dataset_url}')
         else:
             # Last resort: try mod_visus URL (may not work in Docker)
             if deploy_server and 'localhost' in deploy_server:

@@ -9,15 +9,9 @@ class ViewerManager {
         this.viewers = {}; // Will be loaded from API
         this.defaultViewers = {
             'openvisus': {
+                id: 'openvisus',
                 name: 'OpenVisus Slice Explorer',
                 type: 'openvisus',
-                url_template: '/dashboard/openvisusslice?uuid={uuid}&server={server}&name={name}',
-                supported_formats: ['tiff', 'hdf5', 'nexus'],
-                description: 'Interactive 3D volume rendering with OpenVisus'
-            },
-            'OpenVisusSlice': {
-                name: 'OpenVisus Slice Explorer',
-                type: 'OpenVisusSlice',
                 url_template: '/dashboard/openvisusslice?uuid={uuid}&server={server}&name={name}',
                 supported_formats: ['tiff', 'hdf5', 'nexus'],
                 description: 'Interactive 3D volume rendering with OpenVisus'
@@ -73,8 +67,13 @@ class ViewerManager {
                     }
                 });
                 
-                // Merge with default viewers (for backward compatibility)
-                this.viewers = { ...this.defaultViewers, ...this.viewers };
+                // Only merge default viewers that aren't already loaded from API
+                // This prevents duplicates when API successfully loads dashboards
+                Object.keys(this.defaultViewers).forEach(key => {
+                    if (!this.viewers[key]) {
+                        this.viewers[key] = this.defaultViewers[key];
+                    }
+                });
                 
                 console.log('Loaded dashboards from API:', Object.keys(this.viewers).length);
             } else {
@@ -307,8 +306,9 @@ class ViewerManager {
         if (!viewerContainer) return;
 
         // Map common aliases to actual dashboard IDs
+        // Note: 'openvisus' is kept as a separate fallback viewer, but aliases map to 'OpenVisusSlice' from API
         const dashboardAliases = {
-            'openvisus': 'OpenVisusSlice',
+            'openvisus': 'OpenVisusSlice',  // Map lowercase alias to the API dashboard
             'OpenVisus': 'OpenVisusSlice',
             'openvisusslice': 'OpenVisusSlice'
         };
