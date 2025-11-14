@@ -279,10 +279,11 @@ class DatasetManager {
                 }
                 
                 // Store current dataset
+                // Note: datasetUuid here is already the effective UUID (link if server=true, otherwise actual UUID)
                 this.currentDataset = {
                     id: datasetId,
                     name: datasetName,
-                    uuid: datasetUuid,
+                    uuid: datasetUuid, // This is already the effective UUID from data attribute
                     server: datasetServer
                 };
                 
@@ -508,10 +509,17 @@ class DatasetManager {
         const status = dataset.status || 'unknown';
         const sensor = dataset.sensor || 'Unknown';
         
-        // Determine server flag: true if link includes 'http' but is NOT a Google Drive link
-        // Check download_url, viewer_url, or google_drive_link
-        const link = dataset.download_url || dataset.viewer_url || dataset.google_drive_link || '';
-        const datasetServer = (link.includes('http') && !link.includes('drive.google.com')) ? 'true' : 'false';
+        // Determine server flag: true if google_drive_link exists and includes 'http' but is NOT a Google Drive link
+        // Logic: if google_drive_link exists and contains 'http' but not 'google.com', then server=true
+        // The link itself will be used as the dataset UUID for remote loading
+        const link = dataset.google_drive_link || dataset.download_url || dataset.viewer_url || '';
+        const containsHttp = link ? link.includes('http') : false;
+        const containsGoogle = link ? link.includes('google.com') : false;
+        const datasetServer = (containsHttp && !containsGoogle) ? 'true' : 'false';
+        
+        // When server=true, use the link as the UUID for remote loading
+        // Otherwise use the dataset UUID
+        const effectiveUuid = (datasetServer === 'true' && link) ? link : datasetUuid;
         
         const statusColor = this.getStatusColor(status);
         const fileIcon = this.getFileIcon(sensor);
@@ -530,7 +538,7 @@ class DatasetManager {
                     <a class="nav-link dataset-link flex-grow-1" href="javascript:void(0)" 
                        data-dataset-id="${datasetId}"
                        data-dataset-name="${datasetName}"
-                       data-dataset-uuid="${datasetUuid}"
+                       data-dataset-uuid="${effectiveUuid}"
                        data-dataset-server="${datasetServer}">
                         <i class="${fileIcon} me-2"></i>
                         <span class="dataset-name">${datasetName}</span>
@@ -1316,6 +1324,14 @@ class DatasetManager {
                             </select>
                         </div>
                         
+                        <div class="mb-2">
+                            <label class="form-label small">Data Link (Google Drive/Remote):</label>
+                            <input type="url" class="form-control form-control-sm" name="google_drive_link" 
+                                   value="${this.escapeHtml(dataset.google_drive_link || '')}" 
+                                   placeholder="http://example.com/mod_visus?dataset=...">
+                            <small class="form-text text-muted">Link to remote data (e.g., S3, external server). If provided and not a Google Drive link, data will be loaded remotely.</small>
+                        </div>
+                        
                         <button type="submit" class="btn btn-sm btn-primary mt-2">
                             <i class="fas fa-save"></i> Save Changes
                         </button>
@@ -1420,7 +1436,8 @@ class DatasetManager {
             folder_uuid: folderUuid || null, // Allow null to remove folder
             team_uuid: formData.get('team_uuid'),
             dimensions: formData.get('dimensions'),
-            preferred_dashboard: formData.get('preferred_dashboard')
+            preferred_dashboard: formData.get('preferred_dashboard'),
+            google_drive_link: formData.get('google_drive_link') || null
         };
         
         // Show loading state

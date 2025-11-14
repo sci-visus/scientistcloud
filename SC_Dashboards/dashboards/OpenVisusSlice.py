@@ -165,29 +165,47 @@ if not has_args:
     # For local mode, use the directory containing the visus.idx file
     dataset_url = f"{local_base_dir}"
 elif server in ['true', '%20true', ' true']:
+    # When server=true, the uuid parameter is already the google_drive_link (or remote URL)
+    # This is set by the frontend when google_drive_link exists and doesn't contain 'google.com'
+    # So we can use it directly as the dataset_url
     if not DATA_IS_LOCAL and collection is not None:
-        print(f"🔍 DEBUG: Looking for dataset with uuid: {uuid}")
-        document = collection.find_one({'uuid': uuid})
-        print(f"🔍 DEBUG: Document found: {document is not None}")
-        if document:
-            print(f"🔍 DEBUG: Document keys: {list(document.keys())}")
-            print(f"🔍 DEBUG: Has google_drive_link: {'google_drive_link' in document}")
-            if 'google_drive_link' in document:
-                old_uuid = uuid
-                uuid = document['google_drive_link']
-                print(f"🔍 DEBUG: Replaced uuid '{old_uuid}' with google_drive_link '{uuid}'")
-            else:
-                print(f"🔍 DEBUG: No google_drive_link field found")
+        # Check if uuid looks like a URL (contains http)
+        if uuid and 'http' in uuid:
+            # UUID is already the link, use it directly
+            print(f"🔍 DEBUG: UUID is already a URL/link: {uuid}")
+            dataset_url = uuid
         else:
-            print(f"🔍 DEBUG: No document found with uuid: {uuid}")
-            # Try alternative lookup - maybe the uuid is actually the google_drive_link
-            alt_document = collection.find_one({'google_drive_link': uuid})
-            if alt_document:
-                print(f"🔍 DEBUG: Found document with google_drive_link matching uuid")
-                print(f"🔍 DEBUG: Document keys: {list(alt_document.keys())}")
+            # UUID is not a URL, try to look up the document to get google_drive_link
+            print(f"🔍 DEBUG: Looking for dataset with uuid: {uuid}")
+            document = collection.find_one({'uuid': uuid})
+            print(f"🔍 DEBUG: Document found: {document is not None}")
+            if document:
+                print(f"🔍 DEBUG: Document keys: {list(document.keys())}")
+                print(f"🔍 DEBUG: Has google_drive_link: {'google_drive_link' in document}")
+                if 'google_drive_link' in document and document['google_drive_link']:
+                    old_uuid = uuid
+                    uuid = document['google_drive_link']
+                    dataset_url = uuid
+                    print(f"🔍 DEBUG: Replaced uuid '{old_uuid}' with google_drive_link '{uuid}'")
+                else:
+                    print(f"🔍 DEBUG: No google_drive_link field found, using uuid as dataset_url")
+                    dataset_url = uuid
             else:
-                print(f"🔍 DEBUG: No document found with google_drive_link: {uuid}")
-    dataset_url = uuid
+                print(f"🔍 DEBUG: No document found with uuid: {uuid}")
+                # Try alternative lookup - maybe the uuid is actually the google_drive_link
+                alt_document = collection.find_one({'google_drive_link': uuid})
+                if alt_document:
+                    print(f"🔍 DEBUG: Found document with google_drive_link matching uuid")
+                    print(f"🔍 DEBUG: Document keys: {list(alt_document.keys())}")
+                    dataset_url = uuid
+                else:
+                    print(f"🔍 DEBUG: No document found with google_drive_link: {uuid}, using uuid as dataset_url")
+                    dataset_url = uuid
+    else:
+        # Local mode or no collection - use uuid directly (should already be the link)
+        dataset_url = uuid
+        print(f'🔍 DEBUG: Using uuid directly as dataset_url (local mode or no collection): {dataset_url}')
+    
     print(f'🔍 DEBUG: Final dataset_url: {dataset_url}')
     print('loading server data...')
 else:

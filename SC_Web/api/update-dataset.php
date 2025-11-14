@@ -107,6 +107,9 @@ try {
     if (isset($data['preferred_dashboard'])) {
         $updateData['preferred_dashboard'] = $data['preferred_dashboard'];
     }
+    if (isset($data['google_drive_link'])) {
+        $updateData['google_drive_link'] = $data['google_drive_link'];
+    }
 
     if (empty($updateData)) {
         ob_end_clean();
