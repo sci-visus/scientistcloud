@@ -309,17 +309,43 @@ function deleteDataset($datasetId) {
 
 /**
  * Get dataset statistics - delegate to SCLib
+ * Uses user_email to query datasets (datasets are stored with 'user' or 'user_email' fields, not 'user_id')
  */
 function getDatasetStats($userId) {
     try {
-        $sclib = getSCLibClient();
-        $datasets = $sclib->getUserDatasets($userId);
+        // Get current user to access email
+        $user = getCurrentUser();
+        if (!$user || !isset($user['email'])) {
+            logMessage('WARNING', 'Cannot get dataset stats: user email not available', ['user_id' => $userId]);
+            return [
+                'total_datasets' => 0,
+                'total_size' => 0,
+                'status_counts' => []
+            ];
+        }
         
-        $totalDatasets = count($datasets);
+        $userEmail = $user['email'];
+        $sclib = getSCLibClient();
+        
+        // Use the correct endpoint that queries by user_email
+        // This endpoint correctly queries for {'$or': [{'user': user_email}, {'user_email': user_email}]}
+        $response = $sclib->makeRequest('/api/v1/datasets/by-user', 'GET', null, ['user_email' => $userEmail]);
+        
+        // Combine all datasets (my, shared, team) for statistics
+        $allDatasets = [];
+        if (isset($response['datasets'])) {
+            $allDatasets = array_merge(
+                $response['datasets']['my'] ?? [],
+                $response['datasets']['shared'] ?? [],
+                $response['datasets']['team'] ?? []
+            );
+        }
+        
+        $totalDatasets = count($allDatasets);
         $totalSize = 0;
         $statusCounts = [];
         
-        foreach ($datasets as $dataset) {
+        foreach ($allDatasets as $dataset) {
             // Format dataset to ensure consistent field names
             $formatted = formatDataset($dataset);
             
