@@ -9,6 +9,37 @@ function getApiBasePath() {
     return isLocal ? '/api' : '/portal/api';
 }
 
+/**
+ * Format file size from GB (as stored in database) to human-readable format
+ * data_size is stored in GB (float), but formatFileSize expects bytes
+ */
+function formatFileSizeFromGb(sizeGb) {
+    if (!sizeGb || sizeGb == 0) return '0 B';
+    
+    // Ensure it's a number
+    const size = parseFloat(sizeGb);
+    if (isNaN(size) || size <= 0) return '0 B';
+    
+    // Convert GB to bytes for calculation
+    const bytes = size * 1024 * 1024 * 1024;
+    
+    // Determine the best unit to display
+    const units = ['B', 'KB', 'MB', 'GB', 'TB'];
+    let pow = Math.floor((bytes ? Math.log(bytes) : 0) / Math.log(1024));
+    pow = Math.min(pow, units.length - 1);
+    
+    // Convert to the appropriate unit
+    const value = bytes / Math.pow(1024, pow);
+    
+    // Format with appropriate decimal places
+    let decimals = 2;
+    if (pow === 0) decimals = 0; // Bytes - no decimals
+    else if (pow === 1) decimals = 1; // KB - 1 decimal
+    else if (pow >= 2) decimals = 2; // MB, GB, TB - 2 decimals
+    
+    return value.toFixed(decimals) + ' ' + units[pow];
+}
+
 // Global state
 const AppState = {
     currentDataset: null,
@@ -123,41 +154,52 @@ function setupEventListeners() {
         });
     });
     
-    // Quick action buttons (from welcome screen)
-    const quickUploadBtn = document.getElementById('quickUploadBtn');
-    if (quickUploadBtn) {
-        quickUploadBtn.addEventListener('click', function() {
+    // Quick action buttons (from welcome screen) - use event delegation
+    // This ensures buttons work even if they're added dynamically
+    document.addEventListener('click', function(e) {
+        // Upload button
+        if (e.target && (e.target.id === 'quickUploadBtn' || e.target.closest('#quickUploadBtn'))) {
+            e.preventDefault();
             const uploadBtn = document.getElementById('uploadDatasetBtn');
-            if (uploadBtn) uploadBtn.click();
-        });
-    }
-    
-    const quickViewJobsBtn = document.getElementById('quickViewJobsBtn');
-    if (quickViewJobsBtn) {
-        quickViewJobsBtn.addEventListener('click', function() {
+            if (uploadBtn) {
+                uploadBtn.click();
+            } else {
+                console.warn('Upload button not found');
+            }
+        }
+        
+        // View Jobs button
+        if (e.target && (e.target.id === 'quickViewJobsBtn' || e.target.closest('#quickViewJobsBtn'))) {
+            e.preventDefault();
             const viewJobsBtn = document.getElementById('viewJobsBtn');
-            if (viewJobsBtn) viewJobsBtn.click();
-        });
-    }
-    
-    const quickCreateTeamBtn = document.getElementById('quickCreateTeamBtn');
-    if (quickCreateTeamBtn) {
-        quickCreateTeamBtn.addEventListener('click', function() {
+            if (viewJobsBtn) {
+                viewJobsBtn.click();
+            } else {
+                console.warn('View Jobs button not found');
+            }
+        }
+        
+        // Create Team button
+        if (e.target && (e.target.id === 'quickCreateTeamBtn' || e.target.closest('#quickCreateTeamBtn'))) {
+            e.preventDefault();
             const createTeamBtn = document.getElementById('createTeamBtn');
-            if (createTeamBtn) createTeamBtn.click();
-        });
-    }
-    
-    const quickSettingsBtn = document.getElementById('quickSettingsBtn');
-    if (quickSettingsBtn) {
-        quickSettingsBtn.addEventListener('click', function() {
+            if (createTeamBtn) {
+                createTeamBtn.click();
+            } else {
+                console.warn('Create Team button not found');
+            }
+        }
+        
+        // Settings button
+        if (e.target && (e.target.id === 'quickSettingsBtn' || e.target.closest('#quickSettingsBtn'))) {
+            e.preventDefault();
             const settingsBtn = document.getElementById('settingsBtn');
             if (settingsBtn && !settingsBtn.disabled) {
                 // Settings not implemented yet
                 alert('Settings feature coming soon!');
             }
-        });
-    }
+        }
+    });
 }
 
 /**
@@ -317,7 +359,7 @@ function displayDatasetDetails(dataset) {
                 </div>
                 <div class="detail-item">
                     <span class="detail-label">Size:</span>
-                    <span class="detail-value">${formatFileSize(dataset.data_size)}</span>
+                    <span class="detail-value">${formatFileSizeFromGb(dataset.data_size)}</span>
                 </div>
                 <div class="detail-item">
                     <span class="detail-label">Status:</span>

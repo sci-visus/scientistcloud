@@ -185,18 +185,18 @@ function displayWelcomeScreen($user) {
                             <h5><i class="fas fa-chart-bar"></i> Your Statistics</h5>
                         </div>
                         <div class="card-body">
-                            <div class="row text-center">
-                                <div class="col-4">
-                                    <h3 class="text-primary"><?php echo $stats['total_datasets']; ?></h3>
-                                    <p class="text-muted">Datasets</p>
+                            <div class="d-flex justify-content-around align-items-center flex-wrap gap-3 text-center">
+                                <div class="flex-fill" style="min-width: 120px;">
+                                    <h3 class="text-primary mb-1"><?php echo $stats['total_datasets']; ?></h3>
+                                    <p class="text-muted mb-0 small">Datasets</p>
                                 </div>
-                                <div class="col-4">
-                                    <h3 class="text-success"><?php echo formatFileSize($stats['total_size']); ?></h3>
-                                    <p class="text-muted">Total Size</p>
+                                <div class="flex-fill" style="min-width: 120px;">
+                                    <h3 class="text-success mb-1"><?php echo formatFileSize($stats['total_size']); ?></h3>
+                                    <p class="text-muted mb-0 small">Total Size</p>
                                 </div>
-                                <div class="col-4">
-                                    <h3 class="text-info"><?php echo count($stats['status_counts']); ?></h3>
-                                    <p class="text-muted">Status Types</p>
+                                <div class="flex-fill" style="min-width: 120px;">
+                                    <h3 class="text-info mb-1"><?php echo count($stats['status_counts']); ?></h3>
+                                    <p class="text-muted mb-0 small">Status Types</p>
                                 </div>
                             </div>
                         </div>

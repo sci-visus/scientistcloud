@@ -352,16 +352,23 @@ function getDatasetStats($userId) {
             $formatted = formatDataset($dataset);
             
             // Use data_size from formatted dataset (handles multiple field name variations)
-            $totalSize += $formatted['data_size'] ?? 0;
+            // Note: data_size is stored in GB (float), not bytes
+            $dataSizeGb = $formatted['data_size'] ?? 0;
+            $totalSize += $dataSizeGb;
             
             // Get status from formatted dataset
             $status = $formatted['status'] ?? 'unknown';
             $statusCounts[$status] = ($statusCounts[$status] ?? 0) + 1;
         }
         
+        // Convert total_size from GB to bytes for formatFileSize() function
+        // data_size is stored in GB, but formatFileSize() expects bytes
+        $totalSizeBytes = $totalSize * (1024 ** 3); // GB to bytes
+        
         return [
             'total_datasets' => $totalDatasets,
-            'total_size' => $totalSize,
+            'total_size' => $totalSizeBytes, // Return in bytes for formatFileSize()
+            'total_size_gb' => $totalSize, // Also return in GB for reference
             'status_counts' => $statusCounts
         ];
         
