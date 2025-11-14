@@ -140,6 +140,8 @@ else:
     uuid = params['uuid']
     server = params['server']
     name = params['name']
+    base_dir = params.get('base_dir')
+    save_dir = params.get('save_dir')
     is_authorized = auth_result['is_authorized']
     user_email = auth_result['user_email']
     
@@ -154,6 +156,9 @@ else:
         collection = None
         collection1 = None
         team_collection = None
+    
+    print(f"base_dir: {base_dir}")
+    print(f"save_dir: {save_dir}")
 
 # Set dataset URL
 if not has_args:
@@ -186,11 +191,26 @@ elif server in ['true', '%20true', ' true']:
     print(f'🔍 DEBUG: Final dataset_url: {dataset_url}')
     print('loading server data...')
 else:
-    # Use host.docker.internal for Docker containers to access host localhost
-    if deploy_server and 'localhost' in deploy_server:
-        dataset_url = f"http://host.docker.internal/mod_visus?dataset={uuid}"
+    # When server='false', use direct file path to converted directory
+    # OpenVisus needs a direct path to the IDX file, not a mod_visus URL
+    if save_dir:
+        # Use the save_dir (converted directory) if available
+        dataset_url = save_dir
+        print(f'Using converted directory: {dataset_url}')
     else:
-        dataset_url = f"{deploy_server}/mod_visus?dataset={uuid}"
+        # Fallback: construct path from UUID
+        converted_path = f"/mnt/visus_datasets/converted/{uuid}"
+        if os.path.exists(converted_path):
+            dataset_url = converted_path
+            print(f'Using constructed converted path: {dataset_url}')
+        else:
+            # Last resort: try mod_visus URL (may not work in Docker)
+            if deploy_server and 'localhost' in deploy_server:
+                dataset_url = f"http://host.docker.internal/mod_visus?dataset={uuid}"
+            else:
+                dataset_url = f"{deploy_server}/mod_visus?dataset={uuid}"
+            print(f'⚠️ Converted directory not found, using mod_visus URL: {dataset_url}')
+            print(f'⚠️ Note: Dataset may need to be converted first')
 
 print(f'Data Explorer: UUID: {uuid}, server: {server}, name: {name}')
 

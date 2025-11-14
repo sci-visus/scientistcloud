@@ -174,6 +174,7 @@ try {
         
         $postData = [
             'file_path' => $sharedTempPath,
+            'original_filename' => $fileName,  // Pass original filename to preserve it
             'user_email' => $userEmail,
             'dataset_name' => $datasetName,
             'sensor' => $sensor,
