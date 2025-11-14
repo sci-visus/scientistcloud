@@ -943,19 +943,32 @@ class DatasetManager {
         for (const item of items) {
             if (item.type === 'directory') {
                 const dirId = uniqueId + '-dir-' + item.path.replace(/[^a-zA-Z0-9]/g, '-');
+                const hasChildren = item.children && item.children.length > 0;
+                const hasExcludedFiles = item.has_excluded_files || false;
+                const excludedCount = item.excluded_file_count || 0;
+                
                 html += `<li class="dataset-file-item dataset-file-dir" style="padding-left: ${level * 1.5}rem;">`;
                 html += `<button class="dataset-file-toggle" data-bs-toggle="collapse" data-bs-target="#${dirId}" style="background: none; border: none; color: var(--fg-color); cursor: pointer; padding: 0.25rem 0.5rem; display: flex; align-items: center; width: 100%;">`;
                 html += `<i class="fas fa-chevron-right me-2 file-chevron" style="font-size: 0.75rem; transition: transform 0.2s;"></i>`;
                 html += `<i class="fas fa-folder me-2"></i>`;
                 html += `<span>${this.escapeHtml(item.name)}</span>`;
-                if (item.children && item.children.length > 0) {
+                if (hasChildren) {
                     html += `<span class="badge bg-secondary ms-2" style="font-size: 0.65rem;">${item.children.length}</span>`;
+                }
+                // Show indicator if directory has excluded files (like .bin files)
+                if (hasExcludedFiles && excludedCount > 0) {
+                    html += `<span class="text-muted small ms-2" title="${excludedCount} hidden file(s) (e.g., .bin files)">(${excludedCount} hidden)</span>`;
                 }
                 html += `</button>`;
                 html += `<div class="collapse" id="${dirId}">`;
-                if (item.children && item.children.length > 0) {
+                if (hasChildren) {
                     html += '<ul class="dataset-files-list" style="list-style: none; padding-left: 0;">';
                     html += this.renderFileTreeInline(item.children, basePath, level + 1, directory);
+                    html += '</ul>';
+                } else if (hasExcludedFiles) {
+                    // Show message if directory only has excluded files
+                    html += '<ul class="dataset-files-list" style="list-style: none; padding-left: 0;">';
+                    html += `<li class="text-muted small" style="padding-left: ${(level + 1) * 1.5}rem; font-style: italic; padding-top: 0.25rem;">Contains ${excludedCount} hidden file(s) (e.g., .bin files)</li>`;
                     html += '</ul>';
                 }
                 html += `</div>`;
