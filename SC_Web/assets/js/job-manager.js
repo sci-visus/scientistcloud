@@ -99,11 +99,16 @@ class JobManager {
     renderJobsInterface(jobs) {
         const viewerContainer = document.getElementById('viewerContainer');
         
-        // Group jobs by status
+        // Set up event listeners for log expansion after rendering
+        setTimeout(() => {
+            this.setupLogViewers();
+        }, 100);
+        
+        // Group jobs by status (include converting status)
         const jobsByStatus = {
-            'processing': jobs.filter(j => j.status === 'processing' || j.status === 'queued'),
+            'processing': jobs.filter(j => j.status === 'processing' || j.status === 'queued' || j.status === 'converting' || j.status === 'conversion queued'),
             'completed': jobs.filter(j => j.status === 'completed' || j.status === 'done'),
-            'failed': jobs.filter(j => j.status === 'failed' || j.status === 'error'),
+            'failed': jobs.filter(j => j.status === 'failed' || j.status === 'error' || j.status === 'conversion failed'),
             'cancelled': jobs.filter(j => j.status === 'cancelled')
         };
 
@@ -226,9 +231,15 @@ class JobManager {
         const statusBadge = this.getStatusBadge(job.status);
         const progressBar = this.getProgressBar(job);
         const timeInfo = this.getTimeInfo(job);
+        const jobId = job.job_id || job.id;
+        const datasetUuid = job.dataset_uuid;
+        
+        // Show conversion logs for converting/processing jobs
+        const showLogs = (job.status === 'processing' || job.status === 'converting' || job.status === 'queued') && datasetUuid;
+        const logId = `logs-${jobId}`;
 
         return `
-            <div class="card mb-3" data-job-id="${job.job_id || job.id}">
+            <div class="card mb-3" data-job-id="${jobId}">
                 <div class="card-body">
                     <div class="d-flex justify-content-between align-items-start">
                         <div class="flex-grow-1">
@@ -239,7 +250,7 @@ class JobManager {
                             <p class="card-text text-muted mb-2">
                                 <small>
                                     <i class="fas fa-tag"></i> ${job.job_type || 'upload'} 
-                                    ${job.dataset_uuid ? `| <i class="fas fa-database"></i> ${job.dataset_uuid.substring(0, 8)}...` : ''}
+                                    ${datasetUuid ? `| <i class="fas fa-database"></i> ${datasetUuid.substring(0, 8)}...` : ''}
                                 </small>
                             </p>
                             ${progressBar}
@@ -250,10 +261,29 @@ class JobManager {
                                     <strong>Error:</strong> ${job.error}
                                 </div>
                             ` : ''}
+                            ${showLogs ? `
+                                <div class="mt-3">
+                                    <button class="btn btn-sm btn-outline-info" type="button" data-bs-toggle="collapse" data-bs-target="#${logId}" aria-expanded="false" aria-controls="${logId}">
+                                        <i class="fas fa-file-alt"></i> View Conversion Logs
+                                    </button>
+                                    <div class="collapse mt-2" id="${logId}">
+                                        <div class="card card-body bg-dark text-light" style="max-height: 300px; overflow-y: auto; font-family: monospace; font-size: 0.85rem;">
+                                            <div class="conversion-logs" data-dataset-uuid="${datasetUuid}">
+                                                <div class="text-center py-2">
+                                                    <div class="spinner-border spinner-border-sm text-light" role="status">
+                                                        <span class="visually-hidden">Loading logs...</span>
+                                                    </div>
+                                                    <p class="mt-2 mb-0">Loading conversion logs...</p>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            ` : ''}
                         </div>
                         <div class="ms-3">
-                            ${job.status === 'processing' || job.status === 'queued' ? `
-                                <button class="btn btn-sm btn-outline-danger" onclick="window.jobManager.cancelJob('${job.job_id || job.id}')" title="Cancel Job">
+                            ${job.status === 'processing' || job.status === 'queued' || job.status === 'converting' ? `
+                                <button class="btn btn-sm btn-outline-danger" onclick="window.jobManager.cancelJob('${jobId}')" title="Cancel Job">
                                     <i class="fas fa-times"></i>
                                 </button>
                             ` : ''}
@@ -271,9 +301,12 @@ class JobManager {
         const badges = {
             'queued': '<span class="badge bg-secondary">Queued</span>',
             'processing': '<span class="badge bg-info">Processing</span>',
+            'converting': '<span class="badge bg-info">Converting</span>',
+            'conversion queued': '<span class="badge bg-secondary">Conversion Queued</span>',
             'completed': '<span class="badge bg-success">Completed</span>',
             'done': '<span class="badge bg-success">Done</span>',
             'failed': '<span class="badge bg-danger">Failed</span>',
+            'conversion failed': '<span class="badge bg-danger">Conversion Failed</span>',
             'error': '<span class="badge bg-danger">Error</span>',
             'cancelled': '<span class="badge bg-secondary">Cancelled</span>'
         };
@@ -285,16 +318,19 @@ class JobManager {
      */
     getProgressBar(job) {
         const progress = job.progress_percentage || job.progress || 0;
-        if (job.status === 'processing' || job.status === 'queued') {
+        // Show progress for processing, converting, or queued jobs
+        if (job.status === 'processing' || job.status === 'queued' || job.status === 'converting' || job.status === 'conversion queued') {
+            // For converting status, show indeterminate progress if no specific progress
+            const isIndeterminate = (job.status === 'converting' || job.status === 'conversion queued') && progress === 0;
             return `
                 <div class="progress mt-2" style="height: 20px;">
-                    <div class="progress-bar progress-bar-striped progress-bar-animated" 
+                    <div class="progress-bar progress-bar-striped ${isIndeterminate ? 'progress-bar-animated' : ''}" 
                          role="progressbar" 
-                         style="width: ${progress}%"
+                         style="width: ${isIndeterminate ? '100' : progress}%"
                          aria-valuenow="${progress}" 
                          aria-valuemin="0" 
                          aria-valuemax="100">
-                        ${progress}%
+                        ${isIndeterminate ? 'Converting...' : `${progress}%`}
                     </div>
                 </div>
             `;

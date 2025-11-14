@@ -320,8 +320,14 @@ function getDatasetStats($userId) {
         $statusCounts = [];
         
         foreach ($datasets as $dataset) {
-            $totalSize += $dataset['file_size'] ?? 0;
-            $status = $dataset['status'] ?? 'unknown';
+            // Format dataset to ensure consistent field names
+            $formatted = formatDataset($dataset);
+            
+            // Use data_size from formatted dataset (handles multiple field name variations)
+            $totalSize += $formatted['data_size'] ?? 0;
+            
+            // Get status from formatted dataset
+            $status = $formatted['status'] ?? 'unknown';
             $statusCounts[$status] = ($statusCounts[$status] ?? 0) + 1;
         }
         

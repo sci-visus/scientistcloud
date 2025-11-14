@@ -86,6 +86,9 @@ $preferredDashboard = getUserPreferredDashboard($user['id']);
           <button type="button" class="btn btn-outline-light" id="createTeamBtn" title="Create Team">
             <i class="fas fa-users"></i> Create Team
           </button>
+          <button type="button" class="btn btn-outline-light" id="settingsBtn" title="Settings" disabled>
+            <i class="fas fa-cog"></i> Settings
+          </button>
         </div>
       </div>
     </div>

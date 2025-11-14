@@ -205,17 +205,20 @@ function displayWelcomeScreen($user) {
                 <div class="col-md-6">
                     <div class="card">
                         <div class="card-header">
-                            <h5><i class="fas fa-upload"></i> Quick Actions</h5>
+                            <h5><i class="fas fa-bolt"></i> Quick Actions</h5>
                         </div>
                         <div class="card-body">
                             <div class="d-grid gap-2">
-                                <button class="btn btn-primary" onclick="showUploadModal()">
+                                <button class="btn btn-primary" id="quickUploadBtn">
                                     <i class="fas fa-upload"></i> Upload Dataset
                                 </button>
-                                <button class="btn btn-outline-primary" onclick="showImportModal()">
-                                    <i class="fas fa-download"></i> Import from URL
+                                <button class="btn btn-outline-primary" id="quickViewJobsBtn">
+                                    <i class="fas fa-tasks"></i> View Jobs
                                 </button>
-                                <button class="btn btn-outline-secondary" onclick="showSettingsModal()">
+                                <button class="btn btn-outline-primary" id="quickCreateTeamBtn">
+                                    <i class="fas fa-users"></i> Create Team
+                                </button>
+                                <button class="btn btn-outline-secondary" id="quickSettingsBtn" disabled>
                                     <i class="fas fa-cog"></i> Settings
                                 </button>
                             </div>

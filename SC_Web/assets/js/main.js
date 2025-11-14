@@ -122,6 +122,42 @@ function setupEventListeners() {
             }
         });
     });
+    
+    // Quick action buttons (from welcome screen)
+    const quickUploadBtn = document.getElementById('quickUploadBtn');
+    if (quickUploadBtn) {
+        quickUploadBtn.addEventListener('click', function() {
+            const uploadBtn = document.getElementById('uploadDatasetBtn');
+            if (uploadBtn) uploadBtn.click();
+        });
+    }
+    
+    const quickViewJobsBtn = document.getElementById('quickViewJobsBtn');
+    if (quickViewJobsBtn) {
+        quickViewJobsBtn.addEventListener('click', function() {
+            const viewJobsBtn = document.getElementById('viewJobsBtn');
+            if (viewJobsBtn) viewJobsBtn.click();
+        });
+    }
+    
+    const quickCreateTeamBtn = document.getElementById('quickCreateTeamBtn');
+    if (quickCreateTeamBtn) {
+        quickCreateTeamBtn.addEventListener('click', function() {
+            const createTeamBtn = document.getElementById('createTeamBtn');
+            if (createTeamBtn) createTeamBtn.click();
+        });
+    }
+    
+    const quickSettingsBtn = document.getElementById('quickSettingsBtn');
+    if (quickSettingsBtn) {
+        quickSettingsBtn.addEventListener('click', function() {
+            const settingsBtn = document.getElementById('settingsBtn');
+            if (settingsBtn && !settingsBtn.disabled) {
+                // Settings not implemented yet
+                alert('Settings feature coming soon!');
+            }
+        });
+    }
 }
 
 /**

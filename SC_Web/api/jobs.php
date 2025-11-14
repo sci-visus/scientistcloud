@@ -73,23 +73,34 @@ try {
         error_log("Error getting conversion jobs: " . $e->getMessage());
     }
 
-    // Also get datasets with "conversion queued" status (jobs may not exist yet)
+    // Also get datasets with "conversion queued" or "converting" status (jobs may not exist yet)
     try {
         $queuedDatasets = getQueuedConversionDatasets($userEmail, $limit);
         // Convert dataset status to job-like format
         foreach ($queuedDatasets as $dataset) {
+            $status = $dataset['status'] ?? 'unknown';
+            // Map status to job status
+            $jobStatus = 'queued';
+            if ($status === 'converting') {
+                $jobStatus = 'converting';
+            } elseif ($status === 'conversion queued') {
+                $jobStatus = 'queued';
+            } elseif ($status === 'conversion failed' || $status === 'error') {
+                $jobStatus = 'failed';
+            }
+            
             $jobs[] = [
                 'job_id' => 'dataset_' . $dataset['uuid'],
                 'id' => 'dataset_' . $dataset['uuid'],
                 'job_type' => 'dataset_conversion',
-                'status' => 'queued', // Map "conversion queued" to "queued"
+                'status' => $jobStatus,
                 'dataset_uuid' => $dataset['uuid'],
                 'dataset_name' => $dataset['name'] ?? $dataset['dataset_name'] ?? 'Unnamed Dataset',
                 'created_at' => isset($dataset['created_at']) ? (is_object($dataset['created_at']) ? $dataset['created_at']->toDateTime()->format('c') : $dataset['created_at']) : null,
                 'updated_at' => isset($dataset['updated_at']) ? (is_object($dataset['updated_at']) ? $dataset['updated_at']->toDateTime()->format('c') : $dataset['updated_at']) : null,
                 'completed_at' => null,
                 'progress_percentage' => 0,
-                'error' => null
+                'error' => $dataset['conversion_last_error'] ?? $dataset['error_message'] ?? null
             ];
         }
     } catch (Exception $e) {
