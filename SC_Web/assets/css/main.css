@@ -38,6 +38,20 @@ body {
   transition: background-color 0.3s, color 0.3s;
 }
 
+/* Clickable file styles */
+.clickable-file {
+  transition: background-color 0.2s, color 0.2s;
+}
+
+.clickable-file:hover {
+  background-color: rgba(0, 123, 255, 0.1);
+  color: var(--primary-color);
+}
+
+.light-theme .clickable-file:hover {
+  background-color: rgba(0, 123, 255, 0.15);
+}
+
 /* Sidebars */
 .sidebar, .details {
   transition: width 0.3s, background-color 0.3s, border-color 0.3s;

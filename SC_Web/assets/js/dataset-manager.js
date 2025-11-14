@@ -597,7 +597,10 @@ class DatasetManager {
                     console.warn('Upload directory exists but no files found. Check if files are in subdirectories or excluded.');
                 }
                 
-                container.innerHTML = this.renderDatasetFilesInline(data);
+                container.innerHTML = this.renderDatasetFilesInline(data, datasetUuid);
+                
+                // Attach click handlers for clickable files
+                this.attachFileClickHandlers(container, datasetUuid);
             } else {
                 console.error('Failed to load files:', data.error);
                 container.innerHTML = `<p class="text-muted small">${data.error || 'Failed to load files'}</p>`;
@@ -646,10 +649,218 @@ class DatasetManager {
     }
 
     /**
+     * Attach click handlers for clickable files
+     */
+    attachFileClickHandlers(container, datasetUuid) {
+        const clickableFiles = container.querySelectorAll('.clickable-file');
+        clickableFiles.forEach(fileItem => {
+            fileItem.addEventListener('click', async (e) => {
+                e.stopPropagation();
+                const filePath = fileItem.getAttribute('data-file-path');
+                const fileName = fileItem.getAttribute('data-file-name');
+                const fileType = fileItem.getAttribute('data-file-type');
+                
+                // Get directory from data attribute (set during rendering)
+                const directory = fileItem.getAttribute('data-directory') || 'upload';
+                
+                if (fileType === 'text') {
+                    await this.displayTextFile(datasetUuid, filePath, fileName, directory);
+                } else if (fileType === 'image') {
+                    await this.displayImageFile(datasetUuid, filePath, fileName, directory);
+                }
+            });
+        });
+    }
+
+    /**
+     * Display text file content in center panel
+     */
+    async displayTextFile(datasetUuid, filePath, fileName, directory) {
+        const viewerContainer = document.getElementById('viewerContainer');
+        if (!viewerContainer) {
+            console.error('Viewer container not found');
+            return;
+        }
+
+        // Show loading state
+        viewerContainer.innerHTML = `
+            <div class="container-fluid p-4">
+                <div class="d-flex justify-content-between align-items-center mb-3">
+                    <h5><i class="fas fa-file-alt me-2"></i>${this.escapeHtml(fileName)}</h5>
+                    <button class="btn btn-sm btn-outline-secondary" onclick="window.datasetManager.clearFileView()">
+                        <i class="fas fa-times"></i> Close
+                    </button>
+                </div>
+                <div class="text-center py-5">
+                    <div class="spinner-border text-primary" role="status">
+                        <span class="visually-hidden">Loading...</span>
+                    </div>
+                </div>
+            </div>
+        `;
+
+        try {
+            const response = await fetch(`${getApiBasePath()}/dataset-file-content.php?dataset_uuid=${encodeURIComponent(datasetUuid)}&file_path=${encodeURIComponent(filePath)}&directory=${encodeURIComponent(directory)}`);
+            const data = await response.json();
+
+            if (data.success && data.type === 'text') {
+                // Display text content with syntax highlighting for JSON
+                const isJson = fileName.toLowerCase().endsWith('.json');
+                const content = data.content;
+                
+                let contentHtml = '';
+                if (isJson) {
+                    try {
+                        const jsonObj = JSON.parse(content);
+                        contentHtml = `<pre class="bg-light p-3 rounded"><code>${this.escapeHtml(JSON.stringify(jsonObj, null, 2))}</code></pre>`;
+                    } catch (e) {
+                        // Not valid JSON, display as plain text
+                        contentHtml = `<pre class="bg-light p-3 rounded" style="white-space: pre-wrap; word-wrap: break-word;"><code>${this.escapeHtml(content)}</code></pre>`;
+                    }
+                } else {
+                    contentHtml = `<pre class="bg-light p-3 rounded" style="white-space: pre-wrap; word-wrap: break-word;"><code>${this.escapeHtml(content)}</code></pre>`;
+                }
+
+                viewerContainer.innerHTML = `
+                    <div class="container-fluid p-4">
+                        <div class="d-flex justify-content-between align-items-center mb-3">
+                            <h5><i class="fas fa-file-alt me-2"></i>${this.escapeHtml(fileName)}</h5>
+                            <button class="btn btn-sm btn-outline-secondary" onclick="window.datasetManager.clearFileView()">
+                                <i class="fas fa-times"></i> Close
+                            </button>
+                        </div>
+                        <div class="file-content-viewer" style="max-height: calc(100vh - 200px); overflow-y: auto;">
+                            ${contentHtml}
+                        </div>
+                    </div>
+                `;
+            } else {
+                viewerContainer.innerHTML = `
+                    <div class="container-fluid p-4">
+                        <div class="alert alert-danger">
+                            <i class="fas fa-exclamation-triangle me-2"></i>
+                            Failed to load file: ${data.error || 'Unknown error'}
+                        </div>
+                    </div>
+                `;
+            }
+        } catch (error) {
+            console.error('Error loading text file:', error);
+            viewerContainer.innerHTML = `
+                <div class="container-fluid p-4">
+                    <div class="alert alert-danger">
+                        <i class="fas fa-exclamation-triangle me-2"></i>
+                        Error loading file: ${error.message}
+                    </div>
+                </div>
+            `;
+        }
+    }
+
+    /**
+     * Display image file in center panel
+     */
+    async displayImageFile(datasetUuid, filePath, fileName, directory) {
+        const viewerContainer = document.getElementById('viewerContainer');
+        if (!viewerContainer) {
+            console.error('Viewer container not found');
+            return;
+        }
+
+        // Show loading state
+        viewerContainer.innerHTML = `
+            <div class="container-fluid p-4">
+                <div class="d-flex justify-content-between align-items-center mb-3">
+                    <h5><i class="fas fa-image me-2"></i>${this.escapeHtml(fileName)}</h5>
+                    <button class="btn btn-sm btn-outline-secondary" onclick="window.datasetManager.clearFileView()">
+                        <i class="fas fa-times"></i> Close
+                    </button>
+                </div>
+                <div class="text-center py-5">
+                    <div class="spinner-border text-primary" role="status">
+                        <span class="visually-hidden">Loading...</span>
+                    </div>
+                </div>
+            </div>
+        `;
+
+        try {
+            const response = await fetch(`${getApiBasePath()}/dataset-file-content.php?dataset_uuid=${encodeURIComponent(datasetUuid)}&file_path=${encodeURIComponent(filePath)}&directory=${encodeURIComponent(directory)}`);
+            const data = await response.json();
+
+            if (data.success && data.type === 'image') {
+                // Build full URL for image
+                const imageUrl = `${getApiBasePath()}/dataset-file-serve.php?dataset_uuid=${encodeURIComponent(datasetUuid)}&file_path=${encodeURIComponent(filePath)}&directory=${encodeURIComponent(directory)}`;
+                
+                viewerContainer.innerHTML = `
+                    <div class="container-fluid p-4">
+                        <div class="d-flex justify-content-between align-items-center mb-3">
+                            <h5><i class="fas fa-image me-2"></i>${this.escapeHtml(fileName)}</h5>
+                            <button class="btn btn-sm btn-outline-secondary" onclick="window.datasetManager.clearFileView()">
+                                <i class="fas fa-times"></i> Close
+                            </button>
+                        </div>
+                        <div class="image-viewer text-center" style="max-height: calc(100vh - 200px); overflow-y: auto;">
+                            <img src="${imageUrl}" 
+                                 alt="${this.escapeHtml(fileName)}" 
+                                 class="img-fluid" 
+                                 style="max-width: 100%; height: auto;"
+                                 onerror="this.parentElement.innerHTML='<div class=\\'alert alert-danger\\'><i class=\\'fas fa-exclamation-triangle me-2\\'></i>Failed to load image</div>'">
+                        </div>
+                    </div>
+                `;
+            } else {
+                viewerContainer.innerHTML = `
+                    <div class="container-fluid p-4">
+                        <div class="alert alert-danger">
+                            <i class="fas fa-exclamation-triangle me-2"></i>
+                            Failed to load image: ${data.error || 'Unknown error'}
+                        </div>
+                    </div>
+                `;
+            }
+        } catch (error) {
+            console.error('Error loading image file:', error);
+            viewerContainer.innerHTML = `
+                <div class="container-fluid p-4">
+                    <div class="alert alert-danger">
+                        <i class="fas fa-exclamation-triangle me-2"></i>
+                        Error loading image: ${error.message}
+                    </div>
+                </div>
+            `;
+        }
+    }
+
+    /**
+     * Clear file view and restore default content
+     */
+    clearFileView() {
+        const viewerContainer = document.getElementById('viewerContainer');
+        if (viewerContainer && window.viewerManager) {
+            // Restore the default welcome screen or current dashboard
+            if (window.viewerManager.currentDashboard) {
+                window.viewerManager.loadDashboard(window.viewerManager.currentDashboard);
+            } else {
+                // Load welcome screen
+                fetch(`${getApiBasePath()}/../includes/dashboard_loader.php`)
+                    .then(response => response.text())
+                    .then(html => {
+                        viewerContainer.innerHTML = html;
+                    })
+                    .catch(error => {
+                        console.error('Error loading welcome screen:', error);
+                        viewerContainer.innerHTML = '<p>Select a dataset to view</p>';
+                    });
+            }
+        }
+    }
+
+    /**
      * Render dataset files inline (for dataset list integration)
      * Shows upload and converted directories separately
      */
-    renderDatasetFilesInline(data) {
+    renderDatasetFilesInline(data, datasetUuid = null) {
         let html = '<div class="dataset-files-sections">';
         let hasFiles = false;
         
@@ -667,7 +878,7 @@ class DatasetManager {
             html += `<div class="collapse" id="${uploadId}">`;
             html += '<ul class="dataset-files-list" style="list-style: none; padding-left: 0;">';
             if (data.directories.upload.files.length > 0) {
-                html += this.renderFileTreeInline(data.directories.upload.files, 'upload', 0);
+                html += this.renderFileTreeInline(data.directories.upload.files, 'upload', 0, 'upload');
             } else {
                 html += '<li class="text-muted small">No files in upload directory</li>';
             }
@@ -690,7 +901,7 @@ class DatasetManager {
             html += `<div class="collapse" id="${convertedId}">`;
             html += '<ul class="dataset-files-list" style="list-style: none; padding-left: 0;">';
             if (data.directories.converted.files.length > 0) {
-                html += this.renderFileTreeInline(data.directories.converted.files, 'converted', 0);
+                html += this.renderFileTreeInline(data.directories.converted.files, 'converted', 0, 'converted');
             } else {
                 html += '<li class="text-muted small">No files in converted directory</li>';
             }
@@ -725,7 +936,7 @@ class DatasetManager {
     /**
      * Render file tree inline with collapsible folders
      */
-    renderFileTreeInline(items, basePath = '', level = 0) {
+    renderFileTreeInline(items, basePath = '', level = 0, directory = 'upload') {
         let html = '';
         const uniqueId = 'files-' + basePath.replace(/[^a-zA-Z0-9]/g, '-') + '-' + Date.now() + '-' + Math.random().toString(36).substr(2, 9);
         
@@ -744,14 +955,28 @@ class DatasetManager {
                 html += `<div class="collapse" id="${dirId}">`;
                 if (item.children && item.children.length > 0) {
                     html += '<ul class="dataset-files-list" style="list-style: none; padding-left: 0;">';
-                    html += this.renderFileTreeInline(item.children, basePath, level + 1);
+                    html += this.renderFileTreeInline(item.children, basePath, level + 1, directory);
                     html += '</ul>';
                 }
                 html += `</div>`;
                 html += '</li>';
             } else {
-                html += `<li class="dataset-file-item dataset-file-file" style="padding-left: ${(level + 1) * 1.5}rem;">`;
-                html += `<i class="fas fa-file me-2"></i>`;
+                // Determine file type for click handling
+                const fileName = item.name.toLowerCase();
+                const textExtensions = ['.txt', '.json', '.idx', '.log', '.xml', '.csv', '.md', '.yaml', '.yml', '.ini', '.conf', '.cfg'];
+                const imageExtensions = ['.tiff', '.tif', '.jpg', '.jpeg', '.png', '.gif', '.bmp', '.webp', '.svg'];
+                
+                const isTextFile = textExtensions.some(ext => fileName.endsWith(ext));
+                const isImageFile = imageExtensions.some(ext => fileName.endsWith(ext));
+                const isClickable = isTextFile || isImageFile;
+                
+                // Build file path (relative to directory)
+                const filePath = item.path || item.name;
+                
+                html += `<li class="dataset-file-item dataset-file-file ${isClickable ? 'clickable-file' : ''}" 
+                             style="padding-left: ${(level + 1) * 1.5}rem; ${isClickable ? 'cursor: pointer;' : ''}"
+                             ${isClickable ? `data-file-path="${this.escapeHtml(filePath)}" data-file-name="${this.escapeHtml(item.name)}" data-file-type="${isTextFile ? 'text' : 'image'}" data-directory="${directory}"` : ''}>`;
+                html += `<i class="fas ${isTextFile ? 'fa-file-alt' : isImageFile ? 'fa-image' : 'fa-file'} me-2"></i>`;
                 html += `<span>${this.escapeHtml(item.name)}</span>`;
                 if (item.size) {
                     html += `<span class="text-muted small ms-2">(${this.formatFileSize(item.size)})</span>`;
