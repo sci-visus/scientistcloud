@@ -51,25 +51,53 @@ try {
     }
 
     // Get teams for user using SCLib Sharing and Team API
-    $sharingClient = getSCLibSharingClient();
-    $result = $sharingClient->getUserTeams($user['email']);
-    
-    // Ensure result has the expected format
-    if (!isset($result['success'])) {
-        // If result doesn't have success field, wrap it
-        $result = [
-            'success' => true,
-            'teams' => $result['teams'] ?? $result ?? []
-        ];
+    try {
+        $sharingClient = getSCLibSharingClient();
+        if (!$sharingClient) {
+            throw new Exception('Failed to initialize sharing client');
+        }
+        
+        $result = $sharingClient->getUserTeams($user['email']);
+        
+        // Log for debugging
+        logMessage('DEBUG', 'Get teams API response', [
+            'user_email' => $user['email'],
+            'result' => $result
+        ]);
+        
+        // Ensure result has the expected format
+        if (!isset($result['success'])) {
+            // If result doesn't have success field, wrap it
+            $result = [
+                'success' => true,
+                'teams' => $result['teams'] ?? $result ?? []
+            ];
+        }
+        
+        // Ensure teams array exists
+        if (!isset($result['teams'])) {
+            $result['teams'] = [];
+        }
+        
+        ob_end_clean();
+        echo json_encode($result);
+    } catch (Exception $apiException) {
+        // Exception from API client (connection error, etc.)
+        logMessage('ERROR', 'Get teams API call failed', [
+            'user_email' => $user['email'],
+            'error' => $apiException->getMessage(),
+            'trace' => $apiException->getTraceAsString()
+        ]);
+        
+        ob_end_clean();
+        http_response_code(500);
+        echo json_encode([
+            'success' => false,
+            'error' => 'Failed to connect to teams API: ' . $apiException->getMessage(),
+            'teams' => []
+        ]);
+        exit;
     }
-    
-    // Ensure teams array exists
-    if (!isset($result['teams'])) {
-        $result['teams'] = [];
-    }
-    
-    ob_end_clean();
-    echo json_encode($result);
 
 } catch (Exception $e) {
     ob_end_clean();

@@ -66,7 +66,18 @@ try {
     // Create team using SCLib Sharing and Team API
     try {
         $sharingClient = getSCLibSharingClient();
+        if (!$sharingClient) {
+            throw new Exception('Failed to initialize sharing client');
+        }
+        
         $result = $sharingClient->createTeam($teamName, $ownerEmail, $emails);
+        
+        // Log the result for debugging
+        logMessage('DEBUG', 'Team creation API response', [
+            'team_name' => $teamName,
+            'owner_email' => $ownerEmail,
+            'result' => $result
+        ]);
         
         // Check if the API call was successful
         // The API returns {"success": true, "message": "...", "team": {...}}

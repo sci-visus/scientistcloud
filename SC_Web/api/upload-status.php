@@ -70,7 +70,18 @@ try {
     }
 
     // Get SCLib Upload API URL from config
-    $uploadApiUrl = getenv('SCLIB_UPLOAD_URL') ?: getenv('SCLIB_API_URL') ?: getenv('EXISTING_API_URL') ?: 'http://sclib_fastapi:5001';
+    // Try multiple environment variables and fallback to Docker service name
+    $uploadApiUrl = getenv('SCLIB_UPLOAD_URL') ?: getenv('SCLIB_API_URL') ?: getenv('SCLIB_DATASET_URL') ?: getenv('EXISTING_API_URL');
+    
+    // If running in Docker, use service name; otherwise use localhost
+    if (!$uploadApiUrl) {
+        // Check if we're in Docker (check for common Docker indicators)
+        if (file_exists('/.dockerenv') || getenv('DOCKER_CONTAINER')) {
+            $uploadApiUrl = 'http://sclib_fastapi:5001';
+        } else {
+            $uploadApiUrl = 'http://localhost:5001';
+        }
+    }
     
     // Build the status endpoint URL
     $statusEndpoint = rtrim($uploadApiUrl, '/') . '/api/upload/status/' . urlencode($jobId);
@@ -83,20 +94,31 @@ try {
         'Accept: application/json'
     ]);
     curl_setopt($ch, CURLOPT_TIMEOUT, 10);
+    curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 5);
     
     $response = curl_exec($ch);
     $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
     $curlError = curl_error($ch);
+    $curlErrno = curl_errno($ch);
     curl_close($ch);
     
     ob_end_clean();
 
-    if ($curlError) {
+    if ($curlError || $curlErrno) {
+        logMessage('ERROR', 'Failed to connect to upload status endpoint', [
+            'job_id' => $jobId,
+            'endpoint' => $statusEndpoint,
+            'curl_error' => $curlError,
+            'curl_errno' => $curlErrno,
+            'upload_api_url' => $uploadApiUrl
+        ]);
+        
         http_response_code(500);
         echo json_encode([
             'success' => false,
             'error' => 'Failed to connect to upload service',
-            'message' => $curlError
+            'message' => $curlError ?: "Connection error (code: $curlErrno)",
+            'endpoint' => $statusEndpoint
         ]);
         exit;
     }
