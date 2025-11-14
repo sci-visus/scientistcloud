@@ -102,11 +102,12 @@ RUN echo '<VirtualHost *:80>\n\
 # Very large limits for massive file uploads (TB+ datasets)
 # Based on previous portal php.ini configuration
 # Note: post_max_size must be >= upload_max_filesize
+# PHP only supports K, M, G suffixes (not T), so 2TB = 2048GB
 RUN echo 'memory_limit = 4G\n\
 max_execution_time = 0\n\
 max_input_time = 0\n\
-upload_max_filesize = 2T\n\
-post_max_size = 2T\n\
+upload_max_filesize = 2048G\n\
+post_max_size = 2048G\n\
 max_file_uploads = 2000\n\
 max_input_vars = 3000\n\
 date.timezone = UTC\n\
