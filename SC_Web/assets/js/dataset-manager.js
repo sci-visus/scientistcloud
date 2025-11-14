@@ -253,7 +253,7 @@ class DatasetManager {
         container.dataset.listenersAttached = 'true';
         
         // Handle dataset clicks using event delegation
-        container.addEventListener('click', (e) => {
+        container.addEventListener('click', async (e) => {
             const link = e.target.closest('.dataset-link');
             if (link) {
                 e.preventDefault();
@@ -278,14 +278,46 @@ class DatasetManager {
                     return;
                 }
                 
+                // Fetch full dataset details to get google_drive_link
+                let effectiveUuid = datasetUuid;
+                let effectiveServer = datasetServer;
+                
+                try {
+                    const response = await fetch(`${getApiBasePath()}/dataset-details.php?dataset_id=${encodeURIComponent(datasetId)}`);
+                    const data = await response.json();
+                    
+                    if (data.success && data.dataset) {
+                        const dataset = data.dataset;
+                        const googleDriveLink = dataset.google_drive_link || '';
+                        
+                        // Determine server flag and effective UUID
+                        // If google_drive_link exists and contains 'http' but not 'google.com', use it as UUID
+                        if (googleDriveLink) {
+                            const containsHttp = googleDriveLink.includes('http');
+                            const containsGoogle = googleDriveLink.includes('google.com');
+                            
+                            if (containsHttp && !containsGoogle) {
+                                // Use the link as the UUID for remote loading
+                                effectiveUuid = googleDriveLink;
+                                effectiveServer = 'true';
+                                console.log('Using google_drive_link as UUID:', effectiveUuid);
+                            }
+                        }
+                    }
+                } catch (error) {
+                    console.warn('Could not fetch dataset details, using defaults:', error);
+                    // Continue with defaults if fetch fails
+                }
+                
                 // Store current dataset
-                // Note: datasetUuid here is already the effective UUID (link if server=true, otherwise actual UUID)
                 this.currentDataset = {
                     id: datasetId,
                     name: datasetName,
-                    uuid: datasetUuid, // This is already the effective UUID from data attribute
-                    server: datasetServer
+                    uuid: effectiveUuid,
+                    server: effectiveServer
                 };
+                
+                console.log('Final dataset config:', this.currentDataset);
                 
                 // Load dataset details
                 if (typeof loadDatasetDetails === 'function') {
@@ -297,11 +329,11 @@ class DatasetManager {
                     const viewerType = document.getElementById('viewerType');
                     const dashboardType = viewerType ? viewerType.value : (Object.keys(window.viewerManager.viewers)[0] || 'OpenVisusSlice');
                     
-                    console.log('Loading dashboard with UUID:', datasetUuid, 'dashboard type:', dashboardType);
-                    window.viewerManager.loadDashboard(datasetId, datasetName, datasetUuid, datasetServer, dashboardType);
+                    console.log('Loading dashboard with UUID:', effectiveUuid, 'server:', effectiveServer, 'dashboard type:', dashboardType);
+                    window.viewerManager.loadDashboard(datasetId, datasetName, effectiveUuid, effectiveServer, dashboardType);
                 } else if (typeof loadDashboard === 'function') {
-                    console.log('Using fallback loadDashboard with UUID:', datasetUuid);
-                    loadDashboard(datasetId, datasetName, datasetUuid, datasetServer);
+                    console.log('Using fallback loadDashboard with UUID:', effectiveUuid);
+                    loadDashboard(datasetId, datasetName, effectiveUuid, effectiveServer);
                 } else {
                     console.error('No dashboard loader available');
                     alert('Error: Dashboard loader not available. Please refresh the page.');
