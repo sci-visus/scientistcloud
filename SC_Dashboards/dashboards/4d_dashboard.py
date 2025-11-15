@@ -1228,14 +1228,16 @@ def create_dashboard(process_4dnexus):
         print(f"[TIMING] range 2 min/max built: {time.time()-t0:.3f}s")
 
         # Add toggle for Plot2 range mode (user set vs dynamic)
-        plot2_range_mode_toggle = Toggle(label="Dynamic Range", active=False, width=150)
+        plot2_range_mode_toggle = Toggle(label="User Specified", active=False, width=150)
         
         def on_plot2_range_mode_change(attr, old, new):
             """Enable/disable range inputs based on toggle state"""
             if new:  # Dynamic mode enabled
+                plot2_range_mode_toggle.label = "Dynamic Range"
                 range2_min_input.disabled = True
                 range2_max_input.disabled = True
             else:  # User set mode
+                plot2_range_mode_toggle.label = "User Specified"
                 range2_min_input.disabled = False
                 range2_max_input.disabled = False
         
@@ -1247,15 +1249,18 @@ def create_dashboard(process_4dnexus):
         plot2b_range_mode_toggle = None
         if 'plot2b' in locals() and plot2b is not None and 'source2b' in locals():
             # Create toggle for Plot2B (works for both 1D and 2D)
-            plot2b_range_mode_toggle = Toggle(label="Dynamic Range", active=False, width=150)
+            plot2b_range_mode_toggle = Toggle(label="User Specified", active=False, width=150)
             
             def on_plot2b_range_mode_change(attr, old, new):
                 """Enable/disable range inputs based on toggle state"""
-                if range2b_min_input is not None and range2b_max_input is not None:
-                    if new:  # Dynamic mode enabled
+                if new:  # Dynamic mode enabled
+                    plot2b_range_mode_toggle.label = "Dynamic Range"
+                    if range2b_min_input is not None and range2b_max_input is not None:
                         range2b_min_input.disabled = True
                         range2b_max_input.disabled = True
-                    else:  # User set mode
+                else:  # User set mode
+                    plot2b_range_mode_toggle.label = "User Specified"
+                    if range2b_min_input is not None and range2b_max_input is not None:
                         range2b_min_input.disabled = False
                         range2b_max_input.disabled = False
             
