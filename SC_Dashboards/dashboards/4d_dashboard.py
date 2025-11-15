@@ -279,6 +279,8 @@ def create_tmp_dashboard(process_4dnexus):
     plot2b_h5_selector.visible = False
     def on_enable_plot2b(attr, old, new):
         plot2b_h5_selector.visible = new
+        probe_x_coords_selector_b.visible = new
+        probe_y_coords_selector_b.visible = new
     enable_plot2b_toggle.on_change("active", on_enable_plot2b)
 
     plot2_h5_selector = Select(
@@ -317,6 +319,22 @@ def create_tmp_dashboard(process_4dnexus):
         width=300
     )
     
+    # Plot2B coordinate selectors (optional)
+    probe_x_coords_selector_b = Select(
+        title="Probe2B X Coordinates (1D):",
+        value="Use Default",
+        options=["Use Default"] + coord_choices,
+        width=300
+    )
+    
+    probe_y_coords_selector_b = Select(
+        title="Probe2B Y Coordinates (1D):",
+        value="Use Default",
+        options=["Use Default"] + coord_choices,
+        width=300
+    )
+    probe_x_coords_selector_b.visible = False
+    probe_y_coords_selector_b.visible = False
     
     # Create placeholder plots that will be populated after user selection
     plot1_placeholder = Div(text="<h3>Plot1: Select a 2D dataset above and click 'Initialize Plots'</h3>", width=400, height=300)
@@ -448,10 +466,24 @@ def create_tmp_dashboard(process_4dnexus):
                 if plot2b_path != "No 3D/4D datasets":
                     process_4dnexus.volume_picked_b = plot2b_path
                     print(f"  Plot2B: {plot2b_path}")
+                    
+                    # Store Plot2B probe coordinates
+                    probe_x_coords_selection_b = probe_x_coords_selector_b.value
+                    probe_y_coords_selection_b = probe_y_coords_selector_b.value
+                    probe_x_coords_b = extract_dataset_path(probe_x_coords_selection_b)
+                    probe_y_coords_b = extract_dataset_path(probe_y_coords_selection_b)
+                    process_4dnexus.probe_x_coords_picked_b = probe_x_coords_b if probe_x_coords_b != "Use Default" else None
+                    process_4dnexus.probe_y_coords_picked_b = probe_y_coords_b if probe_y_coords_b != "Use Default" else None
+                    print(f"  Plot2B Probe X coords: {probe_x_coords_b}")
+                    print(f"  Plot2B Probe Y coords: {probe_y_coords_b}")
                 else:
                     process_4dnexus.volume_picked_b = None
+                    process_4dnexus.probe_x_coords_picked_b = None
+                    process_4dnexus.probe_y_coords_picked_b = None
             else:
                 process_4dnexus.volume_picked_b = None
+                process_4dnexus.probe_x_coords_picked_b = None
+                process_4dnexus.probe_y_coords_picked_b = None
 
             print(f"Successfully initialized plots with:")
             if plot1_mode_selector.active == 0:
@@ -576,6 +608,13 @@ def create_tmp_dashboard(process_4dnexus):
             column(enable_plot2b_toggle, plot2b_h5_selector, width=320),
         ),
         
+        # Plot2B coordinate selectors
+        row(
+            column(probe_x_coords_selector_b, width=300),
+            column(probe_y_coords_selector_b, width=300),
+            sizing_mode="stretch_width"
+        ),
+        
         Div(text="<hr>"),
         
         column(initialize_plots_button, width=200),
@@ -674,7 +713,7 @@ class MapPlot:
 
 
 class ProbePlot:
-    def __init__(self, volume, process_4dnexus=None, title_1d="Plot2 - 1D Probe View", title_2d="Plot2 - 2D Probe View"):
+    def __init__(self, volume, process_4dnexus=None, title_1d="Plot2 - 1D Probe View", title_2d="Plot2 - 2D Probe View", use_b=False):
         from bokeh.plotting import figure
         from bokeh.models import ColumnDataSource
         import numpy as np
@@ -683,12 +722,14 @@ class ProbePlot:
         if self.is_3d:
             initial_slice_1d = volume[volume.shape[0]//2, volume.shape[1]//2, :]
             # Try probe coordinates
-            if process_4dnexus and getattr(process_4dnexus, 'probe_x_coords_picked', None):
+            coord_attr = 'probe_x_coords_picked_b' if use_b else 'probe_x_coords_picked'
+            if process_4dnexus and getattr(process_4dnexus, coord_attr, None):
                 try:
-                    probe_coords = process_4dnexus.load_probe_coordinates()
+                    probe_coords = process_4dnexus.load_probe_coordinates(use_b=use_b)
+                    coord_path = getattr(process_4dnexus, coord_attr)
                     if probe_coords is not None and len(probe_coords) == len(initial_slice_1d):
                         x_coords_1d = probe_coords
-                        x_label = f"Probe Coordinate ({process_4dnexus.probe_x_coords_picked.split('/')[-1]})"
+                        x_label = f"Probe Coordinate ({coord_path.split('/')[-1]})"
                     else:
                         x_coords_1d = np.arange(len(initial_slice_1d))
                         x_label = "Probe Index"
@@ -830,21 +871,86 @@ def create_dashboard(process_4dnexus):
             y_ticks.append(y_coords[i])
             my_yticks.append(f"{y_coords[i]:.1f}")
 
+        # Helper functions to generate meaningful plot titles
+        def get_plot1_title():
+            if getattr(process_4dnexus, 'plot1_single_dataset_picked', None):
+                return f"Plot1: {process_4dnexus.plot1_single_dataset_picked}"
+            elif getattr(process_4dnexus, 'postsample_picked', None) and getattr(process_4dnexus, 'presample_picked', None):
+                return f"Plot1: {process_4dnexus.postsample_picked} / {process_4dnexus.presample_picked}"
+            else:
+                return "Plot1 - Map View"
+        
+        def get_plot1b_title():
+            if getattr(process_4dnexus, 'plot1b_single_dataset_picked', None):
+                return f"Plot1B: {process_4dnexus.plot1b_single_dataset_picked}"
+            elif getattr(process_4dnexus, 'postsample_picked_b', None) and getattr(process_4dnexus, 'presample_picked_b', None):
+                return f"Plot1B: {process_4dnexus.postsample_picked_b} / {process_4dnexus.presample_picked_b}"
+            else:
+                return "Plot1B - Map View"
+        
+        def get_plot2_title():
+            if getattr(process_4dnexus, 'volume_picked', None):
+                return f"Plot2: {process_4dnexus.volume_picked}"
+            else:
+                return "Plot2 - Probe View"
+        
+        def get_plot2b_title():
+            if getattr(process_4dnexus, 'volume_picked_b', None):
+                return f"Plot2B: {process_4dnexus.volume_picked_b}"
+            else:
+                return "Plot2B - Probe View"
+        
+        # Get axis labels from process_4dnexus
+        plot1_x_label = getattr(process_4dnexus, 'x_coords_picked', 'X Position')
+        plot1_y_label = getattr(process_4dnexus, 'y_coords_picked', 'Y Position')
+        # Extract just the coordinate name if it's a path
+        if '/' in plot1_x_label:
+            plot1_x_label = plot1_x_label.split('/')[-1]
+        if '/' in plot1_y_label:
+            plot1_y_label = plot1_y_label.split('/')[-1]
+
         # Create Plot1 (Map view) using reusable class
-        map_plot = MapPlot(x_coords, y_coords, preview, title="Plot1 - Map View")
+        map_plot = MapPlot(x_coords, y_coords, preview, title=get_plot1_title())
         plot1, source1 = map_plot.get_components()
         plot1.xaxis.ticker = x_ticks
         plot1.yaxis.ticker = y_ticks
         plot1.xaxis.major_label_overrides = dict(zip(x_ticks, my_xticks))
         plot1.yaxis.major_label_overrides = dict(zip(y_ticks, my_yticks))
-        plot1.xaxis.axis_label = "X Position"
-        plot1.yaxis.axis_label = "Y Position"
+        plot1.xaxis.axis_label = plot1_x_label
+        plot1.yaxis.axis_label = plot1_y_label
         print(f"[TIMING] plot1 built: {time.time()-t0:.3f}s")
 
         # Create Plot2 (Probe view) - show actual volume slice
         # Create Plot2 (Probe view) using reusable class
-        probe_plot = ProbePlot(volume, process_4dnexus)
+        plot2_title = get_plot2_title()
+        probe_plot = ProbePlot(volume, process_4dnexus, title_1d=plot2_title, title_2d=plot2_title)
         plot2, source2 = probe_plot.get_components()
+        
+        # Update Plot2 axis labels if available
+        if is_3d_volume:
+            # For 1D plots, x-axis is already set in ProbePlot, but update y-axis if needed
+            plot2_probe_x = getattr(process_4dnexus, 'probe_x_coords_picked', None)
+            if plot2_probe_x:
+                plot2_x_label = plot2_probe_x.split('/')[-1] if '/' in plot2_probe_x else plot2_probe_x
+                plot2.xaxis.axis_label = plot2_x_label
+            plot2_probe_y = getattr(process_4dnexus, 'probe_y_coords_picked', None)
+            if plot2_probe_y:
+                plot2_y_label = plot2_probe_y.split('/')[-1] if '/' in plot2_probe_y else plot2_probe_y
+                plot2.yaxis.axis_label = plot2_y_label
+        else:
+            # For 2D plots, set both axes
+            plot2_probe_x = getattr(process_4dnexus, 'probe_x_coords_picked', None)
+            plot2_probe_y = getattr(process_4dnexus, 'probe_y_coords_picked', None)
+            if plot2_probe_x:
+                plot2_x_label = plot2_probe_x.split('/')[-1] if '/' in plot2_probe_x else plot2_probe_x
+                plot2.xaxis.axis_label = plot2_x_label
+            else:
+                plot2.xaxis.axis_label = "Probe X"
+            if plot2_probe_y:
+                plot2_y_label = plot2_probe_y.split('/')[-1] if '/' in plot2_probe_y else plot2_probe_y
+                plot2.yaxis.axis_label = plot2_y_label
+            else:
+                plot2.yaxis.axis_label = "Probe Y"
         # Capture initial slices for defaults and overlays
         initial_slice = None
         initial_slice_1d = None
@@ -918,14 +1024,14 @@ def create_dashboard(process_4dnexus):
                         if np.max(preview_b) > np.min(preview_b):
                             preview_b = (preview_b - np.min(preview_b)) / (np.max(preview_b) - np.min(preview_b))
                         preview_b = preview_b.astype(np.float32)
-                        map_plot_b = MapPlot(x_coords, y_coords, preview_b, title="Plot1B - Map View")
+                        map_plot_b = MapPlot(x_coords, y_coords, preview_b, title=get_plot1b_title())
                         plot1b, source1b = map_plot_b.get_components()
                         plot1b.xaxis.ticker = x_ticks
                         plot1b.yaxis.ticker = y_ticks
                         plot1b.xaxis.major_label_overrides = dict(zip(x_ticks, my_xticks))
                         plot1b.yaxis.major_label_overrides = dict(zip(y_ticks, my_yticks))
-                        plot1b.xaxis.axis_label = "X Position"
-                        plot1b.yaxis.axis_label = "Y Position"
+                        plot1b.xaxis.axis_label = plot1_x_label
+                        plot1b.yaxis.axis_label = plot1_y_label
                     else:
                         print(f"Failed to build Plot1B: single dataset size mismatch ({single_dataset_b_flat.size} vs {len(x_coords) * len(y_coords)})")
             except Exception as e:
@@ -947,14 +1053,14 @@ def create_dashboard(process_4dnexus):
                     preview_b = np.nan_to_num(preview_b, nan=0.0, posinf=1.0, neginf=0.0).astype(np.float32)
                     if np.max(preview_b) > np.min(preview_b):
                         preview_b = (preview_b - np.min(preview_b)) / (np.max(preview_b) - np.min(preview_b))
-                    map_plot_b = MapPlot(x_coords, y_coords, preview_b, title="Plot1B - Map View")
+                    map_plot_b = MapPlot(x_coords, y_coords, preview_b, title=get_plot1b_title())
                     plot1b, source1b = map_plot_b.get_components()
                     plot1b.xaxis.ticker = x_ticks
                     plot1b.yaxis.ticker = y_ticks
                     plot1b.xaxis.major_label_overrides = dict(zip(x_ticks, my_xticks))
                     plot1b.yaxis.major_label_overrides = dict(zip(y_ticks, my_yticks))
-                    plot1b.xaxis.axis_label = "X Position"
-                    plot1b.yaxis.axis_label = "Y Position"
+                    plot1b.xaxis.axis_label = plot1_x_label
+                    plot1b.yaxis.axis_label = plot1_y_label
             except Exception as e:
                 print(f"Failed to build Plot1B (ratio mode): {e}")
                 import traceback
@@ -974,8 +1080,37 @@ def create_dashboard(process_4dnexus):
                 # Use the already-open HDF5 dataset reference when available
                 volume_b = getattr(process_4dnexus, 'volume_dataset_b', None)
                 if volume_b is not None:
-                    probe_plot_b = ProbePlot(volume_b, process_4dnexus, title_1d="Plot2B - 1D Probe View", title_2d="Plot2B - 2D Probe View")
+                    plot2b_title = get_plot2b_title()
+                    probe_plot_b = ProbePlot(volume_b, process_4dnexus, title_1d=plot2b_title, title_2d=plot2b_title, use_b=True)
                     plot2b, source2b = probe_plot_b.get_components()
+                    
+                    # Update Plot2B axis labels if available
+                    is_3d_volume_b = len(volume_b.shape) == 3
+                    if is_3d_volume_b:
+                        # For 1D plots
+                        plot2b_probe_x = getattr(process_4dnexus, 'probe_x_coords_picked_b', None)
+                        if plot2b_probe_x:
+                            plot2b_x_label = plot2b_probe_x.split('/')[-1] if '/' in plot2b_probe_x else plot2b_probe_x
+                            plot2b.xaxis.axis_label = plot2b_x_label
+                        plot2b_probe_y = getattr(process_4dnexus, 'probe_y_coords_picked_b', None)
+                        if plot2b_probe_y:
+                            plot2b_y_label = plot2b_probe_y.split('/')[-1] if '/' in plot2b_probe_y else plot2b_probe_y
+                            plot2b.yaxis.axis_label = plot2b_y_label
+                    else:
+                        # For 2D plots
+                        plot2b_probe_x = getattr(process_4dnexus, 'probe_x_coords_picked_b', None)
+                        plot2b_probe_y = getattr(process_4dnexus, 'probe_y_coords_picked_b', None)
+                        if plot2b_probe_x:
+                            plot2b_x_label = plot2b_probe_x.split('/')[-1] if '/' in plot2b_probe_x else plot2b_probe_x
+                            plot2b.xaxis.axis_label = plot2b_x_label
+                        else:
+                            plot2b.xaxis.axis_label = "Probe X"
+                        if plot2b_probe_y:
+                            plot2b_y_label = plot2b_probe_y.split('/')[-1] if '/' in plot2b_probe_y else plot2b_probe_y
+                            plot2b.yaxis.axis_label = plot2b_y_label
+                        else:
+                            plot2b.yaxis.axis_label = "Probe Y"
+                    
                     # Initialize independent selection rectangle for Plot2B
                     if len(volume_b.shape) == 3:
                         rect2b = Rectangle(0, 0, volume_b.shape[2] - 1, volume_b.shape[2] - 1)
@@ -1092,21 +1227,53 @@ def create_dashboard(process_4dnexus):
 
         print(f"[TIMING] range 2 min/max built: {time.time()-t0:.3f}s")
 
-        # If Plot2B is a 2D probe, add its own range inputs
+        # Add toggle for Plot2 range mode (user set vs dynamic)
+        plot2_range_mode_toggle = Toggle(label="Dynamic Range", active=False, width=150)
+        
+        def on_plot2_range_mode_change(attr, old, new):
+            """Enable/disable range inputs based on toggle state"""
+            if new:  # Dynamic mode enabled
+                range2_min_input.disabled = True
+                range2_max_input.disabled = True
+            else:  # User set mode
+                range2_min_input.disabled = False
+                range2_max_input.disabled = False
+        
+        plot2_range_mode_toggle.on_change("active", on_plot2_range_mode_change)
+        
+        # If Plot2B exists, add its own range inputs and toggle
         range2b_min_input = None
         range2b_max_input = None
-        if 'plot2b' in locals() and plot2b is not None and 'source2b' in locals() and isinstance(source2b.data, dict) and 'image' in source2b.data:
-            try:
-                img_b = source2b.data["image"][0]
-                p2b_min, p2b_max = get_percentile_range(img_b)
-                range2b_min_input = TextInput(
-                    title="Probe2B Range Min:", value=str(p2b_min), width=120
-                )
-                range2b_max_input = TextInput(
-                    title="Probe2B Range Max:", value=str(p2b_max), width=120
-                )
-            except Exception:
-                pass
+        plot2b_range_mode_toggle = None
+        if 'plot2b' in locals() and plot2b is not None and 'source2b' in locals():
+            # Create toggle for Plot2B (works for both 1D and 2D)
+            plot2b_range_mode_toggle = Toggle(label="Dynamic Range", active=False, width=150)
+            
+            def on_plot2b_range_mode_change(attr, old, new):
+                """Enable/disable range inputs based on toggle state"""
+                if range2b_min_input is not None and range2b_max_input is not None:
+                    if new:  # Dynamic mode enabled
+                        range2b_min_input.disabled = True
+                        range2b_max_input.disabled = True
+                    else:  # User set mode
+                        range2b_min_input.disabled = False
+                        range2b_max_input.disabled = False
+            
+            plot2b_range_mode_toggle.on_change("active", on_plot2b_range_mode_change)
+            
+            # For 2D plots, also create range inputs
+            if isinstance(source2b.data, dict) and 'image' in source2b.data:
+                try:
+                    img_b = source2b.data["image"][0]
+                    p2b_min, p2b_max = get_percentile_range(img_b)
+                    range2b_min_input = TextInput(
+                        title="Probe2B Range Min:", value=str(p2b_min), width=120
+                    )
+                    range2b_max_input = TextInput(
+                        title="Probe2B Range Max:", value=str(p2b_max), width=120
+                    )
+                except Exception:
+                    pass
 
         print(f"[TIMING] range 2b min/max built: {time.time()-t0:.3f}s")
         
@@ -1462,6 +1629,71 @@ def create_dashboard(process_4dnexus):
             if hasattr(plot, 'renderers') and len(plot.renderers) > 0:
                 plot.renderers[0].glyph.color_mapper = color_mapper
         
+        def update_plot2_range_dynamic():
+            """Update Plot2 range dynamically based on current data"""
+            if not plot2_range_mode_toggle.active:
+                return
+            
+            try:
+                if is_3d_volume:
+                    # For 1D plots, update y_range based on current data
+                    if 'y' in source2.data and len(source2.data['y']) > 0:
+                        data = np.array(source2.data['y'])
+                        p2_min, p2_max = get_percentile_range(data)
+                        plot2.y_range.start = float(p2_min)
+                        plot2.y_range.end = float(p2_max)
+                        # Also update range inputs to reflect current range
+                        range2_min_input.value = str(p2_min)
+                        range2_max_input.value = str(p2_max)
+                else:
+                    # For 2D plots, update color mapper range
+                    if 'image' in source2.data and len(source2.data['image']) > 0:
+                        img = source2.data['image'][0]
+                        p2_min, p2_max = get_percentile_range(img)
+                        if color_mapper2a is not None:
+                            set_colormap_range(plot2, colorbar2, color_mapper2a, p2_min, p2_max)
+                        # Also update range inputs to reflect current range
+                        range2_min_input.value = str(p2_min)
+                        range2_max_input.value = str(p2_max)
+            except Exception as e:
+                print(f"Error updating Plot2 dynamic range: {e}")
+        
+        def update_plot2b_range_dynamic():
+            """Update Plot2B range dynamically based on current data"""
+            if plot2b_range_mode_toggle is None or not plot2b_range_mode_toggle.active:
+                return
+            if 'plot2b' not in locals() or plot2b is None or 'source2b' not in locals():
+                return
+            
+            try:
+                plot2b_is_2d_local = 'plot2b_is_2d' in locals() and plot2b_is_2d
+                if not plot2b_is_2d_local:
+                    # For 1D plots, update y_range based on current data
+                    if 'y' in source2b.data and len(source2b.data['y']) > 0:
+                        data = np.array(source2b.data['y'])
+                        p2b_min, p2b_max = get_percentile_range(data)
+                        plot2b.y_range.start = float(p2b_min)
+                        plot2b.y_range.end = float(p2b_max)
+                        # Also update range inputs to reflect current range
+                        if range2b_min_input is not None:
+                            range2b_min_input.value = str(p2b_min)
+                        if range2b_max_input is not None:
+                            range2b_max_input.value = str(p2b_max)
+                else:
+                    # For 2D plots, update color mapper range
+                    if 'image' in source2b.data and len(source2b.data['image']) > 0:
+                        img = source2b.data['image'][0]
+                        p2b_min, p2b_max = get_percentile_range(img)
+                        if 'color_mapper2b' in locals() and color_mapper2b is not None:
+                            set_colormap_range(plot2b, colorbar2b, color_mapper2b, p2b_min, p2b_max)
+                        # Also update range inputs to reflect current range
+                        if range2b_min_input is not None:
+                            range2b_min_input.value = str(p2b_min)
+                        if range2b_max_input is not None:
+                            range2b_max_input.value = str(p2b_max)
+            except Exception as e:
+                print(f"Error updating Plot2B dynamic range: {e}")
+        
         def show_slice():
             x_index = get_x_index()
             y_index = get_y_index()
@@ -1483,6 +1715,9 @@ def create_dashboard(process_4dnexus):
             
             # Update crosshairs (this will also update Plot1B crosshairs)
             draw_cross1()
+            
+            # Update range dynamically if enabled
+            update_plot2_range_dynamic()
         
         def show_slice_b():
             """Update Plot2B based on Plot1B crosshair position"""
@@ -1509,6 +1744,9 @@ def create_dashboard(process_4dnexus):
                     "dw": [volume_b_local.shape[2]],
                     "dh": [volume_b_local.shape[3]],
                 }
+            
+            # Update range dynamically if enabled
+            update_plot2b_range_dynamic()
         
         def on_plot1_tap(event):
             x_index = get_x_index(event.x)
@@ -1868,7 +2106,7 @@ def create_dashboard(process_4dnexus):
                 y_max = plot2b.y_range.end
                 if hasattr(process_4dnexus, 'probe_x_coords_picked_b') and getattr(process_4dnexus, 'probe_x_coords_picked_b', False):
                     try:
-                        probe_coords_b = process_4dnexus.load_probe_coordinates()
+                        probe_coords_b = process_4dnexus.load_probe_coordinates(use_b=True)
                         if probe_coords_b is not None:
                             x_min_coord = probe_coords_b[z_min] if z_min < len(probe_coords_b) else probe_coords_b[-1]
                             x_max_coord = probe_coords_b[z_max] if z_max < len(probe_coords_b) else probe_coords_b[-1]
@@ -1948,7 +2186,7 @@ def create_dashboard(process_4dnexus):
             if not plot2b_is_2d:
                 if hasattr(process_4dnexus, 'probe_x_coords_picked_b') and getattr(process_4dnexus, 'probe_x_coords_picked_b', False):
                     try:
-                        probe_coords_b = process_4dnexus.load_probe_coordinates()
+                        probe_coords_b = process_4dnexus.load_probe_coordinates(use_b=True)
                         if probe_coords_b is not None:
                             z_index = int(np.argmin(np.abs(probe_coords_b - event.x)))
                         else:
@@ -1986,7 +2224,7 @@ def create_dashboard(process_4dnexus):
                 if not plot2b_is_2d:
                     if hasattr(process_4dnexus, 'probe_x_coords_picked_b') and getattr(process_4dnexus, 'probe_x_coords_picked_b', False):
                         try:
-                            probe_coords_b = process_4dnexus.load_probe_coordinates()
+                            probe_coords_b = process_4dnexus.load_probe_coordinates(use_b=True)
                             if probe_coords_b is not None:
                                 z_index = int(np.argmin(np.abs(probe_coords_b - event.x)))
                             else:
@@ -2473,7 +2711,7 @@ def create_dashboard(process_4dnexus):
                 slice_b = np.sum(piece, axis=(0, 1)) / ((x2-x1)*(y2-y1))
                 if hasattr(process_4dnexus, 'probe_x_coords_picked_b') and process_4dnexus.probe_x_coords_picked_b:
                     try:
-                        probe_coords_b = process_4dnexus.load_probe_coordinates()
+                        probe_coords_b = process_4dnexus.load_probe_coordinates(use_b=True)
                         x_coords_1d_b = probe_coords_b if (probe_coords_b is not None and len(probe_coords_b) == len(slice_b)) else np.arange(len(slice_b))
                     except:
                         x_coords_1d_b = np.arange(len(slice_b))
@@ -2672,25 +2910,15 @@ def create_dashboard(process_4dnexus):
         reset_plot2b_button.on_click(lambda: on_reset_plot2b())
         back_to_selection_button.on_click(on_back_to_selection_click)
 
-        # Create tools column with conditional z-range display
+        # Create tools column with conditional z-range display (range inputs moved above plots)
         tools_items = [
             x_slider,
             y_slider,
             Div(text="<b>Map Shape:</b>", width=200),
-            Div(text="<b>Map Range:</b>", width=200),
-            row(range1_min_input, range1_max_input),
-            Div(text="<b>Map1B Range:</b>", width=200) if 'range1b_min_input' in locals() and range1b_min_input is not None else Div(text=""),
-            row(range1b_min_input, range1b_max_input) if 'range1b_min_input' in locals() and range1b_min_input is not None else Div(text=""),
             Div(text="<b>Map Color Scale:</b>", width=200),
             map1_color_scale_selector,
-            Div(text="<b>Plot 2 Top (Probe 1) Range:</b>", width=200),
-            row(range2_min_input, range2_max_input),
-            Div(text="<b>Plot 2 Bottom (Probe 2) Range:</b>", width=200) if 'range2b_min_input' in locals() and range2b_min_input is not None else Div(text=""),
-            row(range2b_min_input, range2b_max_input) if 'range2b_min_input' in locals() and range2b_min_input is not None else Div(text=""),
             Div(text="<b>Probe Color Scale:</b>", width=200),
             map2_color_scale_selector,
-            Div(text="<b>Plot3 Range:</b>", width=200),
-            row(range3_min_input, range3_max_input),
             status_div,
         ]
         
@@ -2705,70 +2933,107 @@ def create_dashboard(process_4dnexus):
             back_to_selection_button,
         ])
 
-        div_title = Div(text=f"<b>Dataset Name:</b><br>{process_4dnexus.nexus_filename}", width=400)
-        # Display Plot1 info - handle both single dataset and ratio modes
-        if getattr(process_4dnexus, 'plot1_single_dataset_picked', None):
-            plot1_text = f"<b>Plot1:</b><br>{process_4dnexus.plot1_single_dataset_picked} (single dataset)<br> {process_4dnexus.x_coords_picked} and {process_4dnexus.y_coords_picked}"
-        else:
-            plot1_text = f"<b>Plot1:</b><br>{process_4dnexus.postsample_picked} / {process_4dnexus.presample_picked} <br> {process_4dnexus.x_coords_picked} and {process_4dnexus.y_coords_picked}"
-        div_plot1 = Div(text=plot1_text, width=400)
-        # Include Plot2B selection info if present
-        plot2b_info = ""
-        try:
-            if getattr(process_4dnexus, 'volume_picked_b', None):
-                probe_x_b = getattr(process_4dnexus, 'probe_x_coords_picked_b', None)
-                probe_y_b = getattr(process_4dnexus, 'probe_y_coords_picked_b', None)
-                plot2b_info = f"<b>Plot2B:</b><br>{process_4dnexus.volume_picked_b} <br> {probe_x_b} and {probe_y_b}"
-        except Exception:
-            pass
-        div_plot2 = Div(text=f"<b>Plot2:</b><br>{process_4dnexus.volume_picked} <br> {process_4dnexus.probe_x_coords_picked} and {process_4dnexus.probe_y_coords_picked}", width=200)
-        div_plot2b = Div(text=f"{plot2b_info}", width=200)
-        div_plot3 = Div(text=f"<b>Plot3:</b><br>", width=400)
-        
         tools = column(*tools_items, width=400)
+        
+        # Create range input sections for each plot
+        # Plot1 range inputs
+        plot1_range_section = column(
+            Div(text="<b>Map Range:</b>", width=200),
+            row(range1_min_input, range1_max_input),
+            sizing_mode="stretch_width"
+        )
+        
+        # Plot1B range inputs (if exists)
+        plot1b_range_section = None
+        if 'range1b_min_input' in locals() and range1b_min_input is not None:
+            plot1b_range_section = column(
+                Div(text="<b>Map1B Range:</b>", width=200),
+                row(range1b_min_input, range1b_max_input),
+                sizing_mode="stretch_width"
+            )
+        
+        # Plot2 range inputs
+        plot2_range_section = column(
+            Div(text="<b>Probe Range:</b>", width=200),
+            plot2_range_mode_toggle,
+            row(range2_min_input, range2_max_input),
+            sizing_mode="stretch_width"
+        )
+        
+        # Plot2B range inputs (if exists)
+        plot2b_range_section = None
+        if 'range2b_min_input' in locals() and range2b_min_input is not None:
+            plot2b_range_section = column(
+                Div(text="<b>Probe2B Range:</b>", width=200),
+                plot2b_range_mode_toggle if plot2b_range_mode_toggle is not None else Div(text=""),
+                row(range2b_min_input, range2b_max_input),
+                sizing_mode="stretch_width"
+            )
+        elif plot2b_range_mode_toggle is not None:
+            # Plot2B exists but is 1D (no range inputs), still show toggle
+            plot2b_range_section = column(
+                Div(text="<b>Probe2B Range:</b>", width=200),
+                plot2b_range_mode_toggle,
+                sizing_mode="stretch_width"
+            )
+        
+        # Plot3 range inputs
+        plot3_range_section = column(
+            Div(text="<b>Plot3 Range:</b>", width=200),
+            row(range3_min_input, range3_max_input),
+            sizing_mode="stretch_width"
+        )
+        
         # Stack optional Plot1B under Plot1 and Plot2B under Plot2
-        plot1_column = column(plot1, *( [plot1b] if 'plot1b' in locals() and plot1b is not None else [] ), sizing_mode="stretch_both")
-        # Build Plot2 column and append Plot2B controls if present
+        # Build Plot1 column with range inputs above
+        plot1_column_items = [plot1_range_section, plot1]
+        if 'plot1b' in locals() and plot1b is not None:
+            if plot1b_range_section:
+                plot1_column_items.append(plot1b_range_section)
+            plot1_column_items.append(plot1b)
+        plot1_column = column(*plot1_column_items, sizing_mode="stretch_both")
+        # Build Plot2 column with range inputs above and append Plot2B controls if present
         if 'plot2b' in locals() and plot2b is not None:
-            plot2_column = column(
+            plot2_column_items = [
+                plot2_range_section,
                 row(compute_plot3_image_button, reset_plot2a_button, plot3_status_div_a),
                 plot2,
+            ]
+            if plot2b_range_section:
+                plot2_column_items.append(plot2b_range_section)
+            plot2_column_items.extend([
                 row(compute_plot3_from_plot2b_button, reset_plot2b_button, plot3_status_div_b),
                 plot2b,
-                sizing_mode="stretch_both",
-            )
+            ])
+            plot2_column = column(*plot2_column_items, sizing_mode="stretch_both")
         else:
             plot2_column = column(
+                plot2_range_section,
                 row(compute_plot3_image_button, reset_plot2a_button, plot3_status_div_a),
                 plot2,
                 sizing_mode="stretch_both",
             )
+        
+        # Build Plot3 column with range inputs above
+        plot3_column = column(
+            plot3_range_section,
+            row(compute_plot2_image_button, plot2_status_div),
+            plot3,
+            row(compute_plot2b_image_button, plot2b_status_div),
+            sizing_mode="stretch_both",
+        )
+        
         # Create the layout - Plot3 works for both 3D and 4D volumes  
         dashboard_layout = column(
-            div_title,
-            # row(
-            #     div_plot1,
-            #     div_plot2,
-            #     div_plot3,
-            # ),
             row(
                 tools,
                 row(
-                    column(div_plot1, plot1_column, sizing_mode="stretch_both"),
-                    column(row(div_plot2, div_plot2b), plot2_column,  sizing_mode="stretch_both", align="end"),
-                    column(div_plot3, row(compute_plot2_image_button, plot2_status_div), plot3, row(compute_plot2b_image_button, plot2b_status_div), sizing_mode="stretch_both", align="start"),
+                    plot1_column,
+                    plot2_column,
+                    plot3_column,
                     sizing_mode="stretch_both",
                 ),
             ), 
-            # row(
-            #     column(
-            #         Div(text="<b>Probe Range:</b>", width=200),
-            #         row(range2_min_input, range2_max_input) if 'range2_min_input' in locals() else Div(text=""),
-            #         Div(text="<b>Probe2B Range:</b>", width=200) if 'range2b_min_input' in locals() and range2b_min_input is not None else Div(text=""),
-            #         row(range2b_min_input, range2b_max_input) if 'range2b_min_input' in locals() and range2b_min_input is not None else Div(text=""),
-            #         width=420
-            #     ),
-            # ),
             status_display,  
         )
 
