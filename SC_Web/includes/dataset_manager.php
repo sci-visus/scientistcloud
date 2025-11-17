@@ -127,6 +127,12 @@ function formatDataset($dataset) {
     // Get created date - check multiple possible fields
     $created_at = $dataset['time'] ?? $dataset['date_imported'] ?? $dataset['created_at'] ?? null;
     
+    // Get is_public - handle both boolean and string values
+    $is_public = $dataset['is_public'] ?? $dataset['metadata']['is_public'] ?? false;
+    if (is_string($is_public)) {
+        $is_public = filter_var($is_public, FILTER_VALIDATE_BOOLEAN);
+    }
+    
     // Base dataset structure
     $formatted = [
         'id' => $dataset['uuid'] ?? $dataset['id'] ?? '',
@@ -144,6 +150,7 @@ function formatDataset($dataset) {
         'user_id' => $dataset['user'] ?? $dataset['user_email'] ?? $dataset['user_id'] ?? '',
         'tags' => $tags,
         'preferred_dashboard' => $dataset['preferred_dashboard'] ?? $dataset['metadata']['preferred_dashboard'] ?? '',
+        'is_public' => $is_public,
         'created_at' => $created_at,
         'updated_at' => $dataset['date_updated'] ?? $dataset['updated_at'] ?? null,
         'viewer_url' => $dataset['viewer_url'] ?? '',

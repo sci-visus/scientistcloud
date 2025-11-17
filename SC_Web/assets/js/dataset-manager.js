@@ -1297,14 +1297,6 @@ class DatasetManager {
             <option value="__CREATE__">+ Create New Folder</option>
         `;
         
-        // Determine if retry button should be shown
-        const status = dataset.status || '';
-        const showRetry = status && (
-            status.toLowerCase().includes('failed') || 
-            status.toLowerCase().includes('error') ||
-            status === 'conversion failed'
-        );
-        
         // Get folder name for display
         const folderName = folders.find(f => f.uuid === dataset.folder_uuid)?.name || (dataset.folder_uuid || 'None');
         
@@ -1329,13 +1321,11 @@ class DatasetManager {
                         <button type="button" class="btn btn-sm btn-outline-primary" id="editDatasetBtn" data-dataset-id="${dataset.id || dataset.uuid}">
                             <i class="fas fa-edit"></i> Edit
                         </button>
-                        ${showRetry ? `
                         <button type="button" class="btn btn-sm btn-outline-warning retry-conversion-details-btn" 
                                 data-dataset-uuid="${dataset.uuid || dataset.id}"
                                 data-dataset-name="${this.escapeHtml(dataset.name || 'Dataset')}">
                             <i class="fas fa-redo"></i> Retry
                         </button>
-                        ` : ''}
                     </div>
                 </div>
                 
@@ -1408,6 +1398,17 @@ class DatasetManager {
                         </div>
                         ` : ''}
                         
+                        ${dataset.is_public !== undefined ? `
+                        <div class="detail-item mb-2">
+                            <span class="detail-label">Public:</span>
+                            <span class="detail-value">
+                                <span class="badge bg-${dataset.is_public ? 'success' : 'secondary'}">
+                                    ${dataset.is_public ? 'Yes' : 'No'}
+                                </span>
+                            </span>
+                        </div>
+                        ` : ''}
+                        
                         <div class="detail-item mb-2">
                             <span class="detail-label">UUID:</span>
                             <span class="detail-value small text-muted" style="word-break: break-all;">${this.escapeHtml(dataset.uuid || '')}</span>
@@ -1470,6 +1471,27 @@ class DatasetManager {
                                    value="${this.escapeHtml(dataset.google_drive_link || '')}" 
                                    placeholder="http://example.com/mod_visus?dataset=...">
                             <small class="form-text text-muted">Link to remote data (e.g., S3, external server). If provided and not a Google Drive link, data will be loaded remotely.</small>
+                        </div>
+                        
+                        <div class="mb-2">
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox" name="is_public" id="datasetIsPublic" 
+                                       ${dataset.is_public ? 'checked' : ''}>
+                                <label class="form-check-label" for="datasetIsPublic">
+                                    Public
+                                </label>
+                                <small class="form-text text-muted d-block">Make this dataset publicly accessible</small>
+                            </div>
+                        </div>
+                        
+                        <div class="mb-2">
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox" name="convert_to_idx" id="datasetConvertToIdx">
+                                <label class="form-check-label" for="datasetConvertToIdx">
+                                    Convert to IDX
+                                </label>
+                                <small class="form-text text-muted d-block">Queue this dataset for conversion to IDX format</small>
+                            </div>
                         </div>
                         
                         <div class="d-flex gap-2 mt-3">
@@ -1566,6 +1588,10 @@ class DatasetManager {
             folderUuid = newFolderName.trim();
         }
         
+        // Get checkbox values
+        const isPublic = formData.get('is_public') === 'on';
+        const convertToIdx = formData.get('convert_to_idx') === 'on';
+        
         const updateData = {
             dataset_id: datasetId,
             name: formData.get('name'),
@@ -1574,8 +1600,14 @@ class DatasetManager {
             team_uuid: formData.get('team_uuid'),
             dimensions: formData.get('dimensions'),
             preferred_dashboard: formData.get('preferred_dashboard'),
-            google_drive_link: formData.get('google_drive_link') || null
+            google_drive_link: formData.get('google_drive_link') || null,
+            is_public: isPublic
         };
+        
+        // If convert_to_idx is checked, set status to "conversion queued"
+        if (convertToIdx) {
+            updateData.status = 'conversion queued';
+        }
         
         // Show loading state
         const submitBtn = form.querySelector('button[type="submit"]');

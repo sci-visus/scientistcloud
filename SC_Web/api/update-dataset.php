@@ -110,6 +110,12 @@ try {
     if (isset($data['google_drive_link'])) {
         $updateData['google_drive_link'] = $data['google_drive_link'];
     }
+    if (isset($data['is_public'])) {
+        $updateData['is_public'] = filter_var($data['is_public'], FILTER_VALIDATE_BOOLEAN);
+    }
+    if (isset($data['status'])) {
+        $updateData['status'] = $data['status'];
+    }
 
     if (empty($updateData)) {
         ob_end_clean();
