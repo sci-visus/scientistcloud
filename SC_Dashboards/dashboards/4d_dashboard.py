@@ -18,7 +18,10 @@ from bokeh.models import (
     Slider,
     TextInput, 
     RadioButtonGroup,
-    Toggle
+    Toggle,
+    LogScale,
+    LinearScale,
+    CustomJS
 )
 from bokeh.plotting import figure
 from process_4dnexus import Process4dNexus
@@ -548,7 +551,8 @@ def create_tmp_dashboard(process_4dnexus):
     plot1_h5_selector_numerator.visible = True
     plot1_h5_selector_denominator.visible = True
 
-    return column(
+    # Create the main layout
+    main_layout = column(
         css_style,
         # Dataset selection section
         Div(text="<h2>4D Dashboard - Dataset Selection</h2>"),
@@ -630,6 +634,8 @@ def create_tmp_dashboard(process_4dnexus):
         row(status_display, sizing_mode="stretch_both"),
 		sizing_mode="stretch_both"
     )
+    
+    return main_layout
 
 # //////////////////////////////////////////////////////////////////////////
 def update_1d_plot(volume, x_index, y_index, source2, plot2, process_4dnexus=None, use_b=False):
@@ -684,8 +690,24 @@ def update_1d_plot(volume, x_index, y_index, source2, plot2, process_4dnexus=Non
             # Update the plot ranges to fit the new data
             plot2.x_range.start = x_coords_1d.min()
             plot2.x_range.end = x_coords_1d.max()
-            plot2.y_range.start = plot_data_1d.min()
-            plot2.y_range.end = plot_data_1d.max()
+            
+            # For y-axis, handle log scale if enabled
+            if hasattr(plot2, 'y_scale') and isinstance(plot2.y_scale, LogScale):
+                # For log scale, only use positive values
+                positive_data = plot_data_1d[plot_data_1d > 0]
+                if positive_data.size > 0:
+                    y_min = max(np.min(positive_data), 0.001)
+                    y_max = np.max(positive_data)
+                    plot2.y_range.start = y_min
+                    plot2.y_range.end = y_max
+                else:
+                    # No positive values, use small default range
+                    plot2.y_range.start = 0.001
+                    plot2.y_range.end = 1.0
+            else:
+                # Linear scale - use all data
+                plot2.y_range.start = plot_data_1d.min()
+                plot2.y_range.end = plot_data_1d.max()
             
             # Restore axis labels if they were set
             if original_x_label:
@@ -819,7 +841,8 @@ def create_dashboard(process_4dnexus):
         # Import additional Bokeh components needed for the full dashboard
         from bokeh.models import (
             Slider, Toggle, TapTool, CustomJS, HoverTool, 
-            ColorBar, LinearColorMapper, LogColorMapper, TextInput
+            ColorBar, LinearColorMapper, LogColorMapper, TextInput,
+            LogScale, LinearScale
         )
         from bokeh.transform import linear_cmap
         import matplotlib.colors as colors
@@ -1174,7 +1197,7 @@ def create_dashboard(process_4dnexus):
         x_end = max(x_min, x_max)
         x_value = x_start + (x_end - x_start) / 2
         x_slider = Slider(
-            title="X", start=x_start, end=x_end, value=x_value, step=0.01, width=400
+            title="X", start=x_start, end=x_end, value=x_value, step=0.01, width=200
         )
 
         y_min = y_coords.min()
@@ -1183,7 +1206,7 @@ def create_dashboard(process_4dnexus):
         y_end = max(y_min, y_max)
         y_value = y_start + (y_end - y_start) / 2
         y_slider = Slider(
-            title="Y", start=y_start, end=y_end, value=y_value, step=0.01, width=400
+            title="Y", start=y_start, end=y_end, value=y_value, step=0.01, width=200
         )
 
             # Create color scale selectors
@@ -1191,6 +1214,9 @@ def create_dashboard(process_4dnexus):
             labels=["Linear", "Log"], active=0, width=200
         )
         map2_color_scale_selector = RadioButtonGroup(
+            labels=["Linear", "Log"], active=0, width=200
+        )
+        map3_color_scale_selector = RadioButtonGroup(
             labels=["Linear", "Log"], active=0, width=200
         )
 
@@ -1237,6 +1263,24 @@ def create_dashboard(process_4dnexus):
             title="Max Map Size (px):",
             value="400", 
             width=150
+        )
+        
+        # Create separate containers for custom map and aspect ratio controls
+        # (Created early so they can be used in callbacks and initial state setup)
+        custom_map_controls = column(
+            Div(text="<b>Custom Map Size:</b>", width=200),
+            row(custom_map_width_input, custom_map_height_input),
+        )
+        
+        aspect_ratio_controls = column(
+            Div(text="<b>Map Scale:</b>", width=200),
+            map_scale_input,
+        )
+        
+        # Create container for Map Size Limits
+        map_size_limits_controls = column(
+            Div(text="<b>Map Size Limits:</b>", width=200),
+            row(plotmin_input, plotmax_input),
         )
 
         # Helper function to calculate percentile-based ranges
@@ -1557,8 +1601,10 @@ def create_dashboard(process_4dnexus):
             plot1b.match_aspect = True
             plot1b.sizing_mode = "fixed"
             plot1b.add_layout(colorbar1b, "below")
-        plot2.match_aspect = True  # Restore 1:1 squares
-        plot2.sizing_mode = "fixed"
+        # Only set match_aspect for 2D plots (not for 1D line plots)
+        if not is_3d_volume:
+            plot2.match_aspect = True  # 1:1 aspect ratio for 2D plots
+        plot2.sizing_mode = "scale_width"  # Allow width scaling to match column
         
         # Only add colorbar to Plot2 if it's a 2D plot
         if not is_3d_volume and colorbar2 is not None:
@@ -1632,6 +1678,16 @@ def create_dashboard(process_4dnexus):
             y_index = get_y_index()
             y_coord = y_coords[y_index]
 
+            # Initialize crosshair lines for Plot1 if they don't exist
+            if rect1.h1line is None:
+                rect1.h1line = plot1.line(x=[x_coords.min(), x_coords.max()], y=[y_coord, y_coord], line_color="yellow", line_width=2)
+            if rect1.h2line is None:
+                rect1.h2line = plot1.line(x=[x_coords.min(), x_coords.max()], y=[y_coord, y_coord], line_color="yellow", line_width=2)
+            if rect1.v1line is None:
+                rect1.v1line = plot1.line(x=[x_coord, x_coord], y=[y_coords.min(), y_coords.max()], line_color="yellow", line_width=2)
+            if rect1.v2line is None:
+                rect1.v2line = plot1.line(x=[x_coord, x_coord], y=[y_coords.min(), y_coords.max()], line_color="yellow", line_width=2)
+
             rect1.h1line.data_source.data = {
                 "x": [x_coords.min(), x_coords.max()],
                 "y": [y_coord, y_coord],
@@ -1694,7 +1750,11 @@ def create_dashboard(process_4dnexus):
             color_mapper.low = min_val
             color_mapper.high = max_val
             if hasattr(plot, 'renderers') and len(plot.renderers) > 0:
-                plot.renderers[0].glyph.color_mapper = color_mapper
+                # Only update color_mapper if the renderer is an image renderer (has color_mapper attribute)
+                # Line renderers don't have color_mapper
+                renderer = plot.renderers[0]
+                if hasattr(renderer, 'glyph') and hasattr(renderer.glyph, 'color_mapper'):
+                    renderer.glyph.color_mapper = color_mapper
         
         def update_plot1_dimensions():
             """Update plot1 dimensions based on map shape selector"""
@@ -1778,6 +1838,12 @@ def create_dashboard(process_4dnexus):
                 if 'plot1b' in locals() and plot1b is not None:
                     plot1b.width = map_width
                     plot1b.height = map_height
+                
+                # Also update Plot3 to match Plot1 dimensions
+                if 'plot3' in locals() and plot3 is not None:
+                    plot3.width = map_width
+                    plot3.height = map_height
+                    print(f"Plot3 dimensions updated to match Plot1: {map_width}x{map_height}")
                     
             except Exception as e:
                 print(f"Error updating plot1 dimensions: {e}")
@@ -1792,34 +1858,40 @@ def create_dashboard(process_4dnexus):
                 # Hide/show control containers based on map shape choice
                 if new == 0:  # Square
                     # Hide both custom map and aspect ratio controls
-                    if hasattr(custom_map_width_input, 'visible'):
-                        custom_map_width_input.visible = False
-                        custom_map_height_input.visible = False
-                        map_scale_input.visible = False
+                    custom_map_controls.visible = False
+                    aspect_ratio_controls.visible = False
                     # Disable all inputs
                     custom_map_width_input.disabled = True
                     custom_map_height_input.disabled = True
                     map_scale_input.disabled = True
+                    # Show Map Size Limits (needed for Square mode)
+                    map_size_limits_controls.visible = True
+                    plotmin_input.disabled = False
+                    plotmax_input.disabled = False
                 elif new == 1:  # Custom Dimensions
                     # Show custom map controls, hide aspect ratio controls
-                    if hasattr(custom_map_width_input, 'visible'):
-                        custom_map_width_input.visible = True
-                        custom_map_height_input.visible = True
-                        map_scale_input.visible = False
+                    custom_map_controls.visible = True
+                    aspect_ratio_controls.visible = False
                     # Enable custom map inputs, disable scale input
                     custom_map_width_input.disabled = False
                     custom_map_height_input.disabled = False
                     map_scale_input.disabled = True
+                    # Hide Map Size Limits (not needed in Custom mode - user sets exact dimensions)
+                    map_size_limits_controls.visible = False
+                    plotmin_input.disabled = True
+                    plotmax_input.disabled = True
                 else:  # Aspect Ratio (new == 2)
                     # Hide custom map controls, show aspect ratio controls
-                    if hasattr(custom_map_width_input, 'visible'):
-                        custom_map_width_input.visible = False
-                        custom_map_height_input.visible = False
-                        map_scale_input.visible = True
+                    custom_map_controls.visible = False
+                    aspect_ratio_controls.visible = True
                     # Disable custom map inputs, enable scale input
                     custom_map_width_input.disabled = True
                     custom_map_height_input.disabled = True
                     map_scale_input.disabled = False
+                    # Show Map Size Limits (needed for Aspect Ratio mode)
+                    map_size_limits_controls.visible = True
+                    plotmin_input.disabled = False
+                    plotmax_input.disabled = False
                 
                 # Update plot dimensions
                 update_plot1_dimensions()
@@ -1867,16 +1939,20 @@ def create_dashboard(process_4dnexus):
                     if 'image' in source2.data and len(source2.data['image']) > 0:
                         img = source2.data['image'][0]
                         p2_min, p2_max = get_percentile_range(img)
-                        if color_mapper2a is not None:
+                        # Only update color mapper if it exists (2D plots only)
+                        if 'color_mapper2a' in locals() and color_mapper2a is not None:
                             set_colormap_range(plot2, colorbar2, color_mapper2a, p2_min, p2_max)
                         # Also update range inputs to reflect current range
                         range2_min_input.value = str(p2_min)
                         range2_max_input.value = str(p2_max)
             except Exception as e:
                 print(f"Error updating Plot2 dynamic range: {e}")
+                import traceback
+                traceback.print_exc()
         
         def update_plot2b_range_dynamic():
             """Update Plot2B range dynamically based on current data"""
+            nonlocal colorbar2b
             if plot2b_range_mode_toggle is None or not plot2b_range_mode_toggle.active:
                 return
             if 'plot2b' not in locals() or plot2b is None or 'source2b' not in locals():
@@ -1902,7 +1978,14 @@ def create_dashboard(process_4dnexus):
                         img = source2b.data['image'][0]
                         p2b_min, p2b_max = get_percentile_range(img)
                         if 'color_mapper2b' in locals() and color_mapper2b is not None:
-                            set_colormap_range(plot2b, colorbar2b, color_mapper2b, p2b_min, p2b_max)
+                            if 'colorbar2b' in locals() and colorbar2b is not None:
+                                set_colormap_range(plot2b, colorbar2b, color_mapper2b, p2b_min, p2b_max)
+                            else:
+                                # Update mapper without colorbar if colorbar doesn't exist
+                                color_mapper2b.low = p2b_min
+                                color_mapper2b.high = p2b_max
+                                if len(plot2b.renderers) > 0:
+                                    plot2b.renderers[0].glyph.color_mapper = color_mapper2b
                         # Also update range inputs to reflect current range
                         if range2b_min_input is not None:
                             range2b_min_input.value = str(p2b_min)
@@ -1910,6 +1993,8 @@ def create_dashboard(process_4dnexus):
                             range2b_max_input.value = str(p2b_max)
             except Exception as e:
                 print(f"Error updating Plot2B dynamic range: {e}")
+                import traceback
+                traceback.print_exc()
         
         def show_slice():
             x_index = get_x_index()
@@ -2208,47 +2293,307 @@ def create_dashboard(process_4dnexus):
             set_colormap_range(plot3, colorbar3, color_mapper3, min_val, max_val)
         
         def on_map1_color_scale_change(attr, old, new):
-            current_data = source1.data["image"][0]
-            if current_data.size > 0:
-                data_min = np.min(current_data[current_data > 0])
-                data_max = np.max(current_data)
-                # Recreate mapper type for both A/B, keep independent ranges by resetting lows/highs after swap
-                new_cls = LogColorMapper if new else LinearColorMapper
+            """Handle Map color scale change (Linear vs Log) for Plot1 and Plot1B"""
+            nonlocal color_mapper1a, color_mapper1b, image_renderer1, image_renderer1b
+            try:
+                # Get current data from source1
+                if 'image' not in source1.data or len(source1.data['image']) == 0:
+                    print("Warning: No image data in source1 for color scale change")
+                    return
+                
+                current_data = np.array(source1.data["image"][0])
+                if current_data.size == 0:
+                    print("Warning: Empty image data for color scale change")
+                    return
+                
+                # For log scale, we need to handle zeros/negatives
+                if new == 1:  # Log scale selected
+                    # Filter out zeros and negatives, use a small epsilon for minimum
+                    positive_data = current_data[current_data > 0]
+                    if positive_data.size == 0:
+                        print("Warning: No positive values for log scale, using linear scale")
+                        new_cls = LinearColorMapper
+                        # Use current ranges or defaults
+                        low1a = color_mapper1a.low if color_mapper1a.low > 0 else 0.001
+                        high1a = color_mapper1a.high if color_mapper1a.high > 0 else 1.0
+                    else:
+                        new_cls = LogColorMapper
+                        # Use current ranges if they're positive, otherwise use data-based ranges
+                        low1a = color_mapper1a.low if color_mapper1a.low > 0 else max(np.min(positive_data), 0.001)
+                        high1a = color_mapper1a.high if color_mapper1a.high > 0 else np.max(positive_data)
+                else:  # Linear scale
+                    new_cls = LinearColorMapper
                 # Preserve current ranges
-                low1a, high1a = color_mapper1a.low, color_mapper1a.high
+                    low1a = color_mapper1a.low
+                    high1a = color_mapper1a.high
+                
+                # Recreate mapper for Plot1
                 color_mapper1a = new_cls(palette=color_mapper1a.palette, low=low1a, high=high1a)
-                if len(plot1.renderers) > 0:
-                    plot1.renderers[0].glyph.color_mapper = color_mapper1a
+                if len(plot1.renderers) > 0 and image_renderer1 is not None:
+                    # Remove the old renderer
+                    plot1.renderers.remove(plot1.renderers[0])
+                    # Re-add the renderer with the new color mapper
+                    image_renderer1 = plot1.image(
+                        "image", source=source1, x="x", y="y", dw="dw", dh="dh", color_mapper=color_mapper1a,
+                    )
+                # Update colorbar if it exists
+                if 'colorbar1' in locals() and colorbar1 is not None:
+                    colorbar1.color_mapper = color_mapper1a
+                
+                # Update Plot1B if it exists
                 if 'plot1b' in locals() and plot1b is not None and image_renderer1b is not None and 'color_mapper1b' in locals() and color_mapper1b is not None:
-                    low1b, high1b = color_mapper1b.low, color_mapper1b.high
+                    if new == 1:  # Log scale
+                        low1b = color_mapper1b.low if color_mapper1b.low > 0 else max(np.min(positive_data), 0.001)
+                        high1b = color_mapper1b.high if color_mapper1b.high > 0 else np.max(positive_data)
+                    else:  # Linear scale
+                        low1b = color_mapper1b.low
+                        high1b = color_mapper1b.high
                     color_mapper1b = new_cls(palette=color_mapper1a.palette, low=low1b, high=high1b)
-                    plot1b.renderers[0].glyph.color_mapper = color_mapper1b
+                    if len(plot1b.renderers) > 0 and image_renderer1b is not None:
+                        # Remove the old renderer
+                        plot1b.renderers.remove(plot1b.renderers[0])
+                        # Re-add the renderer with the new color mapper
+                        image_renderer1b = plot1b.image(
+                            "image", source=source1b, x="x", y="y", dw="dw", dh="dh", color_mapper=color_mapper1b,
+                        )
+                    # Update colorbar if it exists
+                    if 'colorbar1b' in locals() and colorbar1b is not None:
+                        colorbar1b.color_mapper = color_mapper1b
+                        
+            except Exception as e:
+                print(f"Error in on_map1_color_scale_change: {e}")
+                import traceback
+                traceback.print_exc()
         
         def on_map2_color_scale_change(attr, old, new):
-            current_data = source2.data["image"][0]
-            if current_data.size > 0:
-                data_min = np.min(current_data[current_data > 0])
-                data_max = np.max(current_data)
-                new_cls = LogColorMapper if new else LinearColorMapper
-                low2a, high2a = (color_mapper2a.low, color_mapper2a.high) if color_mapper2a is not None else (data_min, data_max)
-                if not is_3d_volume:
+            """Handle Probe color scale change (Linear vs Log) for Plot2 and Plot2B"""
+            nonlocal color_mapper2a, color_mapper2b, colorbar2, colorbar2b, image_renderer2, image_renderer2b
+            try:
+                new_cls = LogColorMapper if new == 1 else LinearColorMapper
+                
+                # Handle Plot2 (2D plots only - 4D volumes)
+                if not is_3d_volume and color_mapper2a is not None:
+                    # Get current data from source2
+                    if 'image' in source2.data and len(source2.data['image']) > 0:
+                        current_data = np.array(source2.data["image"][0])
+                        
+                        if new == 1:  # Log scale
+                            # Filter out zeros and negatives
+                            positive_data = current_data[current_data > 0]
+                            if positive_data.size == 0:
+                                print("Warning: No positive values for log scale in Plot2, using linear scale")
+                                new_cls = LinearColorMapper
+                                low2a = color_mapper2a.low if color_mapper2a.low > 0 else 0.001
+                                high2a = color_mapper2a.high if color_mapper2a.high > 0 else 1.0
+                            else:
+                                # Use current ranges if positive, otherwise use data-based ranges
+                                low2a = color_mapper2a.low if color_mapper2a.low > 0 else max(np.min(positive_data), 0.001)
+                                high2a = color_mapper2a.high if color_mapper2a.high > 0 else np.max(positive_data)
+                        else:  # Linear scale
+                            low2a = color_mapper2a.low
+                            high2a = color_mapper2a.high
+                    else:
+                        # No image data, use current ranges
+                        low2a = color_mapper2a.low
+                        high2a = color_mapper2a.high
+                    
                     color_mapper2a = new_cls(palette=color_mapper2a.palette, low=low2a, high=high2a)
-                    if len(plot2.renderers) > 0:
-                        plot2.renderers[0].glyph.color_mapper = color_mapper2a
+                    if len(plot2.renderers) > 0 and image_renderer2 is not None:
+                        # Remove the old renderer
+                        plot2.renderers.remove(plot2.renderers[0])
+                        # Re-add the renderer with the new color mapper
+                        image_renderer2 = plot2.image(
+                            "image", source=source2, x="x", y="y", dw="dw", dh="dh", color_mapper=color_mapper2a,
+                        )
+                    # Update colorbar if it exists
+                    if colorbar2 is not None:
+                        colorbar2.color_mapper = color_mapper2a
+                
+                # Handle Plot2B (2D plots only)
                 if 'plot2b' in locals() and plot2b is not None and plot2b_is_2d and image_renderer2b is not None and 'color_mapper2b' in locals() and color_mapper2b is not None:
-                    low2b, high2b = color_mapper2b.low, color_mapper2b.high
+                    # Get current data from source2b
+                    if 'image' in source2b.data and len(source2b.data['image']) > 0:
+                        current_data_b = np.array(source2b.data["image"][0])
+                        
+                        if new == 1:  # Log scale
+                            positive_data_b = current_data_b[current_data_b > 0]
+                            if positive_data_b.size == 0:
+                                print("Warning: No positive values for log scale in Plot2B, using linear scale")
+                                new_cls = LinearColorMapper
+                                low2b = color_mapper2b.low if color_mapper2b.low > 0 else 0.001
+                                high2b = color_mapper2b.high if color_mapper2b.high > 0 else 1.0
+                            else:
+                                low2b = color_mapper2b.low if color_mapper2b.low > 0 else max(np.min(positive_data_b), 0.001)
+                                high2b = color_mapper2b.high if color_mapper2b.high > 0 else np.max(positive_data_b)
+                        else:  # Linear scale
+                            low2b = color_mapper2b.low
+                            high2b = color_mapper2b.high
+                    else:
+                        # No image data, use current ranges
+                        low2b = color_mapper2b.low
+                        high2b = color_mapper2b.high
+                    
                     color_mapper2b = new_cls(palette=(color_mapper2a.palette if color_mapper2a is not None else "Viridis256"), low=low2b, high=high2b)
-                    plot2b.renderers[0].glyph.color_mapper = color_mapper2b
+                    if len(plot2b.renderers) > 0 and image_renderer2b is not None:
+                        # Remove the old renderer
+                        plot2b.renderers.remove(plot2b.renderers[0])
+                        # Re-add the renderer with the new color mapper
+                        image_renderer2b = plot2b.image(
+                            "image", source=source2b, x="x", y="y", dw="dw", dh="dh", color_mapper=color_mapper2b,
+                        )
+                    # Update colorbar if it exists
+                    if colorbar2b is not None:
+                        colorbar2b.color_mapper = color_mapper2b
+                
+                # Handle 1D plots (3D volumes) - apply log scale to y-axis
+                if is_3d_volume:
+                    if new == 1:  # Log scale selected
+                        # Set y-axis to log scale
+                        plot2.y_scale = LogScale()
+                        # Ensure y-axis range is positive for log scale
+                        if 'y' in source2.data and len(source2.data['y']) > 0:
+                            y_data = np.array(source2.data['y'])
+                            positive_y = y_data[y_data > 0]
+                            if positive_y.size > 0:
+                                y_min = max(np.min(positive_y), 0.001)
+                                y_max = np.max(positive_y)
+                                plot2.y_range.start = y_min
+                                plot2.y_range.end = y_max
+                            else:
+                                # No positive values, set safe default
+                                plot2.y_range.start = 0.001
+                                plot2.y_range.end = 1.0
+                    else:  # Linear scale selected
+                        plot2.y_scale = LinearScale()
+                        # Reset y-range to include all data (including negatives/zeros)
+                        if 'y' in source2.data and len(source2.data['y']) > 0:
+                            y_data = np.array(source2.data['y'])
+                            plot2.y_range.start = float(np.min(y_data))
+                            plot2.y_range.end = float(np.max(y_data))
+                    
+                    # Force plot update for 1D plots by updating data source
+                    if 'x' in source2.data and 'y' in source2.data:
+                        source2.data = {
+                            'x': source2.data['x'],
+                            'y': source2.data['y']
+                        }
+                    
+                    # Handle Plot2B 1D plots
+                    if 'plot2b' in locals() and plot2b is not None and not plot2b_is_2d:
+                        if new == 1:  # Log scale
+                            plot2b.y_scale = LogScale()
+                            if 'y' in source2b.data and len(source2b.data['y']) > 0:
+                                y_data_b = np.array(source2b.data['y'])
+                                positive_y_b = y_data_b[y_data_b > 0]
+                                if positive_y_b.size > 0:
+                                    y_min_b = max(np.min(positive_y_b), 0.001)
+                                    y_max_b = np.max(positive_y_b)
+                                    plot2b.y_range.start = y_min_b
+                                    plot2b.y_range.end = y_max_b
+                                else:
+                                    plot2b.y_range.start = 0.001
+                                    plot2b.y_range.end = 1.0
+                        else:  # Linear scale
+                            plot2b.y_scale = LinearScale()
+                            if 'y' in source2b.data and len(source2b.data['y']) > 0:
+                                y_data_b = np.array(source2b.data['y'])
+                                plot2b.y_range.start = float(np.min(y_data_b))
+                                plot2b.y_range.end = float(np.max(y_data_b))
+                        # Force Plot2B update by updating data source
+                        if 'source2b' in locals() and source2b is not None and 'x' in source2b.data and 'y' in source2b.data:
+                            source2b.data = {
+                                'x': source2b.data['x'],
+                                'y': source2b.data['y']
+                            }
+                        
+            except Exception as e:
+                print(f"Error in on_map2_color_scale_change: {e}")
+                import traceback
+                traceback.print_exc()
+        
+        def on_map3_color_scale_change(attr, old, new):
+            """Handle Plot3 color scale change (Linear vs Log)"""
+            nonlocal color_mapper3, image_renderer3
+            try:
+                # Get current data from source3
+                if 'image' not in source3.data or len(source3.data['image']) == 0:
+                    print("Warning: No image data in source3 for color scale change")
+                    return
+                
+                current_data = np.array(source3.data["image"][0])
+                if current_data.size == 0:
+                    print("Warning: Empty image data for color scale change")
+                    return
+                
+                # For log scale, we need to handle zeros/negatives
+                if new == 1:  # Log scale selected
+                    # Filter out zeros and negatives, use a small epsilon for minimum
+                    positive_data = current_data[current_data > 0]
+                    if positive_data.size == 0:
+                        print("Warning: No positive values for log scale in Plot3, using linear scale")
+                        new_cls = LinearColorMapper
+                        # Use current ranges or defaults
+                        low3 = color_mapper3.low if color_mapper3.low > 0 else 0.001
+                        high3 = color_mapper3.high if color_mapper3.high > 0 else 1.0
+                    else:
+                        new_cls = LogColorMapper
+                        # Use current ranges if they're positive, otherwise use data-based ranges
+                        low3 = color_mapper3.low if color_mapper3.low > 0 else max(np.min(positive_data), 0.001)
+                        high3 = color_mapper3.high if color_mapper3.high > 0 else np.max(positive_data)
+                else:  # Linear scale
+                    new_cls = LinearColorMapper
+                    # Preserve current ranges
+                    low3 = color_mapper3.low
+                    high3 = color_mapper3.high
+                
+                # Recreate mapper for Plot3
+                color_mapper3 = new_cls(palette=color_mapper3.palette, low=low3, high=high3)
+                if len(plot3.renderers) > 0 and image_renderer3 is not None:
+                    # Remove the old renderer
+                    plot3.renderers.remove(plot3.renderers[0])
+                    # Re-add the renderer with the new color mapper
+                    image_renderer3 = plot3.image(
+                        "image", source=source3, x="x", y="y", dw="dw", dh="dh", color_mapper=color_mapper3,
+                    )
+                # Update colorbar if it exists
+                if 'colorbar3' in locals() and colorbar3 is not None:
+                    colorbar3.color_mapper = color_mapper3
+                        
+            except Exception as e:
+                print(f"Error in on_map3_color_scale_change: {e}")
+                import traceback
+                traceback.print_exc()
         
         def set_palette(value):
+            nonlocal colorbar1, colorbar2, colorbar3
+            # Update color mappers and their corresponding colorbars
             color_mapper1a.palette = value
+            # Update colorbar1 to reflect the new palette
+            if colorbar1 is not None:
+                colorbar1.color_mapper = color_mapper1a
+            
             if 'color_mapper1b' in locals() and color_mapper1b is not None:
                 color_mapper1b.palette = value
+                # Update colorbar1b if it exists
+                if 'colorbar1b' in locals() and colorbar1b is not None:
+                    colorbar1b.color_mapper = color_mapper1b
+            
             if not is_3d_volume and color_mapper2a is not None:
                 color_mapper2a.palette = value
+                # Update colorbar2 if it exists (only for 2D plots)
+                if colorbar2 is not None:
+                    colorbar2.color_mapper = color_mapper2a
+            
             if 'color_mapper2b' in locals() and color_mapper2b is not None:
                 color_mapper2b.palette = value
+                # Update colorbar2b if it exists
+                if 'colorbar2b' in locals() and colorbar2b is not None:
+                    colorbar2b.color_mapper = color_mapper2b
+            
             color_mapper3.palette = value
+            # Update colorbar3 to reflect the new palette
+            if colorbar3 is not None:
+                colorbar3.color_mapper = color_mapper3
         
         def schedule_show_slice():
             from bokeh.io import curdoc
@@ -3108,6 +3453,7 @@ def create_dashboard(process_4dnexus):
         y_slider.on_change("value", on_slider_change)
         map1_color_scale_selector.on_change("active", on_map1_color_scale_change)
         map2_color_scale_selector.on_change("active", on_map2_color_scale_change)
+        map3_color_scale_selector.on_change("active", on_map3_color_scale_change)
         palette_selector.on_change("value", lambda attr, old, new: set_palette(new))
         map_shape_selector.on_change("active", on_map_shape_change)
         custom_map_width_input.on_change("value", on_custom_map_width_change)
@@ -3120,6 +3466,11 @@ def create_dashboard(process_4dnexus):
         custom_map_width_input.disabled = True
         custom_map_height_input.disabled = True
         map_scale_input.disabled = True
+        # Hide custom and aspect ratio controls initially (Square mode is default)
+        custom_map_controls.visible = False
+        aspect_ratio_controls.visible = False
+        # Show Map Size Limits initially (needed for Square mode)
+        map_size_limits_controls.visible = True
         
         # Initialize plot1 dimensions
         update_plot1_dimensions()
@@ -3161,20 +3512,6 @@ def create_dashboard(process_4dnexus):
         reset_plot2b_button.on_click(lambda: on_reset_plot2b())
         back_to_selection_button.on_click(on_back_to_selection_click)
 
-        # Create separate containers for custom map and aspect ratio controls
-        custom_map_controls = column(
-            Div(text="<b>Custom Map Size:</b>", width=200),
-            row(custom_map_width_input, custom_map_height_input),
-        )
-        
-        aspect_ratio_controls = column(
-            Div(text="<b>Map Scale:</b>", width=200),
-            map_scale_input,
-        )
-        
-        # Set initial visibility state (Square is default, so hide both controls)
-        # Note: Bokeh TextInput doesn't have visible attribute, so we'll just disable them
-        
         # Create tools column with conditional z-range display (range inputs moved above plots)
         tools_items = [
             x_slider,
@@ -3183,12 +3520,13 @@ def create_dashboard(process_4dnexus):
             map_shape_selector,
             custom_map_controls,
             aspect_ratio_controls,
-            Div(text="<b>Map Size Limits:</b>", width=200),
-            row(plotmin_input, plotmax_input),
+            map_size_limits_controls,
             Div(text="<b>Map Color Scale:</b>", width=200),
             map1_color_scale_selector,
             Div(text="<b>Probe Color Scale:</b>", width=200),
             map2_color_scale_selector,
+            Div(text="<b>Plot3 Color Scale:</b>", width=200),
+            map3_color_scale_selector,
             status_div,
         ]
         
@@ -3255,13 +3593,19 @@ def create_dashboard(process_4dnexus):
         )
         
         # Stack optional Plot1B under Plot1 and Plot2B under Plot2
+        # Add spacers to align plot tops - Plot2 has toggle + button row, so it needs less spacer
+        # Plot1 and Plot3 need spacers to match Plot2's header height
+        # Approximate heights: range section ~60px, toggle ~30px, button row ~40px
+        plot1_spacer = Div(text="", height=70)  # Spacer to align with Plot2's toggle + button row
+        plot3_spacer = Div(text="", height=70)  # Spacer to align with Plot2's toggle + button row
+        
         # Build Plot1 column with range inputs above
-        plot1_column_items = [plot1_range_section, plot1]
+        plot1_column_items = [plot1_range_section, plot1_spacer, plot1]
         if 'plot1b' in locals() and plot1b is not None:
             if plot1b_range_section:
                 plot1_column_items.append(plot1b_range_section)
             plot1_column_items.append(plot1b)
-        plot1_column = column(*plot1_column_items, sizing_mode="stretch_both")
+        plot1_column = column(*plot1_column_items, sizing_mode="scale_width")
         # Build Plot2 column with range inputs above and append Plot2B controls if present
         if 'plot2b' in locals() and plot2b is not None:
             plot2_column_items = [
@@ -3275,34 +3619,42 @@ def create_dashboard(process_4dnexus):
                 row(compute_plot3_from_plot2b_button, reset_plot2b_button, plot3_status_div_b),
                 plot2b,
             ])
-            plot2_column = column(*plot2_column_items, sizing_mode="stretch_both")
+            plot2_column = column(*plot2_column_items, sizing_mode="scale_width")
         else:
             plot2_column = column(
                 plot2_range_section,
                 row(compute_plot3_image_button, reset_plot2a_button, plot3_status_div_a),
                 plot2,
-                sizing_mode="stretch_both",
+                sizing_mode="scale_width",
             )
         
         # Build Plot3 column with range inputs above
+        # Note: Plot3's button row is positioned after the plot, so we need a smaller spacer
+        # Plot2 has: range + toggle + button_row before plot
+        # Plot3 has: range + button_row before plot (button_row is actually after plot in original, but we'll move it)
+        # For alignment, Plot3 needs spacer to match Plot2's toggle height (~30px)
+        plot3_spacer_adjusted = Div(text="", height=30)  # Just to match the toggle height
         plot3_column = column(
             plot3_range_section,
+            plot3_spacer_adjusted,
             row(compute_plot2_image_button, plot2_status_div),
             plot3,
             row(compute_plot2b_image_button, plot2b_status_div),
-            sizing_mode="stretch_both",
+            sizing_mode="scale_width",
         )
         
         # Create the layout - Plot3 works for both 3D and 4D volumes  
-        dashboard_layout = column(
-            row(
-                tools,
-                row(
+        plots_row = row(
                     plot1_column,
                     plot2_column,
                     plot3_column,
                     sizing_mode="stretch_both",
-                ),
+        )
+        dashboard_layout = column(
+            row(
+                tools,
+                plots_row,
+                sizing_mode="stretch_width",
             ), 
             status_display,  
         )
@@ -3346,7 +3698,7 @@ def find_nexus_and_mmap_files():
     print(f"🔍 DEBUG: Searching for .nxs files in: {base_dir}")
     nxs_files = find_nxs_files(base_dir)
     print(f"🔍 DEBUG: Found {len(nxs_files)} .nxs files")
-
+    
     if len(nxs_files) > 0:
         nexus_filename = nxs_files[0]
         mmap_filename = nexus_filename.replace('.nxs', '.float32.dat')
@@ -3357,8 +3709,8 @@ def find_nexus_and_mmap_files():
             mmap_filename = nexus_filename.replace('.nxs', '.float32.dat')
         else:
             nxs_files = find_nxs_files(save_dir)
-            print("No Nexus files found")
-            return None, None
+        print("No Nexus files found")
+        return None, None
    
     print(f"🔍 DEBUG: nexus_filename = {nexus_filename}")
     print(f"🔍 DEBUG: mmap_filename = {mmap_filename}")
