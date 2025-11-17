@@ -987,8 +987,8 @@ def create_dashboard(process_4dnexus):
         plot3.yaxis.ticker = y_ticks
         plot3.xaxis.major_label_overrides = dict(zip(x_ticks, my_xticks))
         plot3.yaxis.major_label_overrides = dict(zip(y_ticks, my_yticks))
-        plot3.xaxis.axis_label = "X Position"
-        plot3.yaxis.axis_label = "Y Position"
+        plot3.xaxis.axis_label = plot1_x_label
+        plot3.yaxis.axis_label = plot1_y_label
         print(f"[TIMING] plot3 built: {time.time()-t0:.3f}s")
 
         # Create an empty source3; Plot3 will be populated on demand via Compute Plot3
@@ -1175,6 +1175,46 @@ def create_dashboard(process_4dnexus):
         # Create palette selector
         palette_selector = Select(
             title="Color Palette:", value="Viridis256", options=palettes, width=200
+        )
+
+        # Create map shape selector (Square, Custom Dimensions, Aspect Ratio)
+        map_shape_selector = RadioButtonGroup(
+            labels=["Square", "Custom", "Aspect Ratio"],
+            active=0,  # Default to Square
+            width=200
+        )
+        
+        # Create custom map size inputs
+        custom_map_width_input = TextInput(
+            title="Custom Width:",
+            value="400",
+            width=100
+        )
+        
+        custom_map_height_input = TextInput(
+            title="Custom Height:",
+            value="400",
+            width=100
+        )
+        
+        # Create map scale input for aspect ratio mode (percentage)
+        map_scale_input = TextInput(
+            title="Map Scale (%):",
+            value="100",
+            width=100
+        )
+        
+        # Create plot size controls
+        plotmin_input = TextInput(
+            title="Min Map Size (px):",
+            value="200",
+            width=150
+        )
+        
+        plotmax_input = TextInput(
+            title="Max Map Size (px):",
+            value="400", 
+            width=150
         )
 
         # Helper function to calculate percentile-based ranges
@@ -1633,6 +1673,156 @@ def create_dashboard(process_4dnexus):
             color_mapper.high = max_val
             if hasattr(plot, 'renderers') and len(plot.renderers) > 0:
                 plot.renderers[0].glyph.color_mapper = color_mapper
+        
+        def update_plot1_dimensions():
+            """Update plot1 dimensions based on map shape selector"""
+            try:
+                # Get plotmin and plotmax values
+                plotmin = int(plotmin_input.value) if plotmin_input.value.isdigit() else 200
+                plotmax = int(plotmax_input.value) if plotmax_input.value.isdigit() else 400
+                
+                # Check which mode is selected
+                if map_shape_selector.active == 0:  # Square mode
+                    # Force square dimensions - use plotmax for both width and height
+                    map_width = plotmax
+                    map_height = plotmax
+                    
+                    # Ensure both dimensions are at least plotmin
+                    if map_width < plotmin or map_height < plotmin:
+                        map_width = plotmin
+                        map_height = plotmin
+                    
+                    print(f"Square map dimensions: {map_width}x{map_height}")
+                    
+                elif map_shape_selector.active == 1:  # Custom Dimensions mode
+                    # Get custom dimensions from inputs
+                    try:
+                        width_val = custom_map_width_input.value if custom_map_width_input else "400"
+                        height_val = custom_map_height_input.value if custom_map_height_input else "400"
+                        
+                        map_width = int(width_val) if width_val else 400
+                        map_height = int(height_val) if height_val else 400
+                    except (ValueError, AttributeError) as e:
+                        print(f"Error parsing custom dimensions: {e}")
+                        map_width = 400
+                        map_height = 400
+                    
+                    # Ensure both dimensions are at least plotmin
+                    if map_width < plotmin or map_height < plotmin:
+                        scale_factor = max(plotmin / map_width, plotmin / map_height)
+                        map_width = int(map_width * scale_factor)
+                        map_height = int(map_height * scale_factor)
+                    
+                    print(f"Custom map dimensions: {map_width}x{map_height}")
+                    
+                elif map_shape_selector.active == 2:  # Aspect Ratio mode
+                    # Get scale from map scale input (convert percentage to decimal)
+                    try:
+                        scale_percentage = float(map_scale_input.value) if map_scale_input.value else 100.0
+                        map_scale = scale_percentage / 100.0  # Convert percentage to decimal
+                    except (ValueError, AttributeError):
+                        map_scale = 1.0
+                    
+                    # Calculate aspect ratio from actual data dimensions
+                    aspect_ratio = (y_coords.max() - y_coords.min()) / (x_coords.max() - x_coords.min())
+                    
+                    base_size = plotmax * map_scale
+                    
+                    if aspect_ratio > 1:  # Taller than wide
+                        map_height = int(base_size)
+                        map_width = int(base_size / aspect_ratio)
+                    else:  # Wider than tall or square
+                        map_width = int(base_size)
+                        map_height = int(base_size * aspect_ratio)
+                    
+                    # Ensure both dimensions are at least plotmin, but respect the scale
+                    min_size = int(plotmin * map_scale)  # Scale the minimum size too
+                    if map_width < min_size or map_height < min_size:
+                        scale_factor = max(min_size / map_width, min_size / map_height)
+                        map_width = int(map_width * scale_factor)
+                        map_height = int(map_height * scale_factor)
+                    
+                    print(f"Map scale: {scale_percentage:.0f}%, aspect ratio: {aspect_ratio:.2f}, size: {map_width}x{map_height}")
+                else:
+                    # Fallback mode - use square size (default)
+                    map_width = plotmax
+                    map_height = plotmax
+                
+                # Update plot1 dimensions
+                plot1.width = map_width
+                plot1.height = map_height
+                
+                # Also update Plot1B if it exists
+                if 'plot1b' in locals() and plot1b is not None:
+                    plot1b.width = map_width
+                    plot1b.height = map_height
+                    
+            except Exception as e:
+                print(f"Error updating plot1 dimensions: {e}")
+        
+        def on_map_shape_change(attr, old, new):
+            """Handle map shape selector change (Square, Custom Dimensions, Aspect Ratio)"""
+            try:
+                shape_modes = ["Square", "Custom", "Aspect Ratio"]
+                shape_mode = shape_modes[new] if new < len(shape_modes) else "Unknown"
+                print(f"Map shape changed to: {shape_mode}")
+                
+                # Hide/show control containers based on map shape choice
+                if new == 0:  # Square
+                    # Hide both custom map and aspect ratio controls
+                    if hasattr(custom_map_width_input, 'visible'):
+                        custom_map_width_input.visible = False
+                        custom_map_height_input.visible = False
+                        map_scale_input.visible = False
+                    # Disable all inputs
+                    custom_map_width_input.disabled = True
+                    custom_map_height_input.disabled = True
+                    map_scale_input.disabled = True
+                elif new == 1:  # Custom Dimensions
+                    # Show custom map controls, hide aspect ratio controls
+                    if hasattr(custom_map_width_input, 'visible'):
+                        custom_map_width_input.visible = True
+                        custom_map_height_input.visible = True
+                        map_scale_input.visible = False
+                    # Enable custom map inputs, disable scale input
+                    custom_map_width_input.disabled = False
+                    custom_map_height_input.disabled = False
+                    map_scale_input.disabled = True
+                else:  # Aspect Ratio (new == 2)
+                    # Hide custom map controls, show aspect ratio controls
+                    if hasattr(custom_map_width_input, 'visible'):
+                        custom_map_width_input.visible = False
+                        custom_map_height_input.visible = False
+                        map_scale_input.visible = True
+                    # Disable custom map inputs, enable scale input
+                    custom_map_width_input.disabled = True
+                    custom_map_height_input.disabled = True
+                    map_scale_input.disabled = False
+                
+                # Update plot dimensions
+                update_plot1_dimensions()
+                
+            except Exception as e:
+                print(f"Error changing map shape: {e}")
+        
+        def on_custom_map_width_change(attr, old, new):
+            """Handle custom map width input change"""
+            if map_shape_selector.active == 1:  # Custom Dimensions mode
+                update_plot1_dimensions()
+        
+        def on_custom_map_height_change(attr, old, new):
+            """Handle custom map height input change"""
+            if map_shape_selector.active == 1:  # Custom Dimensions mode
+                update_plot1_dimensions()
+        
+        def on_map_scale_change(attr, old, new):
+            """Handle map scale input change"""
+            if map_shape_selector.active == 2:  # Aspect Ratio mode
+                update_plot1_dimensions()
+        
+        def on_plot_size_change(attr, old, new):
+            """Handle plotmin/plotmax input change"""
+            update_plot1_dimensions()
         
         def update_plot2_range_dynamic():
             """Update Plot2 range dynamically based on current data"""
@@ -2877,6 +3067,20 @@ def create_dashboard(process_4dnexus):
         map1_color_scale_selector.on_change("active", on_map1_color_scale_change)
         map2_color_scale_selector.on_change("active", on_map2_color_scale_change)
         palette_selector.on_change("value", lambda attr, old, new: set_palette(new))
+        map_shape_selector.on_change("active", on_map_shape_change)
+        custom_map_width_input.on_change("value", on_custom_map_width_change)
+        custom_map_height_input.on_change("value", on_custom_map_height_change)
+        map_scale_input.on_change("value", on_map_scale_change)
+        plotmin_input.on_change("value", on_plot_size_change)
+        plotmax_input.on_change("value", on_plot_size_change)
+        
+        # Set initial state (Square is default, so disable all inputs)
+        custom_map_width_input.disabled = True
+        custom_map_height_input.disabled = True
+        map_scale_input.disabled = True
+        
+        # Initialize plot1 dimensions
+        update_plot1_dimensions()
         range1_min_input.on_change("value", lambda attr, old, new: on_range1_input_change())
         range1_max_input.on_change("value", lambda attr, old, new: on_range1_input_change())
         # Plot1B range handlers if present
@@ -2915,11 +3119,30 @@ def create_dashboard(process_4dnexus):
         reset_plot2b_button.on_click(lambda: on_reset_plot2b())
         back_to_selection_button.on_click(on_back_to_selection_click)
 
+        # Create separate containers for custom map and aspect ratio controls
+        custom_map_controls = column(
+            Div(text="<b>Custom Map Size:</b>", width=200),
+            row(custom_map_width_input, custom_map_height_input),
+        )
+        
+        aspect_ratio_controls = column(
+            Div(text="<b>Map Scale:</b>", width=200),
+            map_scale_input,
+        )
+        
+        # Set initial visibility state (Square is default, so hide both controls)
+        # Note: Bokeh TextInput doesn't have visible attribute, so we'll just disable them
+        
         # Create tools column with conditional z-range display (range inputs moved above plots)
         tools_items = [
             x_slider,
             y_slider,
             Div(text="<b>Map Shape:</b>", width=200),
+            map_shape_selector,
+            custom_map_controls,
+            aspect_ratio_controls,
+            Div(text="<b>Map Size Limits:</b>", width=200),
+            row(plotmin_input, plotmax_input),
             Div(text="<b>Map Color Scale:</b>", width=200),
             map1_color_scale_selector,
             Div(text="<b>Probe Color Scale:</b>", width=200),
@@ -3081,7 +3304,7 @@ def find_nexus_and_mmap_files():
     print(f"🔍 DEBUG: Searching for .nxs files in: {base_dir}")
     nxs_files = find_nxs_files(base_dir)
     print(f"🔍 DEBUG: Found {len(nxs_files)} .nxs files")
-    
+
     if len(nxs_files) > 0:
         nexus_filename = nxs_files[0]
         mmap_filename = nexus_filename.replace('.nxs', '.float32.dat')
@@ -3094,7 +3317,7 @@ def find_nexus_and_mmap_files():
             nxs_files = find_nxs_files(save_dir)
             print("No Nexus files found")
             return None, None
-        
+   
     print(f"🔍 DEBUG: nexus_filename = {nexus_filename}")
     print(f"🔍 DEBUG: mmap_filename = {mmap_filename}")
 
