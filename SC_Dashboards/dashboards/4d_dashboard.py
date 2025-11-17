@@ -632,32 +632,48 @@ def create_tmp_dashboard(process_4dnexus):
     )
 
 # //////////////////////////////////////////////////////////////////////////
-def update_1d_plot(volume, x_index, y_index, source2, plot2, process_4dnexus=None):
-    """Update 1D plot for 3D volume datasets"""
+def update_1d_plot(volume, x_index, y_index, source2, plot2, process_4dnexus=None, use_b=False):
+    """Update 1D plot for 3D volume datasets
+    
+    Args:
+        volume: The volume data
+        x_index: X index position
+        y_index: Y index position
+        source2: Bokeh ColumnDataSource to update
+        plot2: Bokeh plot to update
+        process_4dnexus: Process4dNexus instance
+        use_b: If True, use Plot2B coordinates (probe_x_coords_picked_b), otherwise use Plot2A coordinates
+    """
     try:
-        print(f"📊 Updating 1D plot for 3D volume at position ({x_index}, {y_index})")
+        plot_name = "Plot2B" if use_b else "Plot2"
+        print(f"📊 Updating {plot_name} 1D plot for 3D volume at position ({x_index}, {y_index})")
+        
+        # Store original axis labels to preserve them
+        original_x_label = plot2.xaxis.axis_label if hasattr(plot2.xaxis, 'axis_label') else None
+        original_y_label = plot2.yaxis.axis_label if hasattr(plot2.yaxis, 'axis_label') else None
         
         # For 3D volume: volume[x_index, y_index, :] gives us the 1D data
         if len(volume.shape) == 3:
             # Extract 1D data slice
             plot_data_1d = volume[x_index, y_index, :]
             
-            # Use probe coordinates if available, otherwise use indices
-            if process_4dnexus and hasattr(process_4dnexus, 'probe_x_coords_picked') and process_4dnexus.probe_x_coords_picked:
+            # Use probe coordinates if available - check for Plot2B vs Plot2A
+            coord_attr = 'probe_x_coords_picked_b' if use_b else 'probe_x_coords_picked'
+            if process_4dnexus and getattr(process_4dnexus, coord_attr, None):
                 try:
-                    probe_coords = process_4dnexus.load_probe_coordinates()
+                    probe_coords = process_4dnexus.load_probe_coordinates(use_b=use_b)
                     if probe_coords is not None and len(probe_coords) == len(plot_data_1d):
                         x_coords_1d = probe_coords
-                        print(f"Using probe coordinates for update: {len(probe_coords)} points")
+                        print(f"Using {plot_name} probe coordinates for update: {len(probe_coords)} points")
                     else:
                         x_coords_1d = np.arange(len(plot_data_1d))
-                        print(f"Probe coordinates not available for update, using indices")
+                        print(f"{plot_name} probe coordinates not available for update, using indices")
                 except:
                     x_coords_1d = np.arange(len(plot_data_1d))
-                    print(f"Failed to load probe coordinates for update, using indices")
+                    print(f"Failed to load {plot_name} probe coordinates for update, using indices")
             else:
                 x_coords_1d = np.arange(len(plot_data_1d))
-                print(f"No probe coordinates for update, using indices")
+                print(f"No {plot_name} probe coordinates for update, using indices")
             
             # Update the 1D data source
             source2.data = {
@@ -671,12 +687,18 @@ def update_1d_plot(volume, x_index, y_index, source2, plot2, process_4dnexus=Non
             plot2.y_range.start = plot_data_1d.min()
             plot2.y_range.end = plot_data_1d.max()
             
-            print(f"✅ 1D plot updated with {len(plot_data_1d)} points")
+            # Restore axis labels if they were set
+            if original_x_label:
+                plot2.xaxis.axis_label = original_x_label
+            if original_y_label:
+                plot2.yaxis.axis_label = original_y_label
+            
+            print(f"✅ {plot_name} 1D plot updated with {len(plot_data_1d)} points")
             print(f"   1D data range: {plot_data_1d.min():.3f} to {plot_data_1d.max():.3f}")
             print(f"   X coordinate range: {x_coords_1d.min():.3f} to {x_coords_1d.max():.3f}")
             
         else:
-            print("❌ update_1d_plot called but volume is not 3D")
+            print(f"❌ update_1d_plot called but volume is not 3D")
             
     except Exception as e:
         print(f"❌ Error in update_1d_plot: {str(e)}")
@@ -1899,6 +1921,10 @@ def create_dashboard(process_4dnexus):
                 update_1d_plot(volume, x_index, y_index, source2, plot2, process_4dnexus)
             else:
                 # For 4D volume: update 2D image plot
+                # Store original axis labels to preserve them
+                original_x_label_2 = plot2.xaxis.axis_label if hasattr(plot2.xaxis, 'axis_label') else None
+                original_y_label_2 = plot2.yaxis.axis_label if hasattr(plot2.yaxis, 'axis_label') else None
+                
                 new_slice = volume[x_index, y_index, :, :]
                 source2.data = {
                     "image": [new_slice],
@@ -1907,6 +1933,12 @@ def create_dashboard(process_4dnexus):
                     "dw": [volume.shape[2]],
                     "dh": [volume.shape[3]],
                 }
+                
+                # Restore axis labels if they were set
+                if original_x_label_2:
+                    plot2.xaxis.axis_label = original_x_label_2
+                if original_y_label_2:
+                    plot2.yaxis.axis_label = original_y_label_2
             
             # Update crosshairs (this will also update Plot1B crosshairs)
             draw_cross1()
@@ -1927,10 +1959,14 @@ def create_dashboard(process_4dnexus):
             
             # Update Plot2B with new slice
             if len(volume_b_local.shape) == 3:
-                # For 3D volume: update 1D line plot
-                update_1d_plot(volume_b_local, x_index, y_index, source2b, plot2b, process_4dnexus)
+                # For 3D volume: update 1D line plot - use use_b=True to get Plot2B coordinates
+                update_1d_plot(volume_b_local, x_index, y_index, source2b, plot2b, process_4dnexus, use_b=True)
             else:
                 # For 4D volume: update 2D image plot
+                # Store original axis labels to preserve them
+                original_x_label_b = plot2b.xaxis.axis_label if hasattr(plot2b.xaxis, 'axis_label') else None
+                original_y_label_b = plot2b.yaxis.axis_label if hasattr(plot2b.yaxis, 'axis_label') else None
+                
                 new_slice_b = volume_b_local[x_index, y_index, :, :]
                 source2b.data = {
                     "image": [new_slice_b],
@@ -1939,6 +1975,12 @@ def create_dashboard(process_4dnexus):
                     "dw": [volume_b_local.shape[2]],
                     "dh": [volume_b_local.shape[3]],
                 }
+                
+                # Restore axis labels if they were set
+                if original_x_label_b:
+                    plot2b.xaxis.axis_label = original_x_label_b
+                if original_y_label_b:
+                    plot2b.yaxis.axis_label = original_y_label_b
             
             # Update range dynamically if enabled
             update_plot2b_range_dynamic()
