@@ -1297,17 +1297,125 @@ class DatasetManager {
             <option value="__CREATE__">+ Create New Folder</option>
         `;
         
+        // Determine if retry button should be shown
+        const status = dataset.status || '';
+        const showRetry = status && (
+            status.toLowerCase().includes('failed') || 
+            status.toLowerCase().includes('error') ||
+            status === 'conversion failed'
+        );
+        
+        // Get folder name for display
+        const folderName = folders.find(f => f.uuid === dataset.folder_uuid)?.name || (dataset.folder_uuid || 'None');
+        
         const html = `
             <div class="dataset-details">
                 <h6><i class="fas fa-info-circle"></i> Dataset Details</h6>
                 
+                <!-- Dataset Name -->
+                <div class="mb-2">
+                    <h6 class="text-primary mb-2">${this.escapeHtml(dataset.name || 'Unnamed Dataset')}</h6>
+                </div>
+                
+                <!-- Action Buttons (Share, Delete, Edit, Retry) -->
+                <div class="dataset-actions mb-3 pb-2 border-bottom">
+                    <div class="btn-group btn-group-sm w-100" role="group">
+                        <button type="button" class="btn btn-sm btn-outline-secondary" data-action="share" data-dataset-id="${dataset.id || dataset.uuid}">
+                            <i class="fas fa-share"></i> Share
+                        </button>
+                        <button type="button" class="btn btn-sm btn-outline-danger" data-action="delete" data-dataset-id="${dataset.id || dataset.uuid}">
+                            <i class="fas fa-trash"></i> Delete
+                        </button>
+                        <button type="button" class="btn btn-sm btn-outline-primary" id="editDatasetBtn" data-dataset-id="${dataset.id || dataset.uuid}">
+                            <i class="fas fa-edit"></i> Edit
+                        </button>
+                        ${showRetry ? `
+                        <button type="button" class="btn btn-sm btn-outline-warning retry-conversion-details-btn" 
+                                data-dataset-uuid="${dataset.uuid || dataset.id}"
+                                data-dataset-name="${this.escapeHtml(dataset.name || 'Dataset')}">
+                            <i class="fas fa-redo"></i> Retry
+                        </button>
+                        ` : ''}
+                    </div>
+                </div>
+                
                 <form id="datasetDetailsForm" class="dataset-details-form">
                     <input type="hidden" name="dataset_id" value="${dataset.id || dataset.uuid}">
                     
-                    <!-- Editable Fields -->
-                    <div class="editable-fields mb-3">
-                        <h6 class="text-primary"><i class="fas fa-edit"></i> Editable Fields</h6>
+                    <!-- View Mode (Read-only) -->
+                    <div id="datasetViewMode" class="dataset-view-mode">
+                        <div class="detail-item mb-2">
+                            <span class="detail-label">Name:</span>
+                            <span class="detail-value">${this.escapeHtml(dataset.name || '')}</span>
+                        </div>
                         
+                        <div class="detail-item mb-2">
+                            <span class="detail-label">Tags:</span>
+                            <span class="detail-value">${this.escapeHtml(tagsValue || 'None')}</span>
+                        </div>
+                        
+                        <div class="detail-item mb-2">
+                            <span class="detail-label">Folder:</span>
+                            <span class="detail-value">${this.escapeHtml(folderName)}</span>
+                        </div>
+                        
+                        <div class="detail-item mb-2">
+                            <span class="detail-label">Team/Group:</span>
+                            <span class="detail-value">${this.escapeHtml(dataset.team_uuid || 'None')}</span>
+                        </div>
+                        
+                        <div class="detail-item mb-2">
+                            <span class="detail-label">Dimensions:</span>
+                            <span class="detail-value">${this.escapeHtml(dataset.dimensions || 'N/A')}</span>
+                        </div>
+                        
+                        <div class="detail-item mb-2">
+                            <span class="detail-label">Preferred Dashboard:</span>
+                            <span class="detail-value">${this.escapeHtml(dataset.preferred_dashboard || 'Default')}</span>
+                        </div>
+                        
+                        <div class="detail-item mb-2">
+                            <span class="detail-label">Size:</span>
+                            <span class="detail-value">${this.formatFileSize(dataset.data_size || 0)}</span>
+                        </div>
+                        
+                        <div class="detail-item mb-2">
+                            <span class="detail-label">Created:</span>
+                            <span class="detail-value">${this.formatDate(dataset.created_at || dataset.time)}</span>
+                        </div>
+                        
+                        <div class="detail-item mb-2">
+                            <span class="detail-label">Sensor:</span>
+                            <span class="detail-value">${this.escapeHtml(dataset.sensor || 'Unknown')}</span>
+                        </div>
+                        
+                        <div class="detail-item mb-2">
+                            <span class="detail-label">Status:</span>
+                            <span class="badge bg-${this.getStatusColor(dataset.status)}">${this.escapeHtml(dataset.status || 'unknown')}</span>
+                        </div>
+                        
+                        ${dataset.compression_status ? `
+                        <div class="detail-item mb-2">
+                            <span class="detail-label">Compression Status:</span>
+                            <span class="badge bg-${this.getStatusColor(dataset.compression_status)}">${this.escapeHtml(dataset.compression_status || 'unknown')}</span>
+                        </div>
+                        ` : ''}
+                        
+                        ${dataset.google_drive_link ? `
+                        <div class="detail-item mb-2">
+                            <span class="detail-label">Data Link:</span>
+                            <span class="detail-value small text-muted" style="word-break: break-all;">${this.escapeHtml(dataset.google_drive_link)}</span>
+                        </div>
+                        ` : ''}
+                        
+                        <div class="detail-item mb-2">
+                            <span class="detail-label">UUID:</span>
+                            <span class="detail-value small text-muted" style="word-break: break-all;">${this.escapeHtml(dataset.uuid || '')}</span>
+                        </div>
+                    </div>
+                    
+                    <!-- Edit Mode (Editable Fields) -->
+                    <div id="datasetEditMode" class="dataset-edit-mode" style="display: none;">
                         <div class="mb-2">
                             <label class="form-label small">Name:</label>
                             <input type="text" class="form-control form-control-sm" name="name" 
@@ -1334,7 +1442,7 @@ class DatasetManager {
                         </div>
                         
                         <div class="mb-2">
-                            <label class="form-label small">Group:</label>
+                            <label class="form-label small">Team/Group:</label>
                             <input type="text" class="form-control form-control-sm" name="team_uuid" 
                                    value="${this.escapeHtml(dataset.team_uuid || '')}" 
                                    placeholder="Team/Group UUID">
@@ -1364,59 +1472,45 @@ class DatasetManager {
                             <small class="form-text text-muted">Link to remote data (e.g., S3, external server). If provided and not a Google Drive link, data will be loaded remotely.</small>
                         </div>
                         
-                        <button type="submit" class="btn btn-sm btn-primary mt-2">
-                            <i class="fas fa-save"></i> Save Changes
-                        </button>
-                    </div>
-                    
-                    <!-- Non-editable Fields -->
-                    <div class="readonly-fields">
-                        <h6 class="text-secondary"><i class="fas fa-info"></i> Other Data</h6>
-                        
-                        <div class="detail-item mb-1">
-                            <span class="detail-label">Size:</span>
-                            <span class="detail-value">${this.formatFileSize(dataset.data_size || 0)}</span>
+                        <div class="d-flex gap-2 mt-3">
+                            <button type="submit" class="btn btn-sm btn-primary">
+                                <i class="fas fa-save"></i> Save Changes
+                            </button>
+                            <button type="button" class="btn btn-sm btn-outline-secondary" id="cancelEditBtn">
+                                <i class="fas fa-times"></i> Cancel
+                            </button>
                         </div>
-                        
-                        <div class="detail-item mb-1">
-                            <span class="detail-label">Created:</span>
-                            <span class="detail-value">${this.formatDate(dataset.created_at || dataset.time)}</span>
-                        </div>
-                        
-                        <div class="detail-item mb-1">
-                            <span class="detail-label">Sensor:</span>
-                            <span class="detail-value">${this.escapeHtml(dataset.sensor || 'Unknown')}</span>
-                        </div>
-                        
-                        <div class="detail-item mb-1">
-                            <span class="detail-label">Status:</span>
-                            <span class="badge bg-${this.getStatusColor(dataset.status)}">${this.escapeHtml(dataset.status || 'unknown')}</span>
-                        </div>
-                        
-                        <div class="detail-item mb-1">
-                            <span class="detail-label">Compression Status:</span>
-                            <span class="badge bg-${this.getStatusColor(dataset.compression_status)}">${this.escapeHtml(dataset.compression_status || 'unknown')}</span>
-                        </div>
-                        
-                        <div class="detail-item mb-1">
-                            <span class="detail-label">UUID:</span>
-                            <span class="detail-value small text-muted">${this.escapeHtml(dataset.uuid || '')}</span>
-                        </div>
-                    </div>
-                    
-                    <div class="dataset-actions mt-3 pt-3 border-top">
-                        <button type="button" class="btn btn-sm btn-outline-secondary" data-action="share" data-dataset-id="${dataset.id || dataset.uuid}">
-                            <i class="fas fa-share"></i> Share
-                        </button>
-                        <button type="button" class="btn btn-sm btn-outline-danger" data-action="delete" data-dataset-id="${dataset.id || dataset.uuid}">
-                            <i class="fas fa-trash"></i> Delete
-                        </button>
                     </div>
                 </form>
             </div>
         `;
 
         detailsContainer.innerHTML = html;
+        
+        // Store dataset data for edit mode toggle
+        this.currentDatasetDetails = dataset;
+        
+        // Attach edit mode toggle
+        const editBtn = detailsContainer.querySelector('#editDatasetBtn');
+        const cancelBtn = detailsContainer.querySelector('#cancelEditBtn');
+        const viewMode = detailsContainer.querySelector('#datasetViewMode');
+        const editMode = detailsContainer.querySelector('#datasetEditMode');
+        
+        if (editBtn) {
+            editBtn.addEventListener('click', () => {
+                if (viewMode) viewMode.style.display = 'none';
+                if (editMode) editMode.style.display = 'block';
+                editBtn.style.display = 'none'; // Hide edit button when in edit mode
+            });
+        }
+        
+        if (cancelBtn) {
+            cancelBtn.addEventListener('click', () => {
+                if (viewMode) viewMode.style.display = 'block';
+                if (editMode) editMode.style.display = 'none';
+                if (editBtn) editBtn.style.display = 'block'; // Show edit button when back to view mode
+            });
+        }
         
         // Attach folder dropdown event listener
         const folderSelect = detailsContainer.querySelector('#datasetFolderSelect');
@@ -1437,6 +1531,17 @@ class DatasetManager {
             form.addEventListener('submit', (e) => {
                 e.preventDefault();
                 this.saveDatasetChanges(form, dataset.id || dataset.uuid);
+            });
+        }
+        
+        // Attach retry button handler
+        const retryBtn = detailsContainer.querySelector('.retry-conversion-details-btn');
+        if (retryBtn) {
+            retryBtn.addEventListener('click', (e) => {
+                e.preventDefault();
+                const datasetUuid = retryBtn.getAttribute('data-dataset-uuid');
+                const datasetName = retryBtn.getAttribute('data-dataset-name');
+                this.retryConversion(datasetUuid, datasetName, retryBtn);
             });
         }
     }
