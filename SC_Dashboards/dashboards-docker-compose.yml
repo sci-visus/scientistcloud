@@ -118,7 +118,7 @@
       start_period: 40s
     init: true
 
-  # OpenVisus Slice Explorer
+  # OpenVisus Slice Dasbhoard
   openvisusslice:
     container_name: dashboard_openvisusslice
     platform: linux/amd64

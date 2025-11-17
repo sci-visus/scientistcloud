@@ -159,17 +159,10 @@ function getDashboardConfig($dashboardType) {
     // Fallback to default configurations (only actual dashboards from dashboards-list.json)
     // These should match the dashboards in SC_Dashboards/config/dashboards-list.json
     $default_configs = [
-        // Alias for backward compatibility
-        'openvisus' => [
-            'name' => 'OpenVisus Slice Explorer',
-            'type' => 'openvisus',
-            'url_template' => '/dashboard/OpenVisusSlice/?uuid={uuid}&server={server}&name={name}',
-            'supported_formats' => [], // Use supported_dimensions instead
-            'description' => 'Interactive 3D volume rendering with OpenVisus'
-        ],
+
         // Actual dashboards from dashboards-list.json
         'OpenVisusSlice' => [
-            'name' => 'OpenVisus Slice Explorer',
+            'name' => 'OpenVisus Slice Dashboard',
             'type' => 'dash',
             'url_template' => '/dashboard/OpenVisusSlice/?uuid={uuid}&server={server}&name={name}',
             'supported_formats' => [],
@@ -281,7 +274,7 @@ function getAllDashboards() {
     
     // Fallback to defaults (only actual dashboards from dashboards-list.json)
     return [
-        ['id' => 'OpenVisusSlice', 'name' => 'OpenVisus Slice Explorer', 'type' => 'dash', 'display_name' => 'OpenVisus Slice Explorer'],
+        ['id' => 'OpenVisusSlice', 'name' => 'OpenVisus Slice Dasbhoard', 'type' => 'dash', 'display_name' => 'OpenVisus Slice Dashboard'],
         ['id' => '3DPlotly', 'name' => '3D Plotly Dashboard', 'type' => 'plotly', 'display_name' => '3D Plotly Dashboard'],
         ['id' => '3DVTK', 'name' => '3D VTK Dashboard', 'type' => 'vtk', 'display_name' => '3D VTK Dashboard'],
         ['id' => '4D_Dashboard', 'name' => '4D Dashboard', 'type' => 'dash', 'display_name' => '4D Dashboard'],

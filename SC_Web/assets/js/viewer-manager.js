@@ -10,7 +10,7 @@ class ViewerManager {
         this.defaultViewers = {
             'openvisus': {
                 id: 'openvisus',
-                name: 'OpenVisus Slice Explorer',
+                name: 'OpenVisus Slice Dashboard',
                 type: 'openvisus',
                 url_template: '/dashboard/openvisusslice?uuid={uuid}&server={server}&name={name}',
                 supported_formats: ['tiff', 'hdf5', 'nexus'],
