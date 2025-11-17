@@ -353,8 +353,11 @@ def initialize_dataset(n_intervals,search):
         if os.path.exists(dataset_path):
             print(f"Path exists: {dataset_path}")
         else:
-            print(f"Path does not exist: {dataset_path}")
-            dataset_url=f"/mnt/visus_datasets/converted/{uuid}/visus.idx"
+            dataset_url = find_visus_idx_file(uuid);
+            # print(f"Path does not exist: {dataset_path}")
+            # dataset_url=f"/mnt/visus_datasets/converted/{uuid}/visus.idx"
+            # if (not os.path.exists(dataset_url)):
+            #     dataset_url = f"/mnt/visus_datasets/upload/{uuid}/visus.idx"
             daataset_path = dataset_url
         db = ov.LoadDataset(dataset_path)
         timesteps = db.getTimesteps()

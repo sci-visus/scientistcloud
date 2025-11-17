@@ -3086,8 +3086,15 @@ def find_nexus_and_mmap_files():
         nexus_filename = nxs_files[0]
         mmap_filename = nexus_filename.replace('.nxs', '.float32.dat')
     else:
-        print("No Nexus files found")
-        return None, None
+        nxs_files = find_nxs_files(save_dir)
+        if len(nxs_files) > 0:
+            nexus_filename = nxs_files[0]
+            mmap_filename = nexus_filename.replace('.nxs', '.float32.dat')
+        else:
+            nxs_files = find_nxs_files(save_dir)
+            print("No Nexus files found")
+            return None, None
+        
     print(f"🔍 DEBUG: nexus_filename = {nexus_filename}")
     print(f"🔍 DEBUG: mmap_filename = {mmap_filename}")
 

@@ -148,7 +148,10 @@ def show_info(event):
         if os.path.exists(url):
             print(f"Path exists: {url}")
         else:
-            print(f"Path does not exist: {url}")
+            url = find_visus_idx_file(uuid);
+            print(f"Path may exist: {url}")
+            if (not os.path.exists(url)):
+                print(f"Path does not exist: {url}")
 
     db = LoadDataset(url)
     dimensions = db.getLogicBox()
