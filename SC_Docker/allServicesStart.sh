@@ -4,10 +4,37 @@
 # Usage: ./allServicesStart.sh [OPTIONS]
 #   --skip-main or --portal-only: Skip starting VisusDataPortalPrivate services
 #   --dashboards-only or --only-dashboards: Only run dashboard setup (skip all other services)
+#   -w or --web-only: Rebuild only SC_Web portal container (when SC_Web Dockerfile or dependencies change)
+#   -s or --sclib-only: Rebuild only SCLib services (when SCLib code changes)
+#   -sw or --sclib-web: Rebuild both SCLib and SC_Web (when both change)
+#
+# IMPORTANT NOTES - OPTIMIZATION GUIDE:
+#   ✅ ALL CODE IS MOUNTED AS VOLUMES (no rebuild needed for code changes):
+#      - SC_Web: Mounts ../SC_Web:/var/www/html (SC_Web code changes = just restart)
+#      - SC_Web: Mounts ../../scientistCloudLib:/var/www/scientistCloudLib (SCLib code changes = just restart)
+#      - SCLib FastAPI: Mounts ../:/app/scientistCloudLib (SCLib code changes = just restart)
+#      - SCLib Auth: Mounts ../SCLib_Auth:/app (Auth code changes = just restart)
+#
+#   🔨 REBUILD ONLY WHEN:
+#      - SCLib: Dockerfile changes (system packages, Python requirements.txt changes)
+#      - SC_Web: Dockerfile changes (PHP dependencies, Apache config, system packages)
+#      - Requirements files change (requirements.txt, composer.json with new packages)
+#
+#   ⚡ FOR CODE-ONLY CHANGES:
+#      - Just restart containers: ./allServicesStart.sh (no flags = fastest)
+#      - Or manually: docker restart sclib_fastapi scientistcloud-portal
+#
+#   📝 USAGE EXAMPLES:
+#      ./allServicesStart.sh                    # Fast: Just restart (code changes only)
+#      ./allServicesStart.sh -s                 # Rebuild SCLib (Dockerfile/requirements changed)
+#      ./allServicesStart.sh -w                 # Rebuild SC_Web (Dockerfile/composer.json changed)
+#      ./allServicesStart.sh -sw                # Rebuild both (both Dockerfiles changed)
 
 # Parse command line arguments
 SKIP_MAIN_SERVICES=false
 DASHBOARDS_ONLY=false
+REBUILD_WEB=false
+REBUILD_SCLIB=false
 
 for arg in "$@"; do
     case $arg in
@@ -19,6 +46,19 @@ for arg in "$@"; do
             DASHBOARDS_ONLY=true
             SKIP_MAIN_SERVICES=true
             echo "📊 Running dashboards only (skipping all other services)"
+            ;;
+        -w|--web-only)
+            REBUILD_WEB=true
+            echo "🌐 Will rebuild SC_Web portal container"
+            ;;
+        -s|--sclib-only)
+            REBUILD_SCLIB=true
+            echo "📦 Will rebuild SCLib services"
+            ;;
+        -sw|--sclib-web|--both)
+            REBUILD_WEB=true
+            REBUILD_SCLIB=true
+            echo "🔄 Will rebuild both SCLib and SC_Web containers"
             ;;
     esac
 done
@@ -62,12 +102,21 @@ if [ "$DASHBOARDS_ONLY" = false ]; then
         pushd "$SCLIB_DOCKER_DIR"
         git fetch origin
         git reset --hard origin/main
-        # Clean containers, then rebuild and start
-        # Note: start.sh up already does 'build --no-cache auth fastapi', ensuring fresh build with latest code
-        ./start.sh clean
-        ./start.sh up
+        
+        if [ "$REBUILD_SCLIB" = true ]; then
+            echo "   🔨 Rebuilding SCLib containers (code changes detected)..."
+            # Clean containers, then rebuild and start
+            # Note: start.sh up already does 'build --no-cache auth fastapi', ensuring fresh build with latest code
+            ./start.sh clean
+            ./start.sh up
+            echo "✅ SCLib services rebuilt and started (FastAPI rebuilt with latest code)"
+        else
+            echo "   ⚡ Restarting SCLib services (code is mounted as volume, no rebuild needed)..."
+            # Just restart - code is mounted as volume, so changes are already available
+            ./start.sh restart || ./start.sh up
+            echo "✅ SCLib services restarted (using mounted code volumes)"
+        fi
         popd
-        echo "✅ SCLib services started (FastAPI rebuilt with latest code)"
     else
         echo "⚠️ SCLib Docker directory not found: $SCLIB_DOCKER_DIR"
     fi
@@ -79,10 +128,19 @@ if [ "$DASHBOARDS_ONLY" = false ]; then
         pushd "$PORTAL_DOCKER_DIR"
         git fetch origin
         git reset --hard origin/main
-        ./start.sh clean
-        ./start.sh start
+        
+        if [ "$REBUILD_WEB" = true ]; then
+            echo "   🔨 Rebuilding SC_Web portal container (Dockerfile or dependencies changed)..."
+            ./start.sh clean
+            ./start.sh rebuild
+            echo "✅ Portal services rebuilt and started"
+        else
+            echo "   ⚡ Restarting SC_Web portal (code is mounted as volume, no rebuild needed)..."
+            # Just restart - both SC_Web and SCLib code are mounted as volumes
+            ./start.sh restart || ./start.sh start
+            echo "✅ Portal services restarted (using mounted code volumes)"
+        fi
         popd
-        echo "✅ Portal services started"
     else
         echo "❌ Portal Docker directory not found: $PORTAL_DOCKER_DIR"
         exit 1
@@ -397,5 +455,22 @@ if [ "$DASHBOARDS_ONLY" = false ]; then
     echo ""
     if [ "$SKIP_MAIN_SERVICES" = true ]; then
         echo "ℹ️  Note: Main VisusDataPortalPrivate services were skipped (portal-only mode)"
+    fi
+    
+    # Show rebuild summary
+    if [ "$REBUILD_WEB" = true ] || [ "$REBUILD_SCLIB" = true ]; then
+        echo ""
+        echo "🔨 Rebuild Summary:"
+        if [ "$REBUILD_WEB" = true ]; then
+            echo "   ✅ SC_Web portal container was rebuilt"
+        fi
+        if [ "$REBUILD_SCLIB" = true ]; then
+            echo "   ✅ SCLib services were rebuilt"
+        fi
+    else
+        echo ""
+        echo "⚡ Optimization: No rebuilds performed (code is mounted as volumes)"
+        echo "   💡 Code changes are available immediately - containers were restarted"
+        echo "   💡 Use -s, -w, or -sw flags only when Dockerfiles or requirements change"
     fi
 fi
