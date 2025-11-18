@@ -146,6 +146,16 @@ def create_tmp_dashboard(process_4dnexus):
                 <style>
                 h3 {
                     color: #5716e5 !important;
+                    font-size: 24px !important;
+                }
+                h2 {
+                    font-size: 28px !important;
+                }
+                body, p, div, span, label, select, input, button {
+                    font-size: 16px !important;
+                }
+                .bk-input, .bk-select {
+                    font-size: 16px !important;
                 }
                 </style>
                 """)
@@ -551,86 +561,85 @@ def create_tmp_dashboard(process_4dnexus):
     plot1_h5_selector_numerator.visible = True
     plot1_h5_selector_denominator.visible = True
 
+    plot2_tmp_spacer = Div(text="", height=60)  # Spacer to align with Plot2's toggle + button row
+ 
     # Create the main layout
     main_layout = column(
         css_style,
         # Dataset selection section
         Div(text="<h2>4D Dashboard - Dataset Selection</h2>"),
-        
-        # ========== Plot 1 Configuration ==========
-        Div(text="<h3>Plot1 Configuration:</h3>"),
-        plot1_mode_selector,
-        Div(text="<br>"),
-        
-        # Plot1 selectors (conditional based on mode)
-        row(
-            column(plot1_h5_selector, width=300, name="single_dataset_selector"),
-            column(plot1_h5_selector_numerator, width=300, name="numerator_selector"),
-            column(plot1_h5_selector_denominator, width=300, name="denominator_selector"),
-            sizing_mode="stretch_width"
-        ),
-        
-        # Plot1 coordinate selectors
-        row(
-            column(map_x_coords_selector, width=300),
-            column(map_y_coords_selector, width=300),
-            sizing_mode="stretch_width"
-        ),
-        
-        # Plot1B (optional duplicate)
-        Div(text="<h3>Optional Plot1B (duplicate map):</h3>"),
         row(
             column(
-                enable_plot1b_toggle,
-                plot1b_mode_selector,
-                plot1b_h5_selector,
-                plot1b_h5_selector_numerator,
-                plot1b_h5_selector_denominator,
-                width=320
+                # ========== Plot 1 Configuration ==========
+                Div(text="<h3>Plot1 Configuration:</h3>"),
+                plot1_mode_selector,
+                Div(text="<br>"),
+                
+                # Plot1 selectors (conditional based on mode)
+                row(
+                    column(plot1_h5_selector, width=300, name="single_dataset_selector"),
+                    column(plot1_h5_selector_numerator, width=300, name="numerator_selector"),
+                    column(plot1_h5_selector_denominator, width=300, name="denominator_selector"),
+                    sizing_mode="stretch_width"
+                ),
+                
+                # Plot1 coordinate selectors
+                row(
+                    column(map_x_coords_selector, width=300),
+                    column(map_y_coords_selector, width=300),
+                    sizing_mode="stretch_width"
+                ),
+                
+                # Plot1B (optional duplicate)
+                Div(text="<h3>Optional Plot1B (duplicate map):</h3>"),
+                row(
+                    column(
+                        enable_plot1b_toggle,
+                        plot1b_mode_selector,
+                        plot1b_h5_selector,
+                        plot1b_h5_selector_numerator,
+                        plot1b_h5_selector_denominator,
+                        width=320
+                    ),
+                ),
+                
+                Div(text="<hr>"),
+            ),
+            column(
+            # ========== Plot 2 Configuration ==========
+            Div(text="<h3>Plot2 Configuration:</h3>"),
+            row(
+                column(plot2_h5_selector, width=300),
+                sizing_mode="stretch_width"
+            ),
+            
+            # Plot2 coordinate selectors
+            row(
+                column(probe_x_coords_selector, width=300),
+                column(probe_y_coords_selector, width=300),
+                sizing_mode="stretch_width"
+            ),
+            
+            # Plot2B (optional duplicate)
+            plot2_tmp_spacer,
+            Div(text="<h3>Optional Plot2B (duplicate probe):</h3>"),
+            row(
+                column(enable_plot2b_toggle, plot2b_h5_selector, width=320),
+            ),
+            
+            # Plot2B coordinate selectors
+            row(
+                column(probe_x_coords_selector_b, width=300),
+                column(probe_y_coords_selector_b, width=300),
+                sizing_mode="stretch_width"
+            ),
+            
+            Div(text="<hr>"),
+            
+            column(initialize_plots_button, width=200),
+            Div(text="<hr>"),
             ),
         ),
-        
-        Div(text="<hr>"),
-        
-        # ========== Plot 2 Configuration ==========
-        Div(text="<h3>Plot2 Configuration:</h3>"),
-        row(
-            column(plot2_h5_selector, width=300),
-            sizing_mode="stretch_width"
-        ),
-        
-        # Plot2 coordinate selectors
-        row(
-            column(probe_x_coords_selector, width=300),
-            column(probe_y_coords_selector, width=300),
-            sizing_mode="stretch_width"
-        ),
-        
-        # Plot2B (optional duplicate)
-        Div(text="<h3>Optional Plot2B (duplicate probe):</h3>"),
-        row(
-            column(enable_plot2b_toggle, plot2b_h5_selector, width=320),
-        ),
-        
-        # Plot2B coordinate selectors
-        row(
-            column(probe_x_coords_selector_b, width=300),
-            column(probe_y_coords_selector_b, width=300),
-            sizing_mode="stretch_width"
-        ),
-        
-        Div(text="<hr>"),
-        
-        column(initialize_plots_button, width=200),
-        Div(text="<hr>"),
-        
-        # Plot area (placeholders initially)
-        # row(
-        #     column(plot1_placeholder, sizing_mode="stretch_both"),
-        #     column(plot2_placeholder, sizing_mode="stretch_both"),
-        #     column(plot3_placeholder, sizing_mode="stretch_both"),
-		# 		sizing_mode="stretch_both",
-		# 	),
         row(status_display, sizing_mode="stretch_both"),
 		sizing_mode="stretch_both"
     )
@@ -820,6 +829,13 @@ class ProbePlot:
 def create_dashboard(process_4dnexus):
     global status_display
     try:
+        # Font size variables - change these to adjust all font sizes throughout the dashboard
+        FONT_SIZE_PLOT_TITLE = "14px"          # Plot titles
+        FONT_SIZE_AXIS_LABEL = "14px"          # Axis labels (x, y labels)
+        FONT_SIZE_AXIS_TICKS = "14px"          # Axis tick labels
+        FONT_SIZE_COLORBAR_TITLE = "14px"      # Colorbar titles
+        FONT_SIZE_COLORBAR_LABELS = "14px"     # Colorbar tick labels
+        
         t0 = time.time()
         print("[TIMING] create_dashboard(): start")
         # Load the data first
@@ -963,6 +979,12 @@ def create_dashboard(process_4dnexus):
         plot1.yaxis.major_label_overrides = dict(zip(y_ticks, my_yticks))
         plot1.xaxis.axis_label = plot1_x_label
         plot1.yaxis.axis_label = plot1_y_label
+        # Set font sizes
+        plot1.title.text_font_size = FONT_SIZE_PLOT_TITLE
+        plot1.xaxis.axis_label_text_font_size = FONT_SIZE_AXIS_LABEL
+        plot1.yaxis.axis_label_text_font_size = FONT_SIZE_AXIS_LABEL
+        plot1.xaxis.major_label_text_font_size = FONT_SIZE_AXIS_TICKS
+        plot1.yaxis.major_label_text_font_size = FONT_SIZE_AXIS_TICKS
         print(f"[TIMING] plot1 built: {time.time()-t0:.3f}s")
 
         # Create Plot2 (Probe view) - show actual volume slice
@@ -996,6 +1018,12 @@ def create_dashboard(process_4dnexus):
                 plot2.yaxis.axis_label = plot2_y_label
             else:
                 plot2.yaxis.axis_label = "Probe Y"
+        # Set font sizes
+        plot2.title.text_font_size = FONT_SIZE_PLOT_TITLE
+        plot2.xaxis.axis_label_text_font_size = FONT_SIZE_AXIS_LABEL
+        plot2.yaxis.axis_label_text_font_size = FONT_SIZE_AXIS_LABEL
+        plot2.xaxis.major_label_text_font_size = FONT_SIZE_AXIS_TICKS
+        plot2.yaxis.major_label_text_font_size = FONT_SIZE_AXIS_TICKS
         # Capture initial slices for defaults and overlays
         initial_slice = None
         initial_slice_1d = None
@@ -1034,6 +1062,12 @@ def create_dashboard(process_4dnexus):
         plot3.yaxis.major_label_overrides = dict(zip(y_ticks, my_yticks))
         plot3.xaxis.axis_label = plot1_x_label
         plot3.yaxis.axis_label = plot1_y_label
+        # Set font sizes
+        plot3.title.text_font_size = FONT_SIZE_PLOT_TITLE
+        plot3.xaxis.axis_label_text_font_size = FONT_SIZE_AXIS_LABEL
+        plot3.yaxis.axis_label_text_font_size = FONT_SIZE_AXIS_LABEL
+        plot3.xaxis.major_label_text_font_size = FONT_SIZE_AXIS_TICKS
+        plot3.yaxis.major_label_text_font_size = FONT_SIZE_AXIS_TICKS
         print(f"[TIMING] plot3 built: {time.time()-t0:.3f}s")
 
         # Create an empty source3; Plot3 will be populated on demand via Compute Plot3
@@ -1077,6 +1111,12 @@ def create_dashboard(process_4dnexus):
                         plot1b.yaxis.major_label_overrides = dict(zip(y_ticks, my_yticks))
                         plot1b.xaxis.axis_label = plot1_x_label
                         plot1b.yaxis.axis_label = plot1_y_label
+                        # Set font sizes
+                        plot1b.title.text_font_size = FONT_SIZE_PLOT_TITLE
+                        plot1b.xaxis.axis_label_text_font_size = FONT_SIZE_AXIS_LABEL
+                        plot1b.yaxis.axis_label_text_font_size = FONT_SIZE_AXIS_LABEL
+                        plot1b.xaxis.major_label_text_font_size = FONT_SIZE_AXIS_TICKS
+                        plot1b.yaxis.major_label_text_font_size = FONT_SIZE_AXIS_TICKS
                     else:
                         print(f"Failed to build Plot1B: single dataset size mismatch ({single_dataset_b_flat.size} vs {len(x_coords) * len(y_coords)})")
             except Exception as e:
@@ -1106,6 +1146,12 @@ def create_dashboard(process_4dnexus):
                     plot1b.yaxis.major_label_overrides = dict(zip(y_ticks, my_yticks))
                     plot1b.xaxis.axis_label = plot1_x_label
                     plot1b.yaxis.axis_label = plot1_y_label
+                    # Set font sizes
+                    plot1b.title.text_font_size = FONT_SIZE_PLOT_TITLE
+                    plot1b.xaxis.axis_label_text_font_size = FONT_SIZE_AXIS_LABEL
+                    plot1b.yaxis.axis_label_text_font_size = FONT_SIZE_AXIS_LABEL
+                    plot1b.xaxis.major_label_text_font_size = FONT_SIZE_AXIS_TICKS
+                    plot1b.yaxis.major_label_text_font_size = FONT_SIZE_AXIS_TICKS
             except Exception as e:
                 print(f"Failed to build Plot1B (ratio mode): {e}")
                 import traceback
@@ -1155,6 +1201,12 @@ def create_dashboard(process_4dnexus):
                             plot2b.yaxis.axis_label = plot2b_y_label
                         else:
                             plot2b.yaxis.axis_label = "Probe Y"
+                    # Set font sizes
+                    plot2b.title.text_font_size = FONT_SIZE_PLOT_TITLE
+                    plot2b.xaxis.axis_label_text_font_size = FONT_SIZE_AXIS_LABEL
+                    plot2b.yaxis.axis_label_text_font_size = FONT_SIZE_AXIS_LABEL
+                    plot2b.xaxis.major_label_text_font_size = FONT_SIZE_AXIS_TICKS
+                    plot2b.yaxis.major_label_text_font_size = FONT_SIZE_AXIS_TICKS
                     
                     # Initialize independent selection rectangle for Plot2B
                     if len(volume_b.shape) == 3:
@@ -1174,10 +1226,10 @@ def create_dashboard(process_4dnexus):
             return ColorBar(
                 color_mapper=color_mapper,
                 title=title,
-                title_text_font_size="12px",
+                title_text_font_size=FONT_SIZE_COLORBAR_TITLE,
                 title_text_align="center",
                 title_standoff=10,
-                major_label_text_font_size="10px",
+                major_label_text_font_size=FONT_SIZE_COLORBAR_LABELS,
                 major_tick_line_color="black",
                 major_tick_line_width=1,
                 minor_tick_line_color="black",
@@ -1612,8 +1664,12 @@ def create_dashboard(process_4dnexus):
             if image_renderer2b is not None and plot2b_is_2d:
                 colorbar2b = create_colorbar(color_mapper2b, "Plot2B Intensity")
                 plot2b.match_aspect = True
-                plot2b.sizing_mode = "fixed"
+                plot2b.sizing_mode = "scale_width"  # Match Plot2A sizing
                 plot2b.add_layout(colorbar2b, "below")
+        
+        # Set Plot2B sizing_mode for 1D plots (3D volumes) as well
+        if 'plot2b' in locals() and plot2b is not None and not plot2b_is_2d:
+            plot2b.sizing_mode = "scale_width"  # Match Plot2A sizing
             
         # Configure Plot3 (works for both 3D and 4D volumes)
         plot3.match_aspect = True
@@ -3540,7 +3596,7 @@ def create_dashboard(process_4dnexus):
             reset_ranges_button,
             back_to_selection_button,
         ])
-
+        
         tools = column(*tools_items, width=400)
         
         # Create range input sections for each plot
@@ -3599,9 +3655,15 @@ def create_dashboard(process_4dnexus):
         plot1_spacer = Div(text="", height=70)  # Spacer to align with Plot2's toggle + button row
         plot3_spacer = Div(text="", height=70)  # Spacer to align with Plot2's toggle + button row
         
+        # Add spacers to align Plot1B and Plot2B
+        # Plot1B comes after plot1, Plot2B comes after plot2 + button row
+        # To align them, Plot1B needs a spacer to match Plot2's button row height before Plot2B
+        plot1b_spacer = Div(text="", height=100)  # Spacer to align Plot1B with Plot2B (matches button row height)
+        
         # Build Plot1 column with range inputs above
         plot1_column_items = [plot1_range_section, plot1_spacer, plot1]
         if 'plot1b' in locals() and plot1b is not None:
+            plot1_column_items.append(plot1b_spacer)  # Add spacer before Plot1B to align with Plot2B
             if plot1b_range_section:
                 plot1_column_items.append(plot1b_range_section)
             plot1_column_items.append(plot1b)
@@ -3643,7 +3705,7 @@ def create_dashboard(process_4dnexus):
             sizing_mode="scale_width",
         )
         
-        # Create the layout - Plot3 works for both 3D and 4D volumes  
+        # Create the layout - Three columns for Plot1, Plot2, and Plot3
         plots_row = row(
                     plot1_column,
                     plot2_column,
