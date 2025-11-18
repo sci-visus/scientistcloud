@@ -122,7 +122,14 @@ function formatDataset($dataset) {
     }
     
     // Get data_size - prioritize MongoDB data_size field
+    // Ensure it's numeric (data_size is stored as float in GB, but could be string from some sources)
     $data_size = $dataset['data_size'] ?? $dataset['total_size'] ?? $dataset['raw_size'] ?? $dataset['file_size'] ?? 0;
+    // Convert to float if it's a string or not numeric
+    if (!is_numeric($data_size)) {
+        $data_size = 0;
+    } else {
+        $data_size = (float)$data_size;
+    }
     
     // Get created date - check multiple possible fields
     $created_at = $dataset['time'] ?? $dataset['date_imported'] ?? $dataset['created_at'] ?? null;
@@ -361,6 +368,12 @@ function getDatasetStats($userId) {
             // Use data_size from formatted dataset (handles multiple field name variations)
             // Note: data_size is stored in GB (float), not bytes
             $dataSizeGb = $formatted['data_size'] ?? 0;
+            // Ensure it's numeric before arithmetic operation
+            if (!is_numeric($dataSizeGb)) {
+                $dataSizeGb = 0;
+            } else {
+                $dataSizeGb = (float)$dataSizeGb;
+            }
             $totalSize += $dataSizeGb;
             
             // Get status from formatted dataset
@@ -370,7 +383,11 @@ function getDatasetStats($userId) {
         
         // Convert total_size from GB to bytes for formatFileSize() function
         // data_size is stored in GB, but formatFileSize() expects bytes
-        $totalSizeBytes = $totalSize * (1024 ** 3); // GB to bytes
+        // Ensure totalSize is numeric before multiplication
+        if (!is_numeric($totalSize)) {
+            $totalSize = 0;
+        }
+        $totalSizeBytes = (float)$totalSize * (1024 ** 3); // GB to bytes
         
         return [
             'total_datasets' => $totalDatasets,
