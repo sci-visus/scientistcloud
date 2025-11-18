@@ -619,6 +619,281 @@ class UploadManager {
     }
 
     /**
+     * Setup team dropdown event listeners
+     */
+    setupTeamDropdownListeners() {
+        // Get all team dropdowns in upload forms
+        const teamSelects = document.querySelectorAll('select[name="team_uuid"]');
+        
+        teamSelects.forEach(select => {
+            select.addEventListener('change', async (e) => {
+                if (e.target.value === '__CREATE__') {
+                    // Reset to empty to prevent form submission issues
+                    e.target.value = '';
+                    
+                    // Show create team modal
+                    const createdTeam = await this.showCreateTeamModal();
+                    
+                    if (createdTeam) {
+                        // Refresh teams in all dropdowns and select the new team
+                        await this.refreshTeamDropdowns(createdTeam.team_name);
+                    }
+                }
+            });
+        });
+    }
+
+    /**
+     * Show create team modal (returns created team info or null)
+     */
+    async showCreateTeamModal() {
+        return new Promise(async (resolve) => {
+            // Fetch teams for parent selection
+            let teams = [];
+            try {
+                const teamsResponse = await fetch(`${getApiBasePath()}/get-teams.php`);
+                if (teamsResponse.ok) {
+                    const teamsData = await teamsResponse.json();
+                    if (teamsData.success && teamsData.teams) {
+                        const userEmail = await this.getUserEmail();
+                        teams = teamsData.teams.filter(team => team.is_owner || team.owner === userEmail);
+                    }
+                }
+            } catch (error) {
+                console.warn('Could not load teams for parent selection:', error);
+            }
+
+            // Create modal HTML
+            const modalHtml = `
+                <div class="modal fade" id="createTeamModal" tabindex="-1" aria-labelledby="createTeamModalLabel" aria-hidden="true">
+                    <div class="modal-dialog modal-lg">
+                        <div class="modal-content">
+                            <div class="modal-header bg-primary text-white">
+                                <h5 class="modal-title" id="createTeamModalLabel">
+                                    <i class="fas fa-users"></i> Create New Team
+                                </h5>
+                                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                            </div>
+                            <div class="modal-body">
+                                <form id="createTeamModalForm">
+                                    <div class="mb-3">
+                                        <label class="form-label">Team Name: <span class="text-danger">*</span></label>
+                                        <input type="text" class="form-control" name="team_name" required>
+                                    </div>
+                                    
+                                    <div class="mb-3">
+                                        <label class="form-label">Parent Team: <span class="text-muted">(optional)</span></label>
+                                        <select class="form-select" name="team_parent" id="team_parent_modal">
+                                            <option value="">Select Parent Team (optional)</option>
+                                            ${teams.map(team => `<option value="${team.uuid}">${this.escapeHtml(team.team_name)}</option>`).join('')}
+                                        </select>
+                                        <small class="form-text text-muted">Select a parent team if this team should be under another team</small>
+                                    </div>
+                                    
+                                    <div class="mb-3">
+                                        <label class="form-label">Member Emails:</label>
+                                        <div id="team-email-entries-modal">
+                                            <div class="email-entry mb-2">
+                                                <input type="email" class="form-control form-control-sm" 
+                                                       placeholder="member@example.com" 
+                                                       data-entry-index="1">
+                                            </div>
+                                        </div>
+                                        <button type="button" class="btn btn-sm btn-outline-secondary mt-2" 
+                                                onclick="uploadManager.addTeamEmailEntryModal()">
+                                            <i class="fas fa-plus"></i> Add Email
+                                        </button>
+                                    </div>
+                                </form>
+                            </div>
+                            <div class="modal-footer">
+                                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                                <button type="button" class="btn btn-primary" id="createTeamModalSubmit">
+                                    <i class="fas fa-plus"></i> Create Team
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            `;
+
+            // Remove existing modal if any
+            const existingModal = document.getElementById('createTeamModal');
+            if (existingModal) {
+                existingModal.remove();
+            }
+
+            // Add modal to body
+            document.body.insertAdjacentHTML('beforeend', modalHtml);
+
+            // Initialize Bootstrap modal
+            const modalElement = document.getElementById('createTeamModal');
+            // Wait for DOM to be ready
+            setTimeout(() => {
+                const modal = new bootstrap.Modal(modalElement, {
+                    backdrop: 'static',
+                    keyboard: false
+                });
+                
+                // Setup form handler
+                const form = document.getElementById('createTeamModalForm');
+                const submitBtn = document.getElementById('createTeamModalSubmit');
+                
+                const handleSubmit = async () => {
+                    const createdTeam = await this.handleCreateTeamModal(form);
+                    if (createdTeam) {
+                        modal.hide();
+                        modalElement.remove();
+                        resolve(createdTeam);
+                    }
+                };
+
+                submitBtn.addEventListener('click', handleSubmit);
+                form.addEventListener('submit', async (e) => {
+                    e.preventDefault();
+                    await handleSubmit();
+                });
+
+                // Handle modal close
+                modalElement.addEventListener('hidden.bs.modal', () => {
+                    modalElement.remove();
+                    resolve(null);
+                });
+
+                // Show modal
+                modal.show();
+            }, 10);
+        });
+    }
+
+    /**
+     * Handle create team from modal
+     */
+    async handleCreateTeamModal(form) {
+        const formData = new FormData(form);
+        const teamName = formData.get('team_name');
+        const parentTeamUuid = formData.get('team_parent');
+        
+        if (!teamName) {
+            alert('Team name is required');
+            return null;
+        }
+
+        // Get email entries
+        const emailInputs = document.querySelectorAll('#team-email-entries-modal input[type="email"]');
+        const emails = Array.from(emailInputs)
+            .map(input => input.value.trim())
+            .filter(email => email && this.isValidEmail(email));
+
+        // Get parent team UUID(s) - convert to array format
+        const parents = parentTeamUuid ? [parentTeamUuid] : [];
+
+        const userEmail = await this.getUserEmail();
+        if (!userEmail) {
+            alert('User not authenticated');
+            return null;
+        }
+
+        try {
+            const response = await fetch(`${getApiBasePath()}/create-team.php`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    team_name: teamName,
+                    emails: emails,
+                    parents: parents,
+                    owner_email: userEmail
+                })
+            });
+
+            const data = await response.json();
+
+            if (data.success) {
+                return {
+                    team_name: teamName,
+                    team: data.team
+                };
+            } else {
+                alert(`Error creating team: ${data.error || 'Unknown error'}`);
+                return null;
+            }
+        } catch (error) {
+            console.error('Error creating team:', error);
+            alert('Error creating team: ' + error.message);
+            return null;
+        }
+    }
+
+    /**
+     * Add team email entry in modal
+     */
+    addTeamEmailEntryModal() {
+        const container = document.getElementById('team-email-entries-modal');
+        if (!container) return;
+
+        const entries = container.querySelectorAll('.email-entry');
+        const nextIndex = entries.length + 1;
+
+        const newEntry = document.createElement('div');
+        newEntry.className = 'email-entry mb-2';
+        newEntry.innerHTML = `
+            <div class="input-group">
+                <input type="email" class="form-control form-control-sm" 
+                       placeholder="member@example.com" 
+                       data-entry-index="${nextIndex}">
+                <button type="button" class="btn btn-sm btn-outline-danger" 
+                        onclick="this.closest('.email-entry').remove()">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+        `;
+
+        container.appendChild(newEntry);
+    }
+
+    /**
+     * Refresh team dropdowns in all upload forms
+     */
+    async refreshTeamDropdowns(selectedTeamName = null) {
+        try {
+            const teamsResponse = await fetch(`${getApiBasePath()}/get-teams.php`);
+            if (!teamsResponse.ok) {
+                throw new Error(`HTTP ${teamsResponse.status}: ${teamsResponse.statusText}`);
+            }
+            
+            const teamsData = await teamsResponse.json();
+            if (teamsData.success && teamsData.teams) {
+                const teams = teamsData.teams;
+                
+                // Update all team dropdowns
+                const teamSelects = document.querySelectorAll('select[name="team_uuid"]');
+                teamSelects.forEach(select => {
+                    // Store current value
+                    const currentValue = select.value;
+                    
+                    // Clear and rebuild options
+                    select.innerHTML = `
+                        <option value="">-- No Team --</option>
+                        ${teams.map(t => `<option value="${this.escapeHtml(t.team_name)}">${this.escapeHtml(t.team_name)}</option>`).join('')}
+                        <option value="__CREATE__">+ Create New Team</option>
+                    `;
+                    
+                    // Restore selection or select new team
+                    if (selectedTeamName) {
+                        select.value = selectedTeamName;
+                    } else if (currentValue && currentValue !== '__CREATE__') {
+                        select.value = currentValue;
+                    }
+                });
+            }
+        } catch (error) {
+            console.error('Error refreshing team dropdowns:', error);
+        }
+    }
+
+    /**
      * Setup folder dropdown event listeners
      */
     setupFolderDropdownListeners() {
@@ -725,6 +1000,9 @@ class UploadManager {
 
         // Setup folder dropdown listeners
         this.setupFolderDropdownListeners();
+
+        // Setup team dropdown listeners
+        this.setupTeamDropdownListeners();
 
         // Setup form submission handlers
         const localForm = document.getElementById('localUploadForm');
@@ -1883,6 +2161,32 @@ class UploadManager {
         const viewerContainer = document.getElementById('viewerContainer');
         if (!viewerContainer) return;
 
+        // Show loading state
+        viewerContainer.innerHTML = `
+            <div class="text-center">
+                <div class="spinner-border text-primary" role="status">
+                    <span class="visually-hidden">Loading...</span>
+                </div>
+                <p class="mt-2">Loading teams...</p>
+            </div>
+        `;
+
+        // Fetch teams for parent selection
+        let teams = [];
+        try {
+            const teamsResponse = await fetch(`${getApiBasePath()}/get-teams.php`);
+            if (teamsResponse.ok) {
+                const teamsData = await teamsResponse.json();
+                if (teamsData.success && teamsData.teams) {
+                    // Filter to only show teams owned by the user (for parent selection)
+                    const userEmail = await this.getUserEmail();
+                    teams = teamsData.teams.filter(team => team.is_owner || team.owner === userEmail);
+                }
+            }
+        } catch (error) {
+            console.warn('Could not load teams for parent selection:', error);
+        }
+
         // Show create team interface (similar to share interface)
         viewerContainer.innerHTML = `
             <div class="create-team-interface container mt-4">
@@ -1897,6 +2201,15 @@ class UploadManager {
                             <div class="mb-3">
                                 <label class="form-label">Team Name: <span class="text-danger">*</span></label>
                                 <input type="text" class="form-control" name="team_name" required>
+                            </div>
+                            
+                            <div class="mb-3">
+                                <label class="form-label">Parent Team: <span class="text-muted">(optional)</span></label>
+                                <select class="form-select" name="team_parent" id="team_parent">
+                                    <option value="">Select Parent Team (optional)</option>
+                                    ${teams.map(team => `<option value="${team.uuid}">${this.escapeHtml(team.team_name)}</option>`).join('')}
+                                </select>
+                                <small class="form-text text-muted">Select a parent team if this team should be under another team</small>
                             </div>
                             
                             <div class="mb-3">
@@ -1943,6 +2256,7 @@ class UploadManager {
     async handleCreateTeam(form) {
         const formData = new FormData(form);
         const teamName = formData.get('team_name');
+        const parentTeamUuid = formData.get('team_parent');
         
         if (!teamName) {
             alert('Team name is required');
@@ -1954,6 +2268,9 @@ class UploadManager {
         const emails = Array.from(emailInputs)
             .map(input => input.value.trim())
             .filter(email => email && this.isValidEmail(email));
+
+        // Get parent team UUID(s) - convert to array format
+        const parents = parentTeamUuid ? [parentTeamUuid] : [];
 
         const userEmail = await this.getUserEmail();
         if (!userEmail) {
@@ -1970,6 +2287,7 @@ class UploadManager {
                 body: JSON.stringify({
                     team_name: teamName,
                     emails: emails,
+                    parents: parents,
                     owner_email: userEmail
                 })
             });
@@ -1980,8 +2298,13 @@ class UploadManager {
                 alert(`Team "${teamName}" created successfully!`);
                 this.closeUploadInterface();
                 // Refresh teams list if needed
+                return {
+                    team_name: teamName,
+                    team: data.team
+                };
             } else {
                 alert(`Error creating team: ${data.error || 'Unknown error'}`);
+                return null;
             }
         } catch (error) {
             console.error('Error creating team:', error);

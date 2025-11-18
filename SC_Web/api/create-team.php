@@ -54,6 +54,7 @@ try {
     $input = json_decode(file_get_contents('php://input'), true);
     $teamName = $input['team_name'] ?? null;
     $emails = $input['emails'] ?? [];
+    $parents = $input['parents'] ?? [];
     $ownerEmail = $input['owner_email'] ?? $user['email'];
     
     if (!$teamName) {
@@ -63,6 +64,11 @@ try {
         exit;
     }
 
+    // Ensure parents is an array
+    if (!is_array($parents)) {
+        $parents = empty($parents) ? [] : [$parents];
+    }
+
     // Create team using SCLib Sharing and Team API
     try {
         $sharingClient = getSCLibSharingClient();
@@ -70,7 +76,7 @@ try {
             throw new Exception('Failed to initialize sharing client');
         }
         
-        $result = $sharingClient->createTeam($teamName, $ownerEmail, $emails);
+        $result = $sharingClient->createTeam($teamName, $ownerEmail, $emails, $parents);
         
         // Log the result for debugging
         logMessage('DEBUG', 'Team creation API response', [

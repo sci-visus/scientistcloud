@@ -414,12 +414,16 @@ class SCLibClient {
     /**
      * Create a new team
      */
-    public function createTeam($teamName, $ownerEmail, $emails = []) {
+    public function createTeam($teamName, $ownerEmail, $emails = [], $parents = []) {
         try {
             $data = [
                 'team_name' => $teamName,
                 'emails' => $emails
             ];
+            // Add parents if provided
+            if (!empty($parents)) {
+                $data['parents'] = $parents;
+            }
             // The API endpoint is POST /api/v1/teams with owner_email as query parameter
             $response = $this->makeRequest('/api/v1/teams', 'POST', $data, ['owner_email' => $ownerEmail]);
             return $response;
