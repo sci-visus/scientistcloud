@@ -854,7 +854,31 @@ class UploadManager {
                 })
             });
 
+            // Check if response is ok
+            if (!response.ok) {
+                // Try to get error message from response
+                let errorMessage = `Server error: ${response.status} ${response.statusText}`;
+                try {
+                    const errorData = await response.json();
+                    errorMessage = errorData.error || errorData.message || errorMessage;
+                } catch (e) {
+                    // If response is not JSON, try to get text
+                    try {
+                        const errorText = await response.text();
+                        if (errorText) {
+                            errorMessage = errorText;
+                        }
+                    } catch (e2) {
+                        // Ignore
+                    }
+                }
+                console.error('Team creation failed:', errorMessage);
+                alert(`Error creating team: ${errorMessage}`);
+                return null;
+            }
+
             const data = await response.json();
+            console.log('Team creation response:', data);
 
             if (data.success) {
                 return {
@@ -862,7 +886,9 @@ class UploadManager {
                     team: data.team
                 };
             } else {
-                alert(`Error creating team: ${data.error || 'Unknown error'}`);
+                const errorMessage = data.error || data.message || 'Unknown error';
+                console.error('Team creation failed:', errorMessage);
+                alert(`Error creating team: ${errorMessage}`);
                 return null;
             }
         } catch (error) {

@@ -51,15 +51,33 @@ try {
     }
 
     // Get request data
-    $input = json_decode(file_get_contents('php://input'), true);
+    $rawInput = file_get_contents('php://input');
+    if (empty($rawInput)) {
+        ob_end_clean();
+        http_response_code(400);
+        header('Content-Type: application/json');
+        echo json_encode(['success' => false, 'error' => 'No request data provided']);
+        exit;
+    }
+    
+    $input = json_decode($rawInput, true);
+    if (json_last_error() !== JSON_ERROR_NONE) {
+        ob_end_clean();
+        http_response_code(400);
+        header('Content-Type: application/json');
+        echo json_encode(['success' => false, 'error' => 'Invalid JSON: ' . json_last_error_msg()]);
+        exit;
+    }
+    
     $teamName = $input['team_name'] ?? null;
     $emails = $input['emails'] ?? [];
     $parents = $input['parents'] ?? [];
     $ownerEmail = $input['owner_email'] ?? $user['email'];
     
-    if (!$teamName) {
+    if (!$teamName || trim($teamName) === '') {
         ob_end_clean();
         http_response_code(400);
+        header('Content-Type: application/json');
         echo json_encode(['success' => false, 'error' => 'Team name is required']);
         exit;
     }
@@ -67,6 +85,11 @@ try {
     // Ensure parents is an array
     if (!is_array($parents)) {
         $parents = empty($parents) ? [] : [$parents];
+    }
+    
+    // Ensure emails is an array
+    if (!is_array($emails)) {
+        $emails = empty($emails) ? [] : [$emails];
     }
 
     // Create team using SCLib Sharing and Team API
@@ -142,11 +165,25 @@ try {
     logMessage('ERROR', 'Failed to create team', ['error' => $e->getMessage(), 'trace' => $e->getTraceAsString()]);
     
     http_response_code(500);
+    header('Content-Type: application/json');
     echo json_encode([
         'success' => false,
         'error' => 'Internal server error',
         'message' => $e->getMessage()
     ]);
+    exit;
+} catch (Error $e) {
+    ob_end_clean();
+    logMessage('ERROR', 'Fatal error creating team', ['error' => $e->getMessage(), 'trace' => $e->getTraceAsString()]);
+    
+    http_response_code(500);
+    header('Content-Type: application/json');
+    echo json_encode([
+        'success' => false,
+        'error' => 'Fatal error',
+        'message' => $e->getMessage()
+    ]);
+    exit;
 }
 ?>
 
