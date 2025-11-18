@@ -1368,12 +1368,33 @@ class UploadManager {
 
             // Wait for all uploads to complete (or fail)
             const results = await Promise.allSettled(uploadPromises);
+            
+            // Debug: Log all results to understand what we're getting
+            console.log(`Upload results: ${results.length} total`);
+            results.forEach((result, index) => {
+                if (result.status === 'fulfilled') {
+                    console.log(`Result ${index + 1}:`, {
+                        hasValue: !!result.value,
+                        hasJobId: !!(result.value && result.value.job_id),
+                        jobId: result.value?.job_id,
+                        keys: result.value ? Object.keys(result.value) : [],
+                        fullResult: result.value
+                    });
+                } else {
+                    console.error(`Result ${index + 1} rejected:`, result.reason);
+                }
+            });
+            
             const successful = results.filter(r => r.status === 'fulfilled' && r.value && r.value.job_id).map(r => r.value);
             
             // Map failed results back to their file indices
             const failedFiles = [];
             results.forEach((result, index) => {
                 if (result.status === 'rejected' || !result.value || !result.value.job_id) {
+                    // Log why it's being marked as failed
+                    if (result.status === 'fulfilled' && result.value && !result.value.job_id) {
+                        console.warn(`Upload ${index + 1} succeeded but missing job_id:`, result.value);
+                    }
                     failedFiles.push({
                         fileIndex: index,
                         file: files[index],
@@ -1389,6 +1410,18 @@ class UploadManager {
                 console.log(`Adding to activeUploads: job_id=${result.job_id}, dataset=${uploadData.dataset_name}`);
                 this.trackUpload(result.job_id, uploadData.dataset_name);
             });
+            
+            // Log if any uploads were successful but not tracked
+            if (successful.length < results.filter(r => r.status === 'fulfilled').length) {
+                const untracked = results.filter(r => 
+                    r.status === 'fulfilled' && 
+                    r.value && 
+                    !r.value.job_id
+                );
+                if (untracked.length > 0) {
+                    console.warn(`⚠️ ${untracked.length} upload(s) succeeded but are missing job_id and won't be tracked in Active Uploads`);
+                }
+            }
 
             submitBtn.disabled = false;
             submitBtn.innerHTML = originalText;
