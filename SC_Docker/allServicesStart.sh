@@ -98,6 +98,18 @@ if [ "$DASHBOARDS_ONLY" = false ]; then
     # Start SCLib services first
     echo "📦 Starting SCLib services..."
     SCLIB_DOCKER_DIR="$HOME/ScientistCloud2.0/scientistCloudLib/Docker"
+    SCLIB_CODE_DIR="$HOME/ScientistCloud2.0/scientistCloudLib"
+    
+    # Pull latest code from scientistCloudLib repository (parent of Docker directory)
+    if [ -d "$SCLIB_CODE_DIR" ]; then
+        echo "   📥 Pulling latest SCLib code..."
+        pushd "$SCLIB_CODE_DIR"
+        git fetch origin
+        git reset --hard origin/main
+        popd
+        echo "   ✅ SCLib code updated"
+    fi
+    
     if [ -d "$SCLIB_DOCKER_DIR" ]; then
         pushd "$SCLIB_DOCKER_DIR"
         git fetch origin
