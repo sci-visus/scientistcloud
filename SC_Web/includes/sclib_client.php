@@ -81,6 +81,14 @@ class SCLibClient {
         
         if ($http_code >= 400) {
             $error_message = $decoded_response['detail'] ?? $decoded_response['error'] ?? $decoded_response['message'] ?? 'Unknown error';
+            
+            // Convert array to string if needed
+            if (is_array($error_message)) {
+                $error_message = json_encode($error_message);
+            } elseif (!is_string($error_message)) {
+                $error_message = (string)$error_message;
+            }
+            
             throw new Exception("API error ($http_code): $error_message");
         }
         
