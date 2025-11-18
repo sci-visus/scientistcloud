@@ -1805,8 +1805,13 @@ class UploadManager {
      */
     updateProgressWidget() {
         const progressList = document.getElementById('uploadProgressList');
-        if (!progressList) return;
+        if (!progressList) {
+            console.warn('⚠️ uploadProgressList element not found - widget may not be initialized');
+            return;
+        }
 
+        console.log(`🔄 updateProgressWidget called: ${this.activeUploads.size} upload(s) in activeUploads`);
+        
         if (this.activeUploads.size === 0) {
             progressList.innerHTML = '<p class="text-muted small">No active uploads</p>';
             return;
@@ -1814,6 +1819,7 @@ class UploadManager {
 
         let html = '';
         this.activeUploads.forEach((upload, jobId) => {
+            console.log(`  Rendering upload: jobId=${jobId}, dataset=${upload.dataset_name}, status=${upload.status}, progress=${upload.progress}`);
             const statusColor = upload.status === 'completed' ? 'success' : 
                               upload.status === 'failed' ? 'danger' : 'primary';
             
@@ -1838,6 +1844,7 @@ class UploadManager {
         });
 
         progressList.innerHTML = html;
+        console.log(`✅ Progress widget updated with ${this.activeUploads.size} upload(s)`);
     }
 
     /**
