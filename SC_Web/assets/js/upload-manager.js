@@ -625,18 +625,34 @@ class UploadManager {
         // Get all team dropdowns in upload forms
         const teamSelects = document.querySelectorAll('select[name="team_uuid"]');
         
-        teamSelects.forEach(select => {
-            select.addEventListener('change', async (e) => {
+        console.log(`Setting up team dropdown listeners for ${teamSelects.length} dropdown(s)`);
+        
+        teamSelects.forEach((select, index) => {
+            // Remove any existing listeners to avoid duplicates
+            const newSelect = select.cloneNode(true);
+            select.parentNode.replaceChild(newSelect, select);
+            
+            newSelect.addEventListener('change', async (e) => {
+                console.log('Team dropdown changed:', e.target.value);
                 if (e.target.value === '__CREATE__') {
                     // Reset to empty to prevent form submission issues
                     e.target.value = '';
                     
+                    console.log('Opening create team modal...');
                     // Show create team modal
-                    const createdTeam = await this.showCreateTeamModal();
-                    
-                    if (createdTeam) {
-                        // Refresh teams in all dropdowns and select the new team
-                        await this.refreshTeamDropdowns(createdTeam.team_name);
+                    try {
+                        const createdTeam = await this.showCreateTeamModal();
+                        
+                        if (createdTeam) {
+                            console.log('Team created successfully:', createdTeam);
+                            // Refresh teams in all dropdowns and select the new team
+                            await this.refreshTeamDropdowns(createdTeam.team_name);
+                        } else {
+                            console.log('Team creation cancelled or failed');
+                        }
+                    } catch (error) {
+                        console.error('Error in create team modal:', error);
+                        alert('Error opening create team dialog: ' + error.message);
                     }
                 }
             });
@@ -728,40 +744,70 @@ class UploadManager {
 
             // Initialize Bootstrap modal
             const modalElement = document.getElementById('createTeamModal');
+            if (!modalElement) {
+                console.error('Modal element not found after insertion');
+                resolve(null);
+                return;
+            }
+            
+            // Check if Bootstrap is available
+            if (typeof bootstrap === 'undefined') {
+                console.error('Bootstrap is not available. Make sure bootstrap.bundle.min.js is loaded.');
+                alert('Error: Bootstrap library not loaded. Please refresh the page.');
+                resolve(null);
+                return;
+            }
+            
             // Wait for DOM to be ready
             setTimeout(() => {
-                const modal = new bootstrap.Modal(modalElement, {
-                    backdrop: 'static',
-                    keyboard: false
-                });
-                
-                // Setup form handler
-                const form = document.getElementById('createTeamModalForm');
-                const submitBtn = document.getElementById('createTeamModalSubmit');
-                
-                const handleSubmit = async () => {
-                    const createdTeam = await this.handleCreateTeamModal(form);
-                    if (createdTeam) {
-                        modal.hide();
-                        modalElement.remove();
-                        resolve(createdTeam);
+                try {
+                    const modal = new bootstrap.Modal(modalElement, {
+                        backdrop: 'static',
+                        keyboard: false
+                    });
+                    
+                    // Setup form handler
+                    const form = document.getElementById('createTeamModalForm');
+                    const submitBtn = document.getElementById('createTeamModalSubmit');
+                    
+                    if (!form || !submitBtn) {
+                        console.error('Form elements not found in modal');
+                        resolve(null);
+                        return;
                     }
-                };
+                    
+                    const handleSubmit = async () => {
+                        const createdTeam = await this.handleCreateTeamModal(form);
+                        if (createdTeam) {
+                            modal.hide();
+                            // Wait for modal to hide before removing
+                            setTimeout(() => {
+                                modalElement.remove();
+                            }, 300);
+                            resolve(createdTeam);
+                        }
+                    };
 
-                submitBtn.addEventListener('click', handleSubmit);
-                form.addEventListener('submit', async (e) => {
-                    e.preventDefault();
-                    await handleSubmit();
-                });
+                    submitBtn.addEventListener('click', handleSubmit);
+                    form.addEventListener('submit', async (e) => {
+                        e.preventDefault();
+                        await handleSubmit();
+                    });
 
-                // Handle modal close
-                modalElement.addEventListener('hidden.bs.modal', () => {
-                    modalElement.remove();
+                    // Handle modal close
+                    modalElement.addEventListener('hidden.bs.modal', () => {
+                        modalElement.remove();
+                        resolve(null);
+                    });
+
+                    // Show modal
+                    modal.show();
+                    console.log('Create team modal shown');
+                } catch (error) {
+                    console.error('Error initializing modal:', error);
+                    alert('Error opening create team dialog: ' + error.message);
                     resolve(null);
-                });
-
-                // Show modal
-                modal.show();
+                }
             }, 10);
         });
     }
@@ -987,12 +1033,40 @@ class UploadManager {
                         extension: f.name.split('.').pop().toLowerCase()
                     }));
                     console.log('File details:', fileTypes);
-                    // Check for .nxs files specifically
-                    const nxsFiles = Array.from(files).filter(f => f.name.toLowerCase().endsWith('.nxs'));
+                    
+                    // Check for .nxs files only if sensor contains NEXUS
+                    const form = fileInput.closest('form');
+                    if (form) {
+                        const sensorSelect = form.querySelector('select[name="sensor"]');
+                        if (sensorSelect) {
+                            const sensor = sensorSelect.value;
+                            if (sensor && sensor.toUpperCase().includes('NEXUS')) {
+                                const nxsFiles = Array.from(files).filter(f => f.name.toLowerCase().endsWith('.nxs'));
+                                if (nxsFiles.length > 0) {
+                                    console.log(`✅ Found ${nxsFiles.length} .nxs file(s) for NEXUS sensor:`, nxsFiles.map(f => f.name));
+                                } else {
+                                    console.warn(`⚠️  No .nxs files found in selection for NEXUS sensor type: ${sensor}`);
+                                }
+                            }
+                        }
+                    }
+                }
+            });
+        }
+
+        // Setup sensor change listener to check for .nxs files when NEXUS is selected
+        const sensorSelect = document.querySelector('select[name="sensor"]');
+        if (sensorSelect) {
+            sensorSelect.addEventListener('change', (e) => {
+                const sensor = e.target.value;
+                const fileInput = document.getElementById('localFileInput');
+                if (fileInput && fileInput.files && fileInput.files.length > 0 && sensor && sensor.toUpperCase().includes('NEXUS')) {
+                    const files = Array.from(fileInput.files);
+                    const nxsFiles = files.filter(f => f.name.toLowerCase().endsWith('.nxs'));
                     if (nxsFiles.length > 0) {
-                        console.log(`✅ Found ${nxsFiles.length} .nxs file(s):`, nxsFiles.map(f => f.name));
+                        console.log(`✅ Found ${nxsFiles.length} .nxs file(s) for NEXUS sensor:`, nxsFiles.map(f => f.name));
                     } else {
-                        console.log('⚠️  No .nxs files found in selection');
+                        console.warn(`⚠️  No .nxs files found in selection for NEXUS sensor type: ${sensor}`);
                     }
                 }
             });
@@ -1117,16 +1191,23 @@ class UploadManager {
             console.log(`Processing ${files.length} file(s) for upload`);
             const fileExtensions = Array.from(files).map(f => f.name.split('.').pop().toLowerCase());
             console.log('File extensions:', [...new Set(fileExtensions)]);
-            const nxsFiles = Array.from(files).filter(f => f.name.toLowerCase().endsWith('.nxs'));
-            if (nxsFiles.length > 0) {
-                console.log(`✅ Processing ${nxsFiles.length} .nxs file(s):`, nxsFiles.map(f => f.name));
+            
+            // Check for .nxs files only if sensor contains NEXUS
+            const isNexusSensor = uploadData.sensor && uploadData.sensor.toUpperCase().includes('NEXUS');
+            if (isNexusSensor) {
+                const nxsFiles = Array.from(files).filter(f => f.name.toLowerCase().endsWith('.nxs'));
+                if (nxsFiles.length > 0) {
+                    console.log(`✅ Processing ${nxsFiles.length} .nxs file(s) for NEXUS sensor:`, nxsFiles.map(f => f.name));
+                } else {
+                    console.warn(`⚠️  No .nxs files found in selection for NEXUS sensor type: ${uploadData.sensor}`);
+                }
             }
             
             for (let i = 0; i < files.length; i++) {
                 const file = files[i];
                 
-                // Log each file being processed
-                if (file.name.toLowerCase().endsWith('.nxs')) {
+                // Log .nxs files specifically only for NEXUS sensors
+                if (isNexusSensor && file.name.toLowerCase().endsWith('.nxs')) {
                     console.log(`📦 Processing .nxs file ${i + 1}/${files.length}: ${file.name}`);
                 }
                 
@@ -1235,10 +1316,6 @@ class UploadManager {
                             if (result.job_id && response.status === 200) {
                                 // Mark file as completed
                                 this.updateUploadModalFile(fileIndex, fileName, 'completed', result.job_id);
-                                // Log .nxs file uploads specifically
-                                if (fileName.toLowerCase().endsWith('.nxs')) {
-                                    console.log(`✅ .nxs file uploaded successfully: ${fileName}, job_id: ${result.job_id}`);
-                                }
                                 return result;
                             } else {
                                 // Mark file as failed
@@ -1286,17 +1363,6 @@ class UploadManager {
                 console.log(`Adding to activeUploads: job_id=${result.job_id}, dataset=${uploadData.dataset_name}`);
                 this.trackUpload(result.job_id, uploadData.dataset_name);
             });
-            
-            // Verify .nxs files were tracked
-            const nxsUploads = successful.filter(r => {
-                const fileIndex = results.findIndex(res => res.status === 'fulfilled' && res.value === r);
-                return fileIndex >= 0 && files[fileIndex] && files[fileIndex].name.toLowerCase().endsWith('.nxs');
-            });
-            if (nxsUploads.length > 0) {
-                console.log(`✅ Tracked ${nxsUploads.length} .nxs file upload(s) in activeUploads`);
-            } else if (nxsFiles.length > 0) {
-                console.warn(`⚠️  ${nxsFiles.length} .nxs file(s) were processed but none were successfully tracked in activeUploads`);
-            }
 
             submitBtn.disabled = false;
             submitBtn.innerHTML = originalText;
