@@ -712,7 +712,9 @@ function initializeResizeHandles() {
         if (!isResizingLeft && !isResizingRight) return;
         
         if (isResizingLeft) {
-            const diff = startX - e.clientX; // Inverted because we're dragging left
+            // When dragging right (e.clientX > startX), diff is positive, sidebar should grow
+            // When dragging left (e.clientX < startX), diff is negative, sidebar should shrink
+            const diff = e.clientX - startX;
             const newWidth = Math.max(200, Math.min(startWidth + diff, window.innerWidth * 0.8));
             saveSidebarWidth(newWidth);
         }

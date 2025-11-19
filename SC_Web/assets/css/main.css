@@ -125,6 +125,42 @@ body {
   min-width: 200px;  /* Minimum width to prevent collapse */
   max-width: 80vw;  /* Maximum width to prevent overflow */
   border-left: 1px solid var(--panel-border);
+  overflow: hidden; /* Prevent sidebar itself from scrolling */
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+}
+
+.details h5 {
+  flex-shrink: 0;
+  margin-bottom: 0.5rem;
+}
+
+.details .panel-content {
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: hidden;
+  width: 100%;
+  padding: 0 0.5rem;
+  margin-top: 0.5rem;
+}
+
+.details .panel-content::-webkit-scrollbar {
+  width: 8px;
+}
+
+.details .panel-content::-webkit-scrollbar-track {
+  background: rgba(0, 0, 0, 0.1);
+  border-radius: 4px;
+}
+
+.details .panel-content::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.2);
+  border-radius: 4px;
+}
+
+.details .panel-content::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.3);
 }
 
 .sidebar.collapsed, .details.collapsed {

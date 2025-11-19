@@ -155,8 +155,29 @@ class DatasetManager {
                     total: this.datasets.my.length + this.datasets.shared.length + this.datasets.team.length
                 });
                 
+                // Log sample datasets from each category for debugging
                 if (this.datasets.my.length > 0) {
                     console.log('First my dataset:', this.datasets.my[0]);
+                }
+                if (this.datasets.shared.length > 0) {
+                    console.log('First shared dataset:', this.datasets.shared[0]);
+                } else {
+                    console.log('⚠️ No shared datasets found in response');
+                }
+                if (this.datasets.team.length > 0) {
+                    console.log('First team dataset:', this.datasets.team[0]);
+                } else {
+                    console.log('⚠️ No team datasets found in response');
+                }
+                
+                // Log full response structure for debugging
+                if (this.datasets.shared.length === 0 && this.datasets.team.length === 0) {
+                    console.log('Full API response structure:', {
+                        has_datasets: !!data.datasets,
+                        datasets_type: typeof data.datasets,
+                        datasets_keys: data.datasets ? Object.keys(data.datasets) : [],
+                        full_response: data
+                    });
                 }
                 
                 this.folders = data.folders || [];
@@ -221,17 +242,41 @@ class DatasetManager {
         // My Datasets
         html += this.renderDatasetGroup('My Datasets', groupedDatasets['my'], 'myDatasets');
         
-        // Shared Datasets
+        // Shared Datasets - Always show, even if empty
         html += this.renderDatasetGroup('Shared with Me', groupedDatasets['shared'], 'sharedDatasets');
         
-        // Team Datasets
-        const teamRootCount = groupedDatasets['team'].root?.length || 0;
-        const teamFolderCount = Object.values(groupedDatasets['team'].folders || {}).reduce((sum, arr) => sum + arr.length, 0);
-        if (teamRootCount > 0 || teamFolderCount > 0) {
-            html += this.renderDatasetGroup('Team Datasets', groupedDatasets['team'], 'teamDatasets');
-        }
+        // Team Datasets - Always show, even if empty
+        html += this.renderDatasetGroup('Team Datasets', groupedDatasets['team'], 'teamDatasets');
         
         container.innerHTML = html;
+        
+        // Initialize Bootstrap collapse components and set up arrow icon updates
+        setTimeout(() => {
+            // Set up collapse event listeners for arrow icon updates
+            container.querySelectorAll('.collapse').forEach(collapseEl => {
+                const collapseId = collapseEl.id;
+                const arrowIcon = document.getElementById(`arrow-${collapseId}`);
+                
+                if (arrowIcon && typeof bootstrap !== 'undefined') {
+                    // Update arrow when section expands/collapses
+                    collapseEl.addEventListener('show.bs.collapse', () => {
+                        arrowIcon.textContent = '▼'; // Down arrow when expanded
+                        arrowIcon.classList.add('open');
+                    });
+                    
+                    collapseEl.addEventListener('hide.bs.collapse', () => {
+                        arrowIcon.textContent = '▶'; // Right arrow when collapsed
+                        arrowIcon.classList.remove('open');
+                    });
+                    
+                    // If section starts expanded (has 'show' class), update arrow immediately
+                    if (collapseEl.classList.contains('show')) {
+                        arrowIcon.textContent = '▼';
+                        arrowIcon.classList.add('open');
+                    }
+                }
+            });
+        }, 50);
         
         // Attach event listeners after rendering
         this.attachDatasetEventListeners();
@@ -444,12 +489,13 @@ class DatasetManager {
 
         if (totalCount === 0) {
             console.log(`No datasets to render for ${title} (id: ${id})`);
+            // Still show the section, but expanded on first load so user knows it's empty
             return `
                 <div class="dataset-section">
                     <a class="nav-link" data-bs-toggle="collapse" data-bs-target="#${id}">
-                        <span class="arrow-icon" id="arrow-${id}">&#9656;</span>${title} (0)
+                        <span class="arrow-icon" id="arrow-${id}">▼</span>${title} (0)
                     </a>
-                    <div class="collapse ps-4 w-100" id="${id}">
+                    <div class="collapse show ps-4 w-100" id="${id}" data-bs-parent=".dataset-list">
                         <p class="text-muted">No datasets found.</p>
                     </div>
                 </div>
@@ -459,9 +505,9 @@ class DatasetManager {
         let html = `
             <div class="dataset-section">
                 <a class="nav-link" data-bs-toggle="collapse" data-bs-target="#${id}">
-                    <span class="arrow-icon" id="arrow-${id}">&#9656;</span>${title} (${totalCount})
+                    <span class="arrow-icon" id="arrow-${id}">▼</span>${title} (${totalCount})
                 </a>
-                <div class="collapse show ps-4 w-100" id="${id}">
+                <div class="collapse show ps-4 w-100" id="${id}" data-bs-parent=".dataset-list">
         `;
 
         // Render root level datasets (no folder)
@@ -1281,14 +1327,37 @@ class DatasetManager {
         // Format tags for display/editing
         const tagsValue = Array.isArray(dataset.tags) ? dataset.tags.join(', ') : (dataset.tags || '');
         
-        // Dashboard options (you may want to load these dynamically)
-        const dashboardOptions = [
-            'OpenVisusSlice',
-            '4D_Dashboard',
-            '3DVTK',
-            'magicscan',
-            'openvisus'
-        ];
+        // Load dashboard options from API
+        let dashboardOptions = [];
+        try {
+            const dashResponse = await fetch(`${getApiBasePath()}/dashboards.php`);
+            if (dashResponse.ok) {
+                const dashData = await dashResponse.json();
+                if (dashData.success && dashData.dashboards) {
+                    // Filter enabled dashboards and remove duplicates
+                    const seen = new Set();
+                    dashboardOptions = dashData.dashboards
+                        .filter(d => d.enabled && !seen.has(d.id))
+                        .map(d => {
+                            seen.add(d.id);
+                            return d.id;
+                        });
+                }
+            }
+        } catch (error) {
+            console.warn('Could not load dashboards from API, using fallback:', error);
+        }
+        
+        // Fallback if API fails
+        if (dashboardOptions.length === 0) {
+            dashboardOptions = [
+                'OpenVisusSlice',
+                '3DPlotly',
+                '4D_Dashboard',
+                '3DVTK',
+                'magicscan'
+            ];
+        }
         
         // Build folder options HTML
         const folderOptions = `

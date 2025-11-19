@@ -15,7 +15,98 @@ class UploadManager {
         this.progressWidget = null;
         this.uploadModal = null; // Upload progress modal
         this.currentUploadSession = null; // Current upload session data
+        this.dashboards = []; // Cached dashboard list from API
         this.initialize();
+    }
+    
+    /**
+     * Load dashboards from API (cached)
+     */
+    async loadDashboards() {
+        if (this.dashboards.length > 0) {
+            return this.dashboards; // Return cached
+        }
+        
+        try {
+            const response = await fetch(`${getApiBasePath()}/dashboards.php`);
+            if (!response.ok) {
+                console.warn('Failed to load dashboards from API, using fallback');
+                // Fallback to minimal list
+                this.dashboards = [
+                    { id: 'OpenVisusSlice', display_name: 'OpenVisus Slice Dashboard' },
+                    { id: '3DPlotly', display_name: '3D Plotly Dashboard' },
+                    { id: '4D_Dashboard', display_name: '4D Dashboard' },
+                    { id: '3DVTK', display_name: '3D VTK Dashboard' },
+                    { id: 'magicscan', display_name: 'MagicScan Dashboard' }
+                ];
+                return this.dashboards;
+            }
+            
+            const data = await response.json();
+            if (data.success && data.dashboards) {
+                // Filter to only enabled dashboards and remove duplicates
+                const seen = new Set();
+                this.dashboards = data.dashboards
+                    .filter(d => d.enabled && !seen.has(d.id))
+                    .map(d => {
+                        seen.add(d.id);
+                        return {
+                            id: d.id,
+                            display_name: d.display_name || d.name || d.id
+                        };
+                    });
+                return this.dashboards;
+            }
+        } catch (error) {
+            console.error('Error loading dashboards:', error);
+        }
+        
+        // Fallback
+        this.dashboards = [
+            { id: 'OpenVisusSlice', display_name: 'OpenVisus Slice Dashboard' },
+            { id: '3DPlotly', display_name: '3D Plotly Dashboard' },
+            { id: '4D_Dashboard', display_name: '4D Dashboard' },
+            { id: '3DVTK', display_name: '3D VTK Dashboard' },
+            { id: 'magicscan', display_name: 'MagicScan Dashboard' }
+        ];
+        return this.dashboards;
+    }
+    
+    /**
+     * Generate dashboard options HTML for select dropdown
+     */
+    async getDashboardOptionsHTML(selectedValue = '') {
+        const dashboards = await this.loadDashboards();
+        return dashboards.map(d => {
+            const selected = (selectedValue && selectedValue.toLowerCase() === d.id.toLowerCase()) ? 'selected' : '';
+            return `<option value="${this.escapeHtml(d.id)}" ${selected}>${this.escapeHtml(d.display_name)}</option>`;
+        }).join('');
+    }
+    
+    /**
+     * Escape HTML
+     */
+    escapeHtml(text) {
+        const div = document.createElement('div');
+        div.textContent = text;
+        return div.innerHTML;
+    }
+    
+    /**
+     * Populate all dashboard dropdowns in the upload interface
+     */
+    async populateDashboardDropdowns() {
+        const dashboards = await this.loadDashboards();
+        const selects = document.querySelectorAll('.dashboard-select');
+        selects.forEach(select => {
+            select.innerHTML = '<option value="">-- Select Dashboard --</option>';
+            dashboards.forEach(d => {
+                const option = document.createElement('option');
+                option.value = d.id;
+                option.textContent = d.display_name;
+                select.appendChild(option);
+            });
+        });
     }
 
     /**
@@ -176,6 +267,9 @@ class UploadManager {
 
         viewerContainer.innerHTML = html;
 
+        // Populate dashboard dropdowns from API
+        this.populateDashboardDropdowns();
+
         // Initialize file input for local upload
         this.initializeLocalFileInput();
     }
@@ -256,12 +350,8 @@ class UploadManager {
 
                 <div class="mb-3">
                     <label class="form-label">Preferred Dashboard:</label>
-                    <select class="form-select" name="preferred_dashboard">
-                        <option value="OpenVisusSlice">OpenVisusSlice</option>
-                        <option value="4D_Dashboard">4D_Dashboard</option>
-                        <option value="3DVTK">3DVTK</option>
-                        <option value="magicscan">magicscan</option>
-                        <option value="openvisus">openvisus</option>
+                    <select class="form-select dashboard-select" name="preferred_dashboard">
+                        <option value="">Loading dashboards...</option>
                     </select>
                 </div>
 
@@ -366,12 +456,8 @@ class UploadManager {
 
                 <div class="mb-3">
                     <label class="form-label">Preferred Dashboard:</label>
-                    <select class="form-select" name="preferred_dashboard">
-                        <option value="OpenVisusSlice">OpenVisusSlice</option>
-                        <option value="4D_Dashboard">4D_Dashboard</option>
-                        <option value="3DVTK">3DVTK</option>
-                        <option value="magicscan">magicscan</option>
-                        <option value="openvisus">openvisus</option>
+                    <select class="form-select dashboard-select" name="preferred_dashboard">
+                        <option value="">Loading dashboards...</option>
                     </select>
                 </div>
 
@@ -494,12 +580,8 @@ class UploadManager {
 
                 <div class="mb-3">
                     <label class="form-label">Preferred Dashboard:</label>
-                    <select class="form-select" name="preferred_dashboard">
-                        <option value="OpenVisusSlice">OpenVisusSlice</option>
-                        <option value="4D_Dashboard">4D_Dashboard</option>
-                        <option value="3DVTK">3DVTK</option>
-                        <option value="magicscan">magicscan</option>
-                        <option value="openvisus">openvisus</option>
+                    <select class="form-select dashboard-select" name="preferred_dashboard">
+                        <option value="">Loading dashboards...</option>
                     </select>
                 </div>
 
@@ -595,12 +677,8 @@ class UploadManager {
 
                 <div class="mb-3">
                     <label class="form-label">Preferred Dashboard:</label>
-                    <select class="form-select" name="preferred_dashboard">
-                        <option value="OpenVisusSlice">OpenVisusSlice</option>
-                        <option value="4D_Dashboard">4D_Dashboard</option>
-                        <option value="3DVTK">3DVTK</option>
-                        <option value="magicscan">magicscan</option>
-                        <option value="openvisus">openvisus</option>
+                    <select class="form-select dashboard-select" name="preferred_dashboard">
+                        <option value="">Loading dashboards...</option>
                     </select>
                 </div>
 

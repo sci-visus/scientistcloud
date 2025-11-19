@@ -7,16 +7,8 @@ class ViewerManager {
     constructor() {
         this.currentViewer = null;
         this.viewers = {}; // Will be loaded from API
-        this.defaultViewers = {
-            'openvisus': {
-                id: 'openvisus',
-                name: 'OpenVisus Slice Dashboard',
-                type: 'openvisus',
-                url_template: '/dashboard/openvisusslice?uuid={uuid}&server={server}&name={name}',
-                supported_formats: ['tiff', 'hdf5', 'nexus'],
-                description: 'Interactive 3D volume rendering with OpenVisus'
-            }
-        };
+        // No default viewers - all should come from API to avoid duplicates
+        this.defaultViewers = {};
         this.initialize();
     }
     
@@ -67,13 +59,8 @@ class ViewerManager {
                     }
                 });
                 
-                // Only merge default viewers that aren't already loaded from API
-                // This prevents duplicates when API successfully loads dashboards
-                Object.keys(this.defaultViewers).forEach(key => {
-                    if (!this.viewers[key]) {
-                        this.viewers[key] = this.defaultViewers[key];
-                    }
-                });
+                // No need to merge defaults - all dashboards should come from API
+                // This prevents duplicates
                 
                 console.log('Loaded dashboards from API:', Object.keys(this.viewers).length);
             } else {
