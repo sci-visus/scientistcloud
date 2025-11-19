@@ -390,21 +390,21 @@ class UploadManager {
                 <div class="mb-3">
                     <label class="form-label">Google Drive File or Folder: <span class="text-danger">*</span></label>
                     <div class="input-group mb-2">
-                        <span class="input-group-text">Type</span>
+                        <span class="input-group-text">Input Type</span>
                         <select class="form-select" id="googleDriveInputType" style="max-width: 150px;">
-                            <option value="file_id">File ID</option>
-                            <option value="folder_link">Folder Link</option>
+                            <option value="drive_id">Google Drive ID</option>
+                            <option value="folder_link">Full URL</option>
                         </select>
                     </div>
-                    <input type="text" class="form-control mb-2" name="file_id" id="googleDriveFileId" 
-                           placeholder="Enter Google Drive file ID (e.g., 1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms)" required>
+                    <input type="text" class="form-control mb-2" name="drive_id" id="googleDriveId" 
+                           placeholder="Enter Google Drive ID (works for both files and folders)" required>
                     <input type="text" class="form-control mb-2" name="folder_link" id="googleDriveFolderLink" 
-                           placeholder="Enter full Google Drive folder URL (e.g., https://drive.google.com/drive/folders/1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms)" style="display: none;">
+                           placeholder="Enter full Google Drive URL (e.g., https://drive.google.com/drive/folders/...)" style="display: none;">
                     <small class="form-text text-muted">
-                        <span id="googleDriveHelpText">Enter the file ID from the Google Drive file URL, or</span>
-                        <a href="#" id="googleDriveSwitchLink" class="text-decoration-none">use a folder link instead</a>
+                        <span id="googleDriveHelpText">Enter the Google Drive ID from the URL. Works for both files and folders - the system will automatically detect which it is, or</span>
+                        <a href="#" id="googleDriveSwitchLink" class="text-decoration-none">paste the full URL instead</a>
                         <br>
-                        <strong>Note:</strong> Folders will be synced recursively (all files and subfolders will be downloaded).
+                        <strong>Note:</strong> If you provide a folder ID or URL, it will be synced recursively (all files and subfolders will be downloaded).
                     </small>
                 </div>
 
@@ -1196,50 +1196,50 @@ class UploadManager {
                 this.handleGoogleDriveUpload(googleForm);
             });
             
-            // Handle input type switching (file ID vs folder link)
+            // Handle input type switching (Google Drive ID vs folder link)
             const inputTypeSelect = document.getElementById('googleDriveInputType');
-            const fileIdInput = document.getElementById('googleDriveFileId');
+            const driveIdInput = document.getElementById('googleDriveId');
             const folderLinkInput = document.getElementById('googleDriveFolderLink');
             const helpText = document.getElementById('googleDriveHelpText');
             const switchLink = document.getElementById('googleDriveSwitchLink');
             
-            if (inputTypeSelect && fileIdInput && folderLinkInput) {
-                // Function to toggle between file ID and folder link inputs
-                const toggleInputType = (isFileId) => {
-                    fileIdInput.style.display = isFileId ? 'block' : 'none';
-                    fileIdInput.required = isFileId;
-                    folderLinkInput.style.display = isFileId ? 'none' : 'block';
-                    folderLinkInput.required = !isFileId;
+            if (inputTypeSelect && driveIdInput && folderLinkInput) {
+                // Function to toggle between Google Drive ID and folder link inputs
+                const toggleInputType = (isDriveId) => {
+                    driveIdInput.style.display = isDriveId ? 'block' : 'none';
+                    driveIdInput.required = isDriveId;
+                    folderLinkInput.style.display = isDriveId ? 'none' : 'block';
+                    folderLinkInput.required = !isDriveId;
                     
                     // Clear the hidden input when switching
-                    if (isFileId) {
+                    if (isDriveId) {
                         folderLinkInput.value = '';
                     } else {
-                        fileIdInput.value = '';
+                        driveIdInput.value = '';
                     }
                     
                     if (helpText) {
-                        helpText.textContent = isFileId 
-                            ? 'Enter the file ID from the Google Drive file URL, or '
-                            : 'Enter the full Google Drive folder URL, or ';
+                        helpText.textContent = isDriveId 
+                            ? 'Enter the Google Drive ID from the URL. Works for both files and folders - the system will automatically detect which it is, or '
+                            : 'Enter the full Google Drive URL (works for both files and folders), or ';
                     }
                     if (switchLink) {
-                        switchLink.textContent = isFileId ? 'use a folder link instead' : 'use a file ID instead';
+                        switchLink.textContent = isDriveId ? 'paste the full URL instead' : 'use a Google Drive ID instead';
                     }
                 };
                 
                 // Handle dropdown change
                 inputTypeSelect.addEventListener('change', (e) => {
-                    toggleInputType(e.target.value === 'file_id');
+                    toggleInputType(e.target.value === 'drive_id');
                 });
                 
                 // Handle switch link click
                 if (switchLink) {
                     switchLink.addEventListener('click', (e) => {
                         e.preventDefault();
-                        const newValue = inputTypeSelect.value === 'file_id' ? 'folder_link' : 'file_id';
+                        const newValue = inputTypeSelect.value === 'drive_id' ? 'folder_link' : 'drive_id';
                         inputTypeSelect.value = newValue;
-                        toggleInputType(newValue === 'file_id');
+                        toggleInputType(newValue === 'drive_id');
                     });
                 }
             }
@@ -1615,13 +1615,13 @@ class UploadManager {
             return;
         }
 
-        // Get either file_id or folder_link
-        const inputType = document.getElementById('googleDriveInputType')?.value || 'file_id';
-        const fileId = formData.get('file_id');
+        // Get either drive_id (Google Drive ID) or folder_link
+        const inputType = document.getElementById('googleDriveInputType')?.value || 'drive_id';
+        const driveId = formData.get('drive_id');
         const folderLink = formData.get('folder_link');
         
-        if (!fileId && !folderLink) {
-            alert('Google Drive File ID or Folder Link is required');
+        if (!driveId && !folderLink) {
+            alert('Google Drive ID or Folder Link is required');
             return;
         }
 
@@ -1638,8 +1638,9 @@ class UploadManager {
             
             if (folderLink) {
                 sourceConfig.folder_link = folderLink;
-            } else if (fileId) {
-                sourceConfig.file_id = fileId;
+            } else if (driveId) {
+                // Backend expects 'file_id' parameter (works for both files and folders)
+                sourceConfig.file_id = driveId;
             }
 
             // Use SCLib Upload API initiate endpoint for Google Drive (OAuth-based)
@@ -1659,7 +1660,7 @@ class UploadManager {
 
             console.log('Initiating OAuth-based Google Drive upload:', {
                 user_email: userEmail,
-                has_file_id: !!fileId,
+                has_drive_id: !!driveId,
                 has_folder_link: !!folderLink,
                 dataset_name: requestData.dataset_name
             });
@@ -1683,10 +1684,10 @@ class UploadManager {
             submitBtn.innerHTML = originalText;
 
             if (data.job_id) {
-                const fileName = folderLink ? 'Google Drive Folder' : (fileId || 'Google Drive File');
+                const fileName = folderLink ? 'Google Drive Folder' : (driveId || 'Google Drive File/Folder');
                 this.trackUpload(data.job_id, requestData.dataset_name, fileName, requestData.convert);
                 
-                const uploadType = folderLink ? 'folder' : 'file';
+                const uploadType = folderLink ? 'folder' : 'file/folder';
                 alert(`Google Drive ${uploadType} upload started! Job ID: ${data.job_id}\nYou can continue using the app. Check the progress widget.`);
                 this.closeUploadInterface();
             } else {
