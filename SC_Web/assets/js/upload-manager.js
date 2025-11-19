@@ -340,12 +340,8 @@ class UploadManager {
 
                 <div class="mb-3">
                     <label class="form-label">Dimensions:</label>
-                    <select class="form-select" name="dimensions">
-                        <option value="">-- Select Dimensions --</option>
-                        <option value="2D">2D</option>
-                        <option value="3D">3D</option>
-                        <option value="4D">4D</option>
-                    </select>
+                    <input type="text" class="form-control" name="dimensions" 
+                           placeholder="e.g., 2D, 3D, 4D">
                 </div>
 
                 <div class="mb-3">
@@ -392,11 +388,23 @@ class UploadManager {
                 </div>
 
                 <div class="mb-3">
-                    <label class="form-label">Google Drive File ID: <span class="text-danger">*</span></label>
-                    <input type="text" class="form-control" name="file_id" 
-                           placeholder="Enter Google Drive file ID" required>
+                    <label class="form-label">Google Drive File or Folder: <span class="text-danger">*</span></label>
+                    <div class="input-group mb-2">
+                        <span class="input-group-text">Type</span>
+                        <select class="form-select" id="googleDriveInputType" style="max-width: 150px;">
+                            <option value="file_id">File ID</option>
+                            <option value="folder_link">Folder Link</option>
+                        </select>
+                    </div>
+                    <input type="text" class="form-control mb-2" name="file_id" id="googleDriveFileId" 
+                           placeholder="Enter Google Drive file ID (e.g., 1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms)" required>
+                    <input type="text" class="form-control mb-2" name="folder_link" id="googleDriveFolderLink" 
+                           placeholder="Enter full Google Drive folder URL (e.g., https://drive.google.com/drive/folders/1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms)" style="display: none;">
                     <small class="form-text text-muted">
-                        Get the file ID from the Google Drive file URL
+                        <span id="googleDriveHelpText">Enter the file ID from the Google Drive file URL, or</span>
+                        <a href="#" id="googleDriveSwitchLink" class="text-decoration-none">use a folder link instead</a>
+                        <br>
+                        <strong>Note:</strong> Folders will be synced recursively (all files and subfolders will be downloaded).
                     </small>
                 </div>
 
@@ -446,12 +454,8 @@ class UploadManager {
 
                 <div class="mb-3">
                     <label class="form-label">Dimensions:</label>
-                    <select class="form-select" name="dimensions">
-                        <option value="">-- Select Dimensions --</option>
-                        <option value="2D">2D</option>
-                        <option value="3D">3D</option>
-                        <option value="4D">4D</option>
-                    </select>
+                    <input type="text" class="form-control" name="dimensions" 
+                           placeholder="e.g., 1024x1024x100 or 2D, 3D, 4D">
                 </div>
 
                 <div class="mb-3">
@@ -570,12 +574,8 @@ class UploadManager {
 
                 <div class="mb-3">
                     <label class="form-label">Dimensions:</label>
-                    <select class="form-select" name="dimensions">
-                        <option value="">-- Select Dimensions --</option>
-                        <option value="2D">2D</option>
-                        <option value="3D">3D</option>
-                        <option value="4D">4D</option>
-                    </select>
+                    <input type="text" class="form-control" name="dimensions" 
+                           placeholder="e.g., 1024x1024x100 or 2D, 3D, 4D">
                 </div>
 
                 <div class="mb-3">
@@ -667,12 +667,8 @@ class UploadManager {
 
                 <div class="mb-3">
                     <label class="form-label">Dimensions:</label>
-                    <select class="form-select" name="dimensions">
-                        <option value="">-- Select Dimensions --</option>
-                        <option value="2D">2D</option>
-                        <option value="3D">3D</option>
-                        <option value="4D">4D</option>
-                    </select>
+                    <input type="text" class="form-control" name="dimensions" 
+                           placeholder="e.g., 1024x1024x100 or 2D, 3D, 4D">
                 </div>
 
                 <div class="mb-3">
@@ -1199,6 +1195,54 @@ class UploadManager {
                 e.preventDefault();
                 this.handleGoogleDriveUpload(googleForm);
             });
+            
+            // Handle input type switching (file ID vs folder link)
+            const inputTypeSelect = document.getElementById('googleDriveInputType');
+            const fileIdInput = document.getElementById('googleDriveFileId');
+            const folderLinkInput = document.getElementById('googleDriveFolderLink');
+            const helpText = document.getElementById('googleDriveHelpText');
+            const switchLink = document.getElementById('googleDriveSwitchLink');
+            
+            if (inputTypeSelect && fileIdInput && folderLinkInput) {
+                // Function to toggle between file ID and folder link inputs
+                const toggleInputType = (isFileId) => {
+                    fileIdInput.style.display = isFileId ? 'block' : 'none';
+                    fileIdInput.required = isFileId;
+                    folderLinkInput.style.display = isFileId ? 'none' : 'block';
+                    folderLinkInput.required = !isFileId;
+                    
+                    // Clear the hidden input when switching
+                    if (isFileId) {
+                        folderLinkInput.value = '';
+                    } else {
+                        fileIdInput.value = '';
+                    }
+                    
+                    if (helpText) {
+                        helpText.textContent = isFileId 
+                            ? 'Enter the file ID from the Google Drive file URL, or '
+                            : 'Enter the full Google Drive folder URL, or ';
+                    }
+                    if (switchLink) {
+                        switchLink.textContent = isFileId ? 'use a folder link instead' : 'use a file ID instead';
+                    }
+                };
+                
+                // Handle dropdown change
+                inputTypeSelect.addEventListener('change', (e) => {
+                    toggleInputType(e.target.value === 'file_id');
+                });
+                
+                // Handle switch link click
+                if (switchLink) {
+                    switchLink.addEventListener('click', (e) => {
+                        e.preventDefault();
+                        const newValue = inputTypeSelect.value === 'file_id' ? 'folder_link' : 'file_id';
+                        inputTypeSelect.value = newValue;
+                        toggleInputType(newValue === 'file_id');
+                    });
+                }
+            }
         }
 
         const s3Form = document.getElementById('s3UploadForm');
@@ -1571,9 +1615,13 @@ class UploadManager {
             return;
         }
 
+        // Get either file_id or folder_link
+        const inputType = document.getElementById('googleDriveInputType')?.value || 'file_id';
         const fileId = formData.get('file_id');
-        if (!fileId) {
-            alert('Google Drive File ID is required');
+        const folderLink = formData.get('folder_link');
+        
+        if (!fileId && !folderLink) {
+            alert('Google Drive File ID or Folder Link is required');
             return;
         }
 
@@ -1583,21 +1631,38 @@ class UploadManager {
             submitBtn.disabled = true;
             submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Initiating...';
 
-            // Use SCLib Upload API initiate endpoint for Google Drive
+            // Build source_config for OAuth-based upload
+            const sourceConfig = {
+                use_oauth: true  // Use OAuth tokens from MongoDB
+            };
+            
+            if (folderLink) {
+                sourceConfig.folder_link = folderLink;
+            } else if (fileId) {
+                sourceConfig.file_id = fileId;
+            }
+
+            // Use SCLib Upload API initiate endpoint for Google Drive (OAuth-based)
             const requestData = {
                 source_type: 'google_drive',
-                source_config: {
-                    file_id: fileId,
-                    service_account_file: '' // TODO: Get from config or user settings
-                },
+                source_config: sourceConfig,
                 user_email: userEmail,
                 dataset_name: formData.get('name'),
                 sensor: formData.get('sensor'),
                 convert: formData.get('convert') === 'on',
                 is_public: formData.get('is_public') === 'on',
                 folder: this.getFolderValue(form),
-                team_uuid: formData.get('team_uuid') || null
+                team_uuid: formData.get('team_uuid') || null,
+                preferred_dashboard: formData.get('preferred_dashboard') || null,
+                dimensions: formData.get('dimensions') || null
             };
+
+            console.log('Initiating OAuth-based Google Drive upload:', {
+                user_email: userEmail,
+                has_file_id: !!fileId,
+                has_folder_link: !!folderLink,
+                dataset_name: requestData.dataset_name
+            });
 
             const response = await fetch(`${getUploadApiBasePath()}/api/upload/initiate`, {
                 method: 'POST',
@@ -1607,17 +1672,25 @@ class UploadManager {
                 body: JSON.stringify(requestData)
             });
 
+            if (!response.ok) {
+                const errorData = await response.json().catch(() => ({ detail: `HTTP ${response.status}` }));
+                throw new Error(errorData.detail || errorData.error || `HTTP ${response.status}`);
+            }
+
             const data = await response.json();
 
             submitBtn.disabled = false;
             submitBtn.innerHTML = originalText;
 
             if (data.job_id) {
-                this.trackUpload(data.job_id, requestData.dataset_name, null, requestData.convert);
-                alert(`Google Drive upload started! Job ID: ${data.job_id}\nYou can continue using the app. Check the progress widget.`);
+                const fileName = folderLink ? 'Google Drive Folder' : (fileId || 'Google Drive File');
+                this.trackUpload(data.job_id, requestData.dataset_name, fileName, requestData.convert);
+                
+                const uploadType = folderLink ? 'folder' : 'file';
+                alert(`Google Drive ${uploadType} upload started! Job ID: ${data.job_id}\nYou can continue using the app. Check the progress widget.`);
                 this.closeUploadInterface();
             } else {
-                throw new Error(data.error || data.detail || 'Upload failed');
+                throw new Error(data.error || data.detail || 'Upload failed - no job_id returned');
             }
         } catch (error) {
             console.error('Error initiating Google Drive upload:', error);
