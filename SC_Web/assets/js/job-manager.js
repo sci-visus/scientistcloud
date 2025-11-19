@@ -406,6 +406,49 @@ class JobManager {
     }
 
     /**
+     * Setup log viewers - load logs when collapse is expanded
+     */
+    setupLogViewers() {
+        // Find all log collapse elements
+        const logCollapses = document.querySelectorAll('.collapse[id^="logs-"]');
+        logCollapses.forEach(collapse => {
+            // Add event listener for when collapse is shown
+            collapse.addEventListener('show.bs.collapse', (e) => {
+                const logContainer = collapse.querySelector('.conversion-logs');
+                if (logContainer) {
+                    const datasetUuid = logContainer.getAttribute('data-dataset-uuid');
+                    if (datasetUuid && !logContainer.dataset.loaded) {
+                        this.loadConversionLogs(datasetUuid, logContainer);
+                        logContainer.dataset.loaded = 'true';
+                    }
+                }
+            });
+        });
+    }
+
+    /**
+     * Load conversion logs for a dataset
+     */
+    async loadConversionLogs(datasetUuid, container) {
+        try {
+            // TODO: Implement log loading from API
+            // For now, just show a message
+            container.innerHTML = `
+                <div class="text-center py-2">
+                    <p class="text-muted">Log loading not yet implemented</p>
+                </div>
+            `;
+        } catch (error) {
+            console.error('Error loading conversion logs:', error);
+            container.innerHTML = `
+                <div class="text-center py-2">
+                    <p class="text-danger">Error loading logs: ${error.message}</p>
+                </div>
+            `;
+        }
+    }
+
+    /**
      * Cancel a job
      */
     async cancelJob(jobId) {
