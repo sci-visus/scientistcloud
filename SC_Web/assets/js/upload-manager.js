@@ -1665,7 +1665,7 @@ class UploadManager {
                 dataset_name: requestData.dataset_name
             });
 
-            const response = await fetch(`${getUploadApiBasePath()}/api/upload/initiate`, {
+            const response = await fetch(`${getUploadApiBasePath()}/upload-initiate.php`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -1751,7 +1751,7 @@ class UploadManager {
                 team_uuid: formData.get('team_uuid') || null
             };
 
-            const response = await fetch(`${getUploadApiBasePath()}/api/upload/initiate`, {
+            const response = await fetch(`${getUploadApiBasePath()}/upload-initiate.php`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -1822,7 +1822,7 @@ class UploadManager {
                 team_uuid: formData.get('team_uuid') || null
             };
 
-            const response = await fetch(`${getUploadApiBasePath()}/api/upload/initiate`, {
+            const response = await fetch(`${getUploadApiBasePath()}/upload-initiate.php`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
