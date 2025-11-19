@@ -25,6 +25,8 @@ class UploadManager {
         this.setupEventListeners();
         this.createProgressWidget();
         this.createUploadModal();
+        // Restore active uploads from server (in case page was refreshed)
+        this.restoreActiveUploads();
     }
 
     /**
@@ -1194,6 +1196,11 @@ class UploadManager {
 
             // Show upload progress modal
             this.showUploadModal(uploadData.dataset_name, files.length);
+            
+            // Store convert flag in session for completion message
+            if (this.currentUploadSession) {
+                this.currentUploadSession.willConvert = uploadData.convert;
+            }
 
             // Generate a single UUID for all files to group them in the same dataset
             const datasetUuid = this.generateUUID();
@@ -1404,11 +1411,20 @@ class UploadManager {
                 }
             });
 
-            // Track successful uploads
+            // Track successful uploads with file names
             console.log(`Tracking ${successful.length} successful upload(s) in activeUploads`);
-            successful.forEach(result => {
-                console.log(`Adding to activeUploads: job_id=${result.job_id}, dataset=${uploadData.dataset_name}`);
-                this.trackUpload(result.job_id, uploadData.dataset_name);
+            successful.forEach((result, idx) => {
+                // Find the file name for this result by matching job_id in the upload session
+                let fileName = uploadData.dataset_name; // fallback to dataset name
+                const fileInfo = this.currentUploadSession?.files.find(f => f.jobId === result.job_id);
+                if (fileInfo) {
+                    fileName = fileInfo.name;
+                } else if (files[idx]) {
+                    // Fallback: use file from array if we can match by index
+                    fileName = files[idx].name;
+                }
+                console.log(`Adding to activeUploads: job_id=${result.job_id}, file=${fileName}, dataset=${uploadData.dataset_name}`);
+                this.trackUpload(result.job_id, uploadData.dataset_name, fileName, uploadData.convert);
             });
             
             // Log if any uploads were successful but not tracked
@@ -1423,6 +1439,7 @@ class UploadManager {
                 }
             }
 
+            // Reset button immediately after queueing - uploads continue in background
             submitBtn.disabled = false;
             submitBtn.innerHTML = originalText;
 
@@ -1431,7 +1448,7 @@ class UploadManager {
                 const statusText = document.getElementById('uploadModalStatusText');
                 if (statusText) {
                     if (successful.length > 0) {
-                        statusText.textContent = `✅ ${successful.length} file(s) queued successfully. Uploads continue in background. Safe to close.`;
+                        statusText.textContent = `✅ ${successful.length} file(s) queued successfully. Uploads continue in background - you can safely navigate away or close this window.`;
                         document.getElementById('uploadModalStatusMessage').className = 'flex-grow-1 text-success small';
                     }
                 }
@@ -1518,7 +1535,7 @@ class UploadManager {
             submitBtn.innerHTML = originalText;
 
             if (data.job_id) {
-                this.trackUpload(data.job_id, requestData.dataset_name);
+                this.trackUpload(data.job_id, requestData.dataset_name, null, requestData.convert);
                 alert(`Google Drive upload started! Job ID: ${data.job_id}\nYou can continue using the app. Check the progress widget.`);
                 this.closeUploadInterface();
             } else {
@@ -1596,7 +1613,7 @@ class UploadManager {
             submitBtn.innerHTML = originalText;
 
             if (data.job_id) {
-                this.trackUpload(data.job_id, requestData.dataset_name);
+                this.trackUpload(data.job_id, requestData.dataset_name, null, requestData.convert);
                 alert(`S3 upload started! Job ID: ${data.job_id}\nYou can continue using the app. Check the progress widget.`);
                 this.closeUploadInterface();
             } else {
@@ -1667,7 +1684,7 @@ class UploadManager {
             submitBtn.innerHTML = originalText;
 
             if (data.job_id) {
-                this.trackUpload(data.job_id, requestData.dataset_name);
+                this.trackUpload(data.job_id, requestData.dataset_name, null, requestData.convert);
                 alert(`Remote server link created! Job ID: ${data.job_id}\nYou can continue using the app. Check the progress widget.`);
                 this.closeUploadInterface();
             } else {
@@ -1701,12 +1718,105 @@ class UploadManager {
     }
 
     /**
-     * Track upload progress
+     * Restore active uploads from server (called on page load)
+     * This ensures uploads continue to be tracked even after page refresh
      */
-    trackUpload(jobId, datasetName) {
+    async restoreActiveUploads() {
+        try {
+            console.log('🔄 Restoring active uploads from server...');
+            
+            // Get active jobs from the server
+            // Note: jobs.php accepts status as query param, but we need to get all active statuses
+            // We'll filter client-side since the API may not support multiple status values
+            const response = await fetch(`${getApiBasePath()}/jobs.php?limit=100`);
+            if (!response.ok) {
+                console.warn('⚠️ Could not fetch active jobs:', response.status);
+                return;
+            }
+            
+            const data = await response.json();
+            if (!data.success || !data.jobs) {
+                console.warn('⚠️ No active jobs found or API error');
+                return;
+            }
+            
+            // Filter for upload jobs (not conversion jobs) that are still active
+            const activeStatuses = ['queued', 'uploading', 'processing', 'initializing', 'pending', 'running'];
+            const uploadJobs = data.jobs.filter(job => {
+                const jobType = job.job_type || '';
+                const status = (job.status || 'unknown').toLowerCase();
+                
+                // Must be an upload job (not conversion)
+                const isUploadJob = jobType.includes('upload') || jobType === 'upload' || 
+                                   (!jobType.includes('conversion') && !jobType.includes('dataset_conversion'));
+                
+                // Must be in an active status
+                const isActive = activeStatuses.some(activeStatus => status.includes(activeStatus));
+                
+                return isUploadJob && isActive;
+            });
+            
+            console.log(`📥 Found ${uploadJobs.length} active upload job(s) to restore`);
+            
+            // Restore each upload job
+            for (const job of uploadJobs) {
+                const jobId = job.job_id || job.id;
+                if (!jobId) {
+                    console.warn('⚠️ Job missing job_id:', job);
+                    continue;
+                }
+                
+                const status = job.status || 'unknown';
+                
+                // Get dataset name from job or use default
+                const datasetName = job.dataset_name || job.name || 'Unknown Dataset';
+                const fileName = job.file_name || datasetName;
+                
+                // Track the upload (will start polling)
+                this.trackUpload(
+                    jobId,
+                    datasetName,
+                    fileName,
+                    false // We don't know if conversion was requested from job data
+                );
+                
+                // Update with current status and progress from server
+                const upload = this.activeUploads.get(jobId);
+                if (upload) {
+                    upload.status = status;
+                    upload.progress = job.progress_percentage || 0;
+                    upload.message = job.message || job.error || null;
+                }
+            }
+            
+            // Update widget to show restored uploads
+            this.updateProgressWidget();
+            
+            console.log(`✅ Restored ${this.activeUploads.size} active upload(s)`);
+        } catch (error) {
+            console.error('❌ Error restoring active uploads:', error);
+        }
+    }
+
+    /**
+     * Track upload progress
+     * @param {string} jobId - The job ID from the upload API
+     * @param {string} datasetName - The dataset name
+     * @param {string} fileName - The individual file name (optional, defaults to dataset name)
+     * @param {boolean} willConvert - Whether conversion was requested (optional)
+     */
+    trackUpload(jobId, datasetName, fileName = null, willConvert = false) {
+        // Don't duplicate if already tracking
+        if (this.activeUploads.has(jobId)) {
+            console.log(`ℹ️ Already tracking upload: ${jobId}`);
+            return;
+        }
+        
         this.activeUploads.set(jobId, {
             job_id: jobId,
             dataset_name: datasetName,
+            file_name: fileName || datasetName, // Use file name if provided, otherwise dataset name
+            will_convert: willConvert,
             status: 'queued',
             progress: 0
         });
@@ -1753,6 +1863,9 @@ class UploadManager {
                         } else {
                             // Upload finished
                             if (data.status === 'completed') {
+                                // Update widget to show completion message
+                                this.updateProgressWidget();
+                                
                                 // Refresh dataset list
                                 if (window.datasetManager) {
                                     window.datasetManager.loadDatasets();
@@ -1819,14 +1932,27 @@ class UploadManager {
 
         let html = '';
         this.activeUploads.forEach((upload, jobId) => {
-            console.log(`  Rendering upload: jobId=${jobId}, dataset=${upload.dataset_name}, status=${upload.status}, progress=${upload.progress}`);
+            console.log(`  Rendering upload: jobId=${jobId}, file=${upload.file_name}, dataset=${upload.dataset_name}, status=${upload.status}, progress=${upload.progress}`);
             const statusColor = upload.status === 'completed' ? 'success' : 
                               upload.status === 'failed' ? 'danger' : 'primary';
+            
+            // Show file name (preferred) or dataset name as fallback
+            const displayName = upload.file_name || upload.dataset_name;
+            
+            // Add completion message if upload is done
+            let completionMessage = '';
+            if (upload.status === 'completed') {
+                if (upload.will_convert) {
+                    completionMessage = '<small class="text-success d-block mt-1"><i class="fas fa-info-circle"></i> Upload complete. Conversion in progress...</small>';
+                } else {
+                    completionMessage = '<small class="text-success d-block mt-1"><i class="fas fa-check-circle"></i> Ready to view</small>';
+                }
+            }
             
             html += `
                 <div class="upload-progress-item mb-2">
                     <div class="d-flex justify-content-between align-items-center">
-                        <span class="small">${this.escapeHtml(upload.dataset_name)}</span>
+                        <span class="small" title="${this.escapeHtml(upload.dataset_name)}">${this.escapeHtml(displayName)}</span>
                         <span class="badge bg-${statusColor}">${upload.status}</span>
                     </div>
                     <div class="progress mt-1" style="height: 5px;">
@@ -1839,6 +1965,7 @@ class UploadManager {
                         </div>
                     </div>
                     ${upload.message ? `<small class="text-muted">${this.escapeHtml(upload.message)}</small>` : ''}
+                    ${completionMessage}
                 </div>
             `;
         });
@@ -1938,7 +2065,8 @@ class UploadManager {
             failedFiles: 0,
             files: [],
             maxRetries: 5,
-            retryDelay: 2000 // 2 seconds between retries
+            retryDelay: 2000, // 2 seconds between retries
+            willConvert: false // Will be set when upload starts
         };
 
         // Update modal content
@@ -1952,8 +2080,8 @@ class UploadManager {
         document.getElementById('uploadModalFileList').innerHTML = '<p class="text-muted text-center">Preparing uploads...</p>';
         document.getElementById('uploadModalCloseBtn').disabled = false; // Allow closing - uploads continue in background
         document.getElementById('uploadModalViewJobsBtn').style.display = 'none';
-        document.getElementById('uploadModalStatusText').textContent = 'Preparing uploads...';
-        document.getElementById('uploadModalStatusMessage').className = 'flex-grow-1 text-muted small';
+        document.getElementById('uploadModalStatusText').textContent = 'Preparing uploads... You can safely close this window at any time - uploads will continue in the background.';
+        document.getElementById('uploadModalStatusMessage').className = 'flex-grow-1 text-info small';
 
         // Show modal
         this.uploadModal.show();
@@ -2127,7 +2255,14 @@ class UploadManager {
                     fileList.insertAdjacentHTML('beforeend', warningHtml);
                 }
             } else {
-                statusText.textContent = '✅ All uploads completed successfully!';
+                // All uploads completed successfully - check if conversion was requested
+                const willConvert = session.willConvert || false;
+                
+                if (willConvert) {
+                    statusText.textContent = '✅ All uploads completed! Files are being converted and will be available shortly.';
+                } else {
+                    statusText.textContent = '✅ All uploads completed! Your dataset is ready to view.';
+                }
                 statusMessage.className = 'flex-grow-1 text-success small';
             }
         } else if (inProgress > 0) {
@@ -2250,7 +2385,7 @@ class UploadManager {
                     if (result.job_id && response.status === 200) {
                         // Success!
                         this.updateUploadModalFile(fileIndex, fileName, 'completed', result.job_id, null, attempt);
-                        this.trackUpload(result.job_id, uploadData.dataset_name);
+                        this.trackUpload(result.job_id, uploadData.dataset_name, fileName, uploadData.convert);
                         return { success: true, fileIndex, result };
                     } else {
                         // Still failed
