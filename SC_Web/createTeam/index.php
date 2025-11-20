@@ -294,6 +294,15 @@ try {
     </style>
 </head>
 <body>
+<script>
+    // Apply theme from localStorage on page load
+    (function() {
+        const theme = localStorage.getItem('theme') || 'dark';
+        if (theme === 'light') {
+            document.body.classList.add('light-theme');
+        }
+    })();
+</script>
 <div class="container">
     <div class="panel panel-default">
         <div class="panel-heading">

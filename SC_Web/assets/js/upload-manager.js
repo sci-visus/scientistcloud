@@ -132,21 +132,17 @@ class UploadManager {
             });
         }
 
-        // Create Team button - navigate to full team management page
+        // Create Team button - load team management page in viewer container
         const createTeamBtn = document.getElementById('createTeamBtn');
         if (createTeamBtn) {
             // Remove any existing listeners first
             const newBtn = createTeamBtn.cloneNode(true);
             createTeamBtn.parentNode.replaceChild(newBtn, createTeamBtn);
             
-            newBtn.addEventListener('click', (e) => {
+            newBtn.addEventListener('click', async (e) => {
                 e.preventDefault();
                 e.stopPropagation();
-                // Navigate to the createTeam page (with team listing and editing)
-                const isLocal = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
-                const basePath = isLocal ? '' : '/portal';
-                console.log('Navigating to createTeam page:', `${basePath}/createTeam/index.php`);
-                window.location.href = `${basePath}/createTeam/index.php`;
+                await this.showCreateTeamPage();
             });
         }
     }
@@ -2795,6 +2791,77 @@ class UploadManager {
                     <i class="fas fa-cloud-upload-alt fa-3x text-muted mb-3"></i>
                     <h5>No dataset selected</h5>
                     <p class="text-muted">Select a dataset from the sidebar to view it here</p>
+                </div>
+            `;
+        }
+    }
+
+    /**
+     * Show create team page in viewer container
+     */
+    async showCreateTeamPage() {
+        const viewerContainer = document.getElementById('viewerContainer');
+        if (!viewerContainer) return;
+
+        // Show loading state
+        viewerContainer.innerHTML = `
+            <div class="text-center">
+                <div class="spinner-border text-primary" role="status">
+                    <span class="visually-hidden">Loading...</span>
+                </div>
+                <p class="mt-2">Loading team management...</p>
+            </div>
+        `;
+
+        try {
+            const isLocal = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+            const basePath = isLocal ? '' : '/portal';
+            const url = `${basePath}/createTeam/index.php`;
+            
+            // Fetch the page content
+            const response = await fetch(url);
+            if (!response.ok) {
+                throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+            }
+            
+            const html = await response.text();
+            
+            // Extract body content (skip the full HTML document structure)
+            const parser = new DOMParser();
+            const doc = parser.parseFromString(html, 'text/html');
+            const bodyContent = doc.body.innerHTML;
+            
+            // Apply current theme class
+            const currentTheme = localStorage.getItem('theme') || 'dark';
+            const themeClass = currentTheme === 'light' ? 'light-theme' : '';
+            
+            // Load content into viewer container
+            viewerContainer.innerHTML = `
+                <div class="create-team-page-wrapper ${themeClass}" style="height: 100%; overflow-y: auto;">
+                    ${bodyContent}
+                </div>
+            `;
+            
+            // Re-initialize scripts and event handlers from the loaded page
+            const scripts = viewerContainer.querySelectorAll('script');
+            scripts.forEach(oldScript => {
+                const newScript = document.createElement('script');
+                Array.from(oldScript.attributes).forEach(attr => {
+                    newScript.setAttribute(attr.name, attr.value);
+                });
+                newScript.textContent = oldScript.textContent;
+                oldScript.parentNode.replaceChild(newScript, oldScript);
+            });
+            
+        } catch (error) {
+            console.error('Error loading create team page:', error);
+            viewerContainer.innerHTML = `
+                <div class="alert alert-danger" role="alert">
+                    <h5><i class="fas fa-exclamation-triangle"></i> Error Loading Team Management</h5>
+                    <p>Failed to load team management page: ${error.message}</p>
+                    <button class="btn btn-primary" onclick="window.uploadManager.showCreateTeamPage()">
+                        <i class="fas fa-redo"></i> Retry
+                    </button>
                 </div>
             `;
         }
