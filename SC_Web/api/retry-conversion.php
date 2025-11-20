@@ -85,13 +85,21 @@ try {
             // Validate token and get user email
             $sclib = getSCLibAuthClient();
             $authResult = $sclib->validateAuthToken($auth_token);
+            
+            // Log validation result for debugging
+            error_log("Token validation result: " . json_encode($authResult));
+            
             if ($authResult && isset($authResult['success']) && $authResult['success'] && 
                 isset($authResult['valid']) && $authResult['valid'] && 
                 isset($authResult['email'])) {
                 $user_email = $authResult['email'];
+                error_log("Token validated successfully for user: " . $user_email);
+            } else {
+                error_log("Token validation failed - result: " . json_encode($authResult));
             }
         } catch (Exception $e) {
-            error_log("Token validation failed: " . $e->getMessage());
+            error_log("Token validation exception: " . $e->getMessage());
+            error_log("Exception trace: " . $e->getTraceAsString());
         }
     }
     
@@ -105,15 +113,36 @@ try {
         ob_end_clean();
         http_response_code(401);
         // Include debug info to help diagnose the issue
+        // Try to get validation result if we attempted token validation
+        $validation_debug = null;
+        if ($auth_token) {
+            try {
+                $sclib = getSCLibAuthClient();
+                $authResult = $sclib->validateAuthToken($auth_token);
+                $validation_debug = [
+                    'validation_attempted' => true,
+                    'validation_result' => $authResult
+                ];
+            } catch (Exception $e) {
+                $validation_debug = [
+                    'validation_attempted' => true,
+                    'validation_error' => $e->getMessage()
+                ];
+            }
+        }
+        
         $debug_info = [
             'has_auth_header' => !empty($auth_header),
             'auth_header_preview' => $auth_header ? substr($auth_header, 0, 30) . '...' : null,
+            'has_token' => !empty($auth_token),
+            'token_preview' => $auth_token ? substr($auth_token, 0, 30) . '...' : null,
             'has_session' => isset($_SESSION['user_email']),
             'is_authenticated' => isAuthenticated(),
             'server_keys' => array_keys(array_filter($_SERVER, function($k) { 
                 return stripos($k, 'AUTH') !== false || stripos($k, 'HTTP') !== false; 
             }, ARRAY_FILTER_USE_KEY)),
-            'all_headers' => function_exists('getallheaders') ? array_keys(getallheaders() ?: []) : 'not available'
+            'all_headers' => function_exists('getallheaders') ? array_keys(getallheaders() ?: []) : 'not available',
+            'validation' => $validation_debug
         ];
         error_log("Retry conversion auth failed: " . json_encode($debug_info));
         echo json_encode([
