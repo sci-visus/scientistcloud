@@ -111,31 +111,26 @@ try {
         }
     }
     
-    // If dataset has Google Drive link, set status to "submitted" instead of calling convert
+    // If dataset has Google Drive link, set status to "uploading" to trigger retry
+    // This follows the status-based architecture - no jobs collection needed
+    // The upload processor's _worker_loop now checks visstoredatas for datasets with 
+    // status "uploading" and source_type "google_drive" to support status-based processing
     if ($has_google_drive_link) {
-        // Use SCLib client to directly update dataset status in MongoDB
-        require_once(__DIR__ . '/../includes/sclib_client.php');
-        
         try {
-            $sclibClient = getSCLibClient();
-            
-            // Directly update the dataset status using the updateDataset method
-            // We'll use a workaround: call the update endpoint, but we need to update status directly
-            // Since the update endpoint doesn't support status, we'll use makeRequest to update via FastAPI
-            // Actually, let's use the dataset manager to update status directly in MongoDB
-            
             // Get MongoDB connection from config
             $mongo_url = MONGO_URL;
             $db_name = DB_NAME;
             
-            // Use MongoDB driver to directly update status
+            // Use MongoDB driver to directly update status in visstoredatas
             $mongo = new Manager($mongo_url);
             $bulk = new BulkWrite();
             
+            // Set status to "uploading" - following status-based architecture
+            // The upload processor will pick this up and process it
             $bulk->update(
                 ['uuid' => $dataset_uuid],
                 ['$set' => [
-                    'status' => 'submitted',
+                    'status' => 'uploading',
                     'updated_at' => new UTCDateTime()
                 ]],
                 ['multi' => false]
@@ -149,8 +144,8 @@ try {
                 http_response_code(200);
                 echo json_encode([
                     'success' => true,
-                    'message' => 'Google Drive upload retry triggered successfully. Status set to "submitted". The background service will process it shortly.',
-                    'status' => 'submitted',
+                    'message' => 'Google Drive upload retry triggered successfully. Status set to "uploading". The upload processor will process it shortly.',
+                    'status' => 'uploading',
                     'dataset_uuid' => $dataset_uuid
                 ]);
                 exit;
