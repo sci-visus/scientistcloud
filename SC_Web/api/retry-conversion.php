@@ -118,15 +118,26 @@ try {
         if ($auth_token) {
             try {
                 $sclib = getSCLibAuthClient();
+                // Get the base URL for debugging
+                $auth_url = getenv('SCLIB_AUTH_URL') ?: getenv('EXISTING_AUTH_URL');
+                if (!$auth_url) {
+                    if (file_exists('/.dockerenv') || getenv('DOCKER_CONTAINER')) {
+                        $auth_url = 'http://sclib_auth:8001';
+                    } else {
+                        $auth_url = 'http://localhost:8001';
+                    }
+                }
                 $authResult = $sclib->validateAuthToken($auth_token);
                 $validation_debug = [
                     'validation_attempted' => true,
+                    'auth_service_url' => $auth_url,
                     'validation_result' => $authResult
                 ];
             } catch (Exception $e) {
                 $validation_debug = [
                     'validation_attempted' => true,
-                    'validation_error' => $e->getMessage()
+                    'validation_error' => $e->getMessage(),
+                    'trace' => $e->getTraceAsString()
                 ];
             }
         }

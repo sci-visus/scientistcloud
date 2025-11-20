@@ -348,6 +348,10 @@ class SCLibClient {
             // Use GET method and pass token in Authorization header
             $url = $this->api_base_url . '/api/auth/validate';
             
+            // Debug logging
+            error_log("Validating token against URL: " . $url);
+            error_log("Auth service base URL: " . $this->api_base_url);
+            
             $ch = curl_init();
             curl_setopt($ch, CURLOPT_URL, $url);
             curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
@@ -371,7 +375,9 @@ class SCLibClient {
             if ($http_code >= 400) {
                 $error_msg = "API error ($http_code): " . ($response ?: 'Unknown error');
                 error_log("Token validation failed: $error_msg");
-                return ['success' => false, 'error' => $error_msg];
+                error_log("Request URL: $url");
+                error_log("Response: " . substr($response, 0, 500));
+                return ['success' => false, 'error' => $error_msg, 'url' => $url, 'http_code' => $http_code];
             }
             
             $decoded = json_decode($response, true);
