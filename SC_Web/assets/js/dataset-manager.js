@@ -2206,8 +2206,8 @@ class DatasetManager {
             return;
         }
 
-        // Confirm retry
-        if (!confirm(`Retry conversion for "${datasetName}"?\n\nThis will reset the status to "conversion queued" and the background service will process it again.`)) {
+        // Confirm retry (message will be updated based on dataset type)
+        if (!confirm(`Retry processing for "${datasetName}"?\n\nThis will reset the status and the background service will process it again.`)) {
             return;
         }
 
@@ -2243,8 +2243,11 @@ class DatasetManager {
             }
 
             if (data.success) {
-                // Show success message
-                alert(`Conversion retry triggered successfully!\n\nDataset "${datasetName}" has been queued for conversion. The background service will process it shortly.`);
+                // Show success message (different for Google Drive vs regular conversion)
+                const message = data.message || (data.status === 'submitted' 
+                    ? `Google Drive upload retry triggered successfully!\n\nDataset "${datasetName}" status set to "submitted". The background service will process the Google Drive upload shortly.`
+                    : `Conversion retry triggered successfully!\n\nDataset "${datasetName}" has been queued for conversion. The background service will process it shortly.`);
+                alert(message);
                 
                 // Reload datasets to show updated status
                 this.loadDatasets();
