@@ -440,6 +440,44 @@ class SCLibClient {
             return ['success' => false, 'error' => $e->getMessage()];
         }
     }
+    
+    /**
+     * Update a team
+     */
+    public function updateTeam($teamUuid, $userEmail, $teamName = null, $emails = null, $parents = null) {
+        try {
+            $data = [];
+            if ($teamName !== null) {
+                $data['team_name'] = $teamName;
+            }
+            if ($emails !== null) {
+                $data['emails'] = $emails;
+            }
+            if ($parents !== null) {
+                $data['parents'] = $parents;
+            }
+            // The API endpoint is PUT /api/v1/teams/{team_uuid} with user_email as query parameter
+            $response = $this->makeRequest("/api/v1/teams/$teamUuid", 'PUT', $data, ['user_email' => $userEmail]);
+            return $response;
+        } catch (Exception $e) {
+            error_log("Failed to update team: " . $e->getMessage());
+            return ['success' => false, 'error' => $e->getMessage()];
+        }
+    }
+    
+    /**
+     * Delete a team
+     */
+    public function deleteTeam($teamUuid, $userEmail) {
+        try {
+            // The API endpoint is DELETE /api/v1/teams/{team_uuid} with user_email as query parameter
+            $response = $this->makeRequest("/api/v1/teams/$teamUuid", 'DELETE', null, ['user_email' => $userEmail]);
+            return $response;
+        } catch (Exception $e) {
+            error_log("Failed to delete team: " . $e->getMessage());
+            return ['success' => false, 'error' => $e->getMessage()];
+        }
+    }
 }
 
 // Global SCLib client instance
