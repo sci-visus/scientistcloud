@@ -56,7 +56,12 @@ $preferredDashboard = getUserPreferredDashboard($user['id']);
   <!-- Left Sidebar -->
   <aside class="sidebar d-flex flex-column align-items-center" id="folderSidebar">
     <img src="assets/images/scientistcloud-logo.png" class="logo" alt="ScientistCloud Logo">
-    <h5>Datasets</h5>
+    <div class="d-flex align-items-center justify-content-between w-100 px-2 mb-2">
+      <h5 class="mb-0">Datasets</h5>
+      <button class="btn btn-sm btn-outline-secondary" id="refreshDatasetsBtn" title="Refresh Datasets">
+        <i class="fas fa-sync-alt"></i>
+      </button>
+    </div>
     <nav class="w-100 panel-content">
       <?php include 'includes/dataset_list.php'; ?>
     </nav>

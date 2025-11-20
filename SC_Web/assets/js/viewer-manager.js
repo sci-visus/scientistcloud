@@ -407,6 +407,9 @@ class ViewerManager {
         // Trim whitespace
         urlTemplate = urlTemplate.trim();
         
+        // Detect local development mode
+        const isLocal = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+        
         // If urlTemplate doesn't start with / or http, it's likely just an ID - construct proper path
         if (!urlTemplate.startsWith('/') && !urlTemplate.startsWith('http')) {
             console.warn('generateViewerUrl: urlTemplate appears to be just an ID, constructing path:', urlTemplate);
@@ -420,6 +423,44 @@ class ViewerManager {
             .replace(/{uuid}/g, encodeURIComponent(datasetUuid))
             .replace(/{server}/g, encodeURIComponent(datasetServer || 'false'))
             .replace(/{name}/g, encodeURIComponent(datasetName || ''));
+        
+        // For local development, convert /dashboard/ paths to direct port access
+        if (isLocal && url.startsWith('/dashboard/')) {
+            // Get the dashboard name from the URL path (e.g., /dashboard/OpenVisusSlice/?uuid=...)
+            const match = url.match(/\/dashboard\/([^/?]+)/);
+            const dashboardPathName = match?.[1];
+            
+            if (dashboardPathName && this.viewers) {
+                // Find the dashboard by matching:
+                // 1. Exact ID match (case-insensitive)
+                // 2. nginx_path contains the path name
+                // 3. Name contains the path name
+                const dashboard = Object.values(this.viewers).find(v => {
+                    const vId = (v.id || '').toLowerCase();
+                    const vNginxPath = (v.nginx_path || '').toLowerCase();
+                    const vName = (v.name || '').toLowerCase();
+                    const pathNameLower = dashboardPathName.toLowerCase();
+                    
+                    return vId === pathNameLower ||
+                           vNginxPath.includes(pathNameLower) ||
+                           vNginxPath.endsWith('/' + pathNameLower) ||
+                           vName.includes(pathNameLower);
+                });
+                
+                if (dashboard && dashboard.port) {
+                    // Extract the path after /dashboard/name
+                    // For OpenVisusSlice, the app expects /OpenVisusSlice/?uuid=...
+                    // So we need to construct: http://localhost:PORT/OpenVisusSlice/?uuid=...
+                    const pathAfterDashboard = url.replace(/^\/dashboard\/[^/?]+/, '');
+                    // Use the dashboard ID as the app path (e.g., /OpenVisusSlice/)
+                    const appPath = '/' + dashboard.id + (pathAfterDashboard || '/');
+                    url = `http://localhost:${dashboard.port}${appPath}`;
+                    console.log(`Local dev: Using direct port access for ${dashboard.id}: ${url}`);
+                } else {
+                    console.warn(`Local dev: Could not find dashboard for path "${dashboardPathName}". Available:`, Object.keys(this.viewers));
+                }
+            }
+        }
         
         return url;
     }

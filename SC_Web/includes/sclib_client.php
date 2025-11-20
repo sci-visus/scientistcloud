@@ -451,7 +451,17 @@ function getSCLibClient() {
         // Get API URL from configuration
         // Dataset management endpoints use SCLIB_API_URL (port 5001) or SCLIB_DATASET_URL
         // Auth endpoints use SCLIB_AUTH_URL (port 8001)
-        $api_url = getenv('SCLIB_DATASET_URL') ?: getenv('SCLIB_API_URL') ?: getenv('EXISTING_AUTH_URL') ?: 'http://localhost:5001';
+        $api_url = getenv('SCLIB_DATASET_URL') ?: getenv('SCLIB_API_URL') ?: getenv('EXISTING_API_URL');
+        
+        // If not set, detect Docker and use service name
+        if (!$api_url) {
+            if (file_exists('/.dockerenv') || getenv('DOCKER_CONTAINER')) {
+                $api_url = 'http://sclib_fastapi:5001';
+            } else {
+                $api_url = 'http://localhost:5001';
+            }
+        }
+        
         $sclib_client = new SCLibClient($api_url);
     }
     return $sclib_client;
@@ -469,7 +479,16 @@ function getSCLibSharingClient() {
         $sharing_url = getenv('SCLIB_SHARING_URL');
         if (!$sharing_url) {
             // Use the same URL as the main API (Sharing API is mounted there)
-            $sharing_url = getenv('SCLIB_DATASET_URL') ?: getenv('SCLIB_API_URL') ?: getenv('EXISTING_API_URL') ?: 'http://localhost:5001';
+            $sharing_url = getenv('SCLIB_DATASET_URL') ?: getenv('SCLIB_API_URL') ?: getenv('EXISTING_API_URL');
+            
+            // If not set, detect Docker and use service name
+            if (!$sharing_url) {
+                if (file_exists('/.dockerenv') || getenv('DOCKER_CONTAINER')) {
+                    $sharing_url = 'http://sclib_fastapi:5001';
+                } else {
+                    $sharing_url = 'http://localhost:5001';
+                }
+            }
         }
         $sharing_client = new SCLibClient($sharing_url);
     }
@@ -483,7 +502,17 @@ function getSCLibAuthClient() {
     static $auth_client = null;
     if ($auth_client === null) {
         // Auth endpoints use SCLIB_AUTH_URL (port 8001)
-        $auth_url = getenv('SCLIB_AUTH_URL') ?: getenv('EXISTING_AUTH_URL') ?: 'http://localhost:8001';
+        $auth_url = getenv('SCLIB_AUTH_URL') ?: getenv('EXISTING_AUTH_URL');
+        
+        // If not set, detect Docker and use service name
+        if (!$auth_url) {
+            if (file_exists('/.dockerenv') || getenv('DOCKER_CONTAINER')) {
+                $auth_url = 'http://sclib_auth:8001';
+            } else {
+                $auth_url = 'http://localhost:8001';
+            }
+        }
+        
         $auth_client = new SCLibClient($auth_url);
     }
     return $auth_client;

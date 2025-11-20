@@ -52,6 +52,30 @@ class DatasetManager {
      * Setup event listeners
      */
     setupEventListeners() {
+        // Refresh datasets button
+        const refreshBtn = document.getElementById('refreshDatasetsBtn');
+        if (refreshBtn) {
+            refreshBtn.addEventListener('click', async (e) => {
+                e.preventDefault();
+                const icon = refreshBtn.querySelector('i');
+                if (icon) {
+                    icon.classList.add('fa-spin');
+                }
+                refreshBtn.disabled = true;
+                try {
+                    await this.loadDatasets();
+                    console.log('✅ Datasets refreshed');
+                } catch (error) {
+                    console.error('Error refreshing datasets:', error);
+                } finally {
+                    if (icon) {
+                        icon.classList.remove('fa-spin');
+                    }
+                    refreshBtn.disabled = false;
+                }
+            });
+        }
+
         // Dataset selection
         document.addEventListener('click', (e) => {
             if (e.target.closest('.dataset-link')) {
