@@ -125,6 +125,14 @@ try {
 
     // Check HTTP status
     if ($httpCode >= 400) {
+        // Log the error for debugging
+        logMessage('ERROR', 'Upload status endpoint returned error', [
+            'job_id' => $jobId,
+            'http_code' => $httpCode,
+            'endpoint' => $statusEndpoint,
+            'response' => substr($response, 0, 500)
+        ]);
+        
         http_response_code($httpCode);
         // Try to parse error response
         $errorData = json_decode($response, true);
@@ -132,13 +140,15 @@ try {
             echo json_encode([
                 'success' => false,
                 'error' => $errorData['detail'] ?? $errorData['error'] ?? 'Status check failed',
-                'message' => $errorData['message'] ?? null
+                'message' => $errorData['message'] ?? null,
+                'http_code' => $httpCode
             ]);
         } else {
             echo json_encode([
                 'success' => false,
                 'error' => 'Status check failed',
-                'message' => $response ? substr($response, 0, 200) : 'No response from server'
+                'message' => $response ? substr($response, 0, 200) : 'No response from server',
+                'http_code' => $httpCode
             ]);
         }
         exit;
