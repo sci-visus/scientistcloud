@@ -142,6 +142,7 @@ body {
   overflow-x: hidden;
   width: 100%;
   padding: 0 0.5rem;
+  padding-bottom: 450px; /* Add padding to allow scrolling above active uploads widget (400px max-height + 20px bottom + 30px margin) */
   margin-top: 0.5rem;
 }
 

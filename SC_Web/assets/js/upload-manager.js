@@ -1696,7 +1696,9 @@ class UploadManager {
             
             if (jobId) {
                 console.log(`✅ Using job_id from response: ${jobId}`);
-                const fileName = folderLink ? 'Google Drive Folder' : (driveId || 'Google Drive File/Folder');
+                // Use dataset name instead of generic "Google Drive Folder"
+                // If dataset name is not available, fall back to generic name
+                const fileName = requestData.dataset_name || (folderLink ? 'Google Drive Folder' : (driveId || 'Google Drive File/Folder'));
                 this.trackUpload(jobId, requestData.dataset_name, fileName, requestData.convert);
                 
                 const uploadType = folderLink ? 'folder' : 'file/folder';
