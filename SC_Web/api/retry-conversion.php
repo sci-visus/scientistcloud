@@ -221,33 +221,34 @@ try {
     // status "uploading" and source_type "google_drive" to support status-based processing
     if ($has_google_drive_link) {
         try {
-            // Get MongoDB connection from config
-            $mongo_url = MONGO_URL;
-            $db_name = DB_NAME;
+            // Use SCLib API to update dataset status via PATCH endpoint
+            // The setting_value is passed as a query parameter, not in the body
+            $update_url = rtrim($fastapi_url, '/') . '/api/v1/datasets/' . urlencode($dataset_uuid) . '/settings/status';
+            $update_url .= '?user_email=' . urlencode($user_email) . '&setting_value=uploading';
             
-            // Check if MongoDB extension is available
-            if (!class_exists('MongoDB\Client')) {
-                throw new Exception('MongoDB PHP extension not available');
-            }
+            $ch_update = curl_init($update_url);
+            curl_setopt_array($ch_update, [
+                CURLOPT_RETURNTRANSFER => true,
+                CURLOPT_CUSTOMREQUEST => 'PATCH',
+                CURLOPT_HTTPHEADER => [
+                    'Content-Type: application/json',
+                ],
+                CURLOPT_TIMEOUT => 30,
+                CURLOPT_CONNECTTIMEOUT => 10
+            ]);
             
-            // Use MongoDB\Client (higher-level API, more compatible)
-            $mongo_client = new MongoDB\Client($mongo_url);
-            $db = $mongo_client->selectDatabase($db_name);
-            $collection = $db->selectCollection('visstoredatas');
-            
-            // Set status to "uploading" - following status-based architecture
-            // The upload processor will pick this up and process it
-            $result = $collection->updateOne(
-                ['uuid' => $dataset_uuid],
-                ['$set' => [
-                    'status' => 'uploading',
-                    'updated_at' => new MongoDB\BSON\UTCDateTime()
-                ]]
-            );
+            $update_response = curl_exec($ch_update);
+            $update_http_code = curl_getinfo($ch_update, CURLINFO_HTTP_CODE);
+            $update_error = curl_error($ch_update);
+            curl_close($ch_update);
             
             ob_end_clean();
             
-            if ($result->getModifiedCount() > 0 || $result->getMatchedCount() > 0) {
+            if ($update_error) {
+                throw new Exception('Failed to connect to API: ' . $update_error);
+            }
+            
+            if ($update_http_code >= 200 && $update_http_code < 300) {
                 http_response_code(200);
                 echo json_encode([
                     'success' => true,
@@ -257,11 +258,13 @@ try {
                 ]);
                 exit;
             } else {
-                http_response_code(404);
+                $error_data = json_decode($update_response, true);
+                http_response_code($update_http_code);
                 echo json_encode([
                     'success' => false,
-                    'error' => 'Dataset not found or status not updated',
-                    'dataset_uuid' => $dataset_uuid
+                    'error' => 'Failed to update dataset status',
+                    'message' => $error_data['detail'] ?? $update_response ?? 'Unknown error',
+                    'http_code' => $update_http_code
                 ]);
                 exit;
             }
