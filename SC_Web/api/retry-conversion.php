@@ -45,22 +45,44 @@ try {
     $auth_token = null;
     
     // First try Bearer token from Authorization header
-    // getallheaders() may not be available in all PHP configurations
+    // Apache may strip Authorization header, so check multiple sources
     $auth_header = null;
+    
+    // Method 1: getallheaders() (works in most Apache configurations)
     if (function_exists('getallheaders')) {
         $headers = getallheaders();
-        $auth_header = $headers['Authorization'] ?? $headers['authorization'] ?? null;
+        if ($headers) {
+            $auth_header = $headers['Authorization'] ?? $headers['authorization'] ?? null;
+        }
     }
-    // Fallback to $_SERVER
+    
+    // Method 2: $_SERVER['HTTP_AUTHORIZATION'] (works if Apache passes it through)
     if (!$auth_header) {
-        $auth_header = $_SERVER['HTTP_AUTHORIZATION'] ?? $_SERVER['REDIRECT_HTTP_AUTHORIZATION'] ?? null;
+        $auth_header = $_SERVER['HTTP_AUTHORIZATION'] ?? null;
+    }
+    
+    // Method 3: $_SERVER['REDIRECT_HTTP_AUTHORIZATION'] (works with mod_rewrite)
+    if (!$auth_header) {
+        $auth_header = $_SERVER['REDIRECT_HTTP_AUTHORIZATION'] ?? null;
+    }
+    
+    // Method 4: Check if Apache set it as an environment variable
+    if (!$auth_header && isset($_SERVER['HTTP_AUTH'])) {
+        $auth_header = $_SERVER['HTTP_AUTH'];
+    }
+    
+    // Method 5: Try to get from apache_request_headers() if available
+    if (!$auth_header && function_exists('apache_request_headers')) {
+        $apache_headers = apache_request_headers();
+        if ($apache_headers) {
+            $auth_header = $apache_headers['Authorization'] ?? $apache_headers['authorization'] ?? null;
+        }
     }
     
     if ($auth_header && preg_match('/Bearer\s+(.*)$/i', $auth_header, $matches)) {
         $auth_token = $matches[1];
         try {
             // Validate token and get user email
-            require_once(__DIR__ . '/../includes/sclib_client.php');
             $sclib = getSCLibAuthClient();
             $authResult = $sclib->validateAuthToken($auth_token);
             if ($authResult && isset($authResult['success']) && $authResult['success'] && 
@@ -82,21 +104,23 @@ try {
     if (!$user_email) {
         ob_end_clean();
         http_response_code(401);
-        // Only include debug info in development
-        $debug_info = [];
-        if (getenv('PHP_DISPLAY_ERRORS') === '1' || defined('DEBUG_MODE')) {
-            $debug_info = [
-                'has_auth_header' => !empty($auth_header),
-                'auth_header_preview' => $auth_header ? substr($auth_header, 0, 20) . '...' : null,
-                'has_session' => isset($_SESSION['user_email']),
-                'is_authenticated' => isAuthenticated(),
-                'server_auth' => $_SERVER['HTTP_AUTHORIZATION'] ?? 'not set'
-            ];
-        }
-        echo json_encode(array_merge([
+        // Include debug info to help diagnose the issue
+        $debug_info = [
+            'has_auth_header' => !empty($auth_header),
+            'auth_header_preview' => $auth_header ? substr($auth_header, 0, 30) . '...' : null,
+            'has_session' => isset($_SESSION['user_email']),
+            'is_authenticated' => isAuthenticated(),
+            'server_keys' => array_keys(array_filter($_SERVER, function($k) { 
+                return stripos($k, 'AUTH') !== false || stripos($k, 'HTTP') !== false; 
+            }, ARRAY_FILTER_USE_KEY)),
+            'all_headers' => function_exists('getallheaders') ? array_keys(getallheaders() ?: []) : 'not available'
+        ];
+        error_log("Retry conversion auth failed: " . json_encode($debug_info));
+        echo json_encode([
             'success' => false, 
-            'error' => 'Authentication required'
-        ], $debug_info ? ['debug' => $debug_info] : []));
+            'error' => 'Authentication required',
+            'debug' => $debug_info
+        ]);
         exit;
     }
 
