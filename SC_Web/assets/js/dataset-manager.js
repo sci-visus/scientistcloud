@@ -31,6 +31,11 @@ class DatasetManager {
             console.log(`Using PHP-rendered dataset list (${existingFolders} folders, ${existingDatasets} datasets)`);
             // Don't load/replace PHP content - just attach event listeners
             this.attachEventListenersToExisting();
+            // Auto-refresh datasets on page load to ensure team/shared datasets are up-to-date
+            // Use a small delay to avoid race conditions with other initialization
+            setTimeout(() => {
+                this.loadDatasets();
+            }, 500);
         } else {
             // No PHP content found, load datasets via JavaScript
             console.log('No PHP-rendered content found, loading datasets via JavaScript');
