@@ -136,7 +136,8 @@ class UploadManager {
         const createTeamBtn = document.getElementById('createTeamBtn');
         if (createTeamBtn) {
             createTeamBtn.addEventListener('click', () => {
-                this.showCreateTeamInterface();
+                // Navigate to the createTeam page
+                window.location.href = 'createTeam/index.php';
             });
         }
     }
