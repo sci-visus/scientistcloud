@@ -44,16 +44,27 @@ try {
     $auth_token = null;
     
     // First try Bearer token from Authorization header
-    $headers = getallheaders();
-    $auth_header = $headers['Authorization'] ?? $headers['authorization'] ?? $_SERVER['HTTP_AUTHORIZATION'] ?? null;
+    // getallheaders() may not be available in all PHP configurations
+    $auth_header = null;
+    if (function_exists('getallheaders')) {
+        $headers = getallheaders();
+        $auth_header = $headers['Authorization'] ?? $headers['authorization'] ?? null;
+    }
+    // Fallback to $_SERVER
+    if (!$auth_header) {
+        $auth_header = $_SERVER['HTTP_AUTHORIZATION'] ?? $_SERVER['REDIRECT_HTTP_AUTHORIZATION'] ?? null;
+    }
     
     if ($auth_header && preg_match('/Bearer\s+(.*)$/i', $auth_header, $matches)) {
         $auth_token = $matches[1];
         try {
             // Validate token and get user email
+            require_once(__DIR__ . '/../includes/sclib_client.php');
             $sclib = getSCLibAuthClient();
             $authResult = $sclib->validateAuthToken($auth_token);
-            if ($authResult['success'] && $authResult['valid'] && isset($authResult['email'])) {
+            if ($authResult && isset($authResult['success']) && $authResult['success'] && 
+                isset($authResult['valid']) && $authResult['valid'] && 
+                isset($authResult['email'])) {
                 $user_email = $authResult['email'];
             }
         } catch (Exception $e) {
@@ -70,7 +81,15 @@ try {
     if (!$user_email) {
         ob_end_clean();
         http_response_code(401);
-        echo json_encode(['success' => false, 'error' => 'Authentication required']);
+        echo json_encode([
+            'success' => false, 
+            'error' => 'Authentication required',
+            'debug' => [
+                'has_auth_header' => !empty($auth_header),
+                'has_session' => isset($_SESSION['user_email']),
+                'is_authenticated' => isAuthenticated()
+            ]
+        ]);
         exit;
     }
 
