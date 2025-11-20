@@ -39,8 +39,35 @@ require_once(__DIR__ . '/../includes/auth.php');
 // Use MongoDB\Client instead of MongoDB\Driver\Manager for better compatibility
 
 try {
-    // Check authentication
-    if (!isAuthenticated()) {
+    // Check authentication - support both session and Bearer token
+    $user_email = null;
+    $auth_token = null;
+    
+    // First try Bearer token from Authorization header
+    $headers = getallheaders();
+    $auth_header = $headers['Authorization'] ?? $headers['authorization'] ?? $_SERVER['HTTP_AUTHORIZATION'] ?? null;
+    
+    if ($auth_header && preg_match('/Bearer\s+(.*)$/i', $auth_header, $matches)) {
+        $auth_token = $matches[1];
+        try {
+            // Validate token and get user email
+            $sclib = getSCLibAuthClient();
+            $authResult = $sclib->validateAuthToken($auth_token);
+            if ($authResult['success'] && $authResult['valid'] && isset($authResult['email'])) {
+                $user_email = $authResult['email'];
+            }
+        } catch (Exception $e) {
+            error_log("Token validation failed: " . $e->getMessage());
+        }
+    }
+    
+    // Fallback to session authentication
+    if (!$user_email && isAuthenticated()) {
+        $user = getCurrentUser();
+        $user_email = $_SESSION['user_email'] ?? ($user ? $user['email'] : null);
+    }
+    
+    if (!$user_email) {
         ob_end_clean();
         http_response_code(401);
         echo json_encode(['success' => false, 'error' => 'Authentication required']);
@@ -55,17 +82,6 @@ try {
         ob_end_clean();
         http_response_code(400);
         echo json_encode(['success' => false, 'error' => 'dataset_uuid is required']);
-        exit;
-    }
-
-    // Get user email from session or current user
-    $user = getCurrentUser();
-    $user_email = $_SESSION['user_email'] ?? ($user ? $user['email'] : null);
-
-    if (!$user_email) {
-        ob_end_clean();
-        http_response_code(401);
-        echo json_encode(['success' => false, 'error' => 'User email not found in session']);
         exit;
     }
 
