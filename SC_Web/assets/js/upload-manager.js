@@ -1680,18 +1680,25 @@ class UploadManager {
             }
 
             const data = await response.json();
+            
+            console.log('Upload initiate response:', data);
 
             submitBtn.disabled = false;
             submitBtn.innerHTML = originalText;
 
-            if (data.job_id) {
+            // Check for job_id in various possible locations
+            const jobId = data.job_id || data.jobId || data.id;
+            
+            if (jobId) {
+                console.log(`✅ Using job_id from response: ${jobId}`);
                 const fileName = folderLink ? 'Google Drive Folder' : (driveId || 'Google Drive File/Folder');
-                this.trackUpload(data.job_id, requestData.dataset_name, fileName, requestData.convert);
+                this.trackUpload(jobId, requestData.dataset_name, fileName, requestData.convert);
                 
                 const uploadType = folderLink ? 'folder' : 'file/folder';
-                alert(`Google Drive ${uploadType} upload started! Job ID: ${data.job_id}\nYou can continue using the app. Check the progress widget.`);
+                alert(`Google Drive ${uploadType} upload started! Job ID: ${jobId}\nYou can continue using the app. Check the progress widget.`);
                 this.closeUploadInterface();
             } else {
+                console.error('❌ No job_id in response:', data);
                 throw new Error(data.error || data.detail || 'Upload failed - no job_id returned');
             }
         } catch (error) {
@@ -1997,6 +2004,14 @@ class UploadManager {
                 // Use PHP proxy for status polling
                 const response = await fetch(`${getApiBasePath()}/upload-status.php?job_id=${encodeURIComponent(jobId)}`);
                 if (!response.ok) {
+                    // If 404, the job might not exist yet or job_id is wrong
+                    if (response.status === 404) {
+                        console.warn(`⚠️ Job ${jobId} not found (404). It may not have been created yet or job_id is incorrect.`);
+                        // Continue polling - job might be created shortly
+                        attempts++;
+                        setTimeout(poll, 1000);
+                        return;
+                    }
                     throw new Error(`HTTP ${response.status}: ${response.statusText}`);
                 }
                 const data = await response.json();

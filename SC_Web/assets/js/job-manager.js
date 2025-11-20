@@ -99,11 +99,6 @@ class JobManager {
     renderJobsInterface(jobs) {
         const viewerContainer = document.getElementById('viewerContainer');
         
-        // Set up event listeners for log expansion after rendering
-        setTimeout(() => {
-            this.setupLogViewers();
-        }, 100);
-        
         // Group jobs by status (include converting status)
         const jobsByStatus = {
             'processing': jobs.filter(j => j.status === 'processing' || j.status === 'queued' || j.status === 'converting' || j.status === 'conversion queued'),
@@ -184,6 +179,11 @@ class JobManager {
         `;
 
         viewerContainer.innerHTML = html;
+
+        // Set up event listeners for log expansion after rendering
+        setTimeout(() => {
+            this.setupLogViewers();
+        }, 100);
 
         // Start auto-refresh for processing jobs
         if (jobsByStatus.processing.length > 0) {
