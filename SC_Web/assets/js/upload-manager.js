@@ -2826,18 +2826,30 @@ class UploadManager {
             
             const html = await response.text();
             
-            // Extract body content (skip the full HTML document structure)
+            // Extract body content and styles from the HTML
             const parser = new DOMParser();
             const doc = parser.parseFromString(html, 'text/html');
             const bodyContent = doc.body.innerHTML;
+            
+            // Extract styles from head
+            const styles = doc.head.querySelectorAll('style, link[rel="stylesheet"]');
+            let stylesHTML = '';
+            styles.forEach(style => {
+                if (style.tagName === 'STYLE') {
+                    stylesHTML += `<style>${style.innerHTML}</style>`;
+                } else if (style.tagName === 'LINK') {
+                    stylesHTML += style.outerHTML;
+                }
+            });
             
             // Apply current theme class
             const currentTheme = localStorage.getItem('theme') || 'dark';
             const themeClass = currentTheme === 'light' ? 'light-theme' : '';
             
-            // Load content into viewer container
+            // Load content into viewer container with styles
             viewerContainer.innerHTML = `
-                <div class="create-team-page-wrapper ${themeClass}" style="height: 100%; overflow-y: auto;">
+                ${stylesHTML}
+                <div class="create-team-page-wrapper ${themeClass}" style="height: 100%; overflow-y: auto; padding: 20px;">
                     ${bodyContent}
                 </div>
             `;
