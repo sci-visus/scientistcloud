@@ -36,9 +36,7 @@ require_once(__DIR__ . '/../config.php');
 require_once(__DIR__ . '/../includes/auth.php');
 
 // MongoDB classes for direct status update
-use MongoDB\Driver\Manager;
-use MongoDB\Driver\BulkWrite;
-use MongoDB\BSON\UTCDateTime;
+// Use MongoDB\Client instead of MongoDB\Driver\Manager for better compatibility
 
 try {
     // Check authentication
@@ -121,22 +119,25 @@ try {
             $mongo_url = MONGO_URL;
             $db_name = DB_NAME;
             
-            // Use MongoDB driver to directly update status in visstoredatas
-            $mongo = new Manager($mongo_url);
-            $bulk = new BulkWrite();
+            // Check if MongoDB extension is available
+            if (!class_exists('MongoDB\Client')) {
+                throw new Exception('MongoDB PHP extension not available');
+            }
+            
+            // Use MongoDB\Client (higher-level API, more compatible)
+            $mongo_client = new MongoDB\Client($mongo_url);
+            $db = $mongo_client->selectDatabase($db_name);
+            $collection = $db->selectCollection('visstoredatas');
             
             // Set status to "uploading" - following status-based architecture
             // The upload processor will pick this up and process it
-            $bulk->update(
+            $result = $collection->updateOne(
                 ['uuid' => $dataset_uuid],
                 ['$set' => [
                     'status' => 'uploading',
-                    'updated_at' => new UTCDateTime()
-                ]],
-                ['multi' => false]
+                    'updated_at' => new MongoDB\BSON\UTCDateTime()
+                ]]
             );
-            
-            $result = $mongo->executeBulkWrite($db_name . '.visstoredatas', $bulk);
             
             ob_end_clean();
             
