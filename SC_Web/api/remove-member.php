@@ -95,7 +95,7 @@ try {
             throw new Exception('Failed to initialize sharing client');
         }
         
-        $currentTeam = $sharingClient->makeRequest("/api/v1/teams/$teamUuid", 'GET', null, ['user_email' => $user['email']]);
+        $currentTeam = $sharingClient->getTeam($teamUuid, $user['email']);
         if (!isset($currentTeam['team'])) {
             ob_end_clean();
             http_response_code(404);

@@ -420,6 +420,19 @@ class SCLibClient {
     }
     
     /**
+     * Get a team by UUID
+     */
+    public function getTeam($teamUuid, $userEmail) {
+        try {
+            $response = $this->makeRequest("/api/v1/teams/$teamUuid", 'GET', null, ['user_email' => $userEmail]);
+            return $response;
+        } catch (Exception $e) {
+            error_log("Failed to get team: " . $e->getMessage());
+            return ['success' => false, 'error' => $e->getMessage()];
+        }
+    }
+    
+    /**
      * Create a new team
      */
     public function createTeam($teamName, $ownerEmail, $emails = [], $parents = []) {

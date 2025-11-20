@@ -1,7 +1,7 @@
 <?php
 /**
- * Update Team API Endpoint
- * Updates a team using the SCLib Sharing and Team API
+ * Delete Team API Endpoint
+ * Deletes a team using the SCLib Sharing and Team API
  */
 
 if (ob_get_level() > 0) {
@@ -70,9 +70,6 @@ try {
     }
     
     $teamUuid = $input['team_uuid'] ?? $input['teamId'] ?? null;
-    $teamName = $input['team_name'] ?? $input['newName'] ?? null;
-    $newMemberEmail = $input['new_member_email'] ?? $input['newMemberEmail'] ?? null;
-    $emails = $input['emails'] ?? null;
     
     if (!$teamUuid) {
         ob_end_clean();
@@ -82,65 +79,17 @@ try {
         exit;
     }
 
-    // Get current team to add member to existing emails
-    $sharingClient = getSCLibSharingClient();
-    if (!$sharingClient) {
-        throw new Exception('Failed to initialize sharing client');
-    }
-    
-    // Get current team data if we need to add a member
-    $currentEmails = [];
-    if ($emails === null && $newMemberEmail !== null) {
-        // We need to get current team to preserve existing emails
-        try {
-            $currentTeam = $sharingClient->getTeam($teamUuid, $user['email']);
-            if (isset($currentTeam['team'])) {
-                $currentEmails = $currentTeam['team']['emails'] ?? [];
-            }
-        } catch (Exception $e) {
-            // If we can't get current team, we'll proceed without it
-            // The backend will handle the update
-            error_log("Could not get current team: " . $e->getMessage());
-        }
-    }
-    
-    // Prepare update data
-    $updateData = [];
-    
-    if ($teamName !== null && trim($teamName) !== '') {
-        $updateData['team_name'] = trim($teamName);
-    }
-    
-    // Handle emails update
-    if ($emails !== null) {
-        // If emails array is provided, use it directly
-        $updateData['emails'] = $emails;
-    } elseif ($newMemberEmail !== null && trim($newMemberEmail) !== '') {
-        // If new member email is provided, add it to existing emails
-        $newEmail = trim($newMemberEmail);
-        if (!in_array($newEmail, $currentEmails)) {
-            $currentEmails[] = $newEmail;
-        }
-        $updateData['emails'] = $currentEmails;
-    }
-    
-    if (empty($updateData)) {
-        ob_end_clean();
-        http_response_code(400);
-        echo json_encode(['success' => false, 'error' => 'No fields to update']);
-        exit;
-    }
-
-    // Update team using SCLib Sharing and Team API
+    // Delete team using SCLib Sharing and Team API
     try {
-        $result = $sharingClient->updateTeam($teamUuid, $user['email'], 
-            $updateData['team_name'] ?? null,
-            $updateData['emails'] ?? null,
-            null
-        );
+        $sharingClient = getSCLibSharingClient();
+        if (!$sharingClient) {
+            throw new Exception('Failed to initialize sharing client');
+        }
+        
+        $result = $sharingClient->deleteTeam($teamUuid, $user['email']);
         
         // Log the result for debugging
-        logMessage('DEBUG', 'Team update API response', [
+        logMessage('DEBUG', 'Team delete API response', [
             'team_uuid' => $teamUuid,
             'user_email' => $user['email'],
             'result' => $result
@@ -148,7 +97,7 @@ try {
         
         // Check if the API call was successful
         if (isset($result['success']) && $result['success'] === true) {
-            logMessage('INFO', 'Team updated successfully', [
+            logMessage('INFO', 'Team deleted successfully', [
                 'team_uuid' => $teamUuid,
                 'user_email' => $user['email']
             ]);
@@ -156,14 +105,13 @@ try {
             ob_end_clean();
             echo json_encode([
                 'success' => true,
-                'message' => $result['message'] ?? 'Team updated successfully',
-                'team' => $result['team'] ?? null
+                'message' => $result['message'] ?? 'Team deleted successfully'
             ]);
             exit;
         } else {
             // API returned an error
-            $errorMessage = $result['error'] ?? $result['detail'] ?? $result['message'] ?? 'Failed to update team';
-            logMessage('ERROR', 'Team update failed', [
+            $errorMessage = $result['error'] ?? $result['detail'] ?? $result['message'] ?? 'Failed to delete team';
+            logMessage('ERROR', 'Team delete failed', [
                 'team_uuid' => $teamUuid,
                 'user_email' => $user['email'],
                 'error' => $errorMessage,
@@ -180,7 +128,7 @@ try {
         }
     } catch (Exception $apiException) {
         // Exception from API client (connection error, etc.)
-        logMessage('ERROR', 'Team update API call failed', [
+        logMessage('ERROR', 'Team delete API call failed', [
             'team_uuid' => $teamUuid,
             'user_email' => $user['email'],
             'error' => $apiException->getMessage()
@@ -197,25 +145,13 @@ try {
 
 } catch (Exception $e) {
     ob_end_clean();
-    logMessage('ERROR', 'Failed to update team', ['error' => $e->getMessage(), 'trace' => $e->getTraceAsString()]);
+    logMessage('ERROR', 'Failed to delete team', ['error' => $e->getMessage(), 'trace' => $e->getTraceAsString()]);
     
     http_response_code(500);
     header('Content-Type: application/json');
     echo json_encode([
         'success' => false,
         'error' => 'Internal server error',
-        'message' => $e->getMessage()
-    ]);
-    exit;
-} catch (Error $e) {
-    ob_end_clean();
-    logMessage('ERROR', 'Fatal error updating team', ['error' => $e->getMessage(), 'trace' => $e->getTraceAsString()]);
-    
-    http_response_code(500);
-    header('Content-Type: application/json');
-    echo json_encode([
-        'success' => false,
-        'error' => 'Fatal error',
         'message' => $e->getMessage()
     ]);
     exit;
