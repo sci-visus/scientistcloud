@@ -341,12 +341,61 @@ class SCLibClient {
     
     /**
      * Validate authentication token
+     * The auth API expects GET /api/auth/validate with token in Authorization header
      */
     public function validateAuthToken($token) {
         try {
-            $data = ['token' => $token];
-            $response = $this->makeRequest('/api/auth/validate', 'POST', $data);
-            return $response;
+            // Use GET method and pass token in Authorization header
+            $url = $this->api_base_url . '/api/auth/validate';
+            
+            $ch = curl_init();
+            curl_setopt($ch, CURLOPT_URL, $url);
+            curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+            curl_setopt($ch, CURLOPT_TIMEOUT, $this->timeout);
+            curl_setopt($ch, CURLOPT_HTTPHEADER, [
+                'Content-Type: application/json',
+                'Accept: application/json',
+                'Authorization: Bearer ' . $token
+            ]);
+            curl_setopt($ch, CURLOPT_CUSTOMREQUEST, 'GET');
+            
+            $response = curl_exec($ch);
+            $http_code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+            $curl_error = curl_error($ch);
+            curl_close($ch);
+            
+            if ($curl_error) {
+                throw new Exception("CURL error: " . $curl_error);
+            }
+            
+            if ($http_code >= 400) {
+                $error_msg = "API error ($http_code): " . ($response ?: 'Unknown error');
+                error_log("Token validation failed: $error_msg");
+                return ['success' => false, 'error' => $error_msg];
+            }
+            
+            $decoded = json_decode($response, true);
+            if ($decoded === null && json_last_error() !== JSON_ERROR_NONE) {
+                throw new Exception("Invalid JSON response: " . json_last_error_msg());
+            }
+            
+            // The auth API returns {valid: true, payload: {...}} on success
+            // Convert to our expected format
+            if (isset($decoded['valid']) && $decoded['valid'] && isset($decoded['payload'])) {
+                $payload = $decoded['payload'];
+                return [
+                    'success' => true,
+                    'valid' => true,
+                    'email' => $payload['email'] ?? null,
+                    'payload' => $payload
+                ];
+            } else {
+                return [
+                    'success' => false,
+                    'valid' => false,
+                    'error' => 'Token validation failed'
+                ];
+            }
         } catch (Exception $e) {
             error_log("Failed to validate auth token: " . $e->getMessage());
             return ['success' => false, 'error' => $e->getMessage()];
