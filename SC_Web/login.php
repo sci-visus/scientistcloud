@@ -51,7 +51,7 @@ if (!isset($_GET['code'])) {
             [
                 'prompt' => 'consent',
                 'access_type' => 'offline',
-                'scope' => 'openid profile email offline_access https://www.googleapis.com/auth/drive'
+                'scope' => 'openid profile email offline_access https://www.googleapis.com/auth/drive.readonly https://www.googleapis.com/auth/gmail.send'
             ]
         );
         
