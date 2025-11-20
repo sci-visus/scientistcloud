@@ -132,12 +132,21 @@ class UploadManager {
             });
         }
 
-        // Create Team button
+        // Create Team button - navigate to full team management page
         const createTeamBtn = document.getElementById('createTeamBtn');
         if (createTeamBtn) {
-            createTeamBtn.addEventListener('click', () => {
-                // Navigate to the createTeam page
-                window.location.href = 'createTeam/index.php';
+            // Remove any existing listeners first
+            const newBtn = createTeamBtn.cloneNode(true);
+            createTeamBtn.parentNode.replaceChild(newBtn, createTeamBtn);
+            
+            newBtn.addEventListener('click', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                // Navigate to the createTeam page (with team listing and editing)
+                const isLocal = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+                const basePath = isLocal ? '' : '/portal';
+                console.log('Navigating to createTeam page:', `${basePath}/createTeam/index.php`);
+                window.location.href = `${basePath}/createTeam/index.php`;
             });
         }
     }
