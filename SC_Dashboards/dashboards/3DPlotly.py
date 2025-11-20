@@ -338,10 +338,28 @@ def initialize_dataset(n_intervals,search):
     else:
         print(f"Server is not true, UUID remains: {uuid}")
     dataset_url=uuid
+    error_message = None
+    dataset_status = None
+    
+    # Check dataset status in MongoDB
+    try:
+        doc = collection.find_one({'uuid': uuid})
+        if doc:
+            dataset_status = doc.get('status', 'unknown')
+            if dataset_status in ['failed', 'error']:
+                error_message = doc.get('error_message', 'Dataset processing failed')
+    except Exception as e:
+        print(f"Error checking dataset status: {e}")
+    
     if server=='true' or server=='%20true' or server==' true':
         print('loading server data...')
-        db = ov.LoadDataset(dataset_url)
-        timesteps = db.getTimesteps()
+        try:
+            db = ov.LoadDataset(dataset_url)
+            timesteps = db.getTimesteps()
+        except Exception as e:
+            print(f"Error loading dataset from server: {e}")
+            error_message = f"Failed to load dataset: {str(e)}"
+            timesteps = None
     if server=='false' or server=="%20false" or server ==' false':
         print('server false, dataset loading locally...')
         # Use host.docker.internal for Docker containers to access host localhost
@@ -350,20 +368,80 @@ def initialize_dataset(n_intervals,search):
         else:
             dataset_path = f"{deploy_server}/mod_visus?dataset={uuid}"
         dataset_url=dataset_path
-        if os.path.exists(dataset_path):
-            print(f"Path exists: {dataset_path}")
+        
+        # Try to find the visus.idx file
+        possible_paths = [
+            dataset_path,
+            f"/mnt/visus_datasets/converted/{uuid}/visus.idx",
+            f"/mnt/visus_datasets/upload/{uuid}/visus.idx"
+        ]
+        
+        found_path = None
+        for path in possible_paths:
+            if os.path.exists(path):
+                found_path = path
+                print(f"Found dataset at: {path}")
+                break
+        
+        if found_path:
+            dataset_url = found_path
+            dataset_path = found_path
         else:
-            dataset_url = find_visus_idx_file(uuid);
-            # print(f"Path does not exist: {dataset_path}")
-            # dataset_url=f"/mnt/visus_datasets/converted/{uuid}/visus.idx"
-            # if (not os.path.exists(dataset_url)):
-            #     dataset_url = f"/mnt/visus_datasets/upload/{uuid}/visus.idx"
-            daataset_path = dataset_url
-        db = ov.LoadDataset(dataset_path)
-        timesteps = db.getTimesteps()
-        print(timesteps)
+            # Try to find using find_visus_idx_file if it exists
+            try:
+                from dashboard_utils import find_visus_idx_file
+                dataset_url = find_visus_idx_file(uuid)
+                dataset_path = dataset_url
+            except ImportError:
+                # If function doesn't exist, use the converted path as fallback
+                dataset_url = f"/mnt/visus_datasets/converted/{uuid}/visus.idx"
+                dataset_path = dataset_url
+        
+        try:
+            # Check if file exists before trying to load
+            if not os.path.exists(dataset_path) and not dataset_path.startswith('http'):
+                raise FileNotFoundError(f"Dataset file not found: {dataset_path}")
+            
+            db = ov.LoadDataset(dataset_path)
+            timesteps = db.getTimesteps()
+            print(timesteps)
+        except FileNotFoundError as e:
+            print(f"Dataset file not found: {e}")
+            error_message = f"Dataset file not found. The dataset may not have been converted yet or the upload may have failed."
+            timesteps = None
+        except Exception as e:
+            print(f"Error loading dataset: {e}")
+            error_message = f"Failed to load dataset: {str(e)}"
+            if 'empty content' in str(e).lower():
+                error_message = "Dataset file is empty or corrupted. The dataset may have failed to upload or convert properly."
+            timesteps = None
     if dataset_url and timesteps:
         return serve_layout()
+    elif error_message:
+        # Show error message if dataset failed to load
+        return html.Div(
+            style={'textAlign': 'center', 'margin': '24px', 'padding': '20px'}, 
+            children=[
+                html.H3('⚠️ Dataset Not Available', style={'color': '#dc3545', 'marginBottom': '15px'}),
+                html.Div(error_message, style={'color': '#666', 'marginBottom': '15px'}),
+                html.Div([
+                    html.P('Possible reasons:', style={'fontWeight': 'bold', 'marginTop': '15px'}),
+                    html.Ul([
+                        html.Li('The dataset upload may have failed'),
+                        html.Li('The dataset conversion may not have completed'),
+                        html.Li('The dataset file may be missing or corrupted'),
+                        html.Li(f'Dataset status: {dataset_status}' if dataset_status else '')
+                    ], style={'textAlign': 'left', 'display': 'inline-block'})
+                ]),
+                html.Div([
+                    html.A('Go Back', href=deploy_server if deploy_server else '/',
+                           style={'marginTop': '20px', 'padding': '10px 20px', 
+                                 'backgroundColor': '#007bff', 'color': 'white', 
+                                 'border': 'none', 'borderRadius': '5px', 'cursor': 'pointer',
+                                 'textDecoration': 'none', 'display': 'inline-block'})
+                ])
+            ]
+        )
     else:
         return html.Div(
             style={'textAlign': 'center', 'margin': '24px'}, 

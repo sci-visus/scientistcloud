@@ -123,6 +123,19 @@ function setupEventListeners() {
     // Initialize resize handles
     initializeResizeHandles();
     
+    // Logout button
+    const logoutBtn = document.getElementById('logoutBtn');
+    if (logoutBtn) {
+        logoutBtn.addEventListener('click', function() {
+            // Determine logout path based on current URL path
+            // If we're at /portal/index.php, use /portal/logout.php
+            // Otherwise use /logout.php
+            const currentPath = window.location.pathname;
+            const logoutPath = currentPath.includes('/portal/') ? '/portal/logout.php' : '/logout.php';
+            window.location.href = logoutPath;
+        });
+    }
+    
     // Dataset selection
     document.addEventListener('click', function(e) {
         if (e.target.closest('.dataset-link')) {

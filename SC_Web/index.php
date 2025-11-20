@@ -95,6 +95,16 @@ $preferredDashboard = getUserPreferredDashboard($user['id']);
             <i class="fas fa-cog"></i> Settings
           </button>
         </div>
+        <div class="btn-group ms-auto" role="group" aria-label="User actions">
+          <button type="button" class="btn btn-outline-light" id="logoutBtn" title="Logout">
+            <i class="fas fa-sign-out-alt"></i> Logout
+          </button>
+        </div>
+        <div class="btn-group ms-auto" role="group" aria-label="User actions">
+          <button type="button" class="btn btn-outline-light" id="logoutBtn" title="Logout">
+            <i class="fas fa-sign-out-alt"></i> Logout
+          </button>
+        </div>
       </div>
     </div>
     <div class="viewer-container" id="viewerContainer">
