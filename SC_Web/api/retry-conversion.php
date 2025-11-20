@@ -34,6 +34,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
 
 require_once(__DIR__ . '/../config.php');
 require_once(__DIR__ . '/../includes/auth.php');
+require_once(__DIR__ . '/../includes/sclib_client.php');
 
 // MongoDB classes for direct status update
 // Use MongoDB\Client instead of MongoDB\Driver\Manager for better compatibility
@@ -81,15 +82,21 @@ try {
     if (!$user_email) {
         ob_end_clean();
         http_response_code(401);
-        echo json_encode([
-            'success' => false, 
-            'error' => 'Authentication required',
-            'debug' => [
+        // Only include debug info in development
+        $debug_info = [];
+        if (getenv('PHP_DISPLAY_ERRORS') === '1' || defined('DEBUG_MODE')) {
+            $debug_info = [
                 'has_auth_header' => !empty($auth_header),
+                'auth_header_preview' => $auth_header ? substr($auth_header, 0, 20) . '...' : null,
                 'has_session' => isset($_SESSION['user_email']),
-                'is_authenticated' => isAuthenticated()
-            ]
-        ]);
+                'is_authenticated' => isAuthenticated(),
+                'server_auth' => $_SERVER['HTTP_AUTHORIZATION'] ?? 'not set'
+            ];
+        }
+        echo json_encode(array_merge([
+            'success' => false, 
+            'error' => 'Authentication required'
+        ], $debug_info ? ['debug' => $debug_info] : []));
         exit;
     }
 
