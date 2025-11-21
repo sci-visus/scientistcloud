@@ -248,7 +248,20 @@ function logoutUserWithAuth0() {
     require_once(__DIR__ . '/../config_auth0.php');
     global $auth0;
     
-    $logoutUrl = $auth0->logout(SC_SERVER_URL . '/login.php');
+    // Determine login path based on environment (same logic as login.php)
+    // For remote server, always use /portal/login.php
+    $isLocal = (strpos(SC_SERVER_URL, 'localhost') !== false || strpos(SC_SERVER_URL, '127.0.0.1') !== false);
+    $loginPath = $isLocal ? '/login.php' : '/portal/login.php';
+    
+    // Build return URL - ensure SC_SERVER_URL doesn't already include /portal
+    $baseUrl = rtrim(SC_SERVER_URL, '/');
+    // Remove /portal if it's already in the base URL to avoid double /portal/portal
+    if (strpos($baseUrl, '/portal') !== false) {
+        $baseUrl = str_replace('/portal', '', $baseUrl);
+    }
+    $returnUrl = $baseUrl . $loginPath;
+    
+    $logoutUrl = $auth0->logout($returnUrl);
     header('Location: ' . $logoutUrl);
     exit;
 }
