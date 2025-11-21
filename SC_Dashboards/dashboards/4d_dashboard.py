@@ -174,6 +174,119 @@ def create_tmp_dashboard(process_4dnexus):
                 return choice
         return None
     
+    # Helper function to extract shape from selection string
+    def extract_shape(selection_with_shape):
+        """Extract shape tuple from 'path (shape1, shape2, ...)' format."""
+        if not selection_with_shape or selection_with_shape in ["No 2D datasets", "No 3D/4D datasets", "Use Default"]:
+            return None
+        last_paren = selection_with_shape.rfind(' (')
+        if last_paren != -1:
+            shape_str = selection_with_shape[last_paren+2:-1]  # Remove ' (' and ')'
+            try:
+                # Parse shape like "(100, 200)" or "(100, 200, 300)"
+                shape = tuple(int(x.strip()) for x in shape_str.split(','))
+                return shape
+            except Exception as e:
+                print(f"Warning: Failed to parse shape from '{selection_with_shape}': {e}")
+                return None
+        return None
+    
+    # Helper function to get dataset size from path (without loading data)
+    def get_dataset_size_from_path(dataset_path):
+        """Get the size of a 1D dataset from the datasets list without loading it."""
+        for dataset in datasets_1d:
+            if dataset['path'] == dataset_path:
+                shape = dataset.get('shape', ())
+                if isinstance(shape, tuple) and len(shape) == 1:
+                    return shape[0]
+        return None
+    
+    # Helper function to find 1D dataset by size
+    def find_1d_dataset_by_size(target_size, exclude_paths=None):
+        """Find a 1D dataset with the specified size."""
+        if exclude_paths is None:
+            exclude_paths = []
+        for dataset in datasets_1d:
+            dataset_path = dataset['path']
+            # Check if this path should be excluded (handle both path strings and choice strings)
+            excluded = False
+            for exclude_path in exclude_paths:
+                if isinstance(exclude_path, str):
+                    # If exclude_path is a choice string, extract the path
+                    if ' (' in exclude_path:
+                        exclude_path_clean = exclude_path[:exclude_path.rfind(' (')]
+                    else:
+                        exclude_path_clean = exclude_path
+                    if dataset_path == exclude_path_clean:
+                        excluded = True
+                        break
+            if excluded:
+                continue
+            shape = dataset.get('shape', ())
+            if isinstance(shape, tuple) and len(shape) == 1 and shape[0] == target_size:
+                return f"{dataset['path']} {dataset['shape']}"
+        return None
+    
+    # Helper function to find 1D dataset in parent directory by size
+    def find_1d_dataset_in_parent_by_size(dataset_path, target_size, coord_index):
+        """Find a 1D dataset in the same parent directory with the specified size.
+        
+        Args:
+            dataset_path: Full path like "dir1/dir2/data1"
+            target_size: Target size for the coordinate dataset
+            coord_index: Which dimension index (0=x, 1=y, 2=z, 3=u)
+        """
+        # Get parent directory
+        parent_dir = '/'.join(dataset_path.split('/')[:-1])
+        if not parent_dir:
+            return None
+        
+        # Look for 1D datasets in the same parent directory
+        for dataset in datasets_1d:
+            dataset_path_full = dataset['path']
+            # Check if it's in the same parent directory
+            if dataset_path_full.startswith(parent_dir + '/'):
+                shape = dataset.get('shape', ())
+                if isinstance(shape, tuple) and len(shape) == 1 and shape[0] == target_size:
+                    return f"{dataset_path_full} {dataset['shape']}"
+        return None
+    
+    # Helper function to auto-populate Map X/Y coordinates based on 2D dataset shape
+    def auto_populate_map_coords(plot1_shape):
+        """Auto-populate Map X and Map Y selectors based on 2D dataset shape."""
+        if plot1_shape is None or len(plot1_shape) != 2:
+            return None, None
+        
+        map_x_size, map_y_size = plot1_shape[0], plot1_shape[1]
+        
+        # Find 1D datasets matching the sizes
+        map_x_choice = find_1d_dataset_by_size(map_x_size)
+        map_y_choice = find_1d_dataset_by_size(map_y_size, 
+                                                exclude_paths=[extract_dataset_path(map_x_choice)] if map_x_choice else [])
+        
+        return map_x_choice, map_y_choice
+    
+    # Helper function to auto-populate Probe X/Y coordinates based on probe dataset
+    def auto_populate_probe_coords(probe_dataset_path, probe_shape):
+        """Auto-populate Probe X and Probe Y selectors based on probe dataset."""
+        if probe_shape is None:
+            return None, None
+        
+        if len(probe_shape) == 3:
+            # 3D dataset: shape is (x, y, z) - Probe X should be size z, Probe Y should be hidden
+            probe_x_size = probe_shape[2]
+            probe_x_choice = find_1d_dataset_in_parent_by_size(probe_dataset_path, probe_x_size, 2)
+            return probe_x_choice, None  # No Probe Y for 3D
+        elif len(probe_shape) == 4:
+            # 4D dataset: shape is (x, y, z, u) - Probe X should be size z, Probe Y should be size u
+            probe_x_size = probe_shape[2]
+            probe_y_size = probe_shape[3]
+            probe_x_choice = find_1d_dataset_in_parent_by_size(probe_dataset_path, probe_x_size, 2)
+            probe_y_choice = find_1d_dataset_in_parent_by_size(probe_dataset_path, probe_y_size, 3)
+            return probe_x_choice, probe_y_choice
+        
+        return None, None
+    
     # Set default values - find matching choices with shapes
     default_numerator = find_choice_by_path(plot1_h5_choices, "map_mi_sic_0p33mm_002/scalar_data/postsample_intensity") or (plot1_h5_choices[0] if plot1_h5_choices else "No 2D datasets")
     default_denominator = find_choice_by_path(plot1_h5_choices, "map_mi_sic_0p33mm_002/scalar_data/presample_intensity") or (plot1_h5_choices[1] if len(plot1_h5_choices) > 1 else plot1_h5_choices[0] if plot1_h5_choices else "No 2D datasets")
@@ -376,17 +489,19 @@ def create_tmp_dashboard(process_4dnexus):
         """Callback for when user clicks 'Initialize Plots' button."""
         print("Initializing plots with selected datasets...")
         
-        # Get the selected datasets
-        plot2_selection = plot2_h5_selector.value
-        plot2_path = extract_dataset_path(plot2_selection)
-        
-        if plot2_path == "No 3D/4D datasets":
-            print("Please select valid datasets before initializing plots")
-            return
-        else:
-            process_4dnexus.volume_picked = plot2_path
-
         try:
+            # Get the selected datasets
+            plot2_selection = plot2_h5_selector.value
+            plot2_path = extract_dataset_path(plot2_selection)
+            
+            if plot2_path == "No 3D/4D datasets":
+                print("ERROR: Please select valid datasets before initializing plots")
+                from bokeh.io import curdoc as _curdoc
+                error_div = Div(text="<h3 style='color: red;'>Error: Please select a valid Plot2 dataset (3D/4D) before initializing plots.</h3>", width=800)
+                _curdoc().add_root(error_div)
+                return
+            else:
+                process_4dnexus.volume_picked = plot2_path
             # Determine Plot1 selection based on mode
             if plot1_mode_selector.active == 0:  # Single dataset mode
                 plot1_selection = plot1_h5_selector.value
@@ -413,7 +528,19 @@ def create_tmp_dashboard(process_4dnexus):
                 process_4dnexus.presample_picked = numerator_path
                 process_4dnexus.postsample_picked = denominator_path
             
+            # Set coordinate datasets based on user selection (need to do this early for flip detection)
+            map_x_coords_selection = map_x_coords_selector.value
+            map_y_coords_selection = map_y_coords_selector.value
+            probe_x_coords_selection = probe_x_coords_selector.value
+            probe_y_coords_selection = probe_y_coords_selector.value
+            
+            map_x_coords = extract_dataset_path(map_x_coords_selection)
+            map_y_coords = extract_dataset_path(map_y_coords_selection)
+            probe_x_coords = extract_dataset_path(probe_x_coords_selection)
+            probe_y_coords = extract_dataset_path(probe_y_coords_selection)
+            
             # Optional Plot1B (supports both single dataset and ratio modes)
+            plot1b_needs_flip = False
             if enable_plot1b_toggle.active:
                 if plot1b_mode_selector.active == 0:  # Single dataset mode
                     plot1b_selection = plot1b_h5_selector.value
@@ -423,6 +550,18 @@ def create_tmp_dashboard(process_4dnexus):
                         process_4dnexus.presample_picked_b = None
                         process_4dnexus.postsample_picked_b = None
                         print(f"  Plot1B: {plot1b_path} (single dataset)")
+                        # Check if Plot1B needs flipping (uses same coordinates as Plot1)
+                        plot1b_shape = extract_shape(plot1b_selection)
+                        if plot1b_shape and len(plot1b_shape) == 2:
+                            map_x_size = None
+                            map_y_size = None
+                            if map_x_coords != "Use Default":
+                                map_x_size = get_dataset_size_from_path(map_x_coords)
+                            if map_y_coords != "Use Default":
+                                map_y_size = get_dataset_size_from_path(map_y_coords)
+                            if map_x_size is not None and map_y_size is not None:
+                                if map_x_size == plot1b_shape[1] and map_y_size == plot1b_shape[0]:
+                                    plot1b_needs_flip = True
                     else:
                         process_4dnexus.plot1b_single_dataset_picked = None
                         process_4dnexus.presample_picked_b = None
@@ -437,6 +576,18 @@ def create_tmp_dashboard(process_4dnexus):
                         process_4dnexus.presample_picked_b = numerator_b_path
                         process_4dnexus.postsample_picked_b = denominator_b_path
                         print(f"  Plot1B: {numerator_b_path} / {denominator_b_path}")
+                        # Check if Plot1B needs flipping
+                        plot1b_shape = extract_shape(numerator_b_selection)
+                        if plot1b_shape and len(plot1b_shape) == 2:
+                            map_x_size = None
+                            map_y_size = None
+                            if map_x_coords != "Use Default":
+                                map_x_size = get_dataset_size_from_path(map_x_coords)
+                            if map_y_coords != "Use Default":
+                                map_y_size = get_dataset_size_from_path(map_y_coords)
+                            if map_x_size is not None and map_y_size is not None:
+                                if map_x_size == plot1b_shape[1] and map_y_size == plot1b_shape[0]:
+                                    plot1b_needs_flip = True
                     else:
                         process_4dnexus.plot1b_single_dataset_picked = None
                         process_4dnexus.presample_picked_b = None
@@ -445,17 +596,46 @@ def create_tmp_dashboard(process_4dnexus):
                 process_4dnexus.plot1b_single_dataset_picked = None
                 process_4dnexus.presample_picked_b = None
                 process_4dnexus.postsample_picked_b = None
-
-            # Set coordinate datasets based on user selection
-            map_x_coords_selection = map_x_coords_selector.value
-            map_y_coords_selection = map_y_coords_selector.value
-            probe_x_coords_selection = probe_x_coords_selector.value
-            probe_y_coords_selection = probe_y_coords_selector.value
             
-            map_x_coords = extract_dataset_path(map_x_coords_selection)
-            map_y_coords = extract_dataset_path(map_y_coords_selection)
-            probe_x_coords = extract_dataset_path(probe_x_coords_selection)
-            probe_y_coords = extract_dataset_path(probe_y_coords_selection)
+            # Store flip flag for Plot1B
+            process_4dnexus.plot1b_needs_flip = plot1b_needs_flip
+            
+            # Determine if axes need flipping for Plot1
+            plot1_needs_flip = False
+            if plot1_mode_selector.active == 0:  # Single dataset mode
+                plot1_shape = extract_shape(plot1_h5_selector.value)
+            else:  # Ratio mode
+                plot1_shape = extract_shape(plot1_h5_selector_numerator.value)
+            
+            if plot1_shape and len(plot1_shape) == 2:
+                # Check if Map X/Y sizes match dataset shape (use metadata, don't load data)
+                map_x_size = None
+                map_y_size = None
+                if map_x_coords != "Use Default":
+                    map_x_size = get_dataset_size_from_path(map_x_coords)
+                if map_y_coords != "Use Default":
+                    map_y_size = get_dataset_size_from_path(map_y_coords)
+                
+                # If coordinates don't match dataset shape, we need to flip
+                if map_x_size is not None and map_y_size is not None:
+                    if map_x_size == plot1_shape[1] and map_y_size == plot1_shape[0]:
+                        plot1_needs_flip = True
+                    elif not (map_x_size == plot1_shape[0] and map_y_size == plot1_shape[1]):
+                        # Sizes don't match either way - warn but don't flip
+                        print(f"Warning: Map coordinate sizes ({map_x_size}, {map_y_size}) don't match dataset shape {plot1_shape}")
+            
+            # Store flip flag for Plot1
+            process_4dnexus.plot1_needs_flip = plot1_needs_flip
+            
+            # Set map coordinates - if flipping is needed, swap the paths so that
+            # x_coords_picked matches volume.shape[0] and y_coords_picked matches volume.shape[1]
+            # The flip flag will handle the visual transposition in MapPlot
+            if plot1_needs_flip:
+                # Swap coordinates: user selected X goes to y_coords_picked, user selected Y goes to x_coords_picked
+                temp_x = map_y_coords  # User's Y selection becomes x_coords_picked (matches volume.shape[0])
+                temp_y = map_x_coords  # User's X selection becomes y_coords_picked (matches volume.shape[1])
+                map_x_coords = temp_x
+                map_y_coords = temp_y
             
             # Set map coordinates
             if map_x_coords != "Use Default":
@@ -471,6 +651,37 @@ def create_tmp_dashboard(process_4dnexus):
             # Store probe coordinates for later use (if needed)
             process_4dnexus.probe_x_coords_picked = probe_x_coords if probe_x_coords != "Use Default" else None
             process_4dnexus.probe_y_coords_picked = probe_y_coords if probe_y_coords != "Use Default" else None
+            
+            # Determine if axes need flipping for Plot2 (probe plot)
+            plot2_needs_flip = False
+            # Determine volume dimensionality from selected dataset shape
+            plot2_shape = extract_shape(plot2_selection)
+            is_3d_volume_local = plot2_shape is not None and len(plot2_shape) == 3
+            
+            if not is_3d_volume_local and plot2_path != "No 3D/4D datasets":
+                # For 4D volumes: check if probe coordinates match z and u dimensions
+                if plot2_shape and len(plot2_shape) == 4:
+                    # Volume shape is (x, y, z, u)
+                    z_size = plot2_shape[2]
+                    u_size = plot2_shape[3]
+                    
+                    probe_x_size = None
+                    probe_y_size = None
+                    if probe_x_coords != "Use Default":
+                        probe_x_size = get_dataset_size_from_path(probe_x_coords)
+                    if probe_y_coords != "Use Default":
+                        probe_y_size = get_dataset_size_from_path(probe_y_coords)
+                    
+                    # If coordinates don't match volume dimensions, we need to flip
+                    if probe_x_size is not None and probe_y_size is not None:
+                        if probe_x_size == u_size and probe_y_size == z_size:
+                            plot2_needs_flip = True
+                        elif not (probe_x_size == z_size and probe_y_size == u_size):
+                            # Sizes don't match either way - warn but don't flip
+                            print(f"Warning: Probe coordinate sizes ({probe_x_size}, {probe_y_size}) don't match volume probe dimensions (z={z_size}, u={u_size})")
+            
+            # Store flip flag for Plot2
+            process_4dnexus.plot2_needs_flip = plot2_needs_flip
             
             # Optional Plot2B (duplicate volume)
             if enable_plot2b_toggle.active:
@@ -489,6 +700,32 @@ def create_tmp_dashboard(process_4dnexus):
                     process_4dnexus.probe_y_coords_picked_b = probe_y_coords_b if probe_y_coords_b != "Use Default" else None
                     print(f"  Plot2B Probe X coords: {probe_x_coords_b}")
                     print(f"  Plot2B Probe Y coords: {probe_y_coords_b}")
+                    
+                    # Determine if axes need flipping for Plot2B (probe plot)
+                    plot2b_needs_flip = False
+                    plot2b_shape = extract_shape(plot2b_selection)
+                    if plot2b_shape and len(plot2b_shape) == 4:
+                        # Volume shape is (x, y, z, u)
+                        z_size = plot2b_shape[2]
+                        u_size = plot2b_shape[3]
+                        
+                        probe_x_size_b = None
+                        probe_y_size_b = None
+                        if probe_x_coords_b != "Use Default":
+                            probe_x_size_b = get_dataset_size_from_path(probe_x_coords_b)
+                        if probe_y_coords_b != "Use Default":
+                            probe_y_size_b = get_dataset_size_from_path(probe_y_coords_b)
+                        
+                        # If coordinates don't match volume dimensions, we need to flip
+                        if probe_x_size_b is not None and probe_y_size_b is not None:
+                            if probe_x_size_b == u_size and probe_y_size_b == z_size:
+                                plot2b_needs_flip = True
+                            elif not (probe_x_size_b == z_size and probe_y_size_b == u_size):
+                                # Sizes don't match either way - warn but don't flip
+                                print(f"Warning: Plot2B probe coordinate sizes ({probe_x_size_b}, {probe_y_size_b}) don't match volume probe dimensions (z={z_size}, u={u_size})")
+                    
+                    # Store flip flag for Plot2B
+                    process_4dnexus.plot2b_needs_flip = plot2b_needs_flip
                 else:
                     process_4dnexus.volume_picked_b = None
                     process_4dnexus.probe_x_coords_picked_b = None
@@ -500,8 +737,11 @@ def create_tmp_dashboard(process_4dnexus):
 
             print(f"Successfully initialized plots with:")
             if plot1_mode_selector.active == 0:
+                plot1_path = extract_dataset_path(plot1_h5_selector.value)
                 print(f"  Plot1: {plot1_path} (single dataset)")
             else:
+                numerator_path = extract_dataset_path(plot1_h5_selector_numerator.value)
+                denominator_path = extract_dataset_path(plot1_h5_selector_denominator.value)
                 print(f"  Plot1: {numerator_path} / {denominator_path} (ratio)")
             print(f"  Plot2: {plot2_path}")
             print(f"  Map X coords: {map_x_coords}")
@@ -534,7 +774,135 @@ def create_tmp_dashboard(process_4dnexus):
             _curdoc().add_next_tick_callback(_build_and_swap)
             
         except Exception as e:
-            print(f"Error initializing plots: {e}")
+            import traceback
+            error_msg = f"Error initializing plots: {str(e)}"
+            print(error_msg)
+            print("Full traceback:")
+            traceback.print_exc()
+            # Show error to user
+            from bokeh.io import curdoc as _curdoc
+            error_div = Div(text=f"<h3 style='color: red;'>Error Initializing Plots</h3><p>{error_msg}</p><pre>{traceback.format_exc()}</pre>", width=800)
+            _curdoc().add_root(error_div)
+    
+    # Callback to auto-populate Map coordinates when Plot1 dataset is selected
+    def on_plot1_dataset_change(attr, old, new):
+        """Auto-populate Map X/Y when Plot1 dataset is selected."""
+        if plot1_mode_selector.active == 0:  # Single dataset mode
+            plot1_shape = extract_shape(new)
+            if plot1_shape:
+                map_x_choice, map_y_choice = auto_populate_map_coords(plot1_shape)
+                if map_x_choice and map_x_choice in map_x_coords_selector.options:
+                    map_x_coords_selector.value = map_x_choice
+                if map_y_choice and map_y_choice in map_y_coords_selector.options:
+                    map_y_coords_selector.value = map_y_choice
+    
+    def on_plot1_numerator_change(attr, old, new):
+        """Auto-populate Map X/Y when Plot1 numerator is selected."""
+        if plot1_mode_selector.active == 1:  # Ratio mode
+            plot1_shape = extract_shape(new)
+            if plot1_shape:
+                map_x_choice, map_y_choice = auto_populate_map_coords(plot1_shape)
+                if map_x_choice and map_x_choice in map_x_coords_selector.options:
+                    map_x_coords_selector.value = map_x_choice
+                if map_y_choice and map_y_choice in map_y_coords_selector.options:
+                    map_y_coords_selector.value = map_y_choice
+    
+    def on_plot1_denominator_change(attr, old, new):
+        """Auto-populate Map X/Y when Plot1 denominator is selected (use numerator if available)."""
+        if plot1_mode_selector.active == 1:  # Ratio mode
+            # Use numerator shape if available, otherwise use denominator
+            numerator_shape = extract_shape(plot1_h5_selector_numerator.value)
+            if numerator_shape:
+                plot1_shape = numerator_shape
+            else:
+                plot1_shape = extract_shape(new)
+            if plot1_shape:
+                map_x_choice, map_y_choice = auto_populate_map_coords(plot1_shape)
+                if map_x_choice and map_x_choice in map_x_coords_selector.options:
+                    map_x_coords_selector.value = map_x_choice
+                if map_y_choice and map_y_choice in map_y_coords_selector.options:
+                    map_y_coords_selector.value = map_y_choice
+    
+    # Callback to auto-populate Probe coordinates when Plot2 dataset is selected
+    def on_plot2_dataset_change(attr, old, new):
+        """Auto-populate Probe X/Y when Plot2 dataset is selected."""
+        plot2_path = extract_dataset_path(new)
+        if plot2_path == "No 3D/4D datasets":
+            return
+        plot2_shape = extract_shape(new)
+        if plot2_shape:
+            probe_x_choice, probe_y_choice = auto_populate_probe_coords(plot2_path, plot2_shape)
+            if probe_x_choice and probe_x_choice in probe_x_coords_selector.options:
+                probe_x_coords_selector.value = probe_x_choice
+            if probe_y_choice and probe_y_choice in probe_y_coords_selector.options:
+                probe_y_coords_selector.value = probe_y_choice
+                probe_y_coords_selector.visible = True
+            elif probe_y_choice is None and len(plot2_shape) == 3:
+                # 3D dataset - hide Probe Y
+                probe_y_coords_selector.visible = False
+            elif len(plot2_shape) == 4:
+                # 4D dataset - show Probe Y
+                probe_y_coords_selector.visible = True
+    
+    # Callback to auto-populate Probe coordinates when Plot2B dataset is selected
+    def on_plot2b_dataset_change(attr, old, new):
+        """Auto-populate Probe2B X/Y when Plot2B dataset is selected."""
+        plot2b_path = extract_dataset_path(new)
+        if plot2b_path == "No 3D/4D datasets":
+            return
+        plot2b_shape = extract_shape(new)
+        if plot2b_shape:
+            probe_x_choice, probe_y_choice = auto_populate_probe_coords(plot2b_path, plot2b_shape)
+            if probe_x_choice and probe_x_choice in probe_x_coords_selector_b.options:
+                probe_x_coords_selector_b.value = probe_x_choice
+            if probe_y_choice and probe_y_choice in probe_y_coords_selector_b.options:
+                probe_y_coords_selector_b.value = probe_y_choice
+                probe_y_coords_selector_b.visible = True
+            elif probe_y_choice is None and len(plot2b_shape) == 3:
+                # 3D dataset - hide Probe Y
+                probe_y_coords_selector_b.visible = False
+            elif len(plot2b_shape) == 4:
+                # 4D dataset - show Probe Y
+                probe_y_coords_selector_b.visible = True
+    
+    # Callbacks for Plot1B auto-population
+    def on_plot1b_dataset_change(attr, old, new):
+        """Auto-populate Map X/Y when Plot1B dataset is selected (uses same coordinates as Plot1)."""
+        if plot1b_mode_selector.active == 0:  # Single dataset mode
+            plot1b_shape = extract_shape(new)
+            if plot1b_shape:
+                map_x_choice, map_y_choice = auto_populate_map_coords(plot1b_shape)
+                if map_x_choice and map_x_choice in map_x_coords_selector.options:
+                    map_x_coords_selector.value = map_x_choice
+                if map_y_choice and map_y_choice in map_y_coords_selector.options:
+                    map_y_coords_selector.value = map_y_choice
+    
+    def on_plot1b_numerator_change(attr, old, new):
+        """Auto-populate Map X/Y when Plot1B numerator is selected."""
+        if plot1b_mode_selector.active == 1:  # Ratio mode
+            plot1b_shape = extract_shape(new)
+            if plot1b_shape:
+                map_x_choice, map_y_choice = auto_populate_map_coords(plot1b_shape)
+                if map_x_choice and map_x_choice in map_x_coords_selector.options:
+                    map_x_coords_selector.value = map_x_choice
+                if map_y_choice and map_y_choice in map_y_coords_selector.options:
+                    map_y_coords_selector.value = map_y_choice
+    
+    def on_plot1b_denominator_change(attr, old, new):
+        """Auto-populate Map X/Y when Plot1B denominator is selected."""
+        if plot1b_mode_selector.active == 1:  # Ratio mode
+            # Use numerator shape if available, otherwise use denominator
+            numerator_shape = extract_shape(plot1b_h5_selector_numerator.value)
+            if numerator_shape:
+                plot1b_shape = numerator_shape
+            else:
+                plot1b_shape = extract_shape(new)
+            if plot1b_shape:
+                map_x_choice, map_y_choice = auto_populate_map_coords(plot1b_shape)
+                if map_x_choice and map_x_choice in map_x_coords_selector.options:
+                    map_x_coords_selector.value = map_x_choice
+                if map_y_choice and map_y_choice in map_y_coords_selector.options:
+                    map_y_coords_selector.value = map_y_choice
     
     # Add callback for mode selector to show/hide appropriate selectors
     def on_mode_change(attr, old, new):
@@ -549,6 +917,25 @@ def create_tmp_dashboard(process_4dnexus):
             plot1_h5_selector_denominator.visible = True
     
     plot1_mode_selector.on_change("active", on_mode_change)
+    
+    # Add callbacks for auto-population
+    plot1_h5_selector.on_change("value", on_plot1_dataset_change)
+    plot1_h5_selector_numerator.on_change("value", on_plot1_numerator_change)
+    plot1_h5_selector_denominator.on_change("value", on_plot1_denominator_change)
+    plot1b_h5_selector.on_change("value", on_plot1b_dataset_change)
+    plot1b_h5_selector_numerator.on_change("value", on_plot1b_numerator_change)
+    plot1b_h5_selector_denominator.on_change("value", on_plot1b_denominator_change)
+    plot2_h5_selector.on_change("value", on_plot2_dataset_change)
+    plot2b_h5_selector.on_change("value", on_plot2b_dataset_change)
+    
+    # Initial auto-population for Plot1 and Plot2 if defaults are set
+    if plot1_mode_selector.active == 1 and default_numerator and default_numerator != "No 2D datasets":
+        on_plot1_numerator_change("value", None, default_numerator)
+    elif plot1_mode_selector.active == 0 and plot1_h5_choices and plot1_h5_choices[0] != "No 2D datasets":
+        on_plot1_dataset_change("value", None, plot1_h5_choices[0])
+    
+    if default_plot2 and default_plot2 != "No 3D/4D datasets":
+        on_plot2_dataset_change("value", None, default_plot2)
     
     # Set initial visibility
     on_mode_change("active", 0, 0)  # Initialize with single dataset mode
@@ -737,10 +1124,16 @@ def update_1d_plot(volume, x_index, y_index, source2, plot2, process_4dnexus=Non
 # //////////////////////////////////////////////////////////////////////////
 # Lightweight reusable plot classes to allow multiple instances of map/probe plots
 class MapPlot:
-    def __init__(self, x_coords, y_coords, image_2d, title="Plot1 - Map View"):
+    def __init__(self, x_coords, y_coords, image_2d, title="Plot1 - Map View", needs_flip=False):
         from bokeh.plotting import figure
         from bokeh.models import ColumnDataSource
         import numpy as np
+
+        # Apply flipping if needed (transpose the image)
+        if needs_flip:
+            image_2d = np.transpose(image_2d)
+            # Swap coordinates
+            x_coords, y_coords = y_coords, x_coords
 
         # Build figure
         self.figure = figure(
@@ -760,6 +1153,9 @@ class MapPlot:
                 "dh": [float(np.max(y_coords) - np.min(y_coords))],
             }
         )
+        
+        # Store flip state for reference
+        self.needs_flip = needs_flip
 
     def get_components(self):
         return self.figure, self.source
@@ -805,11 +1201,27 @@ class ProbePlot:
         else:
             # 4D: make a 2D image from center slice
             initial_slice = volume[volume.shape[0]//2, volume.shape[1]//2, :, :]
+            
+            # Check if flipping is needed
+            needs_flip = False
+            if process_4dnexus:
+                flip_attr = 'plot2b_needs_flip' if use_b else 'plot2_needs_flip'
+                needs_flip = getattr(process_4dnexus, flip_attr, False)
+            
+            # Apply flipping if needed (transpose the slice)
+            if needs_flip:
+                initial_slice = np.transpose(initial_slice)
+                dw = volume.shape[3]  # u dimension
+                dh = volume.shape[2]  # z dimension
+            else:
+                dw = volume.shape[2]  # z dimension
+                dh = volume.shape[3]  # u dimension
+            
             self.figure = figure(
                 title=title_2d,
                 tools="pan,wheel_zoom,box_zoom,reset,tap",
-                x_range=(0, volume.shape[2]),
-                y_range=(0, volume.shape[3]),
+                x_range=(0, dw),
+                y_range=(0, dh),
                 match_aspect=True,
             )
             self.source = ColumnDataSource(
@@ -817,10 +1229,13 @@ class ProbePlot:
                     "image": [initial_slice],
                     "x": [0],
                     "y": [0],
-                    "dw": [volume.shape[2]],
-                    "dh": [volume.shape[3]],
+                    "dw": [dw],
+                    "dh": [dh],
                 }
             )
+            
+            # Store flip state for reference
+            self.needs_flip = needs_flip
 
     def get_components(self):
         return self.figure, self.source
@@ -971,7 +1386,8 @@ def create_dashboard(process_4dnexus):
             plot1_y_label = plot1_y_label.split('/')[-1]
 
         # Create Plot1 (Map view) using reusable class
-        map_plot = MapPlot(x_coords, y_coords, preview, title=get_plot1_title())
+        plot1_needs_flip = getattr(process_4dnexus, 'plot1_needs_flip', False)
+        map_plot = MapPlot(x_coords, y_coords, preview, title=get_plot1_title(), needs_flip=plot1_needs_flip)
         plot1, source1 = map_plot.get_components()
         plot1.xaxis.ticker = x_ticks
         plot1.yaxis.ticker = y_ticks
@@ -1103,7 +1519,8 @@ def create_dashboard(process_4dnexus):
                         if np.max(preview_b) > np.min(preview_b):
                             preview_b = (preview_b - np.min(preview_b)) / (np.max(preview_b) - np.min(preview_b))
                         preview_b = preview_b.astype(np.float32)
-                        map_plot_b = MapPlot(x_coords, y_coords, preview_b, title=get_plot1b_title())
+                        plot1b_needs_flip = getattr(process_4dnexus, 'plot1b_needs_flip', False)
+                        map_plot_b = MapPlot(x_coords, y_coords, preview_b, title=get_plot1b_title(), needs_flip=plot1b_needs_flip)
                         plot1b, source1b = map_plot_b.get_components()
                         plot1b.xaxis.ticker = x_ticks
                         plot1b.yaxis.ticker = y_ticks
@@ -1138,7 +1555,8 @@ def create_dashboard(process_4dnexus):
                     preview_b = np.nan_to_num(preview_b, nan=0.0, posinf=1.0, neginf=0.0).astype(np.float32)
                     if np.max(preview_b) > np.min(preview_b):
                         preview_b = (preview_b - np.min(preview_b)) / (np.max(preview_b) - np.min(preview_b))
-                    map_plot_b = MapPlot(x_coords, y_coords, preview_b, title=get_plot1b_title())
+                    plot1b_needs_flip = getattr(process_4dnexus, 'plot1b_needs_flip', False)
+                    map_plot_b = MapPlot(x_coords, y_coords, preview_b, title=get_plot1b_title(), needs_flip=plot1b_needs_flip)
                     plot1b, source1b = map_plot_b.get_components()
                     plot1b.xaxis.ticker = x_ticks
                     plot1b.yaxis.ticker = y_ticks
@@ -1730,35 +2148,49 @@ def create_dashboard(process_4dnexus):
         
         def draw_cross1():
             x_index = get_x_index()
-            x_coord = x_coords[x_index]
             y_index = get_y_index()
-            y_coord = y_coords[y_index]
+            
+            # Account for axis flipping: if plot is flipped, swap coordinates for display
+            plot1_needs_flip = getattr(process_4dnexus, 'plot1_needs_flip', False)
+            if plot1_needs_flip:
+                # When flipped, plot's x_range = original y_coords, y_range = original x_coords
+                plot_x_coord = y_coords[y_index]  # Use y_coords for plot's x-axis
+                plot_y_coord = x_coords[x_index]  # Use x_coords for plot's y-axis
+            else:
+                plot_x_coord = x_coords[x_index]
+                plot_y_coord = y_coords[y_index]
+
+            # Use plot's actual coordinate ranges (which are already flipped if needed)
+            plot1_x_min = plot1.x_range.start
+            plot1_x_max = plot1.x_range.end
+            plot1_y_min = plot1.y_range.start
+            plot1_y_max = plot1.y_range.end
 
             # Initialize crosshair lines for Plot1 if they don't exist
             if rect1.h1line is None:
-                rect1.h1line = plot1.line(x=[x_coords.min(), x_coords.max()], y=[y_coord, y_coord], line_color="yellow", line_width=2)
+                rect1.h1line = plot1.line(x=[plot1_x_min, plot1_x_max], y=[plot_y_coord, plot_y_coord], line_color="yellow", line_width=2)
             if rect1.h2line is None:
-                rect1.h2line = plot1.line(x=[x_coords.min(), x_coords.max()], y=[y_coord, y_coord], line_color="yellow", line_width=2)
+                rect1.h2line = plot1.line(x=[plot1_x_min, plot1_x_max], y=[plot_y_coord, plot_y_coord], line_color="yellow", line_width=2)
             if rect1.v1line is None:
-                rect1.v1line = plot1.line(x=[x_coord, x_coord], y=[y_coords.min(), y_coords.max()], line_color="yellow", line_width=2)
+                rect1.v1line = plot1.line(x=[plot_x_coord, plot_x_coord], y=[plot1_y_min, plot1_y_max], line_color="yellow", line_width=2)
             if rect1.v2line is None:
-                rect1.v2line = plot1.line(x=[x_coord, x_coord], y=[y_coords.min(), y_coords.max()], line_color="yellow", line_width=2)
+                rect1.v2line = plot1.line(x=[plot_x_coord, plot_x_coord], y=[plot1_y_min, plot1_y_max], line_color="yellow", line_width=2)
 
             rect1.h1line.data_source.data = {
-                "x": [x_coords.min(), x_coords.max()],
-                "y": [y_coord, y_coord],
+                "x": [plot1_x_min, plot1_x_max],
+                "y": [plot_y_coord, plot_y_coord],
             }
             rect1.h2line.data_source.data = {
-                "x": [x_coords.min(), x_coords.max()],
-                "y": [y_coord, y_coord],
+                "x": [plot1_x_min, plot1_x_max],
+                "y": [plot_y_coord, plot_y_coord],
             }
             rect1.v1line.data_source.data = {
-                "x": [x_coord, x_coord],
-                "y": [y_coords.min(), y_coords.max()],
+                "x": [plot_x_coord, plot_x_coord],
+                "y": [plot1_y_min, plot1_y_max],
             }
             rect1.v2line.data_source.data = {
-                "x": [x_coord, x_coord],
-                "y": [y_coords.min(), y_coords.max()],
+                "x": [plot_x_coord, plot_x_coord],
+                "y": [plot1_y_min, plot1_y_max],
             }
             
             # Also update Plot1B crosshairs if it exists
@@ -1770,36 +2202,50 @@ def create_dashboard(process_4dnexus):
             if rect1b is None or 'plot1b' not in locals() or plot1b is None:
                 return
             x_index = get_x_index()
-            x_coord = x_coords[x_index]
             y_index = get_y_index()
-            y_coord = y_coords[y_index]
+            
+            # Account for axis flipping: if plot is flipped, swap coordinates for display
+            plot1b_needs_flip = getattr(process_4dnexus, 'plot1b_needs_flip', False)
+            if plot1b_needs_flip:
+                # When flipped, plot's x_range = original y_coords, y_range = original x_coords
+                plot_x_coord = y_coords[y_index]  # Use y_coords for plot's x-axis
+                plot_y_coord = x_coords[x_index]  # Use x_coords for plot's y-axis
+            else:
+                plot_x_coord = x_coords[x_index]
+                plot_y_coord = y_coords[y_index]
+
+            # Use plot's actual coordinate ranges (which are already flipped if needed)
+            plot1b_x_min = plot1b.x_range.start
+            plot1b_x_max = plot1b.x_range.end
+            plot1b_y_min = plot1b.y_range.start
+            plot1b_y_max = plot1b.y_range.end
 
             # Initialize crosshair lines if they don't exist
             if rect1b.h1line is None:
-                rect1b.h1line = plot1b.line(x=[x_coords.min(), x_coords.max()], y=[y_coord, y_coord], line_color="yellow", line_width=2)
+                rect1b.h1line = plot1b.line(x=[plot1b_x_min, plot1b_x_max], y=[plot_y_coord, plot_y_coord], line_color="yellow", line_width=2)
             if rect1b.h2line is None:
-                rect1b.h2line = plot1b.line(x=[x_coords.min(), x_coords.max()], y=[y_coord, y_coord], line_color="yellow", line_width=2)
+                rect1b.h2line = plot1b.line(x=[plot1b_x_min, plot1b_x_max], y=[plot_y_coord, plot_y_coord], line_color="yellow", line_width=2)
             if rect1b.v1line is None:
-                rect1b.v1line = plot1b.line(x=[x_coord, x_coord], y=[y_coords.min(), y_coords.max()], line_color="yellow", line_width=2)
+                rect1b.v1line = plot1b.line(x=[plot_x_coord, plot_x_coord], y=[plot1b_y_min, plot1b_y_max], line_color="yellow", line_width=2)
             if rect1b.v2line is None:
-                rect1b.v2line = plot1b.line(x=[x_coord, x_coord], y=[y_coords.min(), y_coords.max()], line_color="yellow", line_width=2)
+                rect1b.v2line = plot1b.line(x=[plot_x_coord, plot_x_coord], y=[plot1b_y_min, plot1b_y_max], line_color="yellow", line_width=2)
             
             # Update crosshair positions
             rect1b.h1line.data_source.data = {
-                "x": [x_coords.min(), x_coords.max()],
-                "y": [y_coord, y_coord],
+                "x": [plot1b_x_min, plot1b_x_max],
+                "y": [plot_y_coord, plot_y_coord],
             }
             rect1b.h2line.data_source.data = {
-                "x": [x_coords.min(), x_coords.max()],
-                "y": [y_coord, y_coord],
+                "x": [plot1b_x_min, plot1b_x_max],
+                "y": [plot_y_coord, plot_y_coord],
             }
             rect1b.v1line.data_source.data = {
-                "x": [x_coord, x_coord],
-                "y": [y_coords.min(), y_coords.max()],
+                "x": [plot_x_coord, plot_x_coord],
+                "y": [plot1b_y_min, plot1b_y_max],
             }
             rect1b.v2line.data_source.data = {
-                "x": [x_coord, x_coord],
-                "y": [y_coords.min(), y_coords.max()],
+                "x": [plot_x_coord, plot_x_coord],
+                "y": [plot1b_y_min, plot1b_y_max],
             }
         
         def set_colormap_range(plot, colorbar, color_mapper, min_val, max_val):
@@ -2067,12 +2513,24 @@ def create_dashboard(process_4dnexus):
                 original_y_label_2 = plot2.yaxis.axis_label if hasattr(plot2.yaxis, 'axis_label') else None
                 
                 new_slice = volume[x_index, y_index, :, :]
+                
+                # Apply flipping if needed (transpose the slice)
+                plot2_needs_flip = getattr(process_4dnexus, 'plot2_needs_flip', False)
+                if plot2_needs_flip:
+                    new_slice = np.transpose(new_slice)
+                    # Swap dw and dh when flipped
+                    dw = volume.shape[3]  # u dimension
+                    dh = volume.shape[2]  # z dimension
+                else:
+                    dw = volume.shape[2]  # z dimension
+                    dh = volume.shape[3]  # u dimension
+                
                 source2.data = {
                     "image": [new_slice],
                     "x": [0],
                     "y": [0],
-                    "dw": [volume.shape[2]],
-                    "dh": [volume.shape[3]],
+                    "dw": [dw],
+                    "dh": [dh],
                 }
                 
                 # Restore axis labels if they were set
@@ -2109,12 +2567,24 @@ def create_dashboard(process_4dnexus):
                 original_y_label_b = plot2b.yaxis.axis_label if hasattr(plot2b.yaxis, 'axis_label') else None
                 
                 new_slice_b = volume_b_local[x_index, y_index, :, :]
+                
+                # Apply flipping if needed (transpose the slice)
+                plot2b_needs_flip = getattr(process_4dnexus, 'plot2b_needs_flip', False)
+                if plot2b_needs_flip:
+                    new_slice_b = np.transpose(new_slice_b)
+                    # Swap dw and dh when flipped
+                    dw_b = volume_b_local.shape[3]  # u dimension
+                    dh_b = volume_b_local.shape[2]  # z dimension
+                else:
+                    dw_b = volume_b_local.shape[2]  # z dimension
+                    dh_b = volume_b_local.shape[3]  # u dimension
+                
                 source2b.data = {
                     "image": [new_slice_b],
                     "x": [0],
                     "y": [0],
-                    "dw": [volume_b_local.shape[2]],
-                    "dh": [volume_b_local.shape[3]],
+                    "dw": [dw_b],
+                    "dh": [dh_b],
                 }
                 
                 # Restore axis labels if they were set
@@ -2127,8 +2597,18 @@ def create_dashboard(process_4dnexus):
             update_plot2b_range_dynamic()
         
         def on_plot1_tap(event):
-            x_index = get_x_index(event.x)
-            y_index = get_y_index(event.y)
+            # Account for axis flipping: if plot is flipped, swap event coordinates
+            plot1_needs_flip = getattr(process_4dnexus, 'plot1_needs_flip', False)
+            if plot1_needs_flip:
+                # When flipped, the plot's x_range corresponds to original y_coords and vice versa
+                click_x_coord = event.y  # Swapped
+                click_y_coord = event.x  # Swapped
+            else:
+                click_x_coord = event.x
+                click_y_coord = event.y
+            
+            x_index = get_x_index(click_x_coord)
+            y_index = get_y_index(click_y_coord)
             
             if event.modifiers.get("shift", False):
                 rect1.set(min_x=x_index, min_y=y_index)
@@ -2159,8 +2639,18 @@ def create_dashboard(process_4dnexus):
             """Handle clicks on Plot1B - update crosshairs and Plot2B"""
             if rect1b is None or 'plot1b' not in locals() or plot1b is None:
                 return
-            x_index = get_x_index(event.x)
-            y_index = get_y_index(event.y)
+            # Account for axis flipping: if plot is flipped, swap event coordinates
+            plot1b_needs_flip = getattr(process_4dnexus, 'plot1b_needs_flip', False)
+            if plot1b_needs_flip:
+                # When flipped, the plot's x_range corresponds to original y_coords and vice versa
+                click_x_coord = event.y  # Swapped
+                click_y_coord = event.x  # Swapped
+            else:
+                click_x_coord = event.x
+                click_y_coord = event.y
+            
+            x_index = get_x_index(click_x_coord)
+            y_index = get_y_index(click_y_coord)
             
             # Update sliders (which will update both Plot1 and Plot1B crosshairs)
             x_slider.value = x_coords[x_index]
@@ -2231,29 +2721,40 @@ def create_dashboard(process_4dnexus):
                     update_range_overlay()
             else:
                 # For 4D volumes: Plot2 is a 2D image plot, use both x and y coordinates
-                print(f"DEBUG: 4D volume tap - x={event.x}, y={event.y}")
+                # Account for axis flipping: if plot is flipped, swap event coordinates
+                plot2_needs_flip = getattr(process_4dnexus, 'plot2_needs_flip', False)
+                if plot2_needs_flip:
+                    # When flipped, the plot's x_range corresponds to original u dimension and y_range to z dimension
+                    # But we need to convert back to z,u indices for rect2
+                    click_z = int(event.y)  # Swapped: plot's y = volume's z
+                    click_u = int(event.x)  # Swapped: plot's x = volume's u
+                else:
+                    click_z = int(event.x)  # plot's x = volume's z
+                    click_u = int(event.y)  # plot's y = volume's u
+                
+                print(f"DEBUG: 4D volume tap - event.x={event.x}, event.y={event.y}, click_z={click_z}, click_u={click_u}, flipped={plot2_needs_flip}")
                 print(f"DEBUG: Event modifiers: {event.modifiers}")
                 print(f"DEBUG: shift={event.modifiers.get('shift', False)}, ctrl={event.modifiers.get('ctrl', False)}")
                 
                 if event.modifiers.get("shift", False):
                     # Shift+click: Set min values only
-                    print(f"DEBUG: Shift+click detected for 4D volume, setting min_x={int(event.x)}, min_y={int(event.y)}")
-                    rect2.set(min_x=int(event.x), min_y=int(event.y))
+                    print(f"DEBUG: Shift+click detected for 4D volume, setting min_x={click_z}, min_y={click_u}")
+                    rect2.set(min_x=click_z, min_y=click_u)
                     print(f"on_plot2_tap rect2={rect2} (shift pressed) - 4D volume")
                     draw_rect2()
                 elif event.modifiers.get("ctrl", False) or event.modifiers.get('meta',False) or event.modifiers.get('cmd',False):
                     # Ctrl/Cmd+click: Set max values only
-                    print(f"DEBUG: Ctrl/Cmd+click detected for 4D volume, setting max_x={int(event.x)}, max_y={int(event.y)}")
-                    rect2.set(max_x=int(event.x), max_y=int(event.y))
+                    print(f"DEBUG: Ctrl/Cmd+click detected for 4D volume, setting max_x={click_z}, max_y={click_u}")
+                    rect2.set(max_x=click_z, max_y=click_u)
                     print(f"on_plot2_tap rect2={rect2} (ctrl/cmd pressed) - 4D volume")
                     draw_rect2()
                 else:
                     # Regular click: Clear and set both min and max to same value
                     print(f"DEBUG: Regular click detected for 4D volume, clearing and setting both min/max")
                     clear_rect(plot2, rect2)
-                    rect2.set(min_x=int(event.x), min_y=int(event.y), max_x=int(event.x), max_y=int(event.y))
-                    draw_rect(plot2, rect2, int(event.x), int(event.x), int(event.y), int(event.y))
-                    print(f"on_plot2_tap x={event.x} y={event.y} - 4D volume")
+                    rect2.set(min_x=click_z, min_y=click_u, max_x=click_z, max_y=click_u)
+                    draw_rect(plot2, rect2, click_z, click_z, click_u, click_u)
+                    print(f"on_plot2_tap z={click_z} u={click_u} - 4D volume")
         
         # Explicit Plot2A wrappers for clarity and independent wiring
         def on_plot2a_tap(event):
@@ -2661,13 +3162,41 @@ def create_dashboard(process_4dnexus):
                 pass
             else:
                 # 4D: draw only on Plot2
-                draw_rect(plot2, rect2, rect2.min_x, rect2.max_x, rect2.min_y, rect2.max_y)
+                # Account for axis flipping: if plot is flipped, swap coordinates for display
+                plot2_needs_flip = getattr(process_4dnexus, 'plot2_needs_flip', False)
+                if plot2_needs_flip:
+                    # When flipped, rect2 stores (z, u) but plot displays (u, z)
+                    # So we need to swap when drawing
+                    plot_x1 = rect2.min_y  # u min -> plot x
+                    plot_x2 = rect2.max_y  # u max -> plot x
+                    plot_y1 = rect2.min_x  # z min -> plot y
+                    plot_y2 = rect2.max_x  # z max -> plot y
+                else:
+                    plot_x1 = rect2.min_x  # z min -> plot x
+                    plot_x2 = rect2.max_x  # z max -> plot x
+                    plot_y1 = rect2.min_y  # u min -> plot y
+                    plot_y2 = rect2.max_y  # u max -> plot y
+                draw_rect(plot2, rect2, plot_x1, plot_x2, plot_y1, plot_y2)
 
         def draw_rect2b():
             if 'plot2b' in locals() and plot2b is not None:
                 # Use Plot2B's own dimensionality: draw only if Plot2B is 2D image
                 if 'plot2b_is_2d' in locals() and plot2b_is_2d and 'rect2b' in locals() and rect2b is not None:
-                    draw_rect(plot2b, rect2b, rect2b.min_x, rect2b.max_x, rect2b.min_y, rect2b.max_y)
+                    # Account for axis flipping: if plot is flipped, swap coordinates for display
+                    plot2b_needs_flip = getattr(process_4dnexus, 'plot2b_needs_flip', False)
+                    if plot2b_needs_flip:
+                        # When flipped, rect2b stores (z, u) but plot displays (u, z)
+                        # So we need to swap when drawing
+                        plot_x1 = rect2b.min_y  # u min -> plot x
+                        plot_x2 = rect2b.max_y  # u max -> plot x
+                        plot_y1 = rect2b.min_x  # z min -> plot y
+                        plot_y2 = rect2b.max_x  # z max -> plot y
+                    else:
+                        plot_x1 = rect2b.min_x  # z min -> plot x
+                        plot_x2 = rect2b.max_x  # z max -> plot x
+                        plot_y1 = rect2b.min_y  # u min -> plot y
+                        plot_y2 = rect2b.max_y  # u max -> plot y
+                    draw_rect(plot2b, rect2b, plot_x1, plot_x2, plot_y1, plot_y2)
             
         def update_z_range_display():
             """Update the z-range display for 3D volumes"""
@@ -2802,9 +3331,18 @@ def create_dashboard(process_4dnexus):
                         update_range_overlay()
                     else:
                         # For 4D volumes: use both x and y coordinates
-                        print(f"DEBUG: Double-click detected for 4D volume, setting max_x={int(event.x)}, max_y={int(event.y)}")
+                        # Account for axis flipping
+                        plot2_needs_flip = getattr(process_4dnexus, 'plot2_needs_flip', False)
+                        if plot2_needs_flip:
+                            click_z = int(event.y)  # Swapped: plot's y = volume's z
+                            click_u = int(event.x)  # Swapped: plot's x = volume's u
+                        else:
+                            click_z = int(event.x)  # plot's x = volume's z
+                            click_u = int(event.y)  # plot's y = volume's u
+                        
+                        print(f"DEBUG: Double-click detected for 4D volume, setting max_x={click_z}, max_y={click_u}, flipped={plot2_needs_flip}")
                         print(f"DEBUG: Before rect2.set, rect2.min_x={rect2.min_x}, rect2.max_x={rect2.max_x}, rect2.min_y={rect2.min_y}, rect2.max_y={rect2.max_y}")
-                        rect2.set(max_x=int(event.x), max_y=int(event.y))
+                        rect2.set(max_x=click_z, max_y=click_u)
                         print(f"DEBUG: After rect2.set, rect2.min_x={rect2.min_x}, rect2.max_x={rect2.max_x}, rect2.min_y={rect2.min_y}, rect2.max_y={rect2.max_y}")
                         print(f"on_plot2_doubletap rect2={rect2} - 4D volume")
                         draw_rect2()
@@ -2841,17 +3379,27 @@ def create_dashboard(process_4dnexus):
                     rect2b.set(min_x=z_index, min_y=z_index, max_x=z_index, max_y=z_index)
                 update_range_overlay_b()
             else:
+                # 4D volume: account for axis flipping
+                plot2b_needs_flip = getattr(process_4dnexus, 'plot2b_needs_flip', False)
+                if plot2b_needs_flip:
+                    # When flipped, the plot's x_range corresponds to original u dimension and y_range to z dimension
+                    click_z = int(event.y)  # Swapped: plot's y = volume's z
+                    click_u = int(event.x)  # Swapped: plot's x = volume's u
+                else:
+                    click_z = int(event.x)  # plot's x = volume's z
+                    click_u = int(event.y)  # plot's y = volume's u
+                
                 if event.modifiers.get("shift", False):
-                    rect2b.set(min_x=int(event.x), min_y=int(event.y))
+                    rect2b.set(min_x=click_z, min_y=click_u)
                     draw_rect2b()
                 elif event.modifiers.get("ctrl", False) or event.modifiers.get('meta',False) or event.modifiers.get('cmd',False):
-                    rect2b.set(max_x=int(event.x), max_y=int(event.y))
+                    rect2b.set(max_x=click_z, max_y=click_u)
                     draw_rect2b()
                 else:
                     clear_rect(plot2b, rect2b)
-                    rect2b.set(min_x=int(event.x), min_y=int(event.y), max_x=int(event.x), max_y=int(event.y))
-                    draw_rect(plot2b, rect2b, int(event.x), int(event.x), int(event.y), int(event.y))
-                print(f"DEBUG: on_plot2b_tap updated rect2b: min=({rect2b.min_x},{rect2b.min_y}) max=({rect2b.max_x},{rect2b.max_y})")
+                    rect2b.set(min_x=click_z, min_y=click_u, max_x=click_z, max_y=click_u)
+                    draw_rect(plot2b, rect2b, click_z, click_z, click_u, click_u)
+                print(f"DEBUG: on_plot2b_tap updated rect2b: min=({rect2b.min_x},{rect2b.min_y}) max=({rect2b.max_x},{rect2b.max_y}), flipped={plot2b_needs_flip}")
 
         def on_plot2b_doubletap(event):
             print(f"DEBUG: on_plot2b_doubletap received, x={getattr(event,'x',None)}, y={getattr(event,'y',None)}, plot2b_is_2d={plot2b_is_2d}")
@@ -2874,7 +3422,15 @@ def create_dashboard(process_4dnexus):
                     rect2b.set(max_x=z_index, max_y=z_index)
                     update_range_overlay_b()
                 else:
-                    rect2b.set(max_x=int(event.x), max_y=int(event.y))
+                    # 4D volume: account for axis flipping
+                    plot2b_needs_flip = getattr(process_4dnexus, 'plot2b_needs_flip', False)
+                    if plot2b_needs_flip:
+                        click_z = int(event.y)  # Swapped: plot's y = volume's z
+                        click_u = int(event.x)  # Swapped: plot's x = volume's u
+                    else:
+                        click_z = int(event.x)  # plot's x = volume's z
+                        click_u = int(event.y)  # plot's y = volume's u
+                    rect2b.set(max_x=click_z, max_y=click_u)
                     draw_rect2b()
             except Exception as e:
                 print(f"Plot2B Double-tap event error: {e}")
@@ -3073,8 +3629,18 @@ def create_dashboard(process_4dnexus):
                     x_mid = volume.shape[0] // 2
                     y_mid = volume.shape[1] // 2
                     img = np.array(volume[x_mid, y_mid, :, :])
-                    # Match original ProbePlot orientation: dw=shape[2], dh=shape[3]
-                    source2.data = {"image": [img], "x": [0], "y": [0], "dw": [img.shape[0]], "dh": [img.shape[1]]}
+                    
+                    # Apply flipping if needed
+                    plot2_needs_flip = getattr(process_4dnexus, 'plot2_needs_flip', False)
+                    if plot2_needs_flip:
+                        img = np.transpose(img)
+                        dw = volume.shape[3]  # u dimension
+                        dh = volume.shape[2]  # z dimension
+                    else:
+                        dw = volume.shape[2]  # z dimension
+                        dh = volume.shape[3]  # u dimension
+                    
+                    source2.data = {"image": [img], "x": [0], "y": [0], "dw": [dw], "dh": [dh]}
                     try:
                         p2_min, p2_max = get_percentile_range(img)
                         set_colormap_range(plot2, colorbar2, color_mapper2a, p2_min, p2_max)
@@ -3197,8 +3763,18 @@ def create_dashboard(process_4dnexus):
                         xb = volume_b_local.shape[0] // 2
                         yb = volume_b_local.shape[1] // 2
                         img = np.array(volume_b_local[xb, yb, :, :])
-                        # Match original ProbePlot orientation
-                        source2b.data = {"image": [img], "x": [0], "y": [0], "dw": [img.shape[0]], "dh": [img.shape[1]]}
+                        
+                        # Apply flipping if needed
+                        plot2b_needs_flip = getattr(process_4dnexus, 'plot2b_needs_flip', False)
+                        if plot2b_needs_flip:
+                            img = np.transpose(img)
+                            dw_b = volume_b_local.shape[3]  # u dimension
+                            dh_b = volume_b_local.shape[2]  # z dimension
+                        else:
+                            dw_b = volume_b_local.shape[2]  # z dimension
+                            dh_b = volume_b_local.shape[3]  # u dimension
+                        
+                        source2b.data = {"image": [img], "x": [0], "y": [0], "dw": [dw_b], "dh": [dh_b]}
                         if 'color_mapper2b' in locals() and color_mapper2b is not None and 'colorbar2b' in locals():
                             try:
                                 p2b_min, p2b_max = get_percentile_range(img)
@@ -3294,11 +3870,18 @@ def create_dashboard(process_4dnexus):
                 print(">>>>>>>>>>>>>>>>", np.min(slice), np.max(slice))
                 print("#############################################################################")
 
-                assert slice.shape[0] == volume.shape[2]  # After flipud: shape[2] stays shape[0]
-                assert slice.shape[1] == volume.shape[3]  # After flipud: shape[3] stays shape[1]
+                # Apply flipping if needed
+                plot2_needs_flip = getattr(process_4dnexus, 'plot2_needs_flip', False)
+                if plot2_needs_flip:
+                    slice = np.transpose(slice)
+                    dw = volume.shape[3]  # u dimension
+                    dh = volume.shape[2]  # z dimension
+                else:
+                    dw = volume.shape[2]  # z dimension
+                    dh = volume.shape[3]  # u dimension
 
                 source2.data = dict(
-                    image=[slice], x=[0], y=[0], dw=[slice.shape[0]], dh=[slice.shape[1]]  # Revert dw/dh
+                    image=[slice], x=[0], y=[0], dw=[dw], dh=[dh]
                 )
                 
                 p2_min, p2_max = get_percentile_range(slice)
@@ -3378,8 +3961,19 @@ def create_dashboard(process_4dnexus):
                 y2 = max(y1 + 1, get_y_index(rect3.max_y))
                 piece = volume_b_local[x1:x2, y1:y2, :, :]
                 slice_b = np.sum(piece, axis=(0, 1)) / ((x2-x1)*(y2-y1))
+                
+                # Apply flipping if needed
+                plot2b_needs_flip = getattr(process_4dnexus, 'plot2b_needs_flip', False)
+                if plot2b_needs_flip:
+                    slice_b = np.transpose(slice_b)
+                    dw_b = volume_b_local.shape[3]  # u dimension
+                    dh_b = volume_b_local.shape[2]  # z dimension
+                else:
+                    dw_b = volume_b_local.shape[2]  # z dimension
+                    dh_b = volume_b_local.shape[3]  # u dimension
+                
                 if 'source2b' in locals():
-                    source2b.data = dict(image=[slice_b], x=[0], y=[0], dw=[slice_b.shape[0]], dh=[slice_b.shape[1]])
+                    source2b.data = dict(image=[slice_b], x=[0], y=[0], dw=[dw_b], dh=[dh_b])
                 if 'color_mapper2b' in locals() and color_mapper2b is not None and 'colorbar2b' in locals():
                     p2b_min, p2b_max = get_percentile_range(slice_b)
                     set_colormap_range(plot2b, colorbar2b, color_mapper2b, p2b_min, p2b_max)
