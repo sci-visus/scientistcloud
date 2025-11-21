@@ -490,18 +490,18 @@ def create_tmp_dashboard(process_4dnexus):
         print("Initializing plots with selected datasets...")
         
         try:
-        # Get the selected datasets
-        plot2_selection = plot2_h5_selector.value
-        plot2_path = extract_dataset_path(plot2_selection)
-        
-        if plot2_path == "No 3D/4D datasets":
+            # Get the selected datasets
+            plot2_selection = plot2_h5_selector.value
+            plot2_path = extract_dataset_path(plot2_selection)
+            
+            if plot2_path == "No 3D/4D datasets":
                 print("ERROR: Please select valid datasets before initializing plots")
                 from bokeh.io import curdoc as _curdoc
                 error_div = Div(text="<h3 style='color: red;'>Error: Please select a valid Plot2 dataset (3D/4D) before initializing plots.</h3>", width=800)
                 _curdoc().add_root(error_div)
-            return
-        else:
-            process_4dnexus.volume_picked = plot2_path
+                return
+            else:
+                process_4dnexus.volume_picked = plot2_path
             # Determine Plot1 selection based on mode
             if plot1_mode_selector.active == 0:  # Single dataset mode
                 plot1_selection = plot1_h5_selector.value
@@ -1433,12 +1433,12 @@ def create_dashboard(process_4dnexus):
             plot1.xaxis.axis_label = plot1_y_label
             plot1.yaxis.axis_label = plot1_x_label
         else:
-        plot1.xaxis.ticker = x_ticks
-        plot1.yaxis.ticker = y_ticks
-        plot1.xaxis.major_label_overrides = dict(zip(x_ticks, my_xticks))
-        plot1.yaxis.major_label_overrides = dict(zip(y_ticks, my_yticks))
-        plot1.xaxis.axis_label = plot1_x_label
-        plot1.yaxis.axis_label = plot1_y_label
+            plot1.xaxis.ticker = x_ticks
+            plot1.yaxis.ticker = y_ticks
+            plot1.xaxis.major_label_overrides = dict(zip(x_ticks, my_xticks))
+            plot1.yaxis.major_label_overrides = dict(zip(y_ticks, my_yticks))
+            plot1.xaxis.axis_label = plot1_x_label
+            plot1.yaxis.axis_label = plot1_y_label
         # Set font sizes
         plot1.title.text_font_size = FONT_SIZE_PLOT_TITLE
         plot1.xaxis.axis_label_text_font_size = FONT_SIZE_AXIS_LABEL
@@ -1547,22 +1547,22 @@ def create_dashboard(process_4dnexus):
             plot3.xaxis.axis_label = plot1_y_label
             plot3.yaxis.axis_label = plot1_x_label
         else:
-        plot3 = figure(
-            title="Plot3 - Additional View",
-            tools="pan,wheel_zoom,box_zoom,reset,tap",
-            x_range=(x_coords.min(), x_coords.max()),
-            y_range=(y_coords.min(), y_coords.max()),
-        )
-        plot3.x_range.start = x_coords.min()
-        plot3.x_range.end = x_coords.max()
-        plot3.y_range.start = y_coords.min()
-        plot3.y_range.end = y_coords.max()
-        plot3.xaxis.ticker = x_ticks
-        plot3.yaxis.ticker = y_ticks
-        plot3.xaxis.major_label_overrides = dict(zip(x_ticks, my_xticks))
-        plot3.yaxis.major_label_overrides = dict(zip(y_ticks, my_yticks))
-        plot3.xaxis.axis_label = plot1_x_label
-        plot3.yaxis.axis_label = plot1_y_label
+            plot3 = figure(
+                title="Plot3 - Additional View",
+                tools="pan,wheel_zoom,box_zoom,reset,tap",
+                x_range=(x_coords.min(), x_coords.max()),
+                y_range=(y_coords.min(), y_coords.max()),
+            )
+            plot3.x_range.start = x_coords.min()
+            plot3.x_range.end = x_coords.max()
+            plot3.y_range.start = y_coords.min()
+            plot3.y_range.end = y_coords.max()
+            plot3.xaxis.ticker = x_ticks
+            plot3.yaxis.ticker = y_ticks
+            plot3.xaxis.major_label_overrides = dict(zip(x_ticks, my_xticks))
+            plot3.yaxis.major_label_overrides = dict(zip(y_ticks, my_yticks))
+            plot3.xaxis.axis_label = plot1_x_label
+            plot3.yaxis.axis_label = plot1_y_label
         # Set font sizes
         plot3.title.text_font_size = FONT_SIZE_PLOT_TITLE
         plot3.xaxis.axis_label_text_font_size = FONT_SIZE_AXIS_LABEL
@@ -1616,12 +1616,12 @@ def create_dashboard(process_4dnexus):
                             plot1b.xaxis.axis_label = plot1_y_label
                             plot1b.yaxis.axis_label = plot1_x_label
                         else:
-                        plot1b.xaxis.ticker = x_ticks
-                        plot1b.yaxis.ticker = y_ticks
-                        plot1b.xaxis.major_label_overrides = dict(zip(x_ticks, my_xticks))
-                        plot1b.yaxis.major_label_overrides = dict(zip(y_ticks, my_yticks))
-                        plot1b.xaxis.axis_label = plot1_x_label
-                        plot1b.yaxis.axis_label = plot1_y_label
+                            plot1b.xaxis.ticker = x_ticks
+                            plot1b.yaxis.ticker = y_ticks
+                            plot1b.xaxis.major_label_overrides = dict(zip(x_ticks, my_xticks))
+                            plot1b.yaxis.major_label_overrides = dict(zip(y_ticks, my_yticks))
+                            plot1b.xaxis.axis_label = plot1_x_label
+                            plot1b.yaxis.axis_label = plot1_y_label
                         # Set font sizes
                         plot1b.title.text_font_size = FONT_SIZE_PLOT_TITLE
                         plot1b.xaxis.axis_label_text_font_size = FONT_SIZE_AXIS_LABEL
@@ -1661,12 +1661,12 @@ def create_dashboard(process_4dnexus):
                         plot1b.xaxis.axis_label = plot1_y_label
                         plot1b.yaxis.axis_label = plot1_x_label
                     else:
-                    plot1b.xaxis.ticker = x_ticks
-                    plot1b.yaxis.ticker = y_ticks
-                    plot1b.xaxis.major_label_overrides = dict(zip(x_ticks, my_xticks))
-                    plot1b.yaxis.major_label_overrides = dict(zip(y_ticks, my_yticks))
-                    plot1b.xaxis.axis_label = plot1_x_label
-                    plot1b.yaxis.axis_label = plot1_y_label
+                        plot1b.xaxis.ticker = x_ticks
+                        plot1b.yaxis.ticker = y_ticks
+                        plot1b.xaxis.major_label_overrides = dict(zip(x_ticks, my_xticks))
+                        plot1b.yaxis.major_label_overrides = dict(zip(y_ticks, my_yticks))
+                        plot1b.xaxis.axis_label = plot1_x_label
+                        plot1b.yaxis.axis_label = plot1_y_label
                     # Set font sizes
                     plot1b.title.text_font_size = FONT_SIZE_PLOT_TITLE
                     plot1b.xaxis.axis_label_text_font_size = FONT_SIZE_AXIS_LABEL
