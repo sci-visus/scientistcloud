@@ -1477,17 +1477,18 @@ def create_dashboard(process_4dnexus):
             plot2_probe_y = original_probe_y if original_probe_y else getattr(process_4dnexus, 'probe_y_coords_picked', None)
             
             if plot2_needs_flip:
-                # When flipped, swap the labels: x-axis gets y label, y-axis gets x label
-                if plot2_probe_y:
-                    plot2_x_label = plot2_probe_y.split('/')[-1] if '/' in plot2_probe_y else plot2_probe_y
+                # When flipped, the x-axis represents u dimension (Probe X) and y-axis represents z dimension (Probe Y)
+                # So we keep the original labels: x-axis gets x label, y-axis gets y label
+                if plot2_probe_x:
+                    plot2_x_label = plot2_probe_x.split('/')[-1] if '/' in plot2_probe_x else plot2_probe_x
                     plot2.xaxis.axis_label = plot2_x_label
                 else:
-                    plot2.xaxis.axis_label = "Probe Y"
-                if plot2_probe_x:
-                    plot2_y_label = plot2_probe_x.split('/')[-1] if '/' in plot2_probe_x else plot2_probe_x
+                    plot2.xaxis.axis_label = "Probe X"
+                if plot2_probe_y:
+                    plot2_y_label = plot2_probe_y.split('/')[-1] if '/' in plot2_probe_y else plot2_probe_y
                     plot2.yaxis.axis_label = plot2_y_label
                 else:
-                    plot2.yaxis.axis_label = "Probe X"
+                    plot2.yaxis.axis_label = "Probe Y"
             else:
                 if plot2_probe_x:
                     plot2_x_label = plot2_probe_x.split('/')[-1] if '/' in plot2_probe_x else plot2_probe_x
@@ -1722,17 +1723,18 @@ def create_dashboard(process_4dnexus):
                         plot2b_probe_y = original_probe_y_b if original_probe_y_b else getattr(process_4dnexus, 'probe_y_coords_picked_b', None)
                         
                         if plot2b_needs_flip:
-                            # When flipped, swap the labels: x-axis gets y label, y-axis gets x label
-                            if plot2b_probe_y:
-                                plot2b_x_label = plot2b_probe_y.split('/')[-1] if '/' in plot2b_probe_y else plot2b_probe_y
+                            # When flipped, the x-axis represents u dimension (Probe X) and y-axis represents z dimension (Probe Y)
+                            # So we keep the original labels: x-axis gets x label, y-axis gets y label
+                            if plot2b_probe_x:
+                                plot2b_x_label = plot2b_probe_x.split('/')[-1] if '/' in plot2b_probe_x else plot2b_probe_x
                                 plot2b.xaxis.axis_label = plot2b_x_label
                             else:
-                                plot2b.xaxis.axis_label = "Probe Y"
-                            if plot2b_probe_x:
-                                plot2b_y_label = plot2b_probe_x.split('/')[-1] if '/' in plot2b_probe_x else plot2b_probe_x
+                                plot2b.xaxis.axis_label = "Probe X"
+                            if plot2b_probe_y:
+                                plot2b_y_label = plot2b_probe_y.split('/')[-1] if '/' in plot2b_probe_y else plot2b_probe_y
                                 plot2b.yaxis.axis_label = plot2b_y_label
                             else:
-                                plot2b.yaxis.axis_label = "Probe X"
+                                plot2b.yaxis.axis_label = "Probe Y"
                         else:
                             if plot2b_probe_x:
                                 plot2b_x_label = plot2b_probe_x.split('/')[-1] if '/' in plot2b_probe_x else plot2b_probe_x
