@@ -1266,24 +1266,36 @@ class DatasetManager {
                 // Store full dataset details in currentDataset
                 this.currentDataset.details = datasetDetails;
                 
+                console.log('Dataset details fetched:', {
+                    preferred_dashboard: datasetDetails.preferred_dashboard,
+                    has_preferred: !!datasetDetails.preferred_dashboard,
+                    preferred_type: typeof datasetDetails.preferred_dashboard
+                });
+                
                 // Update viewer-toolbar dropdown to match preferred_dashboard if it exists
-                if (datasetDetails.preferred_dashboard) {
+                if (datasetDetails.preferred_dashboard && datasetDetails.preferred_dashboard.trim() !== '') {
                     const viewerTypeSelect = document.getElementById('viewerType');
                     if (viewerTypeSelect) {
                         // Try to find matching option (case-insensitive)
-                        const preferredDashboard = datasetDetails.preferred_dashboard;
+                        const preferredDashboard = datasetDetails.preferred_dashboard.trim();
+                        console.log('Looking for preferred_dashboard in dropdown:', preferredDashboard);
+                        console.log('Available options:', Array.from(viewerTypeSelect.options).map(opt => ({ value: opt.value, text: opt.text })));
+                        
                         const option = Array.from(viewerTypeSelect.options).find(opt => 
                             opt.value === preferredDashboard || 
                             opt.value.toLowerCase() === preferredDashboard.toLowerCase() ||
+                            opt.text.toLowerCase() === preferredDashboard.toLowerCase() ||
                             opt.text.toLowerCase().includes(preferredDashboard.toLowerCase())
                         );
                         if (option) {
                             viewerTypeSelect.value = option.value;
-                            console.log('Updated viewer-toolbar to match preferred_dashboard:', preferredDashboard);
+                            console.log('✅ Updated viewer-toolbar to match preferred_dashboard:', preferredDashboard, '->', option.value);
                         } else {
-                            console.warn('Could not find viewer-toolbar option for preferred_dashboard:', preferredDashboard);
+                            console.warn('⚠️ Could not find viewer-toolbar option for preferred_dashboard:', preferredDashboard);
                         }
                     }
+                } else {
+                    console.log('No preferred_dashboard set for this dataset');
                 }
             }
         } catch (error) {
@@ -1298,7 +1310,8 @@ class DatasetManager {
         }
 
         // Load dashboard with dataset details to avoid re-fetching
-        this.loadDashboard(datasetId, datasetName, datasetUuid, datasetServer, null, datasetDetails);
+        // Pass datasetDetails so it can use preferred_dashboard
+        await this.loadDashboard(datasetId, datasetName, datasetUuid, datasetServer, null, datasetDetails);
 
         console.log('Dataset selected:', this.currentDataset);
     }
@@ -1836,10 +1849,56 @@ class DatasetManager {
                 }
             }
             
-            // Check preferred_dashboard field
-            if (dataset && dataset.preferred_dashboard) {
-                selectedDashboard = dataset.preferred_dashboard;
-                console.log('Using preferred_dashboard from dataset:', selectedDashboard);
+            // Check preferred_dashboard field (must be non-empty string)
+            if (dataset && dataset.preferred_dashboard && dataset.preferred_dashboard.trim() !== '') {
+                let preferredValue = dataset.preferred_dashboard.trim();
+                
+                // Normalize the preferred_dashboard value to match dashboard options
+                // Map common variations to standard names
+                const dashboardNormalizations = {
+                    '4d_dashboard': '4D_Dashboard',
+                    '4D_dashboard': '4D_Dashboard',
+                    '4d_Dashboard': '4D_Dashboard',
+                    'openvisus': 'OpenVisusSlice',
+                    'OpenVisus': 'OpenVisusSlice',
+                    'openvisusslice': 'OpenVisusSlice',
+                    '3d_plotly': '3D Plotly Explorer',
+                    '3D Plotly': '3D Plotly Explorer',
+                    'plotly': '3D Plotly Explorer'
+                };
+                
+                // Check if we need to normalize
+                const normalized = dashboardNormalizations[preferredValue.toLowerCase()] || preferredValue;
+                
+                // Try to find matching dashboard in viewer-manager if available
+                if (window.viewerManager && window.viewerManager.viewers) {
+                    // Check if normalized value exists in viewers
+                    const matchingViewer = Object.values(window.viewerManager.viewers).find(v => {
+                        const vId = (v.id || '').toLowerCase();
+                        const vType = (v.type || '').toLowerCase();
+                        const vName = (v.name || '').toLowerCase();
+                        const preferredLower = normalized.toLowerCase();
+                        return vId === preferredLower || 
+                               vType === preferredLower ||
+                               vName === preferredLower ||
+                               vId === preferredValue.toLowerCase() ||
+                               vType === preferredValue.toLowerCase() ||
+                               vName === preferredValue.toLowerCase();
+                    });
+                    
+                    if (matchingViewer) {
+                        selectedDashboard = matchingViewer.id || matchingViewer.type || normalized;
+                        console.log('✅ Using preferred_dashboard (normalized):', preferredValue, '->', selectedDashboard);
+                    } else {
+                        selectedDashboard = normalized;
+                        console.log('✅ Using preferred_dashboard (as-is):', selectedDashboard);
+                    }
+                } else {
+                    selectedDashboard = normalized;
+                    console.log('✅ Using preferred_dashboard (normalized, no viewer-manager):', preferredValue, '->', selectedDashboard);
+                }
+            } else if (dataset) {
+                console.log('Dataset has no preferred_dashboard or it is empty:', dataset.preferred_dashboard);
             }
         }
         
