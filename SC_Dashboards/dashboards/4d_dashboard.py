@@ -1389,12 +1389,21 @@ def create_dashboard(process_4dnexus):
         plot1_needs_flip = getattr(process_4dnexus, 'plot1_needs_flip', False)
         map_plot = MapPlot(x_coords, y_coords, preview, title=get_plot1_title(), needs_flip=plot1_needs_flip)
         plot1, source1 = map_plot.get_components()
-        plot1.xaxis.ticker = x_ticks
-        plot1.yaxis.ticker = y_ticks
-        plot1.xaxis.major_label_overrides = dict(zip(x_ticks, my_xticks))
-        plot1.yaxis.major_label_overrides = dict(zip(y_ticks, my_yticks))
-        plot1.xaxis.axis_label = plot1_x_label
-        plot1.yaxis.axis_label = plot1_y_label
+        # When flipped, swap tickers and labels to match the swapped coordinates
+        if plot1_needs_flip:
+            plot1.xaxis.ticker = y_ticks
+            plot1.yaxis.ticker = x_ticks
+            plot1.xaxis.major_label_overrides = dict(zip(y_ticks, my_yticks))
+            plot1.yaxis.major_label_overrides = dict(zip(x_ticks, my_xticks))
+            plot1.xaxis.axis_label = plot1_y_label
+            plot1.yaxis.axis_label = plot1_x_label
+        else:
+            plot1.xaxis.ticker = x_ticks
+            plot1.yaxis.ticker = y_ticks
+            plot1.xaxis.major_label_overrides = dict(zip(x_ticks, my_xticks))
+            plot1.yaxis.major_label_overrides = dict(zip(y_ticks, my_yticks))
+            plot1.xaxis.axis_label = plot1_x_label
+            plot1.yaxis.axis_label = plot1_y_label
         # Set font sizes
         plot1.title.text_font_size = FONT_SIZE_PLOT_TITLE
         plot1.xaxis.axis_label_text_font_size = FONT_SIZE_AXIS_LABEL
@@ -1422,18 +1431,33 @@ def create_dashboard(process_4dnexus):
                 plot2.yaxis.axis_label = plot2_y_label
         else:
             # For 2D plots, set both axes
+            # Check if flipping is needed and swap labels accordingly
+            plot2_needs_flip = getattr(process_4dnexus, 'plot2_needs_flip', False)
             plot2_probe_x = getattr(process_4dnexus, 'probe_x_coords_picked', None)
             plot2_probe_y = getattr(process_4dnexus, 'probe_y_coords_picked', None)
-            if plot2_probe_x:
-                plot2_x_label = plot2_probe_x.split('/')[-1] if '/' in plot2_probe_x else plot2_probe_x
-                plot2.xaxis.axis_label = plot2_x_label
+            if plot2_needs_flip:
+                # When flipped, swap the labels: x-axis gets y label, y-axis gets x label
+                if plot2_probe_y:
+                    plot2_x_label = plot2_probe_y.split('/')[-1] if '/' in plot2_probe_y else plot2_probe_y
+                    plot2.xaxis.axis_label = plot2_x_label
+                else:
+                    plot2.xaxis.axis_label = "Probe Y"
+                if plot2_probe_x:
+                    plot2_y_label = plot2_probe_x.split('/')[-1] if '/' in plot2_probe_x else plot2_probe_x
+                    plot2.yaxis.axis_label = plot2_y_label
+                else:
+                    plot2.yaxis.axis_label = "Probe X"
             else:
-                plot2.xaxis.axis_label = "Probe X"
-            if plot2_probe_y:
-                plot2_y_label = plot2_probe_y.split('/')[-1] if '/' in plot2_probe_y else plot2_probe_y
-                plot2.yaxis.axis_label = plot2_y_label
-            else:
-                plot2.yaxis.axis_label = "Probe Y"
+                if plot2_probe_x:
+                    plot2_x_label = plot2_probe_x.split('/')[-1] if '/' in plot2_probe_x else plot2_probe_x
+                    plot2.xaxis.axis_label = plot2_x_label
+                else:
+                    plot2.xaxis.axis_label = "Probe X"
+                if plot2_probe_y:
+                    plot2_y_label = plot2_probe_y.split('/')[-1] if '/' in plot2_probe_y else plot2_probe_y
+                    plot2.yaxis.axis_label = plot2_y_label
+                else:
+                    plot2.yaxis.axis_label = "Probe Y"
         # Set font sizes
         plot2.title.text_font_size = FONT_SIZE_PLOT_TITLE
         plot2.xaxis.axis_label_text_font_size = FONT_SIZE_AXIS_LABEL
@@ -1461,23 +1485,43 @@ def create_dashboard(process_4dnexus):
         print(f"[TIMING] plot2 built: {time.time()-t0:.3f}s")
 
         # Create Plot3 (Additional view) - works for both 3D and 4D volumes
-        plot3 = figure(
-            title="Plot3 - Additional View",
-            tools="pan,wheel_zoom,box_zoom,reset,tap",
-            x_range=(x_coords.min(), x_coords.max()),
-            y_range=(y_coords.min(), y_coords.max()),
-        )
-
-        plot3.x_range.start = x_coords.min()
-        plot3.x_range.end = x_coords.max()
-        plot3.y_range.start = y_coords.min()
-        plot3.y_range.end = y_coords.max()
-        plot3.xaxis.ticker = x_ticks
-        plot3.yaxis.ticker = y_ticks
-        plot3.xaxis.major_label_overrides = dict(zip(x_ticks, my_xticks))
-        plot3.yaxis.major_label_overrides = dict(zip(y_ticks, my_yticks))
-        plot3.xaxis.axis_label = plot1_x_label
-        plot3.yaxis.axis_label = plot1_y_label
+        # Plot3 should match Plot1's orientation, so swap ranges/tickers/labels if Plot1 is flipped
+        plot1_needs_flip = getattr(process_4dnexus, 'plot1_needs_flip', False)
+        if plot1_needs_flip:
+            # When flipped, swap the ranges to match the transposed image
+            plot3 = figure(
+                title="Plot3 - Additional View",
+                tools="pan,wheel_zoom,box_zoom,reset,tap",
+                x_range=(y_coords.min(), y_coords.max()),
+                y_range=(x_coords.min(), x_coords.max()),
+            )
+            plot3.x_range.start = y_coords.min()
+            plot3.x_range.end = y_coords.max()
+            plot3.y_range.start = x_coords.min()
+            plot3.y_range.end = x_coords.max()
+            plot3.xaxis.ticker = y_ticks
+            plot3.yaxis.ticker = x_ticks
+            plot3.xaxis.major_label_overrides = dict(zip(y_ticks, my_yticks))
+            plot3.yaxis.major_label_overrides = dict(zip(x_ticks, my_xticks))
+            plot3.xaxis.axis_label = plot1_y_label
+            plot3.yaxis.axis_label = plot1_x_label
+        else:
+            plot3 = figure(
+                title="Plot3 - Additional View",
+                tools="pan,wheel_zoom,box_zoom,reset,tap",
+                x_range=(x_coords.min(), x_coords.max()),
+                y_range=(y_coords.min(), y_coords.max()),
+            )
+            plot3.x_range.start = x_coords.min()
+            plot3.x_range.end = x_coords.max()
+            plot3.y_range.start = y_coords.min()
+            plot3.y_range.end = y_coords.max()
+            plot3.xaxis.ticker = x_ticks
+            plot3.yaxis.ticker = y_ticks
+            plot3.xaxis.major_label_overrides = dict(zip(x_ticks, my_xticks))
+            plot3.yaxis.major_label_overrides = dict(zip(y_ticks, my_yticks))
+            plot3.xaxis.axis_label = plot1_x_label
+            plot3.yaxis.axis_label = plot1_y_label
         # Set font sizes
         plot3.title.text_font_size = FONT_SIZE_PLOT_TITLE
         plot3.xaxis.axis_label_text_font_size = FONT_SIZE_AXIS_LABEL
@@ -1522,12 +1566,21 @@ def create_dashboard(process_4dnexus):
                         plot1b_needs_flip = getattr(process_4dnexus, 'plot1b_needs_flip', False)
                         map_plot_b = MapPlot(x_coords, y_coords, preview_b, title=get_plot1b_title(), needs_flip=plot1b_needs_flip)
                         plot1b, source1b = map_plot_b.get_components()
-                        plot1b.xaxis.ticker = x_ticks
-                        plot1b.yaxis.ticker = y_ticks
-                        plot1b.xaxis.major_label_overrides = dict(zip(x_ticks, my_xticks))
-                        plot1b.yaxis.major_label_overrides = dict(zip(y_ticks, my_yticks))
-                        plot1b.xaxis.axis_label = plot1_x_label
-                        plot1b.yaxis.axis_label = plot1_y_label
+                        # When flipped, swap tickers and labels to match the swapped coordinates
+                        if plot1b_needs_flip:
+                            plot1b.xaxis.ticker = y_ticks
+                            plot1b.yaxis.ticker = x_ticks
+                            plot1b.xaxis.major_label_overrides = dict(zip(y_ticks, my_yticks))
+                            plot1b.yaxis.major_label_overrides = dict(zip(x_ticks, my_xticks))
+                            plot1b.xaxis.axis_label = plot1_y_label
+                            plot1b.yaxis.axis_label = plot1_x_label
+                        else:
+                            plot1b.xaxis.ticker = x_ticks
+                            plot1b.yaxis.ticker = y_ticks
+                            plot1b.xaxis.major_label_overrides = dict(zip(x_ticks, my_xticks))
+                            plot1b.yaxis.major_label_overrides = dict(zip(y_ticks, my_yticks))
+                            plot1b.xaxis.axis_label = plot1_x_label
+                            plot1b.yaxis.axis_label = plot1_y_label
                         # Set font sizes
                         plot1b.title.text_font_size = FONT_SIZE_PLOT_TITLE
                         plot1b.xaxis.axis_label_text_font_size = FONT_SIZE_AXIS_LABEL
@@ -1558,12 +1611,21 @@ def create_dashboard(process_4dnexus):
                     plot1b_needs_flip = getattr(process_4dnexus, 'plot1b_needs_flip', False)
                     map_plot_b = MapPlot(x_coords, y_coords, preview_b, title=get_plot1b_title(), needs_flip=plot1b_needs_flip)
                     plot1b, source1b = map_plot_b.get_components()
-                    plot1b.xaxis.ticker = x_ticks
-                    plot1b.yaxis.ticker = y_ticks
-                    plot1b.xaxis.major_label_overrides = dict(zip(x_ticks, my_xticks))
-                    plot1b.yaxis.major_label_overrides = dict(zip(y_ticks, my_yticks))
-                    plot1b.xaxis.axis_label = plot1_x_label
-                    plot1b.yaxis.axis_label = plot1_y_label
+                    # When flipped, swap tickers and labels to match the swapped coordinates
+                    if plot1b_needs_flip:
+                        plot1b.xaxis.ticker = y_ticks
+                        plot1b.yaxis.ticker = x_ticks
+                        plot1b.xaxis.major_label_overrides = dict(zip(y_ticks, my_yticks))
+                        plot1b.yaxis.major_label_overrides = dict(zip(x_ticks, my_xticks))
+                        plot1b.xaxis.axis_label = plot1_y_label
+                        plot1b.yaxis.axis_label = plot1_x_label
+                    else:
+                        plot1b.xaxis.ticker = x_ticks
+                        plot1b.yaxis.ticker = y_ticks
+                        plot1b.xaxis.major_label_overrides = dict(zip(x_ticks, my_xticks))
+                        plot1b.yaxis.major_label_overrides = dict(zip(y_ticks, my_yticks))
+                        plot1b.xaxis.axis_label = plot1_x_label
+                        plot1b.yaxis.axis_label = plot1_y_label
                     # Set font sizes
                     plot1b.title.text_font_size = FONT_SIZE_PLOT_TITLE
                     plot1b.xaxis.axis_label_text_font_size = FONT_SIZE_AXIS_LABEL
@@ -1607,18 +1669,33 @@ def create_dashboard(process_4dnexus):
                             plot2b.yaxis.axis_label = plot2b_y_label
                     else:
                         # For 2D plots
+                        # Check if flipping is needed and swap labels accordingly
+                        plot2b_needs_flip = getattr(process_4dnexus, 'plot2b_needs_flip', False)
                         plot2b_probe_x = getattr(process_4dnexus, 'probe_x_coords_picked_b', None)
                         plot2b_probe_y = getattr(process_4dnexus, 'probe_y_coords_picked_b', None)
-                        if plot2b_probe_x:
-                            plot2b_x_label = plot2b_probe_x.split('/')[-1] if '/' in plot2b_probe_x else plot2b_probe_x
-                            plot2b.xaxis.axis_label = plot2b_x_label
+                        if plot2b_needs_flip:
+                            # When flipped, swap the labels: x-axis gets y label, y-axis gets x label
+                            if plot2b_probe_y:
+                                plot2b_x_label = plot2b_probe_y.split('/')[-1] if '/' in plot2b_probe_y else plot2b_probe_y
+                                plot2b.xaxis.axis_label = plot2b_x_label
+                            else:
+                                plot2b.xaxis.axis_label = "Probe Y"
+                            if plot2b_probe_x:
+                                plot2b_y_label = plot2b_probe_x.split('/')[-1] if '/' in plot2b_probe_x else plot2b_probe_x
+                                plot2b.yaxis.axis_label = plot2b_y_label
+                            else:
+                                plot2b.yaxis.axis_label = "Probe X"
                         else:
-                            plot2b.xaxis.axis_label = "Probe X"
-                        if plot2b_probe_y:
-                            plot2b_y_label = plot2b_probe_y.split('/')[-1] if '/' in plot2b_probe_y else plot2b_probe_y
-                            plot2b.yaxis.axis_label = plot2b_y_label
-                        else:
-                            plot2b.yaxis.axis_label = "Probe Y"
+                            if plot2b_probe_x:
+                                plot2b_x_label = plot2b_probe_x.split('/')[-1] if '/' in plot2b_probe_x else plot2b_probe_x
+                                plot2b.xaxis.axis_label = plot2b_x_label
+                            else:
+                                plot2b.xaxis.axis_label = "Probe X"
+                            if plot2b_probe_y:
+                                plot2b_y_label = plot2b_probe_y.split('/')[-1] if '/' in plot2b_probe_y else plot2b_probe_y
+                                plot2b.yaxis.axis_label = plot2b_y_label
+                            else:
+                                plot2b.yaxis.axis_label = "Probe Y"
                     # Set font sizes
                     plot2b.title.text_font_size = FONT_SIZE_PLOT_TITLE
                     plot2b.xaxis.axis_label_text_font_size = FONT_SIZE_AXIS_LABEL
@@ -3511,6 +3588,11 @@ def create_dashboard(process_4dnexus):
                 else:
                     img = np.zeros_like(img)
                 
+                # Apply Plot1's flip state to match Plot1's orientation
+                plot1_needs_flip = getattr(process_4dnexus, 'plot1_needs_flip', False)
+                if plot1_needs_flip:
+                    img = np.transpose(img)
+                
                 source3.data = dict(
                     image=[img],
                     x=[plot3.x_range.start],
@@ -3526,7 +3608,17 @@ def create_dashboard(process_4dnexus):
                 range3_max_input.value = "1"
             else:
                 # For 4D volumes: sum over Z and U dimensions
-                z1, z2, u1, u2 = rect2.min_x, rect2.max_x, rect2.min_y, rect2.max_y
+                # Account for axis flipping: if plot is flipped, rect2 coordinates are swapped
+                plot2_needs_flip = getattr(process_4dnexus, 'plot2_needs_flip', False)
+                if plot2_needs_flip:
+                    # When flipped, rect2.min_x/max_x represent z, rect2.min_y/max_y represent u
+                    # (because tap handler swaps: click_z -> min_x, click_u -> min_y)
+                    z1, z2 = rect2.min_x, rect2.max_x  # z from x coordinates
+                    u1, u2 = rect2.min_y, rect2.max_y  # u from y coordinates
+                else:
+                    # When not flipped, rect2.min_x/max_x represent z, rect2.min_y/max_y represent u
+                    z1, z2 = rect2.min_x, rect2.max_x  # z from x coordinates
+                    u1, u2 = rect2.min_y, rect2.max_y  # u from y coordinates
                 # Normalize, clamp, and ensure non-empty spans
                 try:
                     z_lo, z_hi = (int(z1), int(z2)) if z1 <= z2 else (int(z2), int(z1))
@@ -3541,7 +3633,7 @@ def create_dashboard(process_4dnexus):
                         u_hi = min(u_lo + 1, volume.shape[3])
                 except Exception:
                     z_lo, z_hi, u_lo, u_hi = 0, min(1, volume.shape[2]), 0, min(1, volume.shape[3])
-                print("# compute_plot3_image (4D)", z_lo, z_hi, u_lo, u_hi)
+                print("# compute_plot3_image (4D)", z_lo, z_hi, u_lo, u_hi, f"flipped={plot2_needs_flip}")
                 piece = volume[:, :, z_lo:z_hi, u_lo:u_hi]
                 img = np.sum(piece, axis=(2, 3))  # sum over Z and U
                 # Normalize to [0,1]
@@ -3552,6 +3644,11 @@ def create_dashboard(process_4dnexus):
                     img = (img - vmin) / (vmax - vmin)
                 else:
                     img = np.zeros_like(img)
+                
+                # Apply Plot1's flip state to match Plot1's orientation
+                plot1_needs_flip = getattr(process_4dnexus, 'plot1_needs_flip', False)
+                if plot1_needs_flip:
+                    img = np.transpose(img)
 
                 source3.data = dict(
                     image=[img],
@@ -3685,6 +3782,12 @@ def create_dashboard(process_4dnexus):
                 vmin = float(np.min(img))
                 vmax = float(np.max(img))
                 img = (img - vmin) / (vmax - vmin) if vmax > vmin else np.zeros_like(img)
+                
+                # Apply Plot1's flip state to match Plot1's orientation
+                plot1_needs_flip = getattr(process_4dnexus, 'plot1_needs_flip', False)
+                if plot1_needs_flip:
+                    img = np.transpose(img)
+                
                 source3.data = dict(
                     image=[img],
                     x=[plot3.x_range.start],
@@ -3696,7 +3799,17 @@ def create_dashboard(process_4dnexus):
                 range3_min_input.value = "0"
                 range3_max_input.value = "1"
             else:
-                z1, z2, u1, u2 = rect2b.min_x, rect2b.max_x, rect2b.min_y, rect2b.max_y
+                # Account for axis flipping: if plot is flipped, rect2b coordinates are swapped
+                plot2b_needs_flip = getattr(process_4dnexus, 'plot2b_needs_flip', False)
+                if plot2b_needs_flip:
+                    # When flipped, rect2b.min_x/max_x represent z, rect2b.min_y/max_y represent u
+                    # (because tap handler swaps: click_z -> min_x, click_u -> min_y)
+                    z1, z2 = rect2b.min_x, rect2b.max_x  # z from x coordinates
+                    u1, u2 = rect2b.min_y, rect2b.max_y  # u from y coordinates
+                else:
+                    # When not flipped, rect2b.min_x/max_x represent z, rect2b.min_y/max_y represent u
+                    z1, z2 = rect2b.min_x, rect2b.max_x  # z from x coordinates
+                    u1, u2 = rect2b.min_y, rect2b.max_y  # u from y coordinates
                 # normalize and clamp 4D bounds
                 try:
                     z_lo, z_hi = (int(z1), int(z2)) if z1 <= z2 else (int(z2), int(z1))
@@ -3711,13 +3824,19 @@ def create_dashboard(process_4dnexus):
                         u_hi = min(u_lo + 1, vb.shape[3])
                 except Exception:
                     z_lo, z_hi, u_lo, u_hi = 0, min(1, vb.shape[2]), 0, min(1, vb.shape[3])
-                print(f"DEBUG _compute_plot3_image_work_from_plot2b: z1 {z_lo}, z2 {z_hi}, u1 {u_lo}, u2 {u_hi}"  )
+                print(f"DEBUG _compute_plot3_image_work_from_plot2b: z1 {z_lo}, z2 {z_hi}, u1 {u_lo}, u2 {u_hi}, flipped={plot2b_needs_flip}"  )
                 piece = vb[:, :, z_lo:z_hi, u_lo:u_hi]
                 img = np.sum(piece, axis=(2, 3))
                 img = np.nan_to_num(img, nan=0.0, posinf=0.0, neginf=0.0)
                 vmin = float(np.min(img))
                 vmax = float(np.max(img))
                 img = (img - vmin) / (vmax - vmin) if vmax > vmin else np.zeros_like(img)
+                
+                # Apply Plot1's flip state to match Plot1's orientation
+                plot1_needs_flip = getattr(process_4dnexus, 'plot1_needs_flip', False)
+                if plot1_needs_flip:
+                    img = np.transpose(img)
+                
                 source3.data = dict(
                     image=[img],
                     x=[plot3.x_range.start],
