@@ -353,7 +353,14 @@ case "${1:-start}" in
         ;;
     "restart")
         print_status "Restarting services..."
-        docker-compose restart
+        # First try to restart existing containers
+        if docker-compose ps | grep -q "scientistcloud-portal"; then
+            docker-compose restart
+        else
+            # If container doesn't exist or is stopped, start it
+            print_status "Container not running, starting it..."
+            docker-compose up -d
+        fi
         print_success "Services restarted"
         ;;
     "logs")

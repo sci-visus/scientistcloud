@@ -212,13 +212,13 @@ function displayWelcomeScreen($user) {
                                 <button class="btn btn-primary" id="quickUploadBtn">
                                     <i class="fas fa-upload"></i> Upload Dataset
                                 </button>
-                                <button class="btn btn-outline-primary" id="quickViewJobsBtn">
+                                <button class="btn btn-outline-primary" id="quickViewJobsBtn" style="display: none;">
                                     <i class="fas fa-tasks"></i> View Jobs
                                 </button>
                                 <button class="btn btn-outline-primary" id="quickCreateTeamBtn">
                                     <i class="fas fa-users"></i> Create Team
                                 </button>
-                                <button class="btn btn-outline-secondary" id="quickSettingsBtn" disabled>
+                                <button class="btn btn-outline-secondary" id="quickSettingsBtn" disabled style="display: none;">
                                     <i class="fas fa-cog"></i> Settings
                                 </button>
                             </div>

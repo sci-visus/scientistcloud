@@ -1256,38 +1256,49 @@ class DatasetManager {
             server: datasetServer
         };
 
-        // Load dataset details
-        this.loadDatasetDetails(datasetId);
-
-        // Determine appropriate dashboard and update dropdown
-        // First check if we can determine from dataset details
+        // Fetch dataset details once and reuse for both details display and dashboard selection
+        let datasetDetails = null;
         try {
             const response = await fetch(`${getApiBasePath()}/dataset-details.php?dataset_id=${datasetId}`);
             const data = await response.json();
             if (data.success && data.dataset) {
-                const dimensions = data.dataset.dimensions || '';
-                // If dataset is 4D, select 4D_Dashboard in dropdown
-                if (dimensions && dimensions.toUpperCase().includes('4D')) {
+                datasetDetails = data.dataset;
+                // Store full dataset details in currentDataset
+                this.currentDataset.details = datasetDetails;
+                
+                // Update viewer-toolbar dropdown to match preferred_dashboard if it exists
+                if (datasetDetails.preferred_dashboard) {
                     const viewerTypeSelect = document.getElementById('viewerType');
                     if (viewerTypeSelect) {
-                        // Try to find 4D_Dashboard option
-                        const option4D = Array.from(viewerTypeSelect.options).find(opt => 
-                            opt.value === '4D_Dashboard' || 
-                            opt.value.toLowerCase() === '4d_dashboard' ||
-                            opt.text.toLowerCase().includes('4d')
+                        // Try to find matching option (case-insensitive)
+                        const preferredDashboard = datasetDetails.preferred_dashboard;
+                        const option = Array.from(viewerTypeSelect.options).find(opt => 
+                            opt.value === preferredDashboard || 
+                            opt.value.toLowerCase() === preferredDashboard.toLowerCase() ||
+                            opt.text.toLowerCase().includes(preferredDashboard.toLowerCase())
                         );
-                        if (option4D) {
-                            viewerTypeSelect.value = option4D.value;
+                        if (option) {
+                            viewerTypeSelect.value = option.value;
+                            console.log('Updated viewer-toolbar to match preferred_dashboard:', preferredDashboard);
+                        } else {
+                            console.warn('Could not find viewer-toolbar option for preferred_dashboard:', preferredDashboard);
                         }
                     }
                 }
             }
         } catch (error) {
-            console.warn('Could not determine dashboard from dimensions:', error);
+            console.warn('Could not fetch dataset details:', error);
         }
 
-        // Load dashboard (will use selected dashboard from dropdown or determine from dimensions)
-        this.loadDashboard(datasetId, datasetName, datasetUuid, datasetServer);
+        // Load dataset details for display
+        if (datasetDetails) {
+            this.displayDatasetDetails(datasetDetails);
+        } else {
+            this.loadDatasetDetails(datasetId);
+        }
+
+        // Load dashboard with dataset details to avoid re-fetching
+        this.loadDashboard(datasetId, datasetName, datasetUuid, datasetServer, null, datasetDetails);
 
         console.log('Dataset selected:', this.currentDataset);
     }
@@ -1774,7 +1785,7 @@ class DatasetManager {
     /**
      * Load dashboard
      */
-    async loadDashboard(datasetId, datasetName, datasetUuid, datasetServer) {
+    async loadDashboard(datasetId, datasetName, datasetUuid, datasetServer, dashboardTypeOverride = null, datasetDetails = null) {
         const viewerContainer = document.getElementById('viewerContainer');
         if (!viewerContainer) return;
 
@@ -1790,34 +1801,74 @@ class DatasetManager {
         `;
 
         // Determine appropriate dashboard
-        // First, try to get the selected dashboard from the dropdown
-        let selectedDashboard = null;
-        const viewerTypeSelect = document.getElementById('viewerType');
-        if (viewerTypeSelect && viewerTypeSelect.value) {
-            selectedDashboard = viewerTypeSelect.value;
+        // Priority order:
+        // 1. Explicit override (if provided)
+        // 2. Dataset's preferred_dashboard field (from visstoredatas collection)
+        // 3. Selected dashboard from viewer-toolbar dropdown
+        // 4. Determine from dataset dimensions (if 4D)
+        // 5. Fallback to OpenVisusSlice
+        
+        let selectedDashboard = dashboardTypeOverride;
+        
+        // If no override, check dataset's preferred_dashboard field
+        if (!selectedDashboard) {
+            let dataset = datasetDetails;
+            
+            // If dataset details not provided, try to get from currentDataset or fetch
+            if (!dataset && this.currentDataset && this.currentDataset.details) {
+                dataset = this.currentDataset.details;
+            }
+            
+            // If still no dataset, fetch it
+            if (!dataset) {
+                try {
+                    const response = await fetch(`${getApiBasePath()}/dataset-details.php?dataset_id=${datasetId}`);
+                    const data = await response.json();
+                    if (data.success && data.dataset) {
+                        dataset = data.dataset;
+                        // Cache it in currentDataset
+                        if (this.currentDataset) {
+                            this.currentDataset.details = dataset;
+                        }
+                    }
+                } catch (error) {
+                    console.warn('Could not fetch dataset details for dashboard selection:', error);
+                }
+            }
+            
+            // Check preferred_dashboard field
+            if (dataset && dataset.preferred_dashboard) {
+                selectedDashboard = dataset.preferred_dashboard;
+                console.log('Using preferred_dashboard from dataset:', selectedDashboard);
+            }
         }
         
-        // If no dashboard selected, try to determine from dataset dimensions
-        if (!selectedDashboard && this.currentDataset) {
-            // Get dataset details to check dimensions
-            try {
-                const response = await fetch(`${getApiBasePath()}/dataset-details.php?dataset_id=${datasetId}`);
-                const data = await response.json();
-                if (data.success && data.dataset) {
-                    const dimensions = data.dataset.dimensions || '';
-                    // If dataset is 4D, default to 4D_Dashboard
-                    if (dimensions && dimensions.toUpperCase().includes('4D')) {
-                        selectedDashboard = '4D_Dashboard';
-                    }
+        // If still no dashboard, check viewer-toolbar dropdown
+        if (!selectedDashboard) {
+            const viewerTypeSelect = document.getElementById('viewerType');
+            if (viewerTypeSelect && viewerTypeSelect.value) {
+                selectedDashboard = viewerTypeSelect.value;
+                console.log('Using dashboard from viewer-toolbar:', selectedDashboard);
+            }
+        }
+        
+        // If still no dashboard, try to determine from dataset dimensions
+        if (!selectedDashboard) {
+            let dataset = datasetDetails || (this.currentDataset && this.currentDataset.details);
+            if (dataset && dataset.dimensions) {
+                const dimensions = dataset.dimensions || '';
+                // If dataset is 4D, default to 4D_Dashboard
+                if (dimensions.toUpperCase().includes('4D')) {
+                    selectedDashboard = '4D_Dashboard';
+                    console.log('Using 4D_Dashboard based on dimensions');
                 }
-            } catch (error) {
-                console.warn('Could not determine dashboard from dimensions:', error);
             }
         }
         
         // Fallback to OpenVisusSlice if nothing else selected
         if (!selectedDashboard) {
             selectedDashboard = 'OpenVisusSlice';
+            console.log('Using default dashboard: OpenVisusSlice');
         }
         
         // Load dashboard using viewer manager

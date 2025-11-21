@@ -85,13 +85,13 @@ $preferredDashboard = getUserPreferredDashboard($user['id']);
           <button type="button" class="btn btn-outline-light" id="uploadDatasetBtn" title="Upload Dataset">
             <i class="fas fa-upload"></i> Upload Dataset
           </button>
-          <button type="button" class="btn btn-outline-light" id="viewJobsBtn" title="View Jobs">
+          <button type="button" class="btn btn-outline-light" id="viewJobsBtn" title="View Jobs" style="display: none;">
             <i class="fas fa-tasks"></i> View Jobs
           </button>
           <button type="button" class="btn btn-outline-light" id="createTeamBtn" title="Create Team">
             <i class="fas fa-users"></i> Create Team
           </button>
-          <button type="button" class="btn btn-outline-light" id="settingsBtn" title="Settings" disabled>
+          <button type="button" class="btn btn-outline-light" id="settingsBtn" title="Settings" disabled style="display: none;">
             <i class="fas fa-cog"></i> Settings
           </button>
         </div>
