@@ -490,18 +490,18 @@ def create_tmp_dashboard(process_4dnexus):
         print("Initializing plots with selected datasets...")
         
         try:
-            # Get the selected datasets
-            plot2_selection = plot2_h5_selector.value
-            plot2_path = extract_dataset_path(plot2_selection)
-            
-            if plot2_path == "No 3D/4D datasets":
+        # Get the selected datasets
+        plot2_selection = plot2_h5_selector.value
+        plot2_path = extract_dataset_path(plot2_selection)
+        
+        if plot2_path == "No 3D/4D datasets":
                 print("ERROR: Please select valid datasets before initializing plots")
                 from bokeh.io import curdoc as _curdoc
                 error_div = Div(text="<h3 style='color: red;'>Error: Please select a valid Plot2 dataset (3D/4D) before initializing plots.</h3>", width=800)
                 _curdoc().add_root(error_div)
-                return
-            else:
-                process_4dnexus.volume_picked = plot2_path
+            return
+        else:
+            process_4dnexus.volume_picked = plot2_path
             # Determine Plot1 selection based on mode
             if plot1_mode_selector.active == 0:  # Single dataset mode
                 plot1_selection = plot1_h5_selector.value
@@ -596,7 +596,7 @@ def create_tmp_dashboard(process_4dnexus):
                 process_4dnexus.plot1b_single_dataset_picked = None
                 process_4dnexus.presample_picked_b = None
                 process_4dnexus.postsample_picked_b = None
-            
+
             # Store flip flag for Plot1B
             process_4dnexus.plot1b_needs_flip = plot1b_needs_flip
             
@@ -627,6 +627,10 @@ def create_tmp_dashboard(process_4dnexus):
             # Store flip flag for Plot1
             process_4dnexus.plot1_needs_flip = plot1_needs_flip
             
+            # Store original user selections for axis labels (before swapping)
+            original_map_x_coords = map_x_coords
+            original_map_y_coords = map_y_coords
+            
             # Set map coordinates - if flipping is needed, swap the paths so that
             # x_coords_picked matches volume.shape[0] and y_coords_picked matches volume.shape[1]
             # The flip flag will handle the visual transposition in MapPlot
@@ -637,7 +641,7 @@ def create_tmp_dashboard(process_4dnexus):
                 map_x_coords = temp_x
                 map_y_coords = temp_y
             
-            # Set map coordinates
+            # Set map coordinates (swapped if needed)
             if map_x_coords != "Use Default":
                 process_4dnexus.x_coords_picked = map_x_coords
             else:
@@ -648,9 +652,21 @@ def create_tmp_dashboard(process_4dnexus):
             else:
                 process_4dnexus.y_coords_picked = "map_mi_sic_0p33mm_002/data/samz"
             
+            # Store original user selections for axis labels (these reflect what the user actually selected)
+            process_4dnexus.original_map_x_coords_picked = original_map_x_coords if original_map_x_coords != "Use Default" else None
+            process_4dnexus.original_map_y_coords_picked = original_map_y_coords if original_map_y_coords != "Use Default" else None
+            
+            # Store original probe coordinate selections for axis labels (before swapping)
+            original_probe_x_coords = probe_x_coords
+            original_probe_y_coords = probe_y_coords
+            
             # Store probe coordinates for later use (if needed)
             process_4dnexus.probe_x_coords_picked = probe_x_coords if probe_x_coords != "Use Default" else None
             process_4dnexus.probe_y_coords_picked = probe_y_coords if probe_y_coords != "Use Default" else None
+            
+            # Store original user selections for axis labels
+            process_4dnexus.original_probe_x_coords_picked = original_probe_x_coords if original_probe_x_coords != "Use Default" else None
+            process_4dnexus.original_probe_y_coords_picked = original_probe_y_coords if original_probe_y_coords != "Use Default" else None
             
             # Determine if axes need flipping for Plot2 (probe plot)
             plot2_needs_flip = False
@@ -696,8 +712,15 @@ def create_tmp_dashboard(process_4dnexus):
                     probe_y_coords_selection_b = probe_y_coords_selector_b.value
                     probe_x_coords_b = extract_dataset_path(probe_x_coords_selection_b)
                     probe_y_coords_b = extract_dataset_path(probe_y_coords_selection_b)
+                    
+                    # Store original user selections for axis labels (before any swapping)
+                    original_probe_x_coords_b = probe_x_coords_b
+                    original_probe_y_coords_b = probe_y_coords_b
+                    
                     process_4dnexus.probe_x_coords_picked_b = probe_x_coords_b if probe_x_coords_b != "Use Default" else None
                     process_4dnexus.probe_y_coords_picked_b = probe_y_coords_b if probe_y_coords_b != "Use Default" else None
+                    process_4dnexus.original_probe_x_coords_picked_b = original_probe_x_coords_b if original_probe_x_coords_b != "Use Default" else None
+                    process_4dnexus.original_probe_y_coords_picked_b = original_probe_y_coords_b if original_probe_y_coords_b != "Use Default" else None
                     print(f"  Plot2B Probe X coords: {probe_x_coords_b}")
                     print(f"  Plot2B Probe Y coords: {probe_y_coords_b}")
                     
@@ -1376,9 +1399,21 @@ def create_dashboard(process_4dnexus):
             else:
                 return "Plot2B - Probe View"
         
-        # Get axis labels from process_4dnexus
-        plot1_x_label = getattr(process_4dnexus, 'x_coords_picked', 'X Position')
-        plot1_y_label = getattr(process_4dnexus, 'y_coords_picked', 'Y Position')
+        # Get axis labels from original user selections (before swapping)
+        # Use original selections if available, otherwise fall back to current selections
+        original_map_x = getattr(process_4dnexus, 'original_map_x_coords_picked', None)
+        original_map_y = getattr(process_4dnexus, 'original_map_y_coords_picked', None)
+        
+        if original_map_x:
+            plot1_x_label = original_map_x
+        else:
+            plot1_x_label = getattr(process_4dnexus, 'x_coords_picked', 'X Position')
+        
+        if original_map_y:
+            plot1_y_label = original_map_y
+        else:
+            plot1_y_label = getattr(process_4dnexus, 'y_coords_picked', 'Y Position')
+        
         # Extract just the coordinate name if it's a path
         if '/' in plot1_x_label:
             plot1_x_label = plot1_x_label.split('/')[-1]
@@ -1398,12 +1433,12 @@ def create_dashboard(process_4dnexus):
             plot1.xaxis.axis_label = plot1_y_label
             plot1.yaxis.axis_label = plot1_x_label
         else:
-            plot1.xaxis.ticker = x_ticks
-            plot1.yaxis.ticker = y_ticks
-            plot1.xaxis.major_label_overrides = dict(zip(x_ticks, my_xticks))
-            plot1.yaxis.major_label_overrides = dict(zip(y_ticks, my_yticks))
-            plot1.xaxis.axis_label = plot1_x_label
-            plot1.yaxis.axis_label = plot1_y_label
+        plot1.xaxis.ticker = x_ticks
+        plot1.yaxis.ticker = y_ticks
+        plot1.xaxis.major_label_overrides = dict(zip(x_ticks, my_xticks))
+        plot1.yaxis.major_label_overrides = dict(zip(y_ticks, my_yticks))
+        plot1.xaxis.axis_label = plot1_x_label
+        plot1.yaxis.axis_label = plot1_y_label
         # Set font sizes
         plot1.title.text_font_size = FONT_SIZE_PLOT_TITLE
         plot1.xaxis.axis_label_text_font_size = FONT_SIZE_AXIS_LABEL
@@ -1433,8 +1468,14 @@ def create_dashboard(process_4dnexus):
             # For 2D plots, set both axes
             # Check if flipping is needed and swap labels accordingly
             plot2_needs_flip = getattr(process_4dnexus, 'plot2_needs_flip', False)
-            plot2_probe_x = getattr(process_4dnexus, 'probe_x_coords_picked', None)
-            plot2_probe_y = getattr(process_4dnexus, 'probe_y_coords_picked', None)
+            # Use original user selections for axis labels
+            original_probe_x = getattr(process_4dnexus, 'original_probe_x_coords_picked', None)
+            original_probe_y = getattr(process_4dnexus, 'original_probe_y_coords_picked', None)
+            
+            # Fall back to current selections if original not available
+            plot2_probe_x = original_probe_x if original_probe_x else getattr(process_4dnexus, 'probe_x_coords_picked', None)
+            plot2_probe_y = original_probe_y if original_probe_y else getattr(process_4dnexus, 'probe_y_coords_picked', None)
+            
             if plot2_needs_flip:
                 # When flipped, swap the labels: x-axis gets y label, y-axis gets x label
                 if plot2_probe_y:
@@ -1506,22 +1547,22 @@ def create_dashboard(process_4dnexus):
             plot3.xaxis.axis_label = plot1_y_label
             plot3.yaxis.axis_label = plot1_x_label
         else:
-            plot3 = figure(
-                title="Plot3 - Additional View",
-                tools="pan,wheel_zoom,box_zoom,reset,tap",
-                x_range=(x_coords.min(), x_coords.max()),
-                y_range=(y_coords.min(), y_coords.max()),
-            )
-            plot3.x_range.start = x_coords.min()
-            plot3.x_range.end = x_coords.max()
-            plot3.y_range.start = y_coords.min()
-            plot3.y_range.end = y_coords.max()
-            plot3.xaxis.ticker = x_ticks
-            plot3.yaxis.ticker = y_ticks
-            plot3.xaxis.major_label_overrides = dict(zip(x_ticks, my_xticks))
-            plot3.yaxis.major_label_overrides = dict(zip(y_ticks, my_yticks))
-            plot3.xaxis.axis_label = plot1_x_label
-            plot3.yaxis.axis_label = plot1_y_label
+        plot3 = figure(
+            title="Plot3 - Additional View",
+            tools="pan,wheel_zoom,box_zoom,reset,tap",
+            x_range=(x_coords.min(), x_coords.max()),
+            y_range=(y_coords.min(), y_coords.max()),
+        )
+        plot3.x_range.start = x_coords.min()
+        plot3.x_range.end = x_coords.max()
+        plot3.y_range.start = y_coords.min()
+        plot3.y_range.end = y_coords.max()
+        plot3.xaxis.ticker = x_ticks
+        plot3.yaxis.ticker = y_ticks
+        plot3.xaxis.major_label_overrides = dict(zip(x_ticks, my_xticks))
+        plot3.yaxis.major_label_overrides = dict(zip(y_ticks, my_yticks))
+        plot3.xaxis.axis_label = plot1_x_label
+        plot3.yaxis.axis_label = plot1_y_label
         # Set font sizes
         plot3.title.text_font_size = FONT_SIZE_PLOT_TITLE
         plot3.xaxis.axis_label_text_font_size = FONT_SIZE_AXIS_LABEL
@@ -1575,12 +1616,12 @@ def create_dashboard(process_4dnexus):
                             plot1b.xaxis.axis_label = plot1_y_label
                             plot1b.yaxis.axis_label = plot1_x_label
                         else:
-                            plot1b.xaxis.ticker = x_ticks
-                            plot1b.yaxis.ticker = y_ticks
-                            plot1b.xaxis.major_label_overrides = dict(zip(x_ticks, my_xticks))
-                            plot1b.yaxis.major_label_overrides = dict(zip(y_ticks, my_yticks))
-                            plot1b.xaxis.axis_label = plot1_x_label
-                            plot1b.yaxis.axis_label = plot1_y_label
+                        plot1b.xaxis.ticker = x_ticks
+                        plot1b.yaxis.ticker = y_ticks
+                        plot1b.xaxis.major_label_overrides = dict(zip(x_ticks, my_xticks))
+                        plot1b.yaxis.major_label_overrides = dict(zip(y_ticks, my_yticks))
+                        plot1b.xaxis.axis_label = plot1_x_label
+                        plot1b.yaxis.axis_label = plot1_y_label
                         # Set font sizes
                         plot1b.title.text_font_size = FONT_SIZE_PLOT_TITLE
                         plot1b.xaxis.axis_label_text_font_size = FONT_SIZE_AXIS_LABEL
@@ -1620,12 +1661,12 @@ def create_dashboard(process_4dnexus):
                         plot1b.xaxis.axis_label = plot1_y_label
                         plot1b.yaxis.axis_label = plot1_x_label
                     else:
-                        plot1b.xaxis.ticker = x_ticks
-                        plot1b.yaxis.ticker = y_ticks
-                        plot1b.xaxis.major_label_overrides = dict(zip(x_ticks, my_xticks))
-                        plot1b.yaxis.major_label_overrides = dict(zip(y_ticks, my_yticks))
-                        plot1b.xaxis.axis_label = plot1_x_label
-                        plot1b.yaxis.axis_label = plot1_y_label
+                    plot1b.xaxis.ticker = x_ticks
+                    plot1b.yaxis.ticker = y_ticks
+                    plot1b.xaxis.major_label_overrides = dict(zip(x_ticks, my_xticks))
+                    plot1b.yaxis.major_label_overrides = dict(zip(y_ticks, my_yticks))
+                    plot1b.xaxis.axis_label = plot1_x_label
+                    plot1b.yaxis.axis_label = plot1_y_label
                     # Set font sizes
                     plot1b.title.text_font_size = FONT_SIZE_PLOT_TITLE
                     plot1b.xaxis.axis_label_text_font_size = FONT_SIZE_AXIS_LABEL
@@ -1671,8 +1712,15 @@ def create_dashboard(process_4dnexus):
                         # For 2D plots
                         # Check if flipping is needed and swap labels accordingly
                         plot2b_needs_flip = getattr(process_4dnexus, 'plot2b_needs_flip', False)
-                        plot2b_probe_x = getattr(process_4dnexus, 'probe_x_coords_picked_b', None)
-                        plot2b_probe_y = getattr(process_4dnexus, 'probe_y_coords_picked_b', None)
+                        
+                        # Use original user selections for axis labels
+                        original_probe_x_b = getattr(process_4dnexus, 'original_probe_x_coords_picked_b', None)
+                        original_probe_y_b = getattr(process_4dnexus, 'original_probe_y_coords_picked_b', None)
+                        
+                        # Fall back to current selections if original not available
+                        plot2b_probe_x = original_probe_x_b if original_probe_x_b else getattr(process_4dnexus, 'probe_x_coords_picked_b', None)
+                        plot2b_probe_y = original_probe_y_b if original_probe_y_b else getattr(process_4dnexus, 'probe_y_coords_picked_b', None)
+                        
                         if plot2b_needs_flip:
                             # When flipped, swap the labels: x-axis gets y label, y-axis gets x label
                             if plot2b_probe_y:
@@ -2099,10 +2147,105 @@ def create_dashboard(process_4dnexus):
         reset_plot2a_button = Button(label="Reset Plot2a", button_type="warning")
         reset_plot2b_button = Button(label="Reset Plot2b", button_type="warning")
 
+        # Helper function to get dataset shape from dimensions_categories
+        def get_dataset_shape_str(dataset_path):
+            """Get shape string for a dataset path from dimensions_categories."""
+            if not dataset_path or not hasattr(process_4dnexus, 'dimensions_categories'):
+                return "Unknown"
+            dims = process_4dnexus.dimensions_categories
+            # Search through all dimension categories
+            for cat in ['4d', '3d', '2d', '1d', 'scalar', 'unknown']:
+                if cat in dims:
+                    for item in dims[cat]:
+                        if isinstance(item, dict) and item.get('path') == dataset_path:
+                            shape = item.get('shape', ())
+                            if shape:
+                                return str(shape)
+            return "Unknown"
+        
+        # Collect information about selected datasets
+        selected_datasets_info = []
+        
+        # Plot1 datasets
+        if getattr(process_4dnexus, 'plot1_single_dataset_picked', None):
+            path = process_4dnexus.plot1_single_dataset_picked
+            shape_str = get_dataset_shape_str(path)
+            selected_datasets_info.append(f"<b>Plot1:</b> {path} (shape: {shape_str})")
+        elif getattr(process_4dnexus, 'presample_picked', None) and getattr(process_4dnexus, 'postsample_picked', None):
+            presample_path = process_4dnexus.presample_picked
+            postsample_path = process_4dnexus.postsample_picked
+            presample_shape = get_dataset_shape_str(presample_path)
+            postsample_shape = get_dataset_shape_str(postsample_path)
+            selected_datasets_info.append(f"<b>Plot1 (Ratio):</b> {presample_path} (shape: {presample_shape}) / {postsample_path} (shape: {postsample_shape})")
+        
+        # Plot1B datasets
+        if getattr(process_4dnexus, 'plot1b_single_dataset_picked', None):
+            path = process_4dnexus.plot1b_single_dataset_picked
+            shape_str = get_dataset_shape_str(path)
+            selected_datasets_info.append(f"<b>Plot1B:</b> {path} (shape: {shape_str})")
+        elif getattr(process_4dnexus, 'presample_picked_b', None) and getattr(process_4dnexus, 'postsample_picked_b', None):
+            presample_path = process_4dnexus.presample_picked_b
+            postsample_path = process_4dnexus.postsample_picked_b
+            presample_shape = get_dataset_shape_str(presample_path)
+            postsample_shape = get_dataset_shape_str(postsample_path)
+            selected_datasets_info.append(f"<b>Plot1B (Ratio):</b> {presample_path} (shape: {presample_shape}) / {postsample_path} (shape: {postsample_shape})")
+        
+        # Plot2 datasets
+        if getattr(process_4dnexus, 'volume_picked', None):
+            path = process_4dnexus.volume_picked
+            shape_str = get_dataset_shape_str(path)
+            selected_datasets_info.append(f"<b>Plot2:</b> {path} (shape: {shape_str})")
+        
+        # Plot2B datasets
+        if getattr(process_4dnexus, 'volume_picked_b', None):
+            path = process_4dnexus.volume_picked_b
+            shape_str = get_dataset_shape_str(path)
+            selected_datasets_info.append(f"<b>Plot2B:</b> {path} (shape: {shape_str})")
+        
+        # Coordinate datasets
+        if getattr(process_4dnexus, 'x_coords_picked', None):
+            path = process_4dnexus.x_coords_picked
+            shape_str = get_dataset_shape_str(path)
+            selected_datasets_info.append(f"<b>Map X Coords:</b> {path} (shape: {shape_str})")
+        
+        if getattr(process_4dnexus, 'y_coords_picked', None):
+            path = process_4dnexus.y_coords_picked
+            shape_str = get_dataset_shape_str(path)
+            selected_datasets_info.append(f"<b>Map Y Coords:</b> {path} (shape: {shape_str})")
+        
+        if getattr(process_4dnexus, 'probe_x_coords_picked', None):
+            path = process_4dnexus.probe_x_coords_picked
+            shape_str = get_dataset_shape_str(path)
+            selected_datasets_info.append(f"<b>Probe X Coords:</b> {path} (shape: {shape_str})")
+        
+        if getattr(process_4dnexus, 'probe_y_coords_picked', None):
+            path = process_4dnexus.probe_y_coords_picked
+            shape_str = get_dataset_shape_str(path)
+            selected_datasets_info.append(f"<b>Probe Y Coords:</b> {path} (shape: {shape_str})")
+        
+        if getattr(process_4dnexus, 'probe_x_coords_picked_b', None):
+            path = process_4dnexus.probe_x_coords_picked_b
+            shape_str = get_dataset_shape_str(path)
+            selected_datasets_info.append(f"<b>Probe X Coords (B):</b> {path} (shape: {shape_str})")
+        
+        if getattr(process_4dnexus, 'probe_y_coords_picked_b', None):
+            path = process_4dnexus.probe_y_coords_picked_b
+            shape_str = get_dataset_shape_str(path)
+            selected_datasets_info.append(f"<b>Probe Y Coords (B):</b> {path} (shape: {shape_str})")
+        
+        # Build status text with selected datasets info
+        datasets_section = ""
+        if selected_datasets_info:
+            datasets_section = "<p><b>Selected Datasets:</b></p><ul>"
+            for info in selected_datasets_info:
+                datasets_section += f"<li>{info}</li>"
+            datasets_section += "</ul>"
+
         # Create status display with instructions
         if is_3d_volume:
             status_text = f"""
             <h3>3D Data Explorer Dashboard</h3>
+            {datasets_section}
             <p><b>Instructions for 3D volumes:</b></p>
             <ul>
                 <li><b>Plot1:</b> 2D map view - click to select position</li>
@@ -2114,6 +2257,7 @@ def create_dashboard(process_4dnexus):
         else:
             status_text = f"""
             <h3>4D Data Explorer Dashboard</h3>
+            {datasets_section}
             <p><b>Instructions for 4D volumes:</b></p>
             <ul>
                 <li><b>Plot1:</b> 2D map view - click to select position</li>
