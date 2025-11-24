@@ -1,0 +1,38 @@
+{
+  "name": "4D_Dashboard",
+  "display_name": "4D Dashboard",
+  "description": "Interactive 4D visualization using 4D Nexus files",
+  "version": "2.0.0",
+  "type": "bokeh",
+  "entry_point": "4d_dashboardLite.py",
+  "entry_point_type": "python",
+  "port": 8052,
+  "base_image": "visstore-4d-dashboard-base",
+  "base_image_tag": "latest",
+  "requirements_file": "requirements.txt",
+  "additional_requirements": [ ],
+  "shared_utilities": [
+    "mongo_connection.py",
+    "utils_bokeh_mongodb.py",
+    "utils_bokeh_dashboard.py",
+    "utils_bokeh_auth.py",
+    "utils_bokeh_param.py"
+  ],
+  "environment_variables": {
+    "SECRET_KEY": "${SECRET_KEY}",
+    "DEPLOY_SERVER": "${DEPLOY_SERVER}",
+    "DB_NAME": "${DB_NAME}",
+    "MONGO_URL": "${MONGO_URL}"
+  },
+  "nginx_path": "/dashboard/4d_dashboardLite",
+  "health_check_path": "/health",
+  "supported_dimensions": ["4D"],
+  "build_args": {
+    "D_GIT_TOKEN": "${D_GIT_TOKEN}"
+  },
+  "volume_mounts": [],
+  "exposed_ports": [8052],
+  "depends_on": [],
+  "enabled": true
+}
+
