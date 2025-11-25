@@ -923,21 +923,15 @@ def create_tmp_dashboard(process_4dnexus):
             
             def _build_and_swap():
                 try:
+                    # Don't delete _session_filepath_to_load here - let create_dashboard() handle it
+                    # create_dashboard() will check for it at the end and auto-load the session
                     full_dashboard = create_dashboard(process_4dnexus)
                     _curdoc().clear()
                     _curdoc().add_root(full_dashboard)
                     
-                    # After dashboard is created, load the session if filepath was stored
-                    if hasattr(process_4dnexus, '_session_filepath_to_load'):
-                        session_filepath = process_4dnexus._session_filepath_to_load
-                        delattr(process_4dnexus, '_session_filepath_to_load')
-                        
-                        # The dashboard's on_load_session will be called automatically
-                        # But we need to trigger it manually since we're loading from tmp_dashboard
-                        # Actually, the dashboard will be created with the restored paths,
-                        # so the data will be correct. The session state will need to be loaded separately.
-                        # For now, just creating the dashboard with the restored paths should be enough.
-                        print(f"✅ Dashboard created with session data from {session_filepath.name}")
+                    # Session loading is now handled automatically by create_dashboard() via auto_load_session()
+                    # The _session_filepath_to_load attribute is deleted inside create_dashboard() after it's used
+                    print(f"✅ Dashboard created - session will be auto-loaded if present")
                 except Exception as e:
                     import traceback
                     error_msg = f"Error creating dashboard: {str(e)}"
@@ -1202,6 +1196,12 @@ def create_dashboard(process_4dnexus):
     try:
         t0 = time.time()
         print("[TIMING] create_dashboard(): start")
+        
+        # Check if we're loading from tmp_dashboard and set flag early to prevent range callbacks from firing
+        _is_loading_session = False
+        if hasattr(process_4dnexus, '_session_filepath_to_load') or hasattr(process_4dnexus, '_session_filepath_to_load_from_main'):
+            _is_loading_session = True
+            print("🔍 DEBUG: Session loading detected - setting flag to prevent range callbacks")
         
         # Load the data
         volume, presample, postsample, x_coords, y_coords, preview = process_4dnexus.load_nexus_data()
@@ -1581,38 +1581,53 @@ def create_dashboard(process_4dnexus):
             plot1_y_min = plot1.y_range.start
             plot1_y_max = plot1.y_range.end
             
-            # Initialize crosshair lines if they don't exist
-            if rect1.h1line is None:
+            # Initialize or recreate crosshair lines if they don't exist or were removed
+            if rect1.h1line is None or rect1.h1line not in plot1.renderers:
+                # Remove old renderer if it exists but isn't in the plot
+                if rect1.h1line is not None:
+                    try:
+                        if rect1.h1line in plot1.renderers:
+                            plot1.renderers.remove(rect1.h1line)
+                    except:
+                        pass
+                # Create new renderer
                 rect1.h1line = plot1.line(
                     x=[plot1_x_min, plot1_x_max], 
                     y=[plot_y_coord, plot_y_coord], 
                     line_color="yellow", 
                     line_width=2
                 )
+                # Ensure it's added to the plot (should be automatic, but double-check)
+                if rect1.h1line not in plot1.renderers:
+                    plot1.renderers.append(rect1.h1line)
+            else:
+                # Renderer exists and is in plot - just update its position
+                rect1.h1line.data_source.data = {
+                    "x": [plot1_x_min, plot1_x_max],
+                    "y": [plot_y_coord, plot_y_coord],
+                }
             
-            # Always ensure crosshair renderers are in the plot (they might have been removed)
-            if rect1.h1line is not None and rect1.h1line not in plot1.renderers:
-                plot1.renderers.append(rect1.h1line)
-            
-            if rect1.v1line is None:
+            # Initialize or recreate vertical crosshair line
+            if rect1.v1line is None or rect1.v1line not in plot1.renderers:
+                # Remove old renderer if it exists but isn't in the plot
+                if rect1.v1line is not None:
+                    try:
+                        if rect1.v1line in plot1.renderers:
+                            plot1.renderers.remove(rect1.v1line)
+                    except:
+                        pass
+                # Create new renderer
                 rect1.v1line = plot1.line(
                     x=[plot_x_coord, plot_x_coord], 
                     y=[plot1_y_min, plot1_y_max], 
                     line_color="yellow", 
                     line_width=2
                 )
-            
-            # Always ensure crosshair renderers are in the plot (they might have been removed)
-            if rect1.v1line is not None and rect1.v1line not in plot1.renderers:
-                plot1.renderers.append(rect1.v1line)
-            
-            # Update crosshair positions (Bokeh automatically updates when data is changed)
-            if rect1.h1line is not None:
-                rect1.h1line.data_source.data = {
-                    "x": [plot1_x_min, plot1_x_max],
-                    "y": [plot_y_coord, plot_y_coord],
-                }
-            if rect1.v1line is not None:
+                # Ensure it's added to the plot (should be automatic, but double-check)
+                if rect1.v1line not in plot1.renderers:
+                    plot1.renderers.append(rect1.v1line)
+            else:
+                # Renderer exists and is in plot - just update its position
                 rect1.v1line.data_source.data = {
                     "x": [plot_x_coord, plot_x_coord],
                     "y": [plot1_y_min, plot1_y_max],
@@ -1645,38 +1660,53 @@ def create_dashboard(process_4dnexus):
             plot1b_y_min = plot1b.y_range.start
             plot1b_y_max = plot1b.y_range.end
             
-            # Initialize crosshair lines if they don't exist
-            if rect1b.h1line is None:
+            # Initialize or recreate crosshair lines if they don't exist or were removed
+            if rect1b.h1line is None or rect1b.h1line not in plot1b.renderers:
+                # Remove old renderer if it exists but isn't in the plot
+                if rect1b.h1line is not None:
+                    try:
+                        if rect1b.h1line in plot1b.renderers:
+                            plot1b.renderers.remove(rect1b.h1line)
+                    except:
+                        pass
+                # Create new renderer
                 rect1b.h1line = plot1b.line(
                     x=[plot1b_x_min, plot1b_x_max], 
                     y=[plot_y_coord, plot_y_coord], 
                     line_color="yellow", 
                     line_width=2
                 )
+                # Ensure it's added to the plot (should be automatic, but double-check)
+                if rect1b.h1line not in plot1b.renderers:
+                    plot1b.renderers.append(rect1b.h1line)
+            else:
+                # Renderer exists and is in plot - just update its position
+                rect1b.h1line.data_source.data = {
+                    "x": [plot1b_x_min, plot1b_x_max],
+                    "y": [plot_y_coord, plot_y_coord],
+                }
             
-            # Always ensure crosshair renderers are in the plot (they might have been removed)
-            if rect1b.h1line is not None and rect1b.h1line not in plot1b.renderers:
-                plot1b.renderers.append(rect1b.h1line)
-            
-            if rect1b.v1line is None:
+            # Initialize or recreate vertical crosshair line
+            if rect1b.v1line is None or rect1b.v1line not in plot1b.renderers:
+                # Remove old renderer if it exists but isn't in the plot
+                if rect1b.v1line is not None:
+                    try:
+                        if rect1b.v1line in plot1b.renderers:
+                            plot1b.renderers.remove(rect1b.v1line)
+                    except:
+                        pass
+                # Create new renderer
                 rect1b.v1line = plot1b.line(
                     x=[plot_x_coord, plot_x_coord], 
                     y=[plot1b_y_min, plot1b_y_max], 
                     line_color="yellow", 
                     line_width=2
                 )
-            
-            # Always ensure crosshair renderers are in the plot (they might have been removed)
-            if rect1b.v1line is not None and rect1b.v1line not in plot1b.renderers:
-                plot1b.renderers.append(rect1b.v1line)
-            
-            # Update crosshair positions (Bokeh automatically updates when data is changed)
-            if rect1b.h1line is not None:
-                rect1b.h1line.data_source.data = {
-                    "x": [plot1b_x_min, plot1b_x_max],
-                    "y": [plot_y_coord, plot_y_coord],
-                }
-            if rect1b.v1line is not None:
+                # Ensure it's added to the plot (should be automatic, but double-check)
+                if rect1b.v1line not in plot1b.renderers:
+                    plot1b.renderers.append(rect1b.v1line)
+            else:
+                # Renderer exists and is in plot - just update its position
                 rect1b.v1line.data_source.data = {
                     "x": [plot_x_coord, plot_x_coord],
                     "y": [plot1b_y_min, plot1b_y_max],
@@ -2672,14 +2702,36 @@ def create_dashboard(process_4dnexus):
                 # Note: Setting slider.value will trigger on_x_slider_change/on_y_slider_change
                 # which will call draw_cross1() and show_slice()
         
-        # Draw initial crosshairs
-        try:
-            draw_cross1()
-            print("✅ Initial crosshairs drawn successfully")
-        except Exception as e:
-            print(f"⚠️ ERROR drawing initial crosshairs: {e}")
-            import traceback
-            traceback.print_exc()
+        # Draw initial crosshairs (skip if loading session - will be drawn by auto_load_session)
+        if not _is_loading_session:
+            try:
+                draw_cross1()
+                print("✅ Initial crosshairs drawn successfully")
+            except Exception as e:
+                print(f"⚠️ ERROR drawing initial crosshairs: {e}")
+                import traceback
+                traceback.print_exc()
+        else:
+            print("⏭️ Skipping initial crosshairs (session loading will draw them)")
+        
+        # CRITICAL: Add callbacks to redraw crosshairs whenever plot ranges change
+        # This ensures crosshairs persist even when ranges are updated during session loading
+        # The _is_loading_session flag is set at the start of create_dashboard() if a session is pending
+        
+        def on_plot1_range_change(attr, old, new):
+            """Redraw crosshairs when Plot1 range changes."""
+            # Don't redraw during session loading - it will be handled by auto_load_session
+            if _is_loading_session:
+                return
+            try:
+                draw_cross1()
+            except:
+                pass  # Silently fail if crosshairs can't be drawn yet
+        
+        plot1.x_range.on_change("start", on_plot1_range_change)
+        plot1.x_range.on_change("end", on_plot1_range_change)
+        plot1.y_range.on_change("start", on_plot1_range_change)
+        plot1.y_range.on_change("end", on_plot1_range_change)
         
         # Create Plot1B if enabled
         plot1b = None
@@ -2805,8 +2857,25 @@ def create_dashboard(process_4dnexus):
                         plot1b.add_tools(tap_tool1b)
                         plot1b.on_event("tap", on_plot1b_tap)
                         
-                        # Draw initial crosshairs on Plot1B
-                        draw_cross1b()
+                        # Draw initial crosshairs on Plot1B (skip if loading session - will be drawn by auto_load_session)
+                        if not _is_loading_session:
+                            draw_cross1b()
+                        
+                        # CRITICAL: Add callbacks to redraw crosshairs whenever Plot1B ranges change
+                        def on_plot1b_range_change(attr, old, new):
+                            """Redraw crosshairs when Plot1B range changes."""
+                            # Don't redraw during session loading - it will be handled by auto_load_session
+                            if _is_loading_session:
+                                return
+                            try:
+                                draw_cross1b()
+                            except:
+                                pass  # Silently fail if crosshairs can't be drawn yet
+                        
+                        plot1b.x_range.on_change("start", on_plot1b_range_change)
+                        plot1b.x_range.on_change("end", on_plot1b_range_change)
+                        plot1b.y_range.on_change("start", on_plot1b_range_change)
+                        plot1b.y_range.on_change("end", on_plot1b_range_change)
             except Exception as e:
                 import traceback
                 print(f"Failed to create Plot1B: {e}")
@@ -2922,8 +2991,22 @@ def create_dashboard(process_4dnexus):
                     plot1b.add_tools(tap_tool1b)
                     plot1b.on_event("tap", on_plot1b_tap)
                     
-                    # Draw initial crosshairs on Plot1B
-                    draw_cross1b()
+                    # Draw initial crosshairs on Plot1B (skip if loading session - will be drawn by auto_load_session)
+                    if not _is_loading_session:
+                        draw_cross1b()
+                    
+                    # CRITICAL: Add callbacks to redraw crosshairs whenever Plot1B ranges change
+                    def on_plot1b_range_change(attr, old, new):
+                        """Redraw crosshairs when Plot1B range changes."""
+                        try:
+                            draw_cross1b()
+                        except:
+                            pass  # Silently fail if crosshairs can't be drawn yet
+                    
+                    plot1b.x_range.on_change("start", on_plot1b_range_change)
+                    plot1b.x_range.on_change("end", on_plot1b_range_change)
+                    plot1b.y_range.on_change("start", on_plot1b_range_change)
+                    plot1b.y_range.on_change("end", on_plot1b_range_change)
             except Exception as e:
                 import traceback
                 print(f"Failed to create Plot1B (ratio mode): {e}")
@@ -3577,6 +3660,13 @@ def create_dashboard(process_4dnexus):
                 # Recreate mapper for Plot1
                 color_mapper1 = new_cls(palette=color_mapper1.palette, low=low1, high=high1)
                 if image_renderer1 is not None:
+                    # Preserve crosshair renderers before removing image renderer
+                    crosshair_renderers = []
+                    if rect1.h1line is not None and rect1.h1line in plot1.renderers:
+                        crosshair_renderers.append(rect1.h1line)
+                    if rect1.v1line is not None and rect1.v1line in plot1.renderers:
+                        crosshair_renderers.append(rect1.v1line)
+                    
                     # Remove the specific image renderer (not just the first renderer)
                     if image_renderer1 in plot1.renderers:
                         plot1.renderers.remove(image_renderer1)
@@ -3584,6 +3674,22 @@ def create_dashboard(process_4dnexus):
                     image_renderer1 = plot1.image(
                         "image", source=source1, x="x", y="y", dw="dw", dh="dh", color_mapper=color_mapper1,
                     )
+                    
+                    # CRITICAL: Ensure crosshair renderers are re-added AFTER image renderer
+                    # Bokeh's plot.image() might affect the renderers list, so we need to explicitly re-add crosshairs
+                    for renderer in crosshair_renderers:
+                        # Remove first if it exists (to avoid duplicates)
+                        if renderer in plot1.renderers:
+                            plot1.renderers.remove(renderer)
+                        # Re-add after image renderer
+                        plot1.renderers.append(renderer)
+                    
+                    # CRITICAL: Call draw_cross1() to ensure crosshairs are properly positioned and visible
+                    # This will update the crosshair positions and recreate them if needed
+                    try:
+                        draw_cross1()
+                    except:
+                        pass  # Silently fail if crosshairs can't be drawn yet
                 # Update colorbar if it exists
                 if 'colorbar1' in locals() and colorbar1 is not None:
                     colorbar1.color_mapper = color_mapper1
@@ -3609,6 +3715,14 @@ def create_dashboard(process_4dnexus):
                         high1b = color_mapper1b.high
                     color_mapper1b = new_cls(palette=color_mapper1.palette, low=low1b, high=high1b)
                     if image_renderer1b is not None:
+                        # Preserve crosshair renderers before removing image renderer
+                        crosshair_renderers_b = []
+                        if rect1b is not None:
+                            if rect1b.h1line is not None and rect1b.h1line in plot1b.renderers:
+                                crosshair_renderers_b.append(rect1b.h1line)
+                            if rect1b.v1line is not None and rect1b.v1line in plot1b.renderers:
+                                crosshair_renderers_b.append(rect1b.v1line)
+                        
                         # Remove the specific image renderer
                         if image_renderer1b in plot1b.renderers:
                             plot1b.renderers.remove(image_renderer1b)
@@ -3616,6 +3730,21 @@ def create_dashboard(process_4dnexus):
                         image_renderer1b = plot1b.image(
                             "image", source=source1b, x="x", y="y", dw="dw", dh="dh", color_mapper=color_mapper1b,
                         )
+                        
+                        # CRITICAL: Ensure crosshair renderers are re-added AFTER image renderer
+                        # Bokeh's plot.image() might affect the renderers list, so we need to explicitly re-add crosshairs
+                        for renderer in crosshair_renderers_b:
+                            # Remove first if it exists (to avoid duplicates)
+                            if renderer in plot1b.renderers:
+                                plot1b.renderers.remove(renderer)
+                            # Re-add after image renderer
+                            plot1b.renderers.append(renderer)
+                        
+                        # CRITICAL: Call draw_cross1b() to ensure crosshairs are properly positioned and visible
+                        try:
+                            draw_cross1b()
+                        except:
+                            pass  # Silently fail if crosshairs can't be drawn yet
                     # Update colorbar if it exists
                     if 'colorbar1b' in locals() and colorbar1b is not None:
                         colorbar1b.color_mapper = color_mapper1b
@@ -3660,6 +3789,13 @@ def create_dashboard(process_4dnexus):
                 # Recreate color mapper for Plot1 with new palette
                 color_mapper1 = mapper1_cls(palette=new_palette, low=color_mapper1.low, high=color_mapper1.high)
                 if image_renderer1 is not None:
+                    # Preserve crosshair renderers before removing image renderer
+                    crosshair_renderers = []
+                    if rect1.h1line is not None and rect1.h1line in plot1.renderers:
+                        crosshair_renderers.append(rect1.h1line)
+                    if rect1.v1line is not None and rect1.v1line in plot1.renderers:
+                        crosshair_renderers.append(rect1.v1line)
+                    
                     # Remove the specific image renderer (not just the first renderer)
                     if image_renderer1 in plot1.renderers:
                         plot1.renderers.remove(image_renderer1)
@@ -3667,6 +3803,21 @@ def create_dashboard(process_4dnexus):
                     image_renderer1 = plot1.image(
                         "image", source=source1, x="x", y="y", dw="dw", dh="dh", color_mapper=color_mapper1,
                     )
+                    
+                    # CRITICAL: Ensure crosshair renderers are re-added AFTER image renderer
+                    # Bokeh's plot.image() might affect the renderers list, so we need to explicitly re-add crosshairs
+                    for renderer in crosshair_renderers:
+                        # Remove first if it exists (to avoid duplicates)
+                        if renderer in plot1.renderers:
+                            plot1.renderers.remove(renderer)
+                        # Re-add after image renderer
+                        plot1.renderers.append(renderer)
+                    
+                    # CRITICAL: Call draw_cross1() to ensure crosshairs are properly positioned and visible
+                    try:
+                        draw_cross1()
+                    except:
+                        pass  # Silently fail if crosshairs can't be drawn yet
                 # Update colorbar1 if it exists (check plot's below layout items)
                 try:
                     for item in plot1.below:
@@ -3681,6 +3832,14 @@ def create_dashboard(process_4dnexus):
                     mapper1b_cls = type(color_mapper1b)
                     color_mapper1b = mapper1b_cls(palette=new_palette, low=color_mapper1b.low, high=color_mapper1b.high)
                     if image_renderer1b is not None:
+                        # Preserve crosshair renderers before removing image renderer
+                        crosshair_renderers_b = []
+                        if rect1b is not None:
+                            if rect1b.h1line is not None and rect1b.h1line in plot1b.renderers:
+                                crosshair_renderers_b.append(rect1b.h1line)
+                            if rect1b.v1line is not None and rect1b.v1line in plot1b.renderers:
+                                crosshair_renderers_b.append(rect1b.v1line)
+                        
                         # Remove the specific image renderer
                         if image_renderer1b in plot1b.renderers:
                             plot1b.renderers.remove(image_renderer1b)
@@ -3688,6 +3847,21 @@ def create_dashboard(process_4dnexus):
                         image_renderer1b = plot1b.image(
                             "image", source=source1b, x="x", y="y", dw="dw", dh="dh", color_mapper=color_mapper1b,
                         )
+                        
+                        # CRITICAL: Ensure crosshair renderers are re-added AFTER image renderer
+                        # Bokeh's plot.image() might affect the renderers list, so we need to explicitly re-add crosshairs
+                        for renderer in crosshair_renderers_b:
+                            # Remove first if it exists (to avoid duplicates)
+                            if renderer in plot1b.renderers:
+                                plot1b.renderers.remove(renderer)
+                            # Re-add after image renderer
+                            plot1b.renderers.append(renderer)
+                        
+                        # CRITICAL: Call draw_cross1b() to ensure crosshairs are properly positioned and visible
+                        try:
+                            draw_cross1b()
+                        except:
+                            pass  # Silently fail if crosshairs can't be drawn yet
                     # Update colorbar1b if it exists
                     try:
                         for item in plot1b.below:
@@ -4617,11 +4791,11 @@ def create_dashboard(process_4dnexus):
                         save_dir_path = Path(local_base_dir)
                     else:
                         save_dir_path = Path(save_dir) if save_dir else Path(local_base_dir)
-                    
-                    # Create sessions subdirectory
-                    sessions_dir = save_dir_path / "sessions"
-                    sessions_dir.mkdir(parents=True, exist_ok=True)
-                    filepath = sessions_dir / filename
+                
+                # Create sessions subdirectory
+                sessions_dir = save_dir_path / "sessions"
+                sessions_dir.mkdir(parents=True, exist_ok=True)
+                filepath = sessions_dir / filename
                 
                 # Save session - include_data=False means NO data arrays, only UI settings
                 session.save_session(filepath, include_data=False)
@@ -5315,7 +5489,11 @@ def create_dashboard(process_4dnexus):
         if session_filepath:
             def auto_load_session():
                 """Automatically load session after dashboard is fully created."""
+                nonlocal _is_loading_session
                 try:
+                    # Set flag to prevent range change callbacks from firing during session loading
+                    _is_loading_session = True
+                    
                     import json
                     # Set the session select value to match the filepath
                     session_filename = session_filepath.name
@@ -5372,7 +5550,38 @@ def create_dashboard(process_4dnexus):
                     status_div.text = f"✅ Session loaded from {session_filepath.name}<br>All settings restored"
                     source_name = "main dashboard" if is_from_main else "tmp_dashboard"
                     print(f"✅ Auto-loaded session from {source_name}: {session_filepath.name}")
+                    
+                    # CRITICAL: Redraw crosshairs after ALL updates are complete (use nested callbacks)
+                    # This ensures crosshairs are drawn after plot ranges and all UI updates are finished
+                    from bokeh.io import curdoc
+                    def redraw_crosshairs_after_updates():
+                        """Redraw crosshairs after all UI updates are complete."""
+                        try:
+                            # draw_cross1() and draw_cross1b() now handle re-creation automatically
+                            # if renderers are missing from the plot
+                            draw_cross1()
+                            if plot1b is not None:
+                                draw_cross1b()
+                            print("✅ Crosshairs redrawn after session load")
+                        except Exception as e:
+                            print(f"⚠️ Warning: Error redrawing crosshairs after session load: {e}")
+                            import traceback
+                            traceback.print_exc()
+                    
+                    # Schedule crosshair redraw after current tick completes
+                    # Use a double-nested callback to ensure it happens after all range updates
+                    def schedule_crosshair_redraw():
+                        def finalize_session_load():
+                            # Redraw crosshairs
+                            redraw_crosshairs_after_updates()
+                            # Clear the flag after crosshairs are drawn
+                            _is_loading_session = False
+                        curdoc().add_next_tick_callback(finalize_session_load)
+                    
+                    curdoc().add_next_tick_callback(schedule_crosshair_redraw)
                 except Exception as e:
+                    # Clear the flag even if there's an error
+                    _is_loading_session = False
                     print(f"⚠️ Warning: Failed to auto-load session: {e}")
                     import traceback
                     traceback.print_exc()
