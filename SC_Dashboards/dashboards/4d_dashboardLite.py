@@ -106,62 +106,62 @@ if not found_sclib:
 # Import all SCLib_Dashboards components (all required - no fallbacks)
 try:
     from SCLib_Dashboards import (
-        # Data processors
-        Process4dNexus,
-        # Plot classes
-        MAP_2DPlot,
-        PROBE_2DPlot,
-        PROBE_1DPlot,
-        PlotSession,
-        ColorScale,
-        RangeMode,
-        PlotShapeMode,
-        # Undo/Redo (core functionality)
-        StateHistory,
-        PlotStateHistory,
-        SessionStateHistory,
-        create_undo_redo_callbacks,
-        # Base UI components
-        create_select,
-        create_slider,
-        create_button,
-        create_toggle,
-        create_text_input,
-        create_radio_button_group,
-        create_div,
-        create_label_div,
-        # Plot controls
-        create_range_inputs,
-        create_range_section,
-        create_range_section_with_toggle,
-        create_color_scale_selector,
-        create_color_scale_section,
-        create_palette_selector,
-        create_palette_section,
-        create_plot_shape_controls,
-        create_range_mode_toggle,
-        # Dataset selectors
-        create_dataset_selection_group,
-        create_coordinate_selection_group,
-        create_optional_plot_toggle,
-        extract_dataset_path,
-        extract_shape,
-        # Layout builders
-        create_tools_column,
-        create_plot_column,
-        create_plots_row,
-        create_dashboard_layout,
-        create_status_display,
-        create_initialization_layout,
-        # State synchronization
-        sync_all_plot_ui,
-        sync_plot_to_range_inputs,
-        sync_range_inputs_to_plot,
-        sync_plot_to_color_scale_selector,
-        sync_color_scale_selector_to_plot,
-        sync_plot_to_palette_selector,
-        sync_palette_selector_to_plot,
-    )
+    # Data processors
+    Process4dNexus,
+    # Plot classes
+    MAP_2DPlot,
+    PROBE_2DPlot,
+    PROBE_1DPlot,
+    PlotSession,
+    ColorScale,
+    RangeMode,
+    PlotShapeMode,
+    # Undo/Redo (core functionality)
+    StateHistory,
+    PlotStateHistory,
+    SessionStateHistory,
+    create_undo_redo_callbacks,
+    # Base UI components
+    create_select,
+    create_slider,
+    create_button,
+    create_toggle,
+    create_text_input,
+    create_radio_button_group,
+    create_div,
+    create_label_div,
+    # Plot controls
+    create_range_inputs,
+    create_range_section,
+    create_range_section_with_toggle,
+    create_color_scale_selector,
+    create_color_scale_section,
+    create_palette_selector,
+    create_palette_section,
+    create_plot_shape_controls,
+    create_range_mode_toggle,
+    # Dataset selectors
+    create_dataset_selection_group,
+    create_coordinate_selection_group,
+    create_optional_plot_toggle,
+    extract_dataset_path,
+    extract_shape,
+    # Layout builders
+    create_tools_column,
+    create_plot_column,
+    create_plots_row,
+    create_dashboard_layout,
+    create_status_display,
+    create_initialization_layout,
+    # State synchronization
+    sync_all_plot_ui,
+    sync_plot_to_range_inputs,
+    sync_range_inputs_to_plot,
+    sync_plot_to_color_scale_selector,
+    sync_color_scale_selector_to_plot,
+    sync_plot_to_palette_selector,
+    sync_palette_selector_to_plot,
+)
 except ImportError as e:
     error_msg = f"""
     ❌ CRITICAL ERROR: Failed to import SCLib_Dashboards module!
@@ -567,20 +567,45 @@ def create_tmp_dashboard(process_4dnexus):
             print(f"Error getting available sessions: {e}")
             return [], []
     
+    # Session loading UI (matching real dashboard)
     session_choices, session_files_list = get_available_sessions()
-    session_selector = create_select(
-        title="Select Session to Load:",
+    load_session_select = create_select(
+        title="Load Session:",
         value=session_choices[0] if session_choices else "No sessions available",
         options=session_choices if session_choices else ["No sessions available"],
-        width=400
+        width=350
     )
     
-    # Create load session button
+    # Store session files list (will be updated by refresh)
+    session_files_refresh = session_files_list
+    
+    # Refresh sessions callback
+    def on_refresh_sessions():
+        """Refresh the list of available sessions."""
+        nonlocal session_files_refresh
+        session_choices_new, session_files_new = get_available_sessions()
+        session_files_refresh = session_files_new
+        if session_choices_new:
+            load_session_select.options = session_choices_new
+            load_session_select.value = session_choices_new[0] if session_choices_new else "No sessions available"
+        else:
+            load_session_select.options = ["No sessions available"]
+            load_session_select.value = "No sessions available"
+    
+    # Create refresh and load buttons
+    refresh_sessions_button = create_button(
+        label="Refresh Sessions",
+        button_type="default",
+        width=150
+    )
+    
     load_session_button = create_button(
         label="Load Selected Session",
-        button_type="default",
-        width=200
+        button_type="primary",
+        width=150
     )
+    
+    refresh_sessions_button.on_click(lambda: on_refresh_sessions())
     
     # Placeholder plots
     plot1_placeholder = create_div(
@@ -766,7 +791,7 @@ def create_tmp_dashboard(process_4dnexus):
     
     # Load session callback
     def on_load_session():
-        """Load selected session from file and populate selectors with saved dataset paths."""
+        """Load selected session from file, restore dataset paths, and transition to real dashboard."""
         try:
             print("🔍 DEBUG: on_load_session() called")
             from pathlib import Path
@@ -775,35 +800,30 @@ def create_tmp_dashboard(process_4dnexus):
             from datetime import datetime
             
             # Get selected session
-            selected_session = session_selector.value
+            selected_session = load_session_select.value
             print(f"🔍 DEBUG: Selected session: {selected_session}")
             
-            if selected_session == "No sessions available":
-                status_display.text = "<span style='color: orange;'>No sessions available to load</span>"
-                print("⚠️ DEBUG: No sessions available")
+            if not selected_session or selected_session == "No sessions available" or selected_session.startswith("No ") or selected_session.startswith("Error:"):
+                status_display.text = "<span style='color: orange;'>Please select a valid session to load</span>"
+                print("⚠️ DEBUG: No valid session selected")
                 return
             
-            # Find the filepath corresponding to the selected session
             # Refresh session list to ensure we have current files
+            nonlocal session_files_refresh
             session_choices_refresh, session_files_refresh = get_available_sessions()
             
             if not session_files_refresh:
-                status_display.text = "<span style='color: orange;'>No session files found</span>"
+                status_display.text = "<span style='color: orange;'>No session files found. Please refresh.</span>"
                 return
             
             # Extract filename from display name (format: "session_xxx.json (timestamp)")
-            # Match by filename rather than full display name to avoid timestamp formatting issues
-            selected_filename = None
-            if " (" in selected_session:
-                selected_filename = selected_session.split(" (")[0]
-            else:
-                selected_filename = selected_session
+            session_filename = selected_session.split(" (")[0] if " (" in selected_session else selected_session
             
             # Match selected filename to filepath
             filepath = None
-            for i, filepath_candidate in enumerate(session_files_refresh):
-                if filepath_candidate.name == selected_filename:
-                    filepath = filepath_candidate
+            for fpath in session_files_refresh:
+                if fpath.name == session_filename:
+                    filepath = fpath
                     break
             
             # Fallback: try matching by index if filename match fails
@@ -815,147 +835,124 @@ def create_tmp_dashboard(process_4dnexus):
                             break
             
             if filepath is None or not filepath.exists():
-                status_display.text = f"<span style='color: red;'>Session file not found: {selected_session}</span>"
-                print(f"❌ DEBUG: Could not find session file. Selected: {selected_session}, Filename: {selected_filename}")
-                print(f"❌ DEBUG: Available files: {[f.name for f in session_files_refresh]}")
+                status_display.text = f"<span style='color: red;'>Session file not found: {session_filename}</span>"
+                print(f"❌ DEBUG: Could not find session file. Selected: {selected_session}, Filename: {session_filename}")
                 return
             
             print(f"✅ DEBUG: Found session file: {filepath}")
+            
+            # Read session file to extract metadata (dataset paths)
             with open(filepath, 'r') as f:
                 session_data = json.load(f)
             
-            # Extract metadata which should contain dataset paths
+            # Extract metadata which contains dataset paths
             metadata = session_data.get("metadata", {})
             print(f"🔍 DEBUG: Session metadata keys: {list(metadata.keys())}")
             
-            # Extract dataset paths from metadata
-            volume_path = metadata.get("dataset_path") or metadata.get("volume_picked")
-            plot1_single = metadata.get("plot1_single_dataset_picked")
-            presample = metadata.get("presample_picked")
-            postsample = metadata.get("postsample_picked")
-            x_coords = metadata.get("x_coords_picked")
-            y_coords = metadata.get("y_coords_picked")
-            probe_x = metadata.get("probe_x_coords_picked")
-            probe_y = metadata.get("probe_y_coords_picked")
-            volume_b = metadata.get("volume_picked_b")
-            plot1b_single = metadata.get("plot1b_single_dataset_picked")
-            presample_b = metadata.get("presample_picked_b")
-            postsample_b = metadata.get("postsample_picked_b")
-            probe_x_b = metadata.get("probe_x_coords_picked_b")
-            probe_y_b = metadata.get("probe_y_coords_picked_b")
-            plot1_mode = metadata.get("plot1_mode", "ratio")  # "single" or "ratio"
-            plot1b_mode = metadata.get("plot1b_mode", "ratio")
-            plot1b_enabled = metadata.get("plot1b_enabled", False)
-            plot2b_enabled = metadata.get("plot2b_enabled", False)
+            # CRITICAL: Restore dataset paths to process_4dnexus BEFORE transitioning to dashboard
+            # This ensures the correct data is loaded when the dashboard is created
+            if metadata:
+                # Restore main volume and Plot1 datasets
+                if "volume_picked" in metadata and metadata["volume_picked"]:
+                    process_4dnexus.volume_picked = metadata["volume_picked"]
+                    print(f"✅ Restored volume_picked: {metadata['volume_picked']}")
+                
+                if "plot1_single_dataset_picked" in metadata:
+                    process_4dnexus.plot1_single_dataset_picked = metadata["plot1_single_dataset_picked"]
+                    print(f"✅ Restored plot1_single_dataset_picked: {metadata.get('plot1_single_dataset_picked')}")
+                
+                if "presample_picked" in metadata:
+                    process_4dnexus.presample_picked = metadata["presample_picked"]
+                    print(f"✅ Restored presample_picked: {metadata.get('presample_picked')}")
+                
+                if "postsample_picked" in metadata:
+                    process_4dnexus.postsample_picked = metadata["postsample_picked"]
+                    print(f"✅ Restored postsample_picked: {metadata.get('postsample_picked')}")
+                
+                # Restore coordinate datasets
+                if "x_coords_picked" in metadata:
+                    process_4dnexus.x_coords_picked = metadata["x_coords_picked"]
+                    print(f"✅ Restored x_coords_picked: {metadata.get('x_coords_picked')}")
+                
+                if "y_coords_picked" in metadata:
+                    process_4dnexus.y_coords_picked = metadata["y_coords_picked"]
+                    print(f"✅ Restored y_coords_picked: {metadata.get('y_coords_picked')}")
+                
+                if "probe_x_coords_picked" in metadata:
+                    process_4dnexus.probe_x_coords_picked = metadata["probe_x_coords_picked"]
+                    print(f"✅ Restored probe_x_coords_picked: {metadata.get('probe_x_coords_picked')}")
+                
+                if "probe_y_coords_picked" in metadata:
+                    process_4dnexus.probe_y_coords_picked = metadata["probe_y_coords_picked"]
+                    print(f"✅ Restored probe_y_coords_picked: {metadata.get('probe_y_coords_picked')}")
+                
+                # Restore Plot1B and Plot2B datasets
+                if "volume_picked_b" in metadata:
+                    process_4dnexus.volume_picked_b = metadata["volume_picked_b"]
+                    print(f"✅ Restored volume_picked_b: {metadata.get('volume_picked_b')}")
+                
+                if "plot1b_single_dataset_picked" in metadata:
+                    process_4dnexus.plot1b_single_dataset_picked = metadata["plot1b_single_dataset_picked"]
+                    print(f"✅ Restored plot1b_single_dataset_picked: {metadata.get('plot1b_single_dataset_picked')}")
+                
+                if "presample_picked_b" in metadata:
+                    process_4dnexus.presample_picked_b = metadata["presample_picked_b"]
+                    print(f"✅ Restored presample_picked_b: {metadata.get('presample_picked_b')}")
+                
+                if "postsample_picked_b" in metadata:
+                    process_4dnexus.postsample_picked_b = metadata["postsample_picked_b"]
+                    print(f"✅ Restored postsample_picked_b: {metadata.get('postsample_picked_b')}")
+                
+                if "probe_x_coords_picked_b" in metadata:
+                    process_4dnexus.probe_x_coords_picked_b = metadata["probe_x_coords_picked_b"]
+                    print(f"✅ Restored probe_x_coords_picked_b: {metadata.get('probe_x_coords_picked_b')}")
+                
+                if "probe_y_coords_picked_b" in metadata:
+                    process_4dnexus.probe_y_coords_picked_b = metadata["probe_y_coords_picked_b"]
+                    print(f"✅ Restored probe_y_coords_picked_b: {metadata.get('probe_y_coords_picked_b')}")
             
-            # Helper function to find matching choice
-            def find_matching_choice(choices, path):
-                if not path:
-                    return None
-                # Try exact match first
-                for choice in choices:
-                    if choice.startswith(path):
-                        return choice
-                return None
+            # Store the session filepath for the dashboard to load
+            # We'll pass this to the dashboard so it can load the session after creating the dashboard
+            process_4dnexus._session_filepath_to_load = filepath
             
-            # Populate Plot2 selector
-            print(f"🔍 DEBUG: volume_path from metadata: {volume_path}")
-            if volume_path:
-                plot2_choice = find_matching_choice(plot2_h5_choices, volume_path)
-                print(f"🔍 DEBUG: plot2_choice found: {plot2_choice}")
-                if plot2_choice:
-                    plot2_selector.value = plot2_choice
-                    print(f"✅ DEBUG: Set plot2_selector.value to {plot2_choice}")
+            # Transition to real dashboard (similar to initialize_plots_callback)
+            from bokeh.io import curdoc as _curdoc
+            loading = column(create_div(text="<h3>Loading dashboard with session...</h3>"))
+            _curdoc().clear()
+            _curdoc().add_root(loading)
             
-            # Populate Plot1 selectors based on mode
-            print(f"🔍 DEBUG: plot1_mode: {plot1_mode}, plot1_single: {plot1_single}, presample: {presample}, postsample: {postsample}")
-            if plot1_mode == "single" and plot1_single:
-                plot1_mode_selector.active = 0  # Single dataset mode
-                plot1_choice = find_matching_choice(plot1_h5_choices, plot1_single)
-                print(f"🔍 DEBUG: plot1_choice (single) found: {plot1_choice}")
-                if plot1_choice:
-                    plot1_single_selector.value = plot1_choice
-                    print(f"✅ DEBUG: Set plot1_single_selector.value to {plot1_choice}")
-            elif presample and postsample:
-                plot1_mode_selector.active = 1  # Ratio mode
-                numerator_choice = find_matching_choice(plot1_h5_choices, postsample)
-                denominator_choice = find_matching_choice(plot1_h5_choices, presample)
-                print(f"🔍 DEBUG: numerator_choice: {numerator_choice}, denominator_choice: {denominator_choice}")
-                if numerator_choice:
-                    plot1_numerator_selector.value = numerator_choice
-                    print(f"✅ DEBUG: Set plot1_numerator_selector.value to {numerator_choice}")
-                if denominator_choice:
-                    plot1_denominator_selector.value = denominator_choice
-                    print(f"✅ DEBUG: Set plot1_denominator_selector.value to {denominator_choice}")
+            def _build_and_swap():
+                try:
+                    full_dashboard = create_dashboard(process_4dnexus)
+                    _curdoc().clear()
+                    _curdoc().add_root(full_dashboard)
+                    
+                    # After dashboard is created, load the session if filepath was stored
+                    if hasattr(process_4dnexus, '_session_filepath_to_load'):
+                        session_filepath = process_4dnexus._session_filepath_to_load
+                        delattr(process_4dnexus, '_session_filepath_to_load')
+                        
+                        # The dashboard's on_load_session will be called automatically
+                        # But we need to trigger it manually since we're loading from tmp_dashboard
+                        # Actually, the dashboard will be created with the restored paths,
+                        # so the data will be correct. The session state will need to be loaded separately.
+                        # For now, just creating the dashboard with the restored paths should be enough.
+                        print(f"✅ Dashboard created with session data from {session_filepath.name}")
+                except Exception as e:
+                    import traceback
+                    error_msg = f"Error creating dashboard: {str(e)}"
+                    print(error_msg)
+                    traceback.print_exc()
+                    error_div = create_div(
+                        text=f"<h3 style='color: red;'>Error Creating Dashboard</h3><p>{error_msg}</p><pre>{traceback.format_exc()}</pre>",
+                        width=800
+                    )
+                    _curdoc().clear()
+                    _curdoc().add_root(error_div)
             
-            # Populate coordinate selectors
-            if x_coords:
-                map_x_choice = find_matching_choice(coord_choices, x_coords)
-                if map_x_choice:
-                    map_x_selector.value = map_x_choice
-            if y_coords:
-                map_y_choice = find_matching_choice(coord_choices, y_coords)
-                if map_y_choice:
-                    map_y_selector.value = map_y_choice
-            if probe_x:
-                probe_x_choice = find_matching_choice(coord_choices, probe_x)
-                if probe_x_choice:
-                    probe_x_selector.value = probe_x_choice
-            else:
-                probe_x_selector.value = "Use Default"
-            if probe_y:
-                probe_y_choice = find_matching_choice(coord_choices, probe_y)
-                if probe_y_choice:
-                    probe_y_selector.value = probe_y_choice
-            else:
-                probe_y_selector.value = "Use Default"
+            _curdoc().add_next_tick_callback(_build_and_swap)
             
-            # Populate Plot1B if enabled
-            if plot1b_enabled:
-                enable_plot1b_toggle.active = True
-                if plot1b_mode == "single" and plot1b_single:
-                    plot1b_mode_selector.active = 0
-                    plot1b_choice = find_matching_choice(plot1_h5_choices, plot1b_single)
-                    if plot1b_choice:
-                        plot1b_single_selector.value = plot1b_choice
-                elif presample_b and postsample_b:
-                    plot1b_mode_selector.active = 1
-                    numerator_b_choice = find_matching_choice(plot1_h5_choices, postsample_b)
-                    denominator_b_choice = find_matching_choice(plot1_h5_choices, presample_b)
-                    if numerator_b_choice:
-                        plot1b_numerator_selector.value = numerator_b_choice
-                    if denominator_b_choice:
-                        plot1b_denominator_selector.value = denominator_b_choice
-            
-            # Populate Plot2B if enabled
-            if plot2b_enabled:
-                enable_plot2b_toggle.active = True
-                if volume_b:
-                    plot2b_choice = find_matching_choice(plot2_h5_choices, volume_b)
-                    if plot2b_choice:
-                        plot2b_selector.value = plot2b_choice
-                if probe_x_b:
-                    probe_x_b_choice = find_matching_choice(coord_choices, probe_x_b)
-                    if probe_x_b_choice:
-                        probe_x_selector_b.value = probe_x_b_choice
-                else:
-                    probe_x_selector_b.value = "Use Default"
-                if probe_y_b:
-                    probe_y_b_choice = find_matching_choice(coord_choices, probe_y_b)
-                    if probe_y_b_choice:
-                        probe_y_selector_b.value = probe_y_b_choice
-                else:
-                    probe_y_selector_b.value = "Use Default"
-            
-            # Update session selector options to refresh list
-            session_choices_new, session_files_new = get_available_sessions()
-            if session_choices_new:
-                session_selector.options = session_choices_new
-                # Keep current selection
-                session_selector.value = selected_session
-            
-            status_display.text = f"<span style='color: green;'>Session loaded from {filepath.name}. Click 'Initialize Plots' to restore.</span>"
-            print(f"✅ Session loaded from {filepath.name}")
+            print(f"✅ Session paths restored, transitioning to dashboard...")
         except Exception as e:
             import traceback
             error_msg = f"Error loading session: {str(e)}"
@@ -1180,7 +1177,11 @@ def create_tmp_dashboard(process_4dnexus):
         probe_x_selector_b,
         probe_y_selector_b,
         create_div(text="<hr>", width=300),
-        row(initialize_button, load_session_button),
+        create_label_div("Load Session:", width=300),
+        load_session_select,
+        row(refresh_sessions_button, load_session_button),
+        create_div(text="<hr>", width=300),
+        initialize_button,
     )
     
     status_display = create_status_display_widget()
@@ -1588,6 +1589,9 @@ def create_dashboard(process_4dnexus):
                     line_color="yellow", 
                     line_width=2
                 )
+                # Ensure line is added to plot
+                if rect1.h1line not in plot1.renderers:
+                    plot1.renderers.append(rect1.h1line)
             if rect1.v1line is None:
                 rect1.v1line = plot1.line(
                     x=[plot_x_coord, plot_x_coord], 
@@ -1595,16 +1599,21 @@ def create_dashboard(process_4dnexus):
                     line_color="yellow", 
                     line_width=2
                 )
+                # Ensure line is added to plot
+                if rect1.v1line not in plot1.renderers:
+                    plot1.renderers.append(rect1.v1line)
             
             # Update crosshair positions (Bokeh automatically updates when data is changed)
-            rect1.h1line.data_source.data = {
-                "x": [plot1_x_min, plot1_x_max],
-                "y": [plot_y_coord, plot_y_coord],
-            }
-            rect1.v1line.data_source.data = {
-                "x": [plot_x_coord, plot_x_coord],
-                "y": [plot1_y_min, plot1_y_max],
-            }
+            if rect1.h1line is not None:
+                rect1.h1line.data_source.data = {
+                    "x": [plot1_x_min, plot1_x_max],
+                    "y": [plot_y_coord, plot_y_coord],
+                }
+            if rect1.v1line is not None:
+                rect1.v1line.data_source.data = {
+                    "x": [plot_x_coord, plot_x_coord],
+                    "y": [plot1_y_min, plot1_y_max],
+                }
             
             # Also update Plot1B crosshairs if it exists
             try:
@@ -1641,6 +1650,9 @@ def create_dashboard(process_4dnexus):
                     line_color="yellow", 
                     line_width=2
                 )
+                # Ensure line is added to plot
+                if rect1b.h1line not in plot1b.renderers:
+                    plot1b.renderers.append(rect1b.h1line)
             if rect1b.v1line is None:
                 rect1b.v1line = plot1b.line(
                     x=[plot_x_coord, plot_x_coord], 
@@ -1648,16 +1660,21 @@ def create_dashboard(process_4dnexus):
                     line_color="yellow", 
                     line_width=2
                 )
+                # Ensure line is added to plot
+                if rect1b.v1line not in plot1b.renderers:
+                    plot1b.renderers.append(rect1b.v1line)
             
             # Update crosshair positions (Bokeh automatically updates when data is changed)
-            rect1b.h1line.data_source.data = {
-                "x": [plot1b_x_min, plot1b_x_max],
-                "y": [plot_y_coord, plot_y_coord],
-            }
-            rect1b.v1line.data_source.data = {
-                "x": [plot_x_coord, plot_x_coord],
-                "y": [plot1b_y_min, plot1b_y_max],
-            }
+            if rect1b.h1line is not None:
+                rect1b.h1line.data_source.data = {
+                    "x": [plot1b_x_min, plot1b_x_max],
+                    "y": [plot_y_coord, plot_y_coord],
+                }
+            if rect1b.v1line is not None:
+                rect1b.v1line.data_source.data = {
+                    "x": [plot_x_coord, plot_x_coord],
+                    "y": [plot1b_y_min, plot1b_y_max],
+                }
         
         # Note: Tap handler for Plot1 will be defined after sliders are created
         # Note: UI update function and undo/redo callbacks will be set up after all UI elements are created
@@ -1670,11 +1687,27 @@ def create_dashboard(process_4dnexus):
             # 1D plot for 3D volume
             initial_slice_1d = volume[volume.shape[0]//2, volume.shape[1]//2, :]
             
+            # Try to load probe coordinates for Plot2 1D
+            plot2_x_coords_1d = None
+            plot2_x_label = "Probe Index"
+            if hasattr(process_4dnexus, 'probe_x_coords_picked') and process_4dnexus.probe_x_coords_picked:
+                try:
+                    probe_coords = process_4dnexus.load_probe_coordinates(use_b=False)
+                    if probe_coords is not None and len(probe_coords) == len(initial_slice_1d):
+                        plot2_x_coords_1d = probe_coords
+                        plot2_x_label = process_4dnexus.probe_x_coords_picked
+                    else:
+                        plot2_x_coords_1d = np.arange(len(initial_slice_1d))
+                except:
+                    plot2_x_coords_1d = np.arange(len(initial_slice_1d))
+            else:
+                plot2_x_coords_1d = np.arange(len(initial_slice_1d))
+            
             # Create PROBE_1DPlot
             probe_1d_plot = PROBE_1DPlot(
                 title="Plot2 - 1D Probe View",
                 data=initial_slice_1d,
-                x_coords=np.arange(len(initial_slice_1d)),
+                x_coords=plot2_x_coords_1d,
                 palette="Viridis256",
                 color_scale=ColorScale.LINEAR,
                 range_mode=RangeMode.DYNAMIC,
@@ -1687,13 +1720,34 @@ def create_dashboard(process_4dnexus):
             plot2_history = PlotStateHistory(probe_1d_plot, max_history=20)
             
             # Create Bokeh figure (smaller size: 300x300)
+            # For 1D plots, add BoxSelectTool configured for x-range selection only (bar selection)
+            box_select_1d = BoxSelectTool(dimensions="width")  # Only select x-range (width dimension)
             plot2 = figure(
                 title="Plot2 - 1D Probe View",
                 tools="pan,wheel_zoom,box_zoom,reset,tap",
+                x_range=(float(np.min(plot2_x_coords_1d)), float(np.max(plot2_x_coords_1d))),
+                y_range=(float(np.min(initial_slice_1d)), float(np.max(initial_slice_1d))),
                 width=300,
                 height=300,
             )
-            source2 = ColumnDataSource(data={"x": np.arange(len(initial_slice_1d)), "y": initial_slice_1d})
+            plot2.add_tools(box_select_1d)
+            
+            # Set axis labels and ticks for Plot2 1D
+            plot2.xaxis.axis_label = plot2_x_label
+            plot2.yaxis.axis_label = "Intensity"
+            
+            # Set ticks from probe coordinates if available
+            if hasattr(process_4dnexus, 'probe_x_coords_picked') and process_4dnexus.probe_x_coords_picked and plot2_x_coords_1d is not None and len(plot2_x_coords_1d) == len(initial_slice_1d):
+                # Sample every 10th coordinate for ticks
+                dx = max(1, len(plot2_x_coords_1d) // 10)
+                x_ticks, my_xticks = [], []
+                for i in range(0, len(plot2_x_coords_1d), dx):
+                    x_ticks.append(plot2_x_coords_1d[i])
+                    my_xticks.append(f"{plot2_x_coords_1d[i]:.1f}")
+                plot2.xaxis.ticker = x_ticks
+                plot2.xaxis.major_label_overrides = dict(zip(x_ticks, my_xticks))
+            
+            source2 = ColumnDataSource(data={"x": plot2_x_coords_1d, "y": initial_slice_1d})
             plot2.line("x", "y", source=source2, line_width=2, line_color="blue")
         else:
             # 2D plot for 4D volume
@@ -1828,6 +1882,8 @@ def create_dashboard(process_4dnexus):
                 plot2_y_coords = np.arange(plot2_data.shape[0])
             
             # Create Bokeh figure (smaller size: 300x300)
+            # Add BoxSelectTool for rectangle region selection
+            box_select_2d = BoxSelectTool(dimensions="both")  # Select both x and y ranges
             plot2 = figure(
                 title="Plot2 - 2D Probe View",
                 tools="pan,wheel_zoom,box_zoom,reset,tap",
@@ -1837,6 +1893,7 @@ def create_dashboard(process_4dnexus):
                 width=300,
                 height=300,
             )
+            plot2.add_tools(box_select_2d)
             
             # Set axis labels using flipped methods from probe_2d_plot
             plot2.xaxis.axis_label = probe_2d_plot.get_flipped_x_axis_label() or original_probe_x_label
@@ -2070,6 +2127,8 @@ def create_dashboard(process_4dnexus):
                             plot2b_y_coords = np.arange(plot2b_data.shape[0])
                         
                         # Create Bokeh figure (smaller size: 300x300)
+                        # Add BoxSelectTool for rectangle region selection
+                        box_select_2db = BoxSelectTool(dimensions="both")  # Select both x and y ranges
                         plot2b = figure(
                             title="Plot2B - 2D Probe View",
                             tools="pan,wheel_zoom,box_zoom,reset,tap",
@@ -2079,6 +2138,7 @@ def create_dashboard(process_4dnexus):
                             width=300,
                             height=300,
                         )
+                        plot2b.add_tools(box_select_2db)
                         
                         # Set axis labels using flipped methods from probe_2d_plot_b
                         plot2b.xaxis.axis_label = probe_2d_plot_b.get_flipped_x_axis_label() or original_plot2b_x_label
@@ -2152,6 +2212,8 @@ def create_dashboard(process_4dnexus):
                         )
                         
                         # Create Bokeh figure for 1D plot (smaller size: 300x300)
+                        # For 1D plots, add BoxSelectTool configured for x-range selection only (bar selection)
+                        box_select_1db = BoxSelectTool(dimensions="width")  # Only select x-range (width dimension)
                         plot2b = figure(
                             title="Plot2B - 1D Probe View",
                             tools="pan,wheel_zoom,box_zoom,reset,tap",
@@ -2160,22 +2222,40 @@ def create_dashboard(process_4dnexus):
                             width=300,
                             height=300,
                         )
+                        plot2b.add_tools(box_select_1db)
                         
-                        # Set axis labels for 1D Plot2B
+                        # Set axis labels and ticks for 1D Plot2B
+                        plot2b_x_coords_1d = None
                         if hasattr(process_4dnexus, 'probe_x_coords_picked_b') and process_4dnexus.probe_x_coords_picked_b:
                             try:
                                 probe_coords_b = process_4dnexus.load_probe_coordinates(use_b=True)
-                                if probe_coords_b is not None:
+                                if probe_coords_b is not None and len(probe_coords_b) == len(initial_slice_1d_b):
+                                    plot2b_x_coords_1d = probe_coords_b
                                     plot2b.xaxis.axis_label = process_4dnexus.probe_x_coords_picked_b
+                                    # Update x_range to use probe coordinates
+                                    plot2b.x_range.start = float(np.min(plot2b_x_coords_1d))
+                                    plot2b.x_range.end = float(np.max(plot2b_x_coords_1d))
+                                    
+                                    # Set ticks from probe coordinates (sample every 10th coordinate)
+                                    dx = max(1, len(plot2b_x_coords_1d) // 10)  # Sample every 10th coordinate
+                                    x_ticks_b, my_xticks_b = [], []
+                                    for i in range(0, len(plot2b_x_coords_1d), dx):
+                                        x_ticks_b.append(plot2b_x_coords_1d[i])
+                                        my_xticks_b.append(f"{plot2b_x_coords_1d[i]:.1f}")
+                                    plot2b.xaxis.ticker = x_ticks_b
+                                    plot2b.xaxis.major_label_overrides = dict(zip(x_ticks_b, my_xticks_b))
                                 else:
+                                    plot2b_x_coords_1d = np.arange(len(initial_slice_1d_b))
                                     plot2b.xaxis.axis_label = "Probe Index"
                             except:
+                                plot2b_x_coords_1d = np.arange(len(initial_slice_1d_b))
                                 plot2b.xaxis.axis_label = "Probe Index"
                         else:
+                            plot2b_x_coords_1d = np.arange(len(initial_slice_1d_b))
                             plot2b.xaxis.axis_label = "Probe Index"
                         plot2b.yaxis.axis_label = "Intensity"
                         
-                        source2b = ColumnDataSource(data={"x": np.arange(len(initial_slice_1d_b)), "y": initial_slice_1d_b})
+                        source2b = ColumnDataSource(data={"x": plot2b_x_coords_1d, "y": initial_slice_1d_b})
                         plot2b.line("x", "y", source=source2b, line_width=2)
                         
                         # Initialize rect2b for Plot2B selection (1D)
@@ -2191,6 +2271,8 @@ def create_dashboard(process_4dnexus):
         plot3_x_coords = map_plot.get_flipped_x_coords()
         plot3_y_coords = map_plot.get_flipped_y_coords()
         
+        # Add BoxSelectTool for rectangle region selection on Plot3
+        box_select_3 = BoxSelectTool(dimensions="both")  # Select both x and y ranges
         plot3 = figure(
             title="Plot3 - Additional View",
             tools="pan,wheel_zoom,box_zoom,reset,tap",
@@ -2199,6 +2281,7 @@ def create_dashboard(process_4dnexus):
             width=300,
             height=300,
         )
+        plot3.add_tools(box_select_3)
         plot3.xaxis.axis_label = map_plot.get_flipped_x_axis_label()
         plot3.yaxis.axis_label = map_plot.get_flipped_y_axis_label()
         
@@ -2265,6 +2348,17 @@ def create_dashboard(process_4dnexus):
                 source2.data = {"x": x_coords_1d, "y": slice_1d}
                 plot2.x_range.start = float(np.min(x_coords_1d))
                 plot2.x_range.end = float(np.max(x_coords_1d))
+                
+                # Update ticks from probe coordinates if available
+                if hasattr(process_4dnexus, 'probe_x_coords_picked') and process_4dnexus.probe_x_coords_picked:
+                    # Sample every 10th coordinate for ticks
+                    dx = max(1, len(x_coords_1d) // 10)
+                    x_ticks, my_xticks = [], []
+                    for i in range(0, len(x_coords_1d), dx):
+                        x_ticks.append(x_coords_1d[i])
+                        my_xticks.append(f"{x_coords_1d[i]:.1f}")
+                    plot2.xaxis.ticker = x_ticks
+                    plot2.xaxis.major_label_overrides = dict(zip(x_ticks, my_xticks))
                 
                 # Update y-range based on mode
                 if 'range2_min_input' in locals() and range2_min_input is not None and not range2_min_input.disabled:
@@ -2471,6 +2565,17 @@ def create_dashboard(process_4dnexus):
                             source2b.data = {"x": x_coords_1d_b, "y": slice_1d_b}
                             plot2b.x_range.start = float(np.min(x_coords_1d_b))
                             plot2b.x_range.end = float(np.max(x_coords_1d_b))
+                            
+                            # Update ticks from probe coordinates if available
+                            if hasattr(process_4dnexus, 'probe_x_coords_picked_b') and process_4dnexus.probe_x_coords_picked_b:
+                                # Sample every 10th coordinate for ticks
+                                dx = max(1, len(x_coords_1d_b) // 10)
+                                x_ticks_b, my_xticks_b = [], []
+                                for i in range(0, len(x_coords_1d_b), dx):
+                                    x_ticks_b.append(x_coords_1d_b[i])
+                                    my_xticks_b.append(f"{x_coords_1d_b[i]:.1f}")
+                                plot2b.xaxis.ticker = x_ticks_b
+                                plot2b.xaxis.major_label_overrides = dict(zip(x_ticks_b, my_xticks_b))
                             
                             # Update range dynamically if in Dynamic mode
                             if 'range2b_min_input' in locals() and range2b_min_input is not None:
@@ -3175,7 +3280,7 @@ def create_dashboard(process_4dnexus):
         def update_ui_after_state_change():
             """Update UI widgets after state change (undo/redo/load)."""
             sync_plot_to_range_inputs(map_plot, range1_min_input, range1_max_input)
-            sync_plot_to_color_scale_selector(map_plot, color_scale_selector)
+            # Note: plot1_color_scale_section is synced via map_plot.color_scale state
             sync_plot_to_palette_selector(map_plot, palette_selector)
             # Update Bokeh color mapper if needed
             if hasattr(map_plot, 'range_min') and hasattr(map_plot, 'range_max'):
@@ -3211,15 +3316,120 @@ def create_dashboard(process_4dnexus):
         undo_button.on_click(on_undo)
         redo_button.on_click(on_redo)
         
-        # Create session management buttons
+        # Create session management UI components
+        # Function to get default save filename
+        def get_default_save_filename():
+            """Generate default save filename."""
+            from datetime import datetime
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            return f"session_{timestamp}.json"
+        
+        # Create text input for save filename
+        save_filename_input = create_text_input(
+            title="Save Filename:",
+            value=get_default_save_filename(),
+            width=350
+        )
+        
+        # Create text input for save directory (optional, defaults to sessions subdirectory)
+        save_dir_input = create_text_input(
+            title="Save Directory (optional):",
+            value="",
+            width=350,
+            placeholder="Leave empty for default sessions directory"
+        )
+        
         save_session_button = create_button(
             label="Save Session",
             button_type="success",
             width=150
         )
         
+        # Function to refresh session list for loading
+        def refresh_session_list():
+            """Refresh the list of available sessions."""
+            try:
+                from pathlib import Path
+                import os
+                from datetime import datetime
+                
+                # Determine sessions directory
+                if DATA_IS_LOCAL:
+                    save_dir_path = Path(local_base_dir)
+                else:
+                    save_dir_path = Path(save_dir) if save_dir else Path(local_base_dir)
+                
+                sessions_dir = save_dir_path / "sessions"
+                
+                if not sessions_dir.exists():
+                    load_session_select.options = ["No sessions directory found"]
+                    return []
+                
+                # Find all session files
+                session_files = sorted(sessions_dir.glob("session_*.json"), key=os.path.getmtime, reverse=True)
+                
+                if not session_files:
+                    load_session_select.options = ["No session files found"]
+                    return []
+                
+                # Create display names with timestamps
+                session_choices = []
+                session_files_list = []
+                for filepath in session_files:
+                    try:
+                        mtime = os.path.getmtime(filepath)
+                        timestamp_str = datetime.fromtimestamp(mtime).strftime("%Y-%m-%d %H:%M:%S")
+                        display_name = f"{filepath.name} ({timestamp_str})"
+                        session_choices.append(display_name)
+                        session_files_list.append(filepath)
+                    except:
+                        session_choices.append(filepath.name)
+                        session_files_list.append(filepath)
+                
+                load_session_select.options = session_choices
+                return session_files_list
+            except Exception as e:
+                print(f"Error refreshing session list: {e}")
+                load_session_select.options = [f"Error: {str(e)}"]
+                return []
+        
+        # Create select dropdown for loading sessions
+        load_session_select = create_select(
+            title="Load Session:",
+            value="",
+            options=["Click 'Refresh' to load sessions"],
+            width=350
+        )
+        
+        # Store session files list (will be updated by refresh)
+        session_files_refresh = []
+        
+        # Initialize status_div to None (will be created later)
+        # This allows on_refresh_sessions() to reference it as a free variable
+        status_div = None
+        
+        # Refresh button for session list
+        refresh_sessions_button = create_button(
+            label="Refresh Sessions",
+            button_type="default",
+            width=150
+        )
+        
+        def on_refresh_sessions():
+            """Refresh the session list."""
+            nonlocal session_files_refresh, status_div
+            session_files_refresh = refresh_session_list()
+            # Only update status_div if it exists and is not None
+            if status_div is not None:
+                if session_files_refresh:
+                    status_div.text = f"Found {len(session_files_refresh)} session(s)"
+                else:
+                    status_div.text = "No sessions found"
+        
+        refresh_sessions_button.on_click(on_refresh_sessions)
+        
         load_session_button = create_button(
-            label="Load Session",
+            label="Load Selected Session",
             button_type="primary",
             width=150
         )
@@ -3360,9 +3570,10 @@ def create_dashboard(process_4dnexus):
                 
                 # Recreate mapper for Plot1
                 color_mapper1 = new_cls(palette=color_mapper1.palette, low=low1, high=high1)
-                if len(plot1.renderers) > 0 and image_renderer1 is not None:
-                    # Remove the old renderer
-                    plot1.renderers.remove(plot1.renderers[0])
+                if image_renderer1 is not None:
+                    # Remove the specific image renderer (not just the first renderer)
+                    if image_renderer1 in plot1.renderers:
+                        plot1.renderers.remove(image_renderer1)
                     # Re-add the renderer with the new color mapper
                     image_renderer1 = plot1.image(
                         "image", source=source1, x="x", y="y", dw="dw", dh="dh", color_mapper=color_mapper1,
@@ -3391,9 +3602,10 @@ def create_dashboard(process_4dnexus):
                         low1b = color_mapper1b.low
                         high1b = color_mapper1b.high
                     color_mapper1b = new_cls(palette=color_mapper1.palette, low=low1b, high=high1b)
-                    if len(plot1b.renderers) > 0 and image_renderer1b is not None:
-                        # Remove the old renderer
-                        plot1b.renderers.remove(plot1b.renderers[0])
+                    if image_renderer1b is not None:
+                        # Remove the specific image renderer
+                        if image_renderer1b in plot1b.renderers:
+                            plot1b.renderers.remove(image_renderer1b)
                         # Re-add the renderer with the new color mapper
                         image_renderer1b = plot1b.image(
                             "image", source=source1b, x="x", y="y", dw="dw", dh="dh", color_mapper=color_mapper1b,
@@ -3402,7 +3614,15 @@ def create_dashboard(process_4dnexus):
                     if 'colorbar1b' in locals() and colorbar1b is not None:
                         colorbar1b.color_mapper = color_mapper1b
                 
-                sync_color_scale_selector_to_plot(map_plot, color_scale_selector)
+                # Redraw crosshairs after color scale change (they might have been affected)
+                try:
+                    draw_cross1()
+                except:
+                    pass
+                
+                # Update map_plot color_scale state to match the UI
+                map_plot.color_scale = ColorScale.LOG if new == 1 else ColorScale.LINEAR
+                
                 # Save state immediately for color scale changes (important state, not frequent)
                 from bokeh.io import curdoc
                 def save_state_async():
@@ -3417,54 +3637,110 @@ def create_dashboard(process_4dnexus):
         
         def on_palette_change(attr, old, new):
             """Handle palette change for all plots."""
-            sync_palette_selector_to_plot(map_plot, palette_selector)
-            # Update Bokeh color mapper immediately for Plot1
-            color_mapper1.palette = map_plot.palette
-            # Update colorbar1 if it exists
-            if 'colorbar1' in locals() and colorbar1 is not None:
-                colorbar1.color_mapper = color_mapper1
-            
-            # Update Plot1B if it exists
-            if 'color_mapper1b' in locals() and color_mapper1b is not None:
-                color_mapper1b.palette = map_plot.palette
-                if 'colorbar1b' in locals() and colorbar1b is not None:
-                    colorbar1b.color_mapper = color_mapper1b
-            
-            # Update Plot2 if it exists (2D plots only)
-            if not is_3d_volume and 'color_mapper2' in locals() and color_mapper2 is not None:
-                color_mapper2.palette = map_plot.palette
-                if 'colorbar2' in locals() and colorbar2 is not None:
-                    colorbar2.color_mapper = color_mapper2
-            
-            # Update Plot2B if it exists (2D plots only)
-            if 'color_mapper2b' in locals() and color_mapper2b is not None and plot2b_is_2d:
-                color_mapper2b.palette = map_plot.palette
-                if 'colorbar2b' in locals() and colorbar2b is not None:
-                    colorbar2b.color_mapper = color_mapper2b
-            
-            # Update Plot3 if it exists
-            if 'color_mapper3' in locals() and color_mapper3 is not None:
-                color_mapper3.palette = map_plot.palette
-                if 'colorbar3' in locals() and colorbar3 is not None:
-                    colorbar3.color_mapper = color_mapper3
-            
-            # Save state asynchronously
-            from bokeh.io import curdoc
-            def save_state_async():
-                plot1_history.save_state("Palette changed")
-                session_history.save_state("Palette changed")
-                undo_redo_callbacks["update"]()
-            curdoc().add_next_tick_callback(save_state_async)
+            nonlocal color_mapper1, color_mapper1b, color_mapper2, color_mapper2b, color_mapper3
+            nonlocal image_renderer1, image_renderer1b, image_renderer2, image_renderer2b, image_renderer3
+            try:
+                sync_palette_selector_to_plot(map_plot, palette_selector)
+                new_palette = map_plot.palette
+                
+                # Determine mapper class for Plot1
+                mapper1_cls = type(color_mapper1)
+                
+                # Recreate color mapper for Plot1 with new palette
+                color_mapper1 = mapper1_cls(palette=new_palette, low=color_mapper1.low, high=color_mapper1.high)
+                if image_renderer1 is not None:
+                    # Remove the specific image renderer (not just the first renderer)
+                    if image_renderer1 in plot1.renderers:
+                        plot1.renderers.remove(image_renderer1)
+                    # Re-add the renderer with the new color mapper
+                    image_renderer1 = plot1.image(
+                        "image", source=source1, x="x", y="y", dw="dw", dh="dh", color_mapper=color_mapper1,
+                    )
+                # Update colorbar1 if it exists
+                if 'colorbar1' in locals() and colorbar1 is not None:
+                    colorbar1.color_mapper = color_mapper1
+                
+                # Update Plot1B if it exists
+                if 'color_mapper1b' in locals() and color_mapper1b is not None:
+                    mapper1b_cls = type(color_mapper1b)
+                    color_mapper1b = mapper1b_cls(palette=new_palette, low=color_mapper1b.low, high=color_mapper1b.high)
+                    if plot1b is not None and image_renderer1b is not None:
+                        # Remove the specific image renderer
+                        if image_renderer1b in plot1b.renderers:
+                            plot1b.renderers.remove(image_renderer1b)
+                        # Re-add the renderer with the new color mapper
+                        image_renderer1b = plot1b.image(
+                            "image", source=source1b, x="x", y="y", dw="dw", dh="dh", color_mapper=color_mapper1b,
+                        )
+                    if 'colorbar1b' in locals() and colorbar1b is not None:
+                        colorbar1b.color_mapper = color_mapper1b
+                
+                # Update Plot2 if it exists (2D plots only)
+                if not is_3d_volume and 'color_mapper2' in locals() and color_mapper2 is not None:
+                    mapper2_cls = type(color_mapper2)
+                    color_mapper2 = mapper2_cls(palette=new_palette, low=color_mapper2.low, high=color_mapper2.high)
+                    if image_renderer2 is not None:
+                        # Remove the specific image renderer
+                        if image_renderer2 in plot2.renderers:
+                            plot2.renderers.remove(image_renderer2)
+                        # Re-add the renderer with the new color mapper
+                        image_renderer2 = plot2.image(
+                            "image", source=source2, x="x", y="y", dw="dw", dh="dh", color_mapper=color_mapper2,
+                        )
+                    if 'colorbar2' in locals() and colorbar2 is not None:
+                        colorbar2.color_mapper = color_mapper2
+                
+                # Update Plot2B if it exists (2D plots only)
+                if 'color_mapper2b' in locals() and color_mapper2b is not None and plot2b_is_2d:
+                    mapper2b_cls = type(color_mapper2b)
+                    color_mapper2b = mapper2b_cls(palette=new_palette, low=color_mapper2b.low, high=color_mapper2b.high)
+                    if plot2b is not None and image_renderer2b is not None:
+                        # Remove the specific image renderer
+                        if image_renderer2b in plot2b.renderers:
+                            plot2b.renderers.remove(image_renderer2b)
+                        # Re-add the renderer with the new color mapper
+                        image_renderer2b = plot2b.image(
+                            "image", source=source2b, x="x", y="y", dw="dw", dh="dh", color_mapper=color_mapper2b,
+                        )
+                    if 'colorbar2b' in locals() and colorbar2b is not None:
+                        colorbar2b.color_mapper = color_mapper2b
+                
+                # Update Plot3 if it exists
+                if 'color_mapper3' in locals() and color_mapper3 is not None:
+                    mapper3_cls = type(color_mapper3)
+                    color_mapper3 = mapper3_cls(palette=new_palette, low=color_mapper3.low, high=color_mapper3.high)
+                    if image_renderer3 is not None:
+                        # Remove the specific image renderer
+                        if image_renderer3 in plot3.renderers:
+                            plot3.renderers.remove(image_renderer3)
+                        # Re-add the renderer with the new color mapper
+                        image_renderer3 = plot3.image(
+                            "image", source=source3, x="x", y="y", dw="dw", dh="dh", color_mapper=color_mapper3,
+                        )
+                    if 'colorbar3' in locals() and colorbar3 is not None:
+                        colorbar3.color_mapper = color_mapper3
+                
+                # Redraw crosshairs after palette change (they might have been affected)
+                try:
+                    draw_cross1()
+                except:
+                    pass
+                
+                # Save state asynchronously
+                from bokeh.io import curdoc
+                def save_state_async():
+                    plot1_history.save_state("Palette changed")
+                    session_history.save_state("Palette changed")
+                    undo_redo_callbacks["update"]()
+                curdoc().add_next_tick_callback(save_state_async)
+            except Exception as e:
+                print(f"Error in on_palette_change: {e}")
+                import traceback
+                traceback.print_exc()
         
-        color_scale_selector = create_color_scale_selector(
-            active=0,
-            width=200,
-            callback=on_color_scale_change
-        )
-        sync_plot_to_color_scale_selector(map_plot, color_scale_selector)
-        
-        color_scale_section = create_color_scale_section(
-            label="Map Color Scale:",
+        # Create Plot1 color scale section (replaces old "Map Color Scale")
+        plot1_color_scale_section = create_color_scale_section(
+            label="Plot1 Color Scale:",
             active=0,
             width=200,
             callback=on_color_scale_change
@@ -3518,9 +3794,10 @@ def create_dashboard(process_4dnexus):
                         high2 = color_mapper2.high
                     
                     color_mapper2 = new_cls(palette=color_mapper2.palette, low=low2, high=high2)
-                    if len(plot2.renderers) > 0 and image_renderer2 is not None:
-                        # Remove the old renderer
-                        plot2.renderers.remove(plot2.renderers[0])
+                    if image_renderer2 is not None:
+                        # Remove the specific image renderer
+                        if image_renderer2 in plot2.renderers:
+                            plot2.renderers.remove(image_renderer2)
                         # Re-add the renderer with the new color mapper
                         image_renderer2 = plot2.image(
                             "image", source=source2, x="x", y="y", dw="dw", dh="dh", color_mapper=color_mapper2,
@@ -3597,9 +3874,10 @@ def create_dashboard(process_4dnexus):
                         high2b = color_mapper2b.high
                     
                     color_mapper2b = new_cls(palette=(color_mapper2.palette if color_mapper2 is not None else "Viridis256"), low=low2b, high=high2b)
-                    if len(plot2b.renderers) > 0 and image_renderer2b is not None:
-                        # Remove the old renderer
-                        plot2b.renderers.remove(plot2b.renderers[0])
+                    if image_renderer2b is not None:
+                        # Remove the specific image renderer
+                        if image_renderer2b in plot2b.renderers:
+                            plot2b.renderers.remove(image_renderer2b)
                         # Re-add the renderer with the new color mapper
                         image_renderer2b = plot2b.image(
                             "image", source=source2b, x="x", y="y", dw="dw", dh="dh", color_mapper=color_mapper2b,
@@ -3677,9 +3955,10 @@ def create_dashboard(process_4dnexus):
                 
                 # Recreate mapper for Plot3
                 color_mapper3 = new_cls(palette=color_mapper3.palette, low=low3, high=high3)
-                if len(plot3.renderers) > 0 and image_renderer3 is not None:
-                    # Remove the old renderer
-                    plot3.renderers.remove(plot3.renderers[0])
+                if image_renderer3 is not None:
+                    # Remove the specific image renderer
+                    if image_renderer3 in plot3.renderers:
+                        plot3.renderers.remove(image_renderer3)
                     # Re-add the renderer with the new color mapper
                     image_renderer3 = plot3.image(
                         "image", source=source3, x="x", y="y", dw="dw", dh="dh", color_mapper=color_mapper3,
@@ -4267,19 +4546,42 @@ def create_dashboard(process_4dnexus):
                 from pathlib import Path
                 import os
                 
-                # Determine save directory
-                if DATA_IS_LOCAL:
-                    save_dir_path = Path(local_base_dir)
+                # Get filename from input
+                filename = save_filename_input.value.strip()
+                if not filename:
+                    save_status_div.text = "<span style='color: orange;'>Please enter a filename</span>"
+                    status_div.text = "<span style='color: orange;'>Please enter a filename</span>"
+                    return
+                
+                # Ensure filename ends with .json
+                if not filename.endswith('.json'):
+                    filename += '.json'
+                
+                # Get save directory from input or use default
+                save_dir_custom = save_dir_input.value.strip()
+                if save_dir_custom:
+                    # User specified a custom directory
+                    save_dir_path = Path(save_dir_custom)
+                    if not save_dir_path.is_absolute():
+                        # If relative, make it relative to base_dir
+                        if DATA_IS_LOCAL:
+                            base = Path(local_base_dir)
+                        else:
+                            base = Path(save_dir) if save_dir else Path(local_base_dir)
+                        save_dir_path = base / save_dir_custom
+                    save_dir_path.mkdir(parents=True, exist_ok=True)
+                    filepath = save_dir_path / filename
                 else:
-                    save_dir_path = Path(save_dir) if save_dir else Path(local_base_dir)
-                
-                # Create sessions subdirectory
-                sessions_dir = save_dir_path / "sessions"
-                sessions_dir.mkdir(parents=True, exist_ok=True)
-                
-                # Generate filename
-                filename = f"session_{session.session_id}.json"
-                filepath = sessions_dir / filename
+                    # Use default sessions directory
+                    if DATA_IS_LOCAL:
+                        save_dir_path = Path(local_base_dir)
+                    else:
+                        save_dir_path = Path(save_dir) if save_dir else Path(local_base_dir)
+                    
+                    # Create sessions subdirectory
+                    sessions_dir = save_dir_path / "sessions"
+                    sessions_dir.mkdir(parents=True, exist_ok=True)
+                    filepath = sessions_dir / filename
                 
                 # Save session - include_data=False means NO data arrays, only UI settings
                 session.save_session(filepath, include_data=False)
@@ -4288,6 +4590,12 @@ def create_dashboard(process_4dnexus):
                 # The save action is logged in session_changes, but we don't want to undo/redo the save
                 undo_redo_callbacks["update"]()
                 
+                # Refresh session list after saving
+                on_refresh_sessions()
+                
+                # Update compact save status message
+                save_status_div.text = f"✅ Saved: {filepath.name}"
+                # Also update main status div
                 status_div.text = f"Session saved to {filepath}"
                 print(f"✅ Session saved to {filepath}")
             except Exception as e:
@@ -4295,83 +4603,155 @@ def create_dashboard(process_4dnexus):
                 error_msg = f"Error saving session: {str(e)}"
                 print(error_msg)
                 traceback.print_exc()
+                save_status_div.text = f"<span style='color: red;'>Error: {str(e)[:50]}</span>"
                 status_div.text = f"<span style='color: red;'>{error_msg}</span>"
         
         # Load session callback
         def on_load_session():
-            """Load session from file.
-            
-            NOTE: This loads ONLY UI settings (ranges, colors, palettes, plot shapes, etc.)
-            NOT data arrays. Data is loaded fresh from the dataset files.
-            restore_data=False ensures no data arrays are restored.
-            """
+            """Load session from file, restore dataset paths, and recreate dashboard (same approach as tmp_dashboard)."""
             try:
                 from pathlib import Path
                 import os
+                import json
+                from datetime import datetime
                 
-                # For Bokeh, we'll use a text input for file path
-                # In a full implementation, you might use a file picker widget
-                # For now, we'll look in the sessions directory
-                if DATA_IS_LOCAL:
-                    save_dir_path = Path(local_base_dir)
-                else:
-                    save_dir_path = Path(save_dir) if save_dir else Path(local_base_dir)
-                
-                sessions_dir = save_dir_path / "sessions"
-                
-                if not sessions_dir.exists():
-                    status_div.text = f"<span style='color: orange;'>No sessions directory found at {sessions_dir}</span>"
+                # Get selected session from dropdown
+                selected_session = load_session_select.value
+                if not selected_session or selected_session.startswith("No ") or selected_session.startswith("Error:") or selected_session == "Click 'Refresh' to load sessions":
+                    status_div.text = "<span style='color: orange;'>Please select a session to load</span>"
                     return
                 
-                # Find most recent session file
-                session_files = sorted(sessions_dir.glob("session_*.json"), key=os.path.getmtime, reverse=True)
-                
-                if not session_files:
-                    status_div.text = f"<span style='color: orange;'>No session files found in {sessions_dir}</span>"
+                # Refresh session list to ensure we have current files
+                session_files_refresh = refresh_session_list()
+                if not session_files_refresh:
+                    status_div.text = "<span style='color: orange;'>No sessions available. Please refresh.</span>"
                     return
                 
-                # Load the most recent session
-                filepath = session_files[0]
-                session.load_session(filepath, restore_data=False)
+                # Extract filename from selected_session (e.g., "session_xxx.json (2023-10-27 10:30:00)")
+                session_filename = selected_session.split(" (")[0] if " (" in selected_session else selected_session
                 
-                # Restore plot states from loaded session
-                if hasattr(session, '_loaded_plot_states'):
-                    for plot_id, plot_state in session._loaded_plot_states.items():
-                        plot = session.get_plot(plot_id)
-                        plot_type = plot_state.get("plot_type", None)
-                        
-                        if plot:
-                            # Plot exists in session, restore its state
-                            plot.load_state(plot_state, restore_data=False)
-                        elif plot_id == "plot1":
-                            # Restore map_plot state (plot may not be in session yet)
-                            map_plot.load_state(plot_state, restore_data=False)
-                            # Re-add to session if not already there
-                            if "plot1" not in session.plots:
-                                session.add_plot("plot1", map_plot)
-                        elif plot_id == "plot2":
-                            # Restore probe plot state based on plot type
-                            if plot_type == "PROBE_1DPlot" or (is_3d_volume and hasattr(plot2_history, 'plot')):
-                                if hasattr(plot2_history, 'plot'):
-                                    plot2_history.plot.load_state(plot_state, restore_data=False)
-                                    if "plot2" not in session.plots:
-                                        session.add_plot("plot2", plot2_history.plot)
-                            elif plot_type == "PROBE_2DPlot" or (not is_3d_volume and hasattr(plot2_history, 'plot')):
-                                if hasattr(plot2_history, 'plot'):
-                                    plot2_history.plot.load_state(plot_state, restore_data=False)
-                                    if "plot2" not in session.plots:
-                                        session.add_plot("plot2", plot2_history.plot)
+                filepath = None
+                # Try to match by filename first
+                for fpath in session_files_refresh:
+                    if fpath.name == session_filename:
+                        filepath = fpath
+                        break
                 
-                # Update UI to reflect loaded state using the update function
-                update_ui_after_state_change()
+                # Fallback to index-based matching if filename match fails
+                if filepath is None:
+                    for i, choice in enumerate(load_session_select.options):
+                        if choice == selected_session:
+                            if i < len(session_files_refresh):
+                                filepath = session_files_refresh[i]
+                                break
                 
-                # Clear and rebuild history with loaded state
-                session_history.clear()
-                session_history.save_state("Session loaded")
-                undo_redo_callbacks["update"]()
+                if filepath is None or not filepath.exists():
+                    status_div.text = f"<span style='color: red;'>Session file not found: {session_filename}</span>"
+                    return
                 
-                status_div.text = f"Session loaded from {filepath.name}"
-                print(f"✅ Session loaded from {filepath}")
+                print(f"✅ DEBUG: Found session file: {filepath}")
+                
+                # Read session file to extract metadata (dataset paths)
+                with open(filepath, 'r') as f:
+                    session_data = json.load(f)
+                
+                # Extract metadata which contains dataset paths
+                metadata = session_data.get("metadata", {})
+                print(f"🔍 DEBUG: Loading session metadata keys: {list(metadata.keys())}")
+                
+                # CRITICAL: Restore dataset paths to process_4dnexus BEFORE recreating dashboard
+                # This ensures the correct data is loaded when the dashboard is recreated
+                if metadata:
+                    # Restore main volume and Plot1 datasets
+                    if "volume_picked" in metadata and metadata["volume_picked"]:
+                        process_4dnexus.volume_picked = metadata["volume_picked"]
+                        print(f"✅ Restored volume_picked: {metadata['volume_picked']}")
+                    
+                    if "plot1_single_dataset_picked" in metadata:
+                        process_4dnexus.plot1_single_dataset_picked = metadata["plot1_single_dataset_picked"]
+                        print(f"✅ Restored plot1_single_dataset_picked: {metadata.get('plot1_single_dataset_picked')}")
+                    
+                    if "presample_picked" in metadata:
+                        process_4dnexus.presample_picked = metadata["presample_picked"]
+                        print(f"✅ Restored presample_picked: {metadata.get('presample_picked')}")
+                    
+                    if "postsample_picked" in metadata:
+                        process_4dnexus.postsample_picked = metadata["postsample_picked"]
+                        print(f"✅ Restored postsample_picked: {metadata.get('postsample_picked')}")
+                    
+                    # Restore coordinate datasets
+                    if "x_coords_picked" in metadata:
+                        process_4dnexus.x_coords_picked = metadata["x_coords_picked"]
+                        print(f"✅ Restored x_coords_picked: {metadata.get('x_coords_picked')}")
+                    
+                    if "y_coords_picked" in metadata:
+                        process_4dnexus.y_coords_picked = metadata["y_coords_picked"]
+                        print(f"✅ Restored y_coords_picked: {metadata.get('y_coords_picked')}")
+                    
+                    if "probe_x_coords_picked" in metadata:
+                        process_4dnexus.probe_x_coords_picked = metadata["probe_x_coords_picked"]
+                        print(f"✅ Restored probe_x_coords_picked: {metadata.get('probe_x_coords_picked')}")
+                    
+                    if "probe_y_coords_picked" in metadata:
+                        process_4dnexus.probe_y_coords_picked = metadata["probe_y_coords_picked"]
+                        print(f"✅ Restored probe_y_coords_picked: {metadata.get('probe_y_coords_picked')}")
+                    
+                    # Restore Plot1B and Plot2B datasets
+                    if "volume_picked_b" in metadata:
+                        process_4dnexus.volume_picked_b = metadata["volume_picked_b"]
+                        print(f"✅ Restored volume_picked_b: {metadata.get('volume_picked_b')}")
+                    
+                    if "plot1b_single_dataset_picked" in metadata:
+                        process_4dnexus.plot1b_single_dataset_picked = metadata["plot1b_single_dataset_picked"]
+                        print(f"✅ Restored plot1b_single_dataset_picked: {metadata.get('plot1b_single_dataset_picked')}")
+                    
+                    if "presample_picked_b" in metadata:
+                        process_4dnexus.presample_picked_b = metadata["presample_picked_b"]
+                        print(f"✅ Restored presample_picked_b: {metadata.get('presample_picked_b')}")
+                    
+                    if "postsample_picked_b" in metadata:
+                        process_4dnexus.postsample_picked_b = metadata["postsample_picked_b"]
+                        print(f"✅ Restored postsample_picked_b: {metadata.get('postsample_picked_b')}")
+                    
+                    if "probe_x_coords_picked_b" in metadata:
+                        process_4dnexus.probe_x_coords_picked_b = metadata["probe_x_coords_picked_b"]
+                        print(f"✅ Restored probe_x_coords_picked_b: {metadata.get('probe_x_coords_picked_b')}")
+                    
+                    if "probe_y_coords_picked_b" in metadata:
+                        process_4dnexus.probe_y_coords_picked_b = metadata["probe_y_coords_picked_b"]
+                        print(f"✅ Restored probe_y_coords_picked_b: {metadata.get('probe_y_coords_picked_b')}")
+                
+                # Store the session filepath for the dashboard to load after recreation
+                # Use a different attribute name to distinguish from tmp_dashboard loads
+                process_4dnexus._session_filepath_to_load_from_main = filepath
+                
+                # Recreate the dashboard with restored dataset paths (same approach as tmp_dashboard)
+                from bokeh.io import curdoc as _curdoc
+                loading = column(create_div(text="<h3>Loading dashboard with session...</h3>"))
+                _curdoc().clear()
+                _curdoc().add_root(loading)
+                
+                def _build_and_swap():
+                    try:
+                        full_dashboard = create_dashboard(process_4dnexus)
+                        _curdoc().clear()
+                        _curdoc().add_root(full_dashboard)
+                        print(f"✅ Dashboard recreated with session data from {filepath.name}")
+                    except Exception as e:
+                        import traceback
+                        error_msg = f"Error recreating dashboard: {str(e)}"
+                        print(error_msg)
+                        traceback.print_exc()
+                        error_div = create_div(
+                            text=f"<h3 style='color: red;'>Error Recreating Dashboard</h3><p>{error_msg}</p><pre>{traceback.format_exc()}</pre>",
+                            width=800
+                        )
+                        _curdoc().clear()
+                        _curdoc().add_root(error_div)
+                
+                _curdoc().add_next_tick_callback(_build_and_swap)
+                
+                print(f"✅ Session paths restored, recreating dashboard...")
             except Exception as e:
                 import traceback
                 error_msg = f"Error loading session: {str(e)}"
@@ -4381,6 +4761,9 @@ def create_dashboard(process_4dnexus):
         
         save_session_button.on_click(on_save_session)
         load_session_button.on_click(on_load_session)
+        
+        # Initial refresh of session list
+        on_refresh_sessions()
         
         # Callback to go back to dataset selection
         def on_back_to_selection():
@@ -4445,12 +4828,31 @@ def create_dashboard(process_4dnexus):
         
         export_log_button.on_click(on_export_log)
         
+        # Create compact save status message (minimal space)
+        save_status_div = create_div(
+            text="",
+            width=350,
+            styles={
+                "font-size": "11px",
+                "color": "#28a745",
+                "min-height": "15px",
+                "padding": "2px 0"
+            }
+        )
+        
         # Create session management section (moved here before tools_items)
         session_section = column(
             create_label_div("Session Management:", width=200),
-            row(save_session_button, load_session_button),
+            create_label_div("Save Session:", width=200),
+            save_status_div,  # Compact status message above filename
+            save_filename_input,
+            save_dir_input,
+            save_session_button,
             create_div(text="<hr>", width=400),
-            row(back_to_selection_button),
+            create_label_div("Load Session:", width=200),
+            load_session_select,
+            row(refresh_sessions_button, load_session_button),
+           
             export_log_button,
             create_label_div("Undo/Redo:", width=200),
             row(undo_button, redo_button, undo_redo_status),
@@ -4482,15 +4884,14 @@ def create_dashboard(process_4dnexus):
         # Build tools items list (needed for layout)
         # Note: Range inputs are now above each plot, not in tools column
         tools_items = [
-            session_section,
-            create_div(text="<hr>", width=400),
+            back_to_selection_button,
             x_slider,
             y_slider,
-            color_scale_section,
+            plot1_color_scale_section,
+            plot2_color_scale_section,
+            plot3_color_scale_section,
             palette_section,
             plot1_shape_section,
-            create_div(text="<hr>", width=400),
-            plot2_color_scale_section,
         ]
         
         # Add Plot2B color scale section if it exists
@@ -4498,8 +4899,6 @@ def create_dashboard(process_4dnexus):
             tools_items.append(plot2b_color_scale_section)
         
         tools_items.extend([
-            plot3_color_scale_section,
-            create_div(text="<hr>", width=400),
             create_label_div("Plot2 -> Plot3:", width=200),
             compute_plot3_button,
         ])
@@ -4799,7 +5198,10 @@ def create_dashboard(process_4dnexus):
         if range3_section is not None:
             plot3_items.append(range3_section)
         plot3_items.append(plot3)
+        plot3_items.append(session_section)
         plot3_col = create_plot_column(plot3_items)
+
+ 
         
         # Create plots row - include Plot3
         plots = create_plots_row([plot1_col, plot2_col, plot3_col])
@@ -4857,6 +5259,86 @@ def create_dashboard(process_4dnexus):
         
         # Schedule background memmap creation after the dashboard is rendered
         curdoc().add_next_tick_callback(start_background_memmap)
+        
+        # If session was loaded from tmp_dashboard or main dashboard, automatically load it after dashboard is created
+        session_filepath = None
+        is_from_main = False
+        if hasattr(process_4dnexus, '_session_filepath_to_load'):
+            session_filepath = process_4dnexus._session_filepath_to_load
+            delattr(process_4dnexus, '_session_filepath_to_load')
+            is_from_main = False
+        elif hasattr(process_4dnexus, '_session_filepath_to_load_from_main'):
+            session_filepath = process_4dnexus._session_filepath_to_load_from_main
+            delattr(process_4dnexus, '_session_filepath_to_load_from_main')
+            is_from_main = True
+        
+        if session_filepath:
+            def auto_load_session():
+                """Automatically load session after dashboard is fully created."""
+                try:
+                    import json
+                    # Set the session select value to match the filepath
+                    session_filename = session_filepath.name
+                    # Find matching option in load_session_select
+                    for option in load_session_select.options:
+                        if option.startswith(session_filename):
+                            load_session_select.value = option
+                            break
+                    
+                    # Directly load session state (don't recreate dashboard again to avoid infinite loop)
+                    # Read and load session state directly
+                    with open(session_filepath, 'r') as f:
+                        session_data = json.load(f)
+                    
+                    # Load the session (this will restore plot states)
+                    session.load_session(session_filepath, restore_data=False)
+                    
+                    # Restore plot states from loaded session
+                    if hasattr(session, '_loaded_plot_states'):
+                        for plot_id, plot_state in session._loaded_plot_states.items():
+                            plot = session.get_plot(plot_id)
+                            plot_type = plot_state.get("plot_type", None)
+                            
+                            if plot:
+                                # Plot exists in session, restore its state
+                                plot.load_state(plot_state, restore_data=False)
+                            elif plot_id == "plot1":
+                                # Restore map_plot state (plot may not be in session yet)
+                                map_plot.load_state(plot_state, restore_data=False)
+                                # Re-add to session if not already there
+                                if "plot1" not in session.plots:
+                                    session.add_plot("plot1", map_plot)
+                            elif plot_id == "plot2":
+                                # Restore probe plot state based on plot type
+                                if plot_type == "PROBE_1DPlot" or (is_3d_volume and hasattr(plot2_history, 'plot')):
+                                    if hasattr(plot2_history, 'plot'):
+                                        plot2_history.plot.load_state(plot_state, restore_data=False)
+                                        if "plot2" not in session.plots:
+                                            session.add_plot("plot2", plot2_history.plot)
+                                elif plot_type == "PROBE_2DPlot" or (not is_3d_volume and hasattr(plot2_history, 'plot')):
+                                    if hasattr(plot2_history, 'plot'):
+                                        plot2_history.plot.load_state(plot_state, restore_data=False)
+                                        if "plot2" not in session.plots:
+                                            session.add_plot("plot2", plot2_history.plot)
+                    
+                    # Update UI to reflect loaded state
+                    update_ui_after_state_change()
+                    
+                    # Clear and rebuild history with loaded state
+                    session_history.clear()
+                    session_history.save_state("Session loaded")
+                    undo_redo_callbacks["update"]()
+                    
+                    status_div.text = f"✅ Session loaded from {session_filepath.name}<br>All settings restored"
+                    source_name = "main dashboard" if is_from_main else "tmp_dashboard"
+                    print(f"✅ Auto-loaded session from {source_name}: {session_filepath.name}")
+                except Exception as e:
+                    print(f"⚠️ Warning: Failed to auto-load session: {e}")
+                    import traceback
+                    traceback.print_exc()
+            
+            # Schedule session loading after dashboard is fully rendered
+            curdoc().add_next_tick_callback(auto_load_session)
         
         return dashboard
         
