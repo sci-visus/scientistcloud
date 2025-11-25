@@ -5433,6 +5433,170 @@ def create_dashboard(process_4dnexus):
             plot2b.on_event("tap", on_plot2b_tap)
             plot2b.on_event("doubletap", on_plot2b_doubletap)
         
+        # CRITICAL: Add handler for BoxSelectTool selection on Plot2 to automatically compute Plot3
+        # Create a dummy data source to trigger Python callbacks from JavaScript
+        plot2_selection_source = ColumnDataSource(data={"x0": [0], "y0": [0], "x1": [0], "y1": [0], "trigger": [0]})
+        
+        def on_plot2_box_select(attr, old, new):
+            """Handle BoxSelectTool selection on Plot2 to automatically compute Plot3."""
+            try:
+                # Get selection coordinates from the dummy data source
+                data = plot2_selection_source.data
+                if 'x0' not in data or 'y0' not in data or 'x1' not in data or 'y1' not in data:
+                    return
+                
+                x0 = data['x0'][0] if len(data['x0']) > 0 else 0
+                y0 = data['y0'][0] if len(data['y0']) > 0 else 0
+                x1 = data['x1'][0] if len(data['x1']) > 0 else 0
+                y1 = data['y1'][0] if len(data['y1']) > 0 else 0
+                
+                # Convert selection coordinates to indices
+                if is_3d_volume:
+                    # For 1D plot: selection is x-range only
+                    # Convert x coordinates to indices
+                    if hasattr(process_4dnexus, 'probe_x_coords_picked') and process_4dnexus.probe_x_coords_picked:
+                        try:
+                            probe_coords = process_4dnexus.load_probe_coordinates()
+                            if probe_coords is not None and len(probe_coords) > 0:
+                                z1_idx = int(np.argmin(np.abs(probe_coords - min(x0, x1))))
+                                z2_idx = int(np.argmin(np.abs(probe_coords - max(x0, x1))))
+                            else:
+                                z1_idx = int(min(x0, x1))
+                                z2_idx = int(max(x0, x1))
+                        except:
+                            z1_idx = int(min(x0, x1))
+                            z2_idx = int(max(x0, x1))
+                    else:
+                        z1_idx = int(min(x0, x1))
+                        z2_idx = int(max(x0, x1))
+                    
+                    # Clamp to valid range
+                    z1_idx = max(0, min(z1_idx, volume.shape[2] - 1))
+                    z2_idx = max(0, min(z2_idx, volume.shape[2] - 1))
+                    
+                    # Update rect2 with selection
+                    rect2.set(min_x=z1_idx, max_x=z2_idx, min_y=z1_idx, max_y=z2_idx)
+                    draw_rect2()
+                else:
+                    # For 2D plot: selection is both x and y ranges
+                    # Convert coordinates to indices using flipped coordinate arrays
+                    plot2_x_coords = probe_2d_plot.get_flipped_x_coords()
+                    plot2_y_coords = probe_2d_plot.get_flipped_y_coords()
+                    
+                    # Find closest indices in flipped coordinate arrays
+                    if plot2_x_coords is not None and len(plot2_x_coords) > 0:
+                        x1_idx = int(np.argmin(np.abs(plot2_x_coords - min(x0, x1))))
+                        x2_idx = int(np.argmin(np.abs(plot2_x_coords - max(x0, x1))))
+                    else:
+                        x1_idx = int(min(x0, x1))
+                        x2_idx = int(max(x0, x1))
+                    
+                    if plot2_y_coords is not None and len(plot2_y_coords) > 0:
+                        y1_idx = int(np.argmin(np.abs(plot2_y_coords - min(y0, y1))))
+                        y2_idx = int(np.argmin(np.abs(plot2_y_coords - max(y0, y1))))
+                    else:
+                        y1_idx = int(min(y0, y1))
+                        y2_idx = int(max(y0, y1))
+                    
+                    # Convert back to original coordinate space (rect2 stores original indices)
+                    plot2_needs_flip = probe_2d_plot.needs_flip if hasattr(probe_2d_plot, 'needs_flip') else False
+                    if plot2_needs_flip:
+                        # Flipped: plot2_x_coords is probe_y (u), plot2_y_coords is probe_x (z)
+                        click_z1 = y1_idx  # This is the z dimension index
+                        click_z2 = y2_idx  # This is the z dimension index
+                        click_u1 = x1_idx  # This is the u dimension index
+                        click_u2 = x2_idx  # This is the u dimension index
+                    else:
+                        # Not flipped: plot2_x_coords is probe_x (z), plot2_y_coords is probe_y (u)
+                        click_z1 = x1_idx  # This is the z dimension index
+                        click_z2 = x2_idx  # This is the z dimension index
+                        click_u1 = y1_idx  # This is the u dimension index
+                        click_u2 = y2_idx  # This is the u dimension index
+                    
+                    # Clamp to valid range
+                    click_z1 = max(0, min(click_z1, volume.shape[2] - 1))
+                    click_z2 = max(0, min(click_z2, volume.shape[2] - 1))
+                    click_u1 = max(0, min(click_u1, volume.shape[3] - 1))
+                    click_u2 = max(0, min(click_u2, volume.shape[3] - 1))
+                    
+                    # Update rect2 with selection
+                    rect2.set(min_x=min(click_z1, click_z2), max_x=max(click_z1, click_z2),
+                             min_y=min(click_u1, click_u2), max_y=max(click_u1, click_u2))
+                    draw_rect2()
+                
+                # Automatically compute Plot3 from the selection
+                compute_plot3_from_plot2()
+            except Exception as e:
+                print(f"⚠️ Warning: Error handling Plot2 selection: {e}")
+                import traceback
+                traceback.print_exc()
+        
+        # Listen to the dummy data source changes
+        plot2_selection_source.on_change('data', on_plot2_box_select)
+        
+        # Connect BoxSelectTool selection handler for Plot2 using CustomJS callback
+        # Create a CustomJS callback that updates the dummy data source when selection is made
+        for tool in plot2.tools:
+            if isinstance(tool, BoxSelectTool):
+                # Create CustomJS callback that extracts selection geometry and updates dummy source
+                callback_code = """
+                // Get selection geometry from BoxSelectTool
+                var geometry = null;
+                if (cb_obj.select_everything && cb_obj.select_everything.geometry) {
+                    geometry = cb_obj.select_everything.geometry;
+                }
+                
+                // Update dummy data source with selection coordinates
+                if (geometry && geometry.x0 !== undefined && geometry.y0 !== undefined && 
+                    geometry.x1 !== undefined && geometry.y1 !== undefined) {
+                    plot2_selection_source.data = {
+                        x0: [geometry.x0],
+                        y0: [geometry.y0],
+                        x1: [geometry.x1],
+                        y1: [geometry.y1],
+                        trigger: [plot2_selection_source.data.trigger[0] + 1]
+                    };
+                    plot2_selection_source.change.emit();
+                }
+                """
+                
+                custom_callback = CustomJS(
+                    args={'plot2_selection_source': plot2_selection_source},
+                    code=callback_code
+                )
+                
+                # Attach callback to the tool's selection geometry
+                # We'll use the tool's callback mechanism
+                if hasattr(tool, 'callback'):
+                    # If tool already has a callback, we need to chain them
+                    old_callback = tool.callback
+                    if old_callback is not None:
+                        # Chain callbacks
+                        def chained_callback():
+                            if old_callback:
+                                if isinstance(old_callback, CustomJS):
+                                    old_callback.execute()
+                                else:
+                                    old_callback()
+                            custom_callback.execute()
+                        tool.callback = chained_callback
+                    else:
+                        tool.callback = custom_callback
+                else:
+                    # Try to attach via select_everything
+                    if hasattr(tool, 'select_everything') and tool.select_everything is not None:
+                        selection = tool.select_everything
+                        if hasattr(selection, 'geometry') and selection.geometry is not None:
+                            geometry = selection.geometry
+                            # Listen to geometry changes and trigger callback
+                            def on_geometry_change(attr, old, new):
+                                custom_callback.execute()
+                            geometry.on_change('x0', on_geometry_change)
+                            geometry.on_change('y0', on_geometry_change)
+                            geometry.on_change('x1', on_geometry_change)
+                            geometry.on_change('y1', on_geometry_change)
+                break
+        
         # Draw initial rectangles if needed
         if not is_3d_volume:
             # Initialize rect2 to cover full range for 4D volumes
