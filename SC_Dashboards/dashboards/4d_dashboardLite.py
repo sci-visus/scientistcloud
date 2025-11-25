@@ -1485,10 +1485,10 @@ def create_dashboard(process_4dnexus):
         
         # Set ticks on Plot1 - use flipped coordinates directly (no swap needed)
         # The coordinates are already in the correct order from get_flipped_x_coords/y_coords
-            plot1.xaxis.ticker = x_ticks
-            plot1.yaxis.ticker = y_ticks
-            plot1.xaxis.major_label_overrides = dict(zip(x_ticks, my_xticks))
-            plot1.yaxis.major_label_overrides = dict(zip(y_ticks, my_yticks))
+        plot1.xaxis.ticker = x_ticks
+        plot1.yaxis.ticker = y_ticks
+        plot1.xaxis.major_label_overrides = dict(zip(x_ticks, my_xticks))
+        plot1.yaxis.major_label_overrides = dict(zip(y_ticks, my_yticks))
         
         # VERIFICATION: Bokeh image() expects data as (rows, cols) = (height, width)
         # Standard NumPy convention: array[row, col] where:
@@ -1589,9 +1589,11 @@ def create_dashboard(process_4dnexus):
                     line_color="yellow", 
                     line_width=2
                 )
-                # Ensure line is added to plot
-                if rect1.h1line not in plot1.renderers:
-                    plot1.renderers.append(rect1.h1line)
+            
+            # Always ensure crosshair renderers are in the plot (they might have been removed)
+            if rect1.h1line is not None and rect1.h1line not in plot1.renderers:
+                plot1.renderers.append(rect1.h1line)
+            
             if rect1.v1line is None:
                 rect1.v1line = plot1.line(
                     x=[plot_x_coord, plot_x_coord], 
@@ -1599,9 +1601,10 @@ def create_dashboard(process_4dnexus):
                     line_color="yellow", 
                     line_width=2
                 )
-                # Ensure line is added to plot
-                if rect1.v1line not in plot1.renderers:
-                    plot1.renderers.append(rect1.v1line)
+            
+            # Always ensure crosshair renderers are in the plot (they might have been removed)
+            if rect1.v1line is not None and rect1.v1line not in plot1.renderers:
+                plot1.renderers.append(rect1.v1line)
             
             # Update crosshair positions (Bokeh automatically updates when data is changed)
             if rect1.h1line is not None:
@@ -1650,9 +1653,11 @@ def create_dashboard(process_4dnexus):
                     line_color="yellow", 
                     line_width=2
                 )
-                # Ensure line is added to plot
-                if rect1b.h1line not in plot1b.renderers:
-                    plot1b.renderers.append(rect1b.h1line)
+            
+            # Always ensure crosshair renderers are in the plot (they might have been removed)
+            if rect1b.h1line is not None and rect1b.h1line not in plot1b.renderers:
+                plot1b.renderers.append(rect1b.h1line)
+            
             if rect1b.v1line is None:
                 rect1b.v1line = plot1b.line(
                     x=[plot_x_coord, plot_x_coord], 
@@ -1660,9 +1665,10 @@ def create_dashboard(process_4dnexus):
                     line_color="yellow", 
                     line_width=2
                 )
-                # Ensure line is added to plot
-                if rect1b.v1line not in plot1b.renderers:
-                    plot1b.renderers.append(rect1b.v1line)
+            
+            # Always ensure crosshair renderers are in the plot (they might have been removed)
+            if rect1b.v1line is not None and rect1b.v1line not in plot1b.renderers:
+                plot1b.renderers.append(rect1b.v1line)
             
             # Update crosshair positions (Bokeh automatically updates when data is changed)
             if rect1b.h1line is not None:
@@ -3639,9 +3645,14 @@ def create_dashboard(process_4dnexus):
             """Handle palette change for all plots."""
             nonlocal color_mapper1, color_mapper1b, color_mapper2, color_mapper2b, color_mapper3
             nonlocal image_renderer1, image_renderer1b, image_renderer2, image_renderer2b, image_renderer3
+            # Colorbar variables are in enclosing scope, access them directly
             try:
-                sync_palette_selector_to_plot(map_plot, palette_selector)
-                new_palette = map_plot.palette
+                # Use the new palette value directly from the callback parameter
+                # 'new' is the palette name string (e.g., "Viridis256", "Plasma256", etc.)
+                new_palette = new
+                
+                # Also update map_plot's palette for consistency
+                map_plot.palette = new_palette
                 
                 # Determine mapper class for Plot1
                 mapper1_cls = type(color_mapper1)
@@ -3656,15 +3667,20 @@ def create_dashboard(process_4dnexus):
                     image_renderer1 = plot1.image(
                         "image", source=source1, x="x", y="y", dw="dw", dh="dh", color_mapper=color_mapper1,
                     )
-                # Update colorbar1 if it exists
-                if 'colorbar1' in locals() and colorbar1 is not None:
-                    colorbar1.color_mapper = color_mapper1
+                # Update colorbar1 if it exists (check plot's below layout items)
+                try:
+                    for item in plot1.below:
+                        if hasattr(item, 'color_mapper'):
+                            item.color_mapper = color_mapper1
+                            break
+                except:
+                    pass
                 
                 # Update Plot1B if it exists
-                if 'color_mapper1b' in locals() and color_mapper1b is not None:
+                if plot1b is not None and color_mapper1b is not None:
                     mapper1b_cls = type(color_mapper1b)
                     color_mapper1b = mapper1b_cls(palette=new_palette, low=color_mapper1b.low, high=color_mapper1b.high)
-                    if plot1b is not None and image_renderer1b is not None:
+                    if image_renderer1b is not None:
                         # Remove the specific image renderer
                         if image_renderer1b in plot1b.renderers:
                             plot1b.renderers.remove(image_renderer1b)
@@ -3672,11 +3688,17 @@ def create_dashboard(process_4dnexus):
                         image_renderer1b = plot1b.image(
                             "image", source=source1b, x="x", y="y", dw="dw", dh="dh", color_mapper=color_mapper1b,
                         )
-                    if 'colorbar1b' in locals() and colorbar1b is not None:
-                        colorbar1b.color_mapper = color_mapper1b
+                    # Update colorbar1b if it exists
+                    try:
+                        for item in plot1b.below:
+                            if hasattr(item, 'color_mapper'):
+                                item.color_mapper = color_mapper1b
+                                break
+                    except:
+                        pass
                 
                 # Update Plot2 if it exists (2D plots only)
-                if not is_3d_volume and 'color_mapper2' in locals() and color_mapper2 is not None:
+                if not is_3d_volume and color_mapper2 is not None:
                     mapper2_cls = type(color_mapper2)
                     color_mapper2 = mapper2_cls(palette=new_palette, low=color_mapper2.low, high=color_mapper2.high)
                     if image_renderer2 is not None:
@@ -3687,14 +3709,20 @@ def create_dashboard(process_4dnexus):
                         image_renderer2 = plot2.image(
                             "image", source=source2, x="x", y="y", dw="dw", dh="dh", color_mapper=color_mapper2,
                         )
-                    if 'colorbar2' in locals() and colorbar2 is not None:
-                        colorbar2.color_mapper = color_mapper2
+                    # Update colorbar2 if it exists
+                    try:
+                        for item in plot2.below:
+                            if hasattr(item, 'color_mapper'):
+                                item.color_mapper = color_mapper2
+                                break
+                    except:
+                        pass
                 
                 # Update Plot2B if it exists (2D plots only)
-                if 'color_mapper2b' in locals() and color_mapper2b is not None and plot2b_is_2d:
+                if plot2b is not None and plot2b_is_2d and color_mapper2b is not None:
                     mapper2b_cls = type(color_mapper2b)
                     color_mapper2b = mapper2b_cls(palette=new_palette, low=color_mapper2b.low, high=color_mapper2b.high)
-                    if plot2b is not None and image_renderer2b is not None:
+                    if image_renderer2b is not None:
                         # Remove the specific image renderer
                         if image_renderer2b in plot2b.renderers:
                             plot2b.renderers.remove(image_renderer2b)
@@ -3702,11 +3730,17 @@ def create_dashboard(process_4dnexus):
                         image_renderer2b = plot2b.image(
                             "image", source=source2b, x="x", y="y", dw="dw", dh="dh", color_mapper=color_mapper2b,
                         )
-                    if 'colorbar2b' in locals() and colorbar2b is not None:
-                        colorbar2b.color_mapper = color_mapper2b
+                    # Update colorbar2b if it exists
+                    try:
+                        for item in plot2b.below:
+                            if hasattr(item, 'color_mapper'):
+                                item.color_mapper = color_mapper2b
+                                break
+                    except:
+                        pass
                 
                 # Update Plot3 if it exists
-                if 'color_mapper3' in locals() and color_mapper3 is not None:
+                if color_mapper3 is not None:
                     mapper3_cls = type(color_mapper3)
                     color_mapper3 = mapper3_cls(palette=new_palette, low=color_mapper3.low, high=color_mapper3.high)
                     if image_renderer3 is not None:
@@ -3717,8 +3751,14 @@ def create_dashboard(process_4dnexus):
                         image_renderer3 = plot3.image(
                             "image", source=source3, x="x", y="y", dw="dw", dh="dh", color_mapper=color_mapper3,
                         )
-                    if 'colorbar3' in locals() and colorbar3 is not None:
-                        colorbar3.color_mapper = color_mapper3
+                    # Update colorbar3 if it exists
+                    try:
+                        for item in plot3.below:
+                            if hasattr(item, 'color_mapper'):
+                                item.color_mapper = color_mapper3
+                                break
+                    except:
+                        pass
                 
                 # Redraw crosshairs after palette change (they might have been affected)
                 try:
@@ -4887,11 +4927,11 @@ def create_dashboard(process_4dnexus):
             back_to_selection_button,
             x_slider,
             y_slider,
+            palette_section,
+            plot1_shape_section,
             plot1_color_scale_section,
             plot2_color_scale_section,
             plot3_color_scale_section,
-            palette_section,
-            plot1_shape_section,
         ]
         
         # Add Plot2B color scale section if it exists
