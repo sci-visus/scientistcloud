@@ -92,6 +92,13 @@ fi
 # We'll need to copy SCLib_Dashboards files into the build context or use a different approach
 # For now, assume SCLib_Dashboards will be in the build context
 SHARED_UTILITIES_SECTION=""
+# First, copy the entire SCLib_Dashboards package directory if it exists in build context
+# This is needed for dashboards that import SCLib_Dashboards as a package (e.g., 4d_dashboardLite)
+if [ -n "$SCLIB_DASHBOARDS_DIR" ] && [ -d "$SCLIB_DASHBOARDS_DIR" ]; then
+    SHARED_UTILITIES_SECTION="${SHARED_UTILITIES_SECTION}# Copy entire SCLib_Dashboards package directory\n"
+    SHARED_UTILITIES_SECTION="${SHARED_UTILITIES_SECTION}COPY SCLib_Dashboards ./SCLib_Dashboards\n"
+fi
+# Also copy individual utility files (for backward compatibility)
 if [ -n "$SHARED_UTILITIES" ]; then
     for util in $SHARED_UTILITIES; do
         # Use relative path from build context (dashboards directory)

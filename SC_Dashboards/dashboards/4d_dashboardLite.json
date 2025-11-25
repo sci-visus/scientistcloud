@@ -1,6 +1,6 @@
 {
-  "name": "4D_Dashboard",
-  "display_name": "4D Dashboard",
+  "name": "4D_Dashboard (New)",
+  "display_name": "4D Dashboard (New)",
   "description": "Interactive 4D visualization using 4D Nexus files",
   "version": "2.0.0",
   "type": "bokeh",

@@ -30,78 +30,163 @@ from bokeh.models import (
 
 # Import SCLib_Dashboards components
 import sys
-# Add the scientistCloudLib directory to the path
+# Try multiple paths to find SCLib_Dashboards
+current_dir = os.path.dirname(os.path.abspath(__file__))
+found_sclib = False
+
+# Define all paths to try
+docker_path = os.path.join(current_dir, 'SCLib_Dashboards')
+parent_docker_path = os.path.join(os.path.dirname(current_dir), 'SCLib_Dashboards')
 lib_path = os.path.join(os.path.dirname(__file__), '../../..', 'scientistCloudLib')
-if os.path.exists(lib_path):
+alt_path = os.path.join(os.path.dirname(__file__), '../../../scientistCloudLib')
+server_paths = [
+    '/app/SCLib_Dashboards',
+    '/var/www/scientistCloudLib/SCLib_Dashboards',
+    '/home/ViSOAR/dataportal/scientistCloudLib/SCLib_Dashboards',
+]
+
+# 1. Check if it's in the same directory as the script (Docker: /app/SCLib_Dashboards)
+if os.path.exists(docker_path) and os.path.isdir(docker_path):
+    # Check if it's a proper Python package (has __init__.py or Python files)
+    try:
+        has_py_files = any(f.endswith('.py') for f in os.listdir(docker_path) if os.path.isfile(os.path.join(docker_path, f)))
+        if os.path.exists(os.path.join(docker_path, '__init__.py')) or has_py_files:
+            sys.path.insert(0, current_dir)
+            print(f"✅ Found SCLib_Dashboards in Docker path: {docker_path}")
+            found_sclib = True
+    except Exception:
+        pass
+
+# 2. Check if SCLib_Dashboards directory exists in parent of current dir
+if not found_sclib and os.path.exists(parent_docker_path) and os.path.isdir(parent_docker_path):
+    try:
+        has_py_files = any(f.endswith('.py') for f in os.listdir(parent_docker_path) if os.path.isfile(os.path.join(parent_docker_path, f)))
+        if os.path.exists(os.path.join(parent_docker_path, '__init__.py')) or has_py_files:
+            sys.path.insert(0, os.path.dirname(current_dir))
+            print(f"✅ Found SCLib_Dashboards in parent Docker path: {parent_docker_path}")
+            found_sclib = True
+    except Exception:
+        pass
+
+# 3. Try relative path from current file (local development)
+if not found_sclib and os.path.exists(lib_path):
     sys.path.insert(0, lib_path)
-else:
-    # Try alternative path
-    alt_path = os.path.join(os.path.dirname(__file__), '../../../scientistCloudLib')
-    if os.path.exists(alt_path):
-        sys.path.insert(0, alt_path)
+    print(f"✅ Found SCLib_Dashboards in local path: {lib_path}")
+    found_sclib = True
+
+# 4. Try alternative relative path
+if not found_sclib and os.path.exists(alt_path):
+    sys.path.insert(0, alt_path)
+    print(f"✅ Found SCLib_Dashboards in alternative path: {alt_path}")
+    found_sclib = True
+
+# 5. Try absolute paths (server environment)
+if not found_sclib:
+    for server_path in server_paths:
+        if os.path.exists(server_path) and os.path.isdir(server_path):
+            sys.path.insert(0, os.path.dirname(server_path))
+            print(f"✅ Found SCLib_Dashboards in server path: {server_path}")
+            found_sclib = True
+            break
+
+if not found_sclib:
+    print(f"⚠️ WARNING: SCLib_Dashboards not found in any expected location")
+    print(f"   Tried paths:")
+    print(f"     - {docker_path}")
+    print(f"     - {parent_docker_path}")
+    print(f"     - {lib_path}")
+    print(f"     - {alt_path}")
+    for server_path in server_paths:
+        print(f"     - {server_path}")
+    print(f"   Current working directory: {os.getcwd()}")
+    print(f"   Script directory: {current_dir}")
+    print(f"   Script file: {__file__}")
+    print(f"   sys.path: {sys.path}")
 
 # Import all SCLib_Dashboards components (all required - no fallbacks)
-from SCLib_Dashboards import (
-    # Data processors
-    Process4dNexus,
-    # Plot classes
-    MAP_2DPlot,
-    PROBE_2DPlot,
-    PROBE_1DPlot,
-    PlotSession,
-    ColorScale,
-    RangeMode,
-    PlotShapeMode,
-    # Undo/Redo (core functionality)
-    StateHistory,
-    PlotStateHistory,
-    SessionStateHistory,
-    create_undo_redo_callbacks,
-)
-
-# Import UI components (required - all components must be available)
-from SCLib_Dashboards import (
-    # Base UI components
-    create_select,
-    create_slider,
-    create_button,
-    create_toggle,
-    create_text_input,
-    create_radio_button_group,
-    create_div,
-    create_label_div,
-    # Plot controls
-    create_range_inputs,
-    create_range_section,
-    create_range_section_with_toggle,
-    create_color_scale_selector,
-    create_color_scale_section,
-    create_palette_selector,
-    create_palette_section,
-    create_plot_shape_controls,
-    create_range_mode_toggle,
-    # Dataset selectors
-    create_dataset_selection_group,
-    create_coordinate_selection_group,
-    create_optional_plot_toggle,
-    extract_dataset_path,
-    extract_shape,
-    # Layout builders
-    create_tools_column,
-    create_plot_column,
-    create_plots_row,
-    create_dashboard_layout,
-    create_status_display,
-    create_initialization_layout,
-    # State synchronization
-    sync_all_plot_ui,
-    sync_plot_to_range_inputs,
-    sync_range_inputs_to_plot,
-    sync_plot_to_color_scale_selector,
-    sync_color_scale_selector_to_plot,
-    sync_plot_to_palette_selector,
-    sync_palette_selector_to_plot,
-)
+try:
+    from SCLib_Dashboards import (
+        # Data processors
+        Process4dNexus,
+        # Plot classes
+        MAP_2DPlot,
+        PROBE_2DPlot,
+        PROBE_1DPlot,
+        PlotSession,
+        ColorScale,
+        RangeMode,
+        PlotShapeMode,
+        # Undo/Redo (core functionality)
+        StateHistory,
+        PlotStateHistory,
+        SessionStateHistory,
+        create_undo_redo_callbacks,
+        # Base UI components
+        create_select,
+        create_slider,
+        create_button,
+        create_toggle,
+        create_text_input,
+        create_radio_button_group,
+        create_div,
+        create_label_div,
+        # Plot controls
+        create_range_inputs,
+        create_range_section,
+        create_range_section_with_toggle,
+        create_color_scale_selector,
+        create_color_scale_section,
+        create_palette_selector,
+        create_palette_section,
+        create_plot_shape_controls,
+        create_range_mode_toggle,
+        # Dataset selectors
+        create_dataset_selection_group,
+        create_coordinate_selection_group,
+        create_optional_plot_toggle,
+        extract_dataset_path,
+        extract_shape,
+        # Layout builders
+        create_tools_column,
+        create_plot_column,
+        create_plots_row,
+        create_dashboard_layout,
+        create_status_display,
+        create_initialization_layout,
+        # State synchronization
+        sync_all_plot_ui,
+        sync_plot_to_range_inputs,
+        sync_range_inputs_to_plot,
+        sync_plot_to_color_scale_selector,
+        sync_color_scale_selector_to_plot,
+        sync_plot_to_palette_selector,
+        sync_palette_selector_to_plot,
+    )
+except ImportError as e:
+    error_msg = f"""
+    ❌ CRITICAL ERROR: Failed to import SCLib_Dashboards module!
+    
+    Error: {str(e)}
+    
+    This module is required for the dashboard to function.
+    Please ensure SCLib_Dashboards is available in one of these locations:
+    1. /app/SCLib_Dashboards (Docker container)
+    2. Relative path from script: ../../scientistCloudLib/SCLib_Dashboards
+    3. Server path: /var/www/scientistCloudLib/SCLib_Dashboards
+    
+    Current sys.path:
+    {chr(10).join('  - ' + p for p in sys.path)}
+    """
+    print(error_msg)
+    # Create a simple error display for Bokeh
+    from bokeh.models import Div
+    error_div = Div(text=f"<h2 style='color: red;'>Module Import Error</h2><pre>{error_msg}</pre>", width=800)
+    from bokeh.io import curdoc
+    try:
+        curdoc().add_root(error_div)
+    except:
+        pass
+    raise ImportError(f"SCLib_Dashboards module not found: {e}")
 
 # Import utility functions (if available)
 try:
@@ -449,27 +534,30 @@ def create_tmp_dashboard(process_4dnexus):
             session_files = sorted(sessions_dir.glob("session_*.json"), key=os.path.getmtime, reverse=True)
             
             # Create display names with timestamp
+            from datetime import datetime
+            import json
             session_choices = []
             for filepath in session_files:
                 # Extract timestamp from filename or use modification time
                 try:
-                    import json
                     with open(filepath, 'r') as f:
                         session_data = json.load(f)
                     metadata = session_data.get("metadata", {})
                     timestamp = metadata.get("last_updated") or metadata.get("created_at", "")
                     if timestamp:
-                        from datetime import datetime
                         try:
                             dt = datetime.fromisoformat(timestamp.replace('Z', '+00:00'))
                             timestamp_str = dt.strftime("%Y-%m-%d %H:%M:%S")
                         except:
-                            timestamp_str = os.path.getmtime(filepath)
-                            timestamp_str = datetime.fromtimestamp(timestamp_str).strftime("%Y-%m-%d %H:%M:%S")
+                            mtime = os.path.getmtime(filepath)
+                            timestamp_str = datetime.fromtimestamp(mtime).strftime("%Y-%m-%d %H:%M:%S")
                     else:
-                        timestamp_str = datetime.fromtimestamp(os.path.getmtime(filepath)).strftime("%Y-%m-%d %H:%M:%S")
-                except:
-                    timestamp_str = datetime.fromtimestamp(os.path.getmtime(filepath)).strftime("%Y-%m-%d %H:%M:%S")
+                        mtime = os.path.getmtime(filepath)
+                        timestamp_str = datetime.fromtimestamp(mtime).strftime("%Y-%m-%d %H:%M:%S")
+                except Exception:
+                    # Fallback to file modification time
+                    mtime = os.path.getmtime(filepath)
+                    timestamp_str = datetime.fromtimestamp(mtime).strftime("%Y-%m-%d %H:%M:%S")
                 
                 display_name = f"{filepath.name} ({timestamp_str})"
                 session_choices.append(display_name)
@@ -680,6 +768,7 @@ def create_tmp_dashboard(process_4dnexus):
     def on_load_session():
         """Load selected session from file and populate selectors with saved dataset paths."""
         try:
+            print("🔍 DEBUG: on_load_session() called")
             from pathlib import Path
             import os
             import json
@@ -687,9 +776,11 @@ def create_tmp_dashboard(process_4dnexus):
             
             # Get selected session
             selected_session = session_selector.value
+            print(f"🔍 DEBUG: Selected session: {selected_session}")
             
             if selected_session == "No sessions available":
                 status_display.text = "<span style='color: orange;'>No sessions available to load</span>"
+                print("⚠️ DEBUG: No sessions available")
                 return
             
             # Find the filepath corresponding to the selected session
@@ -700,22 +791,42 @@ def create_tmp_dashboard(process_4dnexus):
                 status_display.text = "<span style='color: orange;'>No session files found</span>"
                 return
             
-            # Match selected display name to filepath
+            # Extract filename from display name (format: "session_xxx.json (timestamp)")
+            # Match by filename rather than full display name to avoid timestamp formatting issues
+            selected_filename = None
+            if " (" in selected_session:
+                selected_filename = selected_session.split(" (")[0]
+            else:
+                selected_filename = selected_session
+            
+            # Match selected filename to filepath
             filepath = None
-            for i, choice in enumerate(session_choices_refresh):
-                if choice == selected_session:
-                    if i < len(session_files_refresh):
-                        filepath = session_files_refresh[i]
-                        break
+            for i, filepath_candidate in enumerate(session_files_refresh):
+                if filepath_candidate.name == selected_filename:
+                    filepath = filepath_candidate
+                    break
+            
+            # Fallback: try matching by index if filename match fails
+            if filepath is None:
+                for i, choice in enumerate(session_choices_refresh):
+                    if choice == selected_session:
+                        if i < len(session_files_refresh):
+                            filepath = session_files_refresh[i]
+                            break
             
             if filepath is None or not filepath.exists():
                 status_display.text = f"<span style='color: red;'>Session file not found: {selected_session}</span>"
+                print(f"❌ DEBUG: Could not find session file. Selected: {selected_session}, Filename: {selected_filename}")
+                print(f"❌ DEBUG: Available files: {[f.name for f in session_files_refresh]}")
                 return
+            
+            print(f"✅ DEBUG: Found session file: {filepath}")
             with open(filepath, 'r') as f:
                 session_data = json.load(f)
             
             # Extract metadata which should contain dataset paths
             metadata = session_data.get("metadata", {})
+            print(f"🔍 DEBUG: Session metadata keys: {list(metadata.keys())}")
             
             # Extract dataset paths from metadata
             volume_path = metadata.get("dataset_path") or metadata.get("volume_picked")
@@ -748,25 +859,34 @@ def create_tmp_dashboard(process_4dnexus):
                 return None
             
             # Populate Plot2 selector
+            print(f"🔍 DEBUG: volume_path from metadata: {volume_path}")
             if volume_path:
                 plot2_choice = find_matching_choice(plot2_h5_choices, volume_path)
+                print(f"🔍 DEBUG: plot2_choice found: {plot2_choice}")
                 if plot2_choice:
                     plot2_selector.value = plot2_choice
+                    print(f"✅ DEBUG: Set plot2_selector.value to {plot2_choice}")
             
             # Populate Plot1 selectors based on mode
+            print(f"🔍 DEBUG: plot1_mode: {plot1_mode}, plot1_single: {plot1_single}, presample: {presample}, postsample: {postsample}")
             if plot1_mode == "single" and plot1_single:
                 plot1_mode_selector.active = 0  # Single dataset mode
                 plot1_choice = find_matching_choice(plot1_h5_choices, plot1_single)
+                print(f"🔍 DEBUG: plot1_choice (single) found: {plot1_choice}")
                 if plot1_choice:
                     plot1_single_selector.value = plot1_choice
+                    print(f"✅ DEBUG: Set plot1_single_selector.value to {plot1_choice}")
             elif presample and postsample:
                 plot1_mode_selector.active = 1  # Ratio mode
                 numerator_choice = find_matching_choice(plot1_h5_choices, postsample)
                 denominator_choice = find_matching_choice(plot1_h5_choices, presample)
+                print(f"🔍 DEBUG: numerator_choice: {numerator_choice}, denominator_choice: {denominator_choice}")
                 if numerator_choice:
                     plot1_numerator_selector.value = numerator_choice
+                    print(f"✅ DEBUG: Set plot1_numerator_selector.value to {numerator_choice}")
                 if denominator_choice:
                     plot1_denominator_selector.value = denominator_choice
+                    print(f"✅ DEBUG: Set plot1_denominator_selector.value to {denominator_choice}")
             
             # Populate coordinate selectors
             if x_coords:
@@ -3204,22 +3324,130 @@ def create_dashboard(process_4dnexus):
         
         # Create color scale and palette selectors using SCLib UI
         def on_color_scale_change(attr, old, new):
-            """Handle color scale change."""
-            sync_color_scale_selector_to_plot(map_plot, color_scale_selector)
-            # Note: Bokeh color mapper update would need to recreate renderer for log/linear switch
-            # Save state immediately for color scale changes (important state, not frequent)
-            from bokeh.io import curdoc
-            def save_state_async():
-                plot1_history.save_state("Color scale changed")
-                session_history.save_state("Color scale changed")
-                undo_redo_callbacks["update"]()
-            curdoc().add_next_tick_callback(save_state_async)
+            """Handle color scale change for Plot1 and Plot1B."""
+            nonlocal color_mapper1, color_mapper1b, image_renderer1, image_renderer1b
+            try:
+                # Get current data from source1
+                if 'image' not in source1.data or len(source1.data['image']) == 0:
+                    print("Warning: No image data in source1 for color scale change")
+                    return
+                
+                current_data = np.array(source1.data["image"][0])
+                if current_data.size == 0:
+                    print("Warning: Empty image data for color scale change")
+                    return
+                
+                # For log scale, we need to handle zeros/negatives
+                if new == 1:  # Log scale selected
+                    # Filter out zeros and negatives, use a small epsilon for minimum
+                    positive_data = current_data[current_data > 0]
+                    if positive_data.size == 0:
+                        print("Warning: No positive values for log scale, using linear scale")
+                        new_cls = LinearColorMapper
+                        # Use current ranges or defaults
+                        low1 = color_mapper1.low if color_mapper1.low > 0 else 0.001
+                        high1 = color_mapper1.high if color_mapper1.high > 0 else 1.0
+                    else:
+                        new_cls = LogColorMapper
+                        # Use current ranges if they're positive, otherwise use data-based ranges
+                        low1 = color_mapper1.low if color_mapper1.low > 0 else max(np.min(positive_data), 0.001)
+                        high1 = color_mapper1.high if color_mapper1.high > 0 else np.max(positive_data)
+                else:  # Linear scale
+                    new_cls = LinearColorMapper
+                    # Preserve current ranges
+                    low1 = color_mapper1.low
+                    high1 = color_mapper1.high
+                
+                # Recreate mapper for Plot1
+                color_mapper1 = new_cls(palette=color_mapper1.palette, low=low1, high=high1)
+                if len(plot1.renderers) > 0 and image_renderer1 is not None:
+                    # Remove the old renderer
+                    plot1.renderers.remove(plot1.renderers[0])
+                    # Re-add the renderer with the new color mapper
+                    image_renderer1 = plot1.image(
+                        "image", source=source1, x="x", y="y", dw="dw", dh="dh", color_mapper=color_mapper1,
+                    )
+                # Update colorbar if it exists
+                if 'colorbar1' in locals() and colorbar1 is not None:
+                    colorbar1.color_mapper = color_mapper1
+                
+                # Update Plot1B if it exists
+                if plot1b is not None and image_renderer1b is not None and color_mapper1b is not None:
+                    if new == 1:  # Log scale
+                        if 'source1b' in locals() and source1b is not None and 'image' in source1b.data and len(source1b.data['image']) > 0:
+                            current_data_b = np.array(source1b.data["image"][0])
+                            positive_data_b = current_data_b[current_data_b > 0]
+                            if positive_data_b.size == 0:
+                                new_cls = LinearColorMapper
+                                low1b = color_mapper1b.low if color_mapper1b.low > 0 else 0.001
+                                high1b = color_mapper1b.high if color_mapper1b.high > 0 else 1.0
+                            else:
+                                low1b = color_mapper1b.low if color_mapper1b.low > 0 else max(np.min(positive_data_b), 0.001)
+                                high1b = color_mapper1b.high if color_mapper1b.high > 0 else np.max(positive_data_b)
+                        else:
+                            low1b = color_mapper1b.low if color_mapper1b.low > 0 else max(np.min(positive_data), 0.001)
+                            high1b = color_mapper1b.high if color_mapper1b.high > 0 else np.max(positive_data)
+                    else:  # Linear scale
+                        low1b = color_mapper1b.low
+                        high1b = color_mapper1b.high
+                    color_mapper1b = new_cls(palette=color_mapper1.palette, low=low1b, high=high1b)
+                    if len(plot1b.renderers) > 0 and image_renderer1b is not None:
+                        # Remove the old renderer
+                        plot1b.renderers.remove(plot1b.renderers[0])
+                        # Re-add the renderer with the new color mapper
+                        image_renderer1b = plot1b.image(
+                            "image", source=source1b, x="x", y="y", dw="dw", dh="dh", color_mapper=color_mapper1b,
+                        )
+                    # Update colorbar if it exists
+                    if 'colorbar1b' in locals() and colorbar1b is not None:
+                        colorbar1b.color_mapper = color_mapper1b
+                
+                sync_color_scale_selector_to_plot(map_plot, color_scale_selector)
+                # Save state immediately for color scale changes (important state, not frequent)
+                from bokeh.io import curdoc
+                def save_state_async():
+                    plot1_history.save_state("Color scale changed")
+                    session_history.save_state("Color scale changed")
+                    undo_redo_callbacks["update"]()
+                curdoc().add_next_tick_callback(save_state_async)
+            except Exception as e:
+                print(f"Error in on_color_scale_change: {e}")
+                import traceback
+                traceback.print_exc()
         
         def on_palette_change(attr, old, new):
-            """Handle palette change."""
+            """Handle palette change for all plots."""
             sync_palette_selector_to_plot(map_plot, palette_selector)
-            # Update Bokeh color mapper immediately
+            # Update Bokeh color mapper immediately for Plot1
             color_mapper1.palette = map_plot.palette
+            # Update colorbar1 if it exists
+            if 'colorbar1' in locals() and colorbar1 is not None:
+                colorbar1.color_mapper = color_mapper1
+            
+            # Update Plot1B if it exists
+            if 'color_mapper1b' in locals() and color_mapper1b is not None:
+                color_mapper1b.palette = map_plot.palette
+                if 'colorbar1b' in locals() and colorbar1b is not None:
+                    colorbar1b.color_mapper = color_mapper1b
+            
+            # Update Plot2 if it exists (2D plots only)
+            if not is_3d_volume and 'color_mapper2' in locals() and color_mapper2 is not None:
+                color_mapper2.palette = map_plot.palette
+                if 'colorbar2' in locals() and colorbar2 is not None:
+                    colorbar2.color_mapper = color_mapper2
+            
+            # Update Plot2B if it exists (2D plots only)
+            if 'color_mapper2b' in locals() and color_mapper2b is not None and plot2b_is_2d:
+                color_mapper2b.palette = map_plot.palette
+                if 'colorbar2b' in locals() and colorbar2b is not None:
+                    colorbar2b.color_mapper = color_mapper2b
+            
+            # Update Plot3 if it exists
+            if 'color_mapper3' in locals() and color_mapper3 is not None:
+                color_mapper3.palette = map_plot.palette
+                if 'colorbar3' in locals() and colorbar3 is not None:
+                    colorbar3.color_mapper = color_mapper3
+            
             # Save state asynchronously
             from bokeh.io import curdoc
             def save_state_async():
@@ -3254,6 +3482,238 @@ def create_dashboard(process_4dnexus):
             value="Viridis256",
             width=200,
             callback=on_palette_change
+        )
+        
+        # Create color scale handlers for Plot2, Plot2B, and Plot3
+        def on_plot2_color_scale_change(attr, old, new):
+            """Handle Plot2 color scale change (Linear vs Log) for 2D and 1D plots."""
+            nonlocal color_mapper2, image_renderer2
+            try:
+                new_cls = LogColorMapper if new == 1 else LinearColorMapper
+                
+                # Handle Plot2 (2D plots only - 4D volumes)
+                if not is_3d_volume and color_mapper2 is not None:
+                    # Get current data from source2
+                    if 'image' in source2.data and len(source2.data['image']) > 0:
+                        current_data = np.array(source2.data["image"][0])
+                        
+                        if new == 1:  # Log scale
+                            # Filter out zeros and negatives
+                            positive_data = current_data[current_data > 0]
+                            if positive_data.size == 0:
+                                print("Warning: No positive values for log scale in Plot2, using linear scale")
+                                new_cls = LinearColorMapper
+                                low2 = color_mapper2.low if color_mapper2.low > 0 else 0.001
+                                high2 = color_mapper2.high if color_mapper2.high > 0 else 1.0
+                            else:
+                                # Use current ranges if positive, otherwise use data-based ranges
+                                low2 = color_mapper2.low if color_mapper2.low > 0 else max(np.min(positive_data), 0.001)
+                                high2 = color_mapper2.high if color_mapper2.high > 0 else np.max(positive_data)
+                        else:  # Linear scale
+                            low2 = color_mapper2.low
+                            high2 = color_mapper2.high
+                    else:
+                        # No image data, use current ranges
+                        low2 = color_mapper2.low
+                        high2 = color_mapper2.high
+                    
+                    color_mapper2 = new_cls(palette=color_mapper2.palette, low=low2, high=high2)
+                    if len(plot2.renderers) > 0 and image_renderer2 is not None:
+                        # Remove the old renderer
+                        plot2.renderers.remove(plot2.renderers[0])
+                        # Re-add the renderer with the new color mapper
+                        image_renderer2 = plot2.image(
+                            "image", source=source2, x="x", y="y", dw="dw", dh="dh", color_mapper=color_mapper2,
+                        )
+                    # Update colorbar if it exists
+                    if 'colorbar2' in locals() and colorbar2 is not None:
+                        colorbar2.color_mapper = color_mapper2
+                
+                # Handle 1D plots (3D volumes) - apply log scale to y-axis
+                if is_3d_volume:
+                    if new == 1:  # Log scale selected
+                        # Set y-axis to log scale
+                        plot2.y_scale = LogScale()
+                        # Ensure y-axis range is positive for log scale
+                        if 'y' in source2.data and len(source2.data['y']) > 0:
+                            y_data = np.array(source2.data['y'])
+                            positive_y = y_data[y_data > 0]
+                            if positive_y.size > 0:
+                                y_min = max(np.min(positive_y), 0.001)
+                                y_max = np.max(positive_y)
+                                plot2.y_range.start = y_min
+                                plot2.y_range.end = y_max
+                            else:
+                                # No positive values, set safe default
+                                plot2.y_range.start = 0.001
+                                plot2.y_range.end = 1.0
+                    else:  # Linear scale selected
+                        plot2.y_scale = LinearScale()
+                        # Reset y-range to include all data (including negatives/zeros)
+                        if 'y' in source2.data and len(source2.data['y']) > 0:
+                            y_data = np.array(source2.data['y'])
+                            plot2.y_range.start = float(np.min(y_data))
+                            plot2.y_range.end = float(np.max(y_data))
+                    
+                    # Force plot update for 1D plots by updating data source
+                    if 'x' in source2.data and 'y' in source2.data:
+                        source2.data = {
+                            'x': source2.data['x'],
+                            'y': source2.data['y']
+                        }
+            except Exception as e:
+                print(f"Error in on_plot2_color_scale_change: {e}")
+                import traceback
+                traceback.print_exc()
+        
+        def on_plot2b_color_scale_change(attr, old, new):
+            """Handle Plot2B color scale change (Linear vs Log) for 2D and 1D plots."""
+            nonlocal color_mapper2b, image_renderer2b
+            try:
+                new_cls = LogColorMapper if new == 1 else LinearColorMapper
+                
+                # Handle Plot2B (2D plots only)
+                if plot2b is not None and plot2b_is_2d and image_renderer2b is not None and color_mapper2b is not None:
+                    # Get current data from source2b
+                    if 'image' in source2b.data and len(source2b.data['image']) > 0:
+                        current_data_b = np.array(source2b.data["image"][0])
+                        
+                        if new == 1:  # Log scale
+                            positive_data_b = current_data_b[current_data_b > 0]
+                            if positive_data_b.size == 0:
+                                print("Warning: No positive values for log scale in Plot2B, using linear scale")
+                                new_cls = LinearColorMapper
+                                low2b = color_mapper2b.low if color_mapper2b.low > 0 else 0.001
+                                high2b = color_mapper2b.high if color_mapper2b.high > 0 else 1.0
+                            else:
+                                low2b = color_mapper2b.low if color_mapper2b.low > 0 else max(np.min(positive_data_b), 0.001)
+                                high2b = color_mapper2b.high if color_mapper2b.high > 0 else np.max(positive_data_b)
+                        else:  # Linear scale
+                            low2b = color_mapper2b.low
+                            high2b = color_mapper2b.high
+                    else:
+                        # No image data, use current ranges
+                        low2b = color_mapper2b.low
+                        high2b = color_mapper2b.high
+                    
+                    color_mapper2b = new_cls(palette=(color_mapper2.palette if color_mapper2 is not None else "Viridis256"), low=low2b, high=high2b)
+                    if len(plot2b.renderers) > 0 and image_renderer2b is not None:
+                        # Remove the old renderer
+                        plot2b.renderers.remove(plot2b.renderers[0])
+                        # Re-add the renderer with the new color mapper
+                        image_renderer2b = plot2b.image(
+                            "image", source=source2b, x="x", y="y", dw="dw", dh="dh", color_mapper=color_mapper2b,
+                        )
+                    # Update colorbar if it exists
+                    if 'colorbar2b' in locals() and colorbar2b is not None:
+                        colorbar2b.color_mapper = color_mapper2b
+                
+                # Handle 1D plots (3D volumes) - apply log scale to y-axis
+                if plot2b is not None and not plot2b_is_2d:
+                    if new == 1:  # Log scale
+                        plot2b.y_scale = LogScale()
+                        if 'y' in source2b.data and len(source2b.data['y']) > 0:
+                            y_data_b = np.array(source2b.data['y'])
+                            positive_y_b = y_data_b[y_data_b > 0]
+                            if positive_y_b.size > 0:
+                                y_min_b = max(np.min(positive_y_b), 0.001)
+                                y_max_b = np.max(positive_y_b)
+                                plot2b.y_range.start = y_min_b
+                                plot2b.y_range.end = y_max_b
+                            else:
+                                plot2b.y_range.start = 0.001
+                                plot2b.y_range.end = 1.0
+                    else:  # Linear scale
+                        plot2b.y_scale = LinearScale()
+                        if 'y' in source2b.data and len(source2b.data['y']) > 0:
+                            y_data_b = np.array(source2b.data['y'])
+                            plot2b.y_range.start = float(np.min(y_data_b))
+                            plot2b.y_range.end = float(np.max(y_data_b))
+                    # Force Plot2B update by updating data source
+                    if 'source2b' in locals() and source2b is not None and 'x' in source2b.data and 'y' in source2b.data:
+                        source2b.data = {
+                            'x': source2b.data['x'],
+                            'y': source2b.data['y']
+                        }
+            except Exception as e:
+                print(f"Error in on_plot2b_color_scale_change: {e}")
+                import traceback
+                traceback.print_exc()
+        
+        def on_plot3_color_scale_change(attr, old, new):
+            """Handle Plot3 color scale change (Linear vs Log)."""
+            nonlocal color_mapper3, image_renderer3
+            try:
+                # Get current data from source3
+                if 'image' not in source3.data or len(source3.data['image']) == 0:
+                    print("Warning: No image data in source3 for color scale change")
+                    return
+                
+                current_data = np.array(source3.data["image"][0])
+                if current_data.size == 0:
+                    print("Warning: Empty image data for color scale change")
+                    return
+                
+                # For log scale, we need to handle zeros/negatives
+                if new == 1:  # Log scale selected
+                    # Filter out zeros and negatives, use a small epsilon for minimum
+                    positive_data = current_data[current_data > 0]
+                    if positive_data.size == 0:
+                        print("Warning: No positive values for log scale in Plot3, using linear scale")
+                        new_cls = LinearColorMapper
+                        # Use current ranges or defaults
+                        low3 = color_mapper3.low if color_mapper3.low > 0 else 0.001
+                        high3 = color_mapper3.high if color_mapper3.high > 0 else 1.0
+                    else:
+                        new_cls = LogColorMapper
+                        # Use current ranges if they're positive, otherwise use data-based ranges
+                        low3 = color_mapper3.low if color_mapper3.low > 0 else max(np.min(positive_data), 0.001)
+                        high3 = color_mapper3.high if color_mapper3.high > 0 else np.max(positive_data)
+                else:  # Linear scale
+                    new_cls = LinearColorMapper
+                    # Preserve current ranges
+                    low3 = color_mapper3.low
+                    high3 = color_mapper3.high
+                
+                # Recreate mapper for Plot3
+                color_mapper3 = new_cls(palette=color_mapper3.palette, low=low3, high=high3)
+                if len(plot3.renderers) > 0 and image_renderer3 is not None:
+                    # Remove the old renderer
+                    plot3.renderers.remove(plot3.renderers[0])
+                    # Re-add the renderer with the new color mapper
+                    image_renderer3 = plot3.image(
+                        "image", source=source3, x="x", y="y", dw="dw", dh="dh", color_mapper=color_mapper3,
+                    )
+                # Update colorbar if it exists
+                if 'colorbar3' in locals() and colorbar3 is not None:
+                    colorbar3.color_mapper = color_mapper3
+            except Exception as e:
+                print(f"Error in on_plot3_color_scale_change: {e}")
+                import traceback
+                traceback.print_exc()
+        
+        # Create color scale selectors for Plot2, Plot2B, and Plot3
+        plot2_color_scale_section = create_color_scale_section(
+            label="Plot2 Color Scale:",
+            active=0,
+            width=200,
+            callback=on_plot2_color_scale_change
+        )
+        
+        plot2b_color_scale_section = None
+        if plot2b is not None:
+            plot2b_color_scale_section = create_color_scale_section(
+                label="Plot2B Color Scale:",
+                active=0,
+                width=200,
+                callback=on_plot2b_color_scale_change
+            )
+        
+        plot3_color_scale_section = create_color_scale_section(
+            label="Plot3 Color Scale:",
+            active=0,
+            width=200,
+            callback=on_plot3_color_scale_change
         )
         
         # Create plot shape controls for Plot1
@@ -4030,9 +4490,19 @@ def create_dashboard(process_4dnexus):
             palette_section,
             plot1_shape_section,
             create_div(text="<hr>", width=400),
+            plot2_color_scale_section,
+        ]
+        
+        # Add Plot2B color scale section if it exists
+        if plot2b_color_scale_section is not None:
+            tools_items.append(plot2b_color_scale_section)
+        
+        tools_items.extend([
+            plot3_color_scale_section,
+            create_div(text="<hr>", width=400),
             create_label_div("Plot2 -> Plot3:", width=200),
             compute_plot3_button,
-        ]
+        ])
         
         # Add Plot2B button if it exists
         if compute_plot3_from_plot2b_button is not None:
