@@ -443,7 +443,7 @@ def create_tmp_dashboard(process_4dnexus):
             sessions_dir = save_dir_path / "sessions"
             
             if not sessions_dir.exists():
-                return []
+                return [], []
             
             # Get all session files, sorted by modification time (newest first)
             session_files = sorted(sessions_dir.glob("session_*.json"), key=os.path.getmtime, reverse=True)

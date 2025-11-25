@@ -6,7 +6,7 @@
   "type": "bokeh",
   "entry_point": "4d_dashboardLite.py",
   "entry_point_type": "python",
-  "port": 8052,
+  "port": 8056,
   "base_image": "visstore-4d-dashboard-base",
   "base_image_tag": "latest",
   "requirements_file": "requirements.txt",
@@ -31,7 +31,7 @@
     "D_GIT_TOKEN": "${D_GIT_TOKEN}"
   },
   "volume_mounts": [],
-  "exposed_ports": [8052],
+  "exposed_ports": [8056],
   "depends_on": [],
   "enabled": true
 }

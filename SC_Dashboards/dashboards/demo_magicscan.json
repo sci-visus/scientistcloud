@@ -6,7 +6,7 @@
   "type": "bokeh",
   "entry_point": "magicscan.py",
   "entry_point_type": "python",
-  "port": 8053,
+  "port": 8055,
   "base_image": "bokeh-dashboard-base",
   "base_image_tag": "latest",
   "requirements_file": "requirements.txt",
@@ -32,7 +32,7 @@
     "D_GIT_TOKEN": "${D_GIT_TOKEN}"
   },
   "volume_mounts": [],
-  "exposed_ports": [8053],
+  "exposed_ports": [8055],
   "depends_on": [],
   "enabled": true
 }
