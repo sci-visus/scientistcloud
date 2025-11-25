@@ -342,6 +342,10 @@ def create_tmp_dashboard(process_4dnexus):
             default_mode=1,  # Ratio mode
         )
     
+    # Set denominator to presample (different from numerator which is postsample)
+    if default_denominator and default_denominator in plot1_denominator_selector.options:
+        plot1_denominator_selector.value = default_denominator
+    
     # Create Plot2 dataset selector
     plot2_selector = create_select(
         title="Plot2 Dataset (3D/4D):",
@@ -373,6 +377,10 @@ def create_tmp_dashboard(process_4dnexus):
             default_dataset=default_numerator,
             default_mode=1,  # Ratio mode
         )
+    
+    # Set Plot1B denominator to presample (different from numerator which is postsample)
+    if default_denominator and default_denominator in plot1b_denominator_selector.options:
+        plot1b_denominator_selector.value = default_denominator
     
     # Initially hide all Plot1B selectors
     enable_plot1b_toggle.visible = True  # Toggle is always visible
@@ -416,6 +424,73 @@ def create_tmp_dashboard(process_4dnexus):
     initialize_button = create_button(
         label="Initialize Plots",
         button_type="primary",
+        width=200
+    )
+    
+    # Create session selector and load button
+    # First, get list of available sessions
+    def get_available_sessions():
+        """Get list of available session files."""
+        try:
+            from pathlib import Path
+            import os
+            
+            if DATA_IS_LOCAL:
+                save_dir_path = Path(local_base_dir)
+            else:
+                save_dir_path = Path(save_dir) if save_dir else Path(local_base_dir)
+            
+            sessions_dir = save_dir_path / "sessions"
+            
+            if not sessions_dir.exists():
+                return []
+            
+            # Get all session files, sorted by modification time (newest first)
+            session_files = sorted(sessions_dir.glob("session_*.json"), key=os.path.getmtime, reverse=True)
+            
+            # Create display names with timestamp
+            session_choices = []
+            for filepath in session_files:
+                # Extract timestamp from filename or use modification time
+                try:
+                    import json
+                    with open(filepath, 'r') as f:
+                        session_data = json.load(f)
+                    metadata = session_data.get("metadata", {})
+                    timestamp = metadata.get("last_updated") or metadata.get("created_at", "")
+                    if timestamp:
+                        from datetime import datetime
+                        try:
+                            dt = datetime.fromisoformat(timestamp.replace('Z', '+00:00'))
+                            timestamp_str = dt.strftime("%Y-%m-%d %H:%M:%S")
+                        except:
+                            timestamp_str = os.path.getmtime(filepath)
+                            timestamp_str = datetime.fromtimestamp(timestamp_str).strftime("%Y-%m-%d %H:%M:%S")
+                    else:
+                        timestamp_str = datetime.fromtimestamp(os.path.getmtime(filepath)).strftime("%Y-%m-%d %H:%M:%S")
+                except:
+                    timestamp_str = datetime.fromtimestamp(os.path.getmtime(filepath)).strftime("%Y-%m-%d %H:%M:%S")
+                
+                display_name = f"{filepath.name} ({timestamp_str})"
+                session_choices.append(display_name)
+            
+            return session_choices, session_files
+        except Exception as e:
+            print(f"Error getting available sessions: {e}")
+            return [], []
+    
+    session_choices, session_files_list = get_available_sessions()
+    session_selector = create_select(
+        title="Select Session to Load:",
+        value=session_choices[0] if session_choices else "No sessions available",
+        options=session_choices if session_choices else ["No sessions available"],
+        width=400
+    )
+    
+    # Create load session button
+    load_session_button = create_button(
+        label="Load Selected Session",
+        button_type="default",
         width=200
     )
     
@@ -600,6 +675,175 @@ def create_tmp_dashboard(process_4dnexus):
             traceback.print_exc()
     
     initialize_button.on_click(initialize_plots_callback)
+    
+    # Load session callback
+    def on_load_session():
+        """Load selected session from file and populate selectors with saved dataset paths."""
+        try:
+            from pathlib import Path
+            import os
+            import json
+            from datetime import datetime
+            
+            # Get selected session
+            selected_session = session_selector.value
+            
+            if selected_session == "No sessions available":
+                status_display.text = "<span style='color: orange;'>No sessions available to load</span>"
+                return
+            
+            # Find the filepath corresponding to the selected session
+            # Refresh session list to ensure we have current files
+            session_choices_refresh, session_files_refresh = get_available_sessions()
+            
+            if not session_files_refresh:
+                status_display.text = "<span style='color: orange;'>No session files found</span>"
+                return
+            
+            # Match selected display name to filepath
+            filepath = None
+            for i, choice in enumerate(session_choices_refresh):
+                if choice == selected_session:
+                    if i < len(session_files_refresh):
+                        filepath = session_files_refresh[i]
+                        break
+            
+            if filepath is None or not filepath.exists():
+                status_display.text = f"<span style='color: red;'>Session file not found: {selected_session}</span>"
+                return
+            with open(filepath, 'r') as f:
+                session_data = json.load(f)
+            
+            # Extract metadata which should contain dataset paths
+            metadata = session_data.get("metadata", {})
+            
+            # Extract dataset paths from metadata
+            volume_path = metadata.get("dataset_path") or metadata.get("volume_picked")
+            plot1_single = metadata.get("plot1_single_dataset_picked")
+            presample = metadata.get("presample_picked")
+            postsample = metadata.get("postsample_picked")
+            x_coords = metadata.get("x_coords_picked")
+            y_coords = metadata.get("y_coords_picked")
+            probe_x = metadata.get("probe_x_coords_picked")
+            probe_y = metadata.get("probe_y_coords_picked")
+            volume_b = metadata.get("volume_picked_b")
+            plot1b_single = metadata.get("plot1b_single_dataset_picked")
+            presample_b = metadata.get("presample_picked_b")
+            postsample_b = metadata.get("postsample_picked_b")
+            probe_x_b = metadata.get("probe_x_coords_picked_b")
+            probe_y_b = metadata.get("probe_y_coords_picked_b")
+            plot1_mode = metadata.get("plot1_mode", "ratio")  # "single" or "ratio"
+            plot1b_mode = metadata.get("plot1b_mode", "ratio")
+            plot1b_enabled = metadata.get("plot1b_enabled", False)
+            plot2b_enabled = metadata.get("plot2b_enabled", False)
+            
+            # Helper function to find matching choice
+            def find_matching_choice(choices, path):
+                if not path:
+                    return None
+                # Try exact match first
+                for choice in choices:
+                    if choice.startswith(path):
+                        return choice
+                return None
+            
+            # Populate Plot2 selector
+            if volume_path:
+                plot2_choice = find_matching_choice(plot2_h5_choices, volume_path)
+                if plot2_choice:
+                    plot2_selector.value = plot2_choice
+            
+            # Populate Plot1 selectors based on mode
+            if plot1_mode == "single" and plot1_single:
+                plot1_mode_selector.active = 0  # Single dataset mode
+                plot1_choice = find_matching_choice(plot1_h5_choices, plot1_single)
+                if plot1_choice:
+                    plot1_single_selector.value = plot1_choice
+            elif presample and postsample:
+                plot1_mode_selector.active = 1  # Ratio mode
+                numerator_choice = find_matching_choice(plot1_h5_choices, postsample)
+                denominator_choice = find_matching_choice(plot1_h5_choices, presample)
+                if numerator_choice:
+                    plot1_numerator_selector.value = numerator_choice
+                if denominator_choice:
+                    plot1_denominator_selector.value = denominator_choice
+            
+            # Populate coordinate selectors
+            if x_coords:
+                map_x_choice = find_matching_choice(coord_choices, x_coords)
+                if map_x_choice:
+                    map_x_selector.value = map_x_choice
+            if y_coords:
+                map_y_choice = find_matching_choice(coord_choices, y_coords)
+                if map_y_choice:
+                    map_y_selector.value = map_y_choice
+            if probe_x:
+                probe_x_choice = find_matching_choice(coord_choices, probe_x)
+                if probe_x_choice:
+                    probe_x_selector.value = probe_x_choice
+            else:
+                probe_x_selector.value = "Use Default"
+            if probe_y:
+                probe_y_choice = find_matching_choice(coord_choices, probe_y)
+                if probe_y_choice:
+                    probe_y_selector.value = probe_y_choice
+            else:
+                probe_y_selector.value = "Use Default"
+            
+            # Populate Plot1B if enabled
+            if plot1b_enabled:
+                enable_plot1b_toggle.active = True
+                if plot1b_mode == "single" and plot1b_single:
+                    plot1b_mode_selector.active = 0
+                    plot1b_choice = find_matching_choice(plot1_h5_choices, plot1b_single)
+                    if plot1b_choice:
+                        plot1b_single_selector.value = plot1b_choice
+                elif presample_b and postsample_b:
+                    plot1b_mode_selector.active = 1
+                    numerator_b_choice = find_matching_choice(plot1_h5_choices, postsample_b)
+                    denominator_b_choice = find_matching_choice(plot1_h5_choices, presample_b)
+                    if numerator_b_choice:
+                        plot1b_numerator_selector.value = numerator_b_choice
+                    if denominator_b_choice:
+                        plot1b_denominator_selector.value = denominator_b_choice
+            
+            # Populate Plot2B if enabled
+            if plot2b_enabled:
+                enable_plot2b_toggle.active = True
+                if volume_b:
+                    plot2b_choice = find_matching_choice(plot2_h5_choices, volume_b)
+                    if plot2b_choice:
+                        plot2b_selector.value = plot2b_choice
+                if probe_x_b:
+                    probe_x_b_choice = find_matching_choice(coord_choices, probe_x_b)
+                    if probe_x_b_choice:
+                        probe_x_selector_b.value = probe_x_b_choice
+                else:
+                    probe_x_selector_b.value = "Use Default"
+                if probe_y_b:
+                    probe_y_b_choice = find_matching_choice(coord_choices, probe_y_b)
+                    if probe_y_b_choice:
+                        probe_y_selector_b.value = probe_y_b_choice
+                else:
+                    probe_y_selector_b.value = "Use Default"
+            
+            # Update session selector options to refresh list
+            session_choices_new, session_files_new = get_available_sessions()
+            if session_choices_new:
+                session_selector.options = session_choices_new
+                # Keep current selection
+                session_selector.value = selected_session
+            
+            status_display.text = f"<span style='color: green;'>Session loaded from {filepath.name}. Click 'Initialize Plots' to restore.</span>"
+            print(f"✅ Session loaded from {filepath.name}")
+        except Exception as e:
+            import traceback
+            error_msg = f"Error loading session: {str(e)}"
+            print(error_msg)
+            traceback.print_exc()
+            status_display.text = f"<span style='color: red;'>{error_msg}</span>"
+    
+    load_session_button.on_click(on_load_session)
     
     # Set initial visibility for Plot1 selectors
     plot1_single_selector.visible = False
@@ -816,7 +1060,7 @@ def create_tmp_dashboard(process_4dnexus):
         probe_x_selector_b,
         probe_y_selector_b,
         create_div(text="<hr>", width=300),
-        initialize_button,
+        row(initialize_button, load_session_button),
     )
     
     status_display = create_status_display_widget()
@@ -855,10 +1099,29 @@ def create_dashboard(process_4dnexus):
         from datetime import datetime
         
         # Create PlotSession for state management
+        # Include all dataset paths in metadata so they can be restored when loading session
         session = PlotSession(
             session_id=f"dashboard_{datetime.now().strftime('%Y%m%d_%H%M%S')}",
             metadata={
                 "dataset_path": getattr(process_4dnexus, 'volume_picked', 'unknown'),
+                "volume_picked": getattr(process_4dnexus, 'volume_picked', None),
+                "plot1_single_dataset_picked": getattr(process_4dnexus, 'plot1_single_dataset_picked', None),
+                "presample_picked": getattr(process_4dnexus, 'presample_picked', None),
+                "postsample_picked": getattr(process_4dnexus, 'postsample_picked', None),
+                "x_coords_picked": getattr(process_4dnexus, 'x_coords_picked', None),
+                "y_coords_picked": getattr(process_4dnexus, 'y_coords_picked', None),
+                "probe_x_coords_picked": getattr(process_4dnexus, 'probe_x_coords_picked', None),
+                "probe_y_coords_picked": getattr(process_4dnexus, 'probe_y_coords_picked', None),
+                "volume_picked_b": getattr(process_4dnexus, 'volume_picked_b', None),
+                "plot1b_single_dataset_picked": getattr(process_4dnexus, 'plot1b_single_dataset_picked', None),
+                "presample_picked_b": getattr(process_4dnexus, 'presample_picked_b', None),
+                "postsample_picked_b": getattr(process_4dnexus, 'postsample_picked_b', None),
+                "probe_x_coords_picked_b": getattr(process_4dnexus, 'probe_x_coords_picked_b', None),
+                "probe_y_coords_picked_b": getattr(process_4dnexus, 'probe_y_coords_picked_b', None),
+                "plot1_mode": "single" if getattr(process_4dnexus, 'plot1_single_dataset_picked', None) else "ratio",
+                "plot1b_mode": "single" if getattr(process_4dnexus, 'plot1b_single_dataset_picked', None) else "ratio",
+                "plot1b_enabled": bool(getattr(process_4dnexus, 'plot1b_single_dataset_picked', None) or getattr(process_4dnexus, 'presample_picked_b', None)),
+                "plot2b_enabled": bool(getattr(process_4dnexus, 'volume_picked_b', None)),
                 "user_email": user_email if 'user_email' in globals() else None,
             }
         )
