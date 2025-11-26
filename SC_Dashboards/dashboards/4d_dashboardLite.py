@@ -2397,27 +2397,36 @@ def create_dashboard(process_4dnexus):
                     plot2.xaxis.major_label_overrides = dict(zip(x_ticks, my_xticks))
                 
                 # Update y-range based on mode
-                if 'range2_min_input' in locals() and range2_min_input is not None and not range2_min_input.disabled:
-                    # User Specified mode - use input values
-                    try:
-                        min_val = float(range2_min_input.value) if range2_min_input.value else float(np.min(slice_1d))
-                        max_val = float(range2_max_input.value) if range2_max_input.value else float(np.max(slice_1d))
-                        plot2.y_range.start = min_val
-                        plot2.y_range.end = max_val
-                    except:
-                        # Fallback to data range if input is invalid
-                        plot2.y_range.start = float(np.min(slice_1d))
-                        plot2.y_range.end = float(np.max(slice_1d))
-                else:
-                    # Dynamic mode - recompute from current slice
+                # Check if range inputs exist and are enabled (User Specified mode) or disabled (Dynamic mode)
+                try:
+                    if range2_min_input is not None and not range2_min_input.disabled:
+                        # User Specified mode - use input values
+                        try:
+                            min_val = float(range2_min_input.value) if range2_min_input.value else float(np.min(slice_1d))
+                            max_val = float(range2_max_input.value) if range2_max_input.value else float(np.max(slice_1d))
+                            plot2.y_range.start = min_val
+                            plot2.y_range.end = max_val
+                        except:
+                            # Fallback to data range if input is invalid
+                            plot2.y_range.start = float(np.min(slice_1d))
+                            plot2.y_range.end = float(np.max(slice_1d))
+                    else:
+                        # Dynamic mode - recompute from current slice
+                        probe_min = float(np.percentile(slice_1d[~np.isnan(slice_1d)], 1))
+                        probe_max = float(np.percentile(slice_1d[~np.isnan(slice_1d)], 99))
+                        plot2.y_range.start = probe_min
+                        plot2.y_range.end = probe_max
+                        # Update range inputs so user can see the computed values
+                        if range2_min_input is not None:
+                            range2_min_input.value = str(probe_min)
+                        if range2_max_input is not None:
+                            range2_max_input.value = str(probe_max)
+                except NameError:
+                    # Range inputs not defined yet - use Dynamic mode as default
                     probe_min = float(np.percentile(slice_1d[~np.isnan(slice_1d)], 1))
                     probe_max = float(np.percentile(slice_1d[~np.isnan(slice_1d)], 99))
                     plot2.y_range.start = probe_min
                     plot2.y_range.end = probe_max
-                    # Update range inputs if they exist
-                    if 'range2_min_input' in locals() and range2_min_input is not None:
-                        range2_min_input.value = str(probe_min)
-                        range2_max_input.value = str(probe_max)
             else:
                 # For 4D: update 2D image plot
                 slice_2d = volume[x_idx, y_idx, :, :]  # This is (z, u)
@@ -2455,33 +2464,39 @@ def create_dashboard(process_4dnexus):
                 plot2.x_range.end = float(np.max(x_coords))
                 plot2.y_range.start = float(np.min(y_coords))
                 plot2.y_range.end = float(np.max(y_coords))
-                # Update color mapper range (only if in Dynamic mode)
-                # If in User Specified mode, keep the user-set values
-                # Check if range2_min_input exists and is not disabled (User Specified mode)
-                if 'range2_min_input' in locals() and range2_min_input is not None and not range2_min_input.disabled:
-                    # User Specified mode - use input values
-                    try:
-                        min_val = float(range2_min_input.value) if range2_min_input.value else probe_min
-                        max_val = float(range2_max_input.value) if range2_max_input.value else probe_max
-                        color_mapper2.low = min_val
-                        color_mapper2.high = max_val
-                    except:
-                        # Fallback to percentile if input is invalid
+                # Update color mapper range based on mode
+                # Check if range inputs exist and are enabled (User Specified mode) or disabled (Dynamic mode)
+                try:
+                    if range2_min_input is not None and not range2_min_input.disabled:
+                        # User Specified mode - use input values
+                        try:
+                            min_val = float(range2_min_input.value) if range2_min_input.value else probe_min
+                            max_val = float(range2_max_input.value) if range2_max_input.value else probe_max
+                            color_mapper2.low = min_val
+                            color_mapper2.high = max_val
+                        except:
+                            # Fallback to percentile if input is invalid
+                            probe_min = float(np.percentile(flipped_slice[~np.isnan(flipped_slice)], 1))
+                            probe_max = float(np.percentile(flipped_slice[~np.isnan(flipped_slice)], 99))
+                            color_mapper2.low = probe_min
+                            color_mapper2.high = probe_max
+                    else:
+                        # Dynamic mode - recompute from current slice
                         probe_min = float(np.percentile(flipped_slice[~np.isnan(flipped_slice)], 1))
                         probe_max = float(np.percentile(flipped_slice[~np.isnan(flipped_slice)], 99))
                         color_mapper2.low = probe_min
                         color_mapper2.high = probe_max
-                else:
-                    # Dynamic mode - recompute from current slice
+                        # CRITICAL: Always update range inputs in Dynamic mode so user can see the computed values
+                        if range2_min_input is not None:
+                            range2_min_input.value = str(probe_min)
+                        if range2_max_input is not None:
+                            range2_max_input.value = str(probe_max)
+                except NameError:
+                    # Range inputs not defined yet - use Dynamic mode as default
                     probe_min = float(np.percentile(flipped_slice[~np.isnan(flipped_slice)], 1))
                     probe_max = float(np.percentile(flipped_slice[~np.isnan(flipped_slice)], 99))
                     color_mapper2.low = probe_min
                     color_mapper2.high = probe_max
-                    # CRITICAL: Always update range inputs in Dynamic mode so user can see the values
-                    if 'range2_min_input' in locals() and range2_min_input is not None:
-                        range2_min_input.value = str(probe_min)
-                    if 'range2_max_input' in locals() and range2_max_input is not None:
-                        range2_max_input.value = str(probe_max)
         
         # Function to update Plot2B based on crosshair position
         def show_slice_b():
@@ -2548,16 +2563,20 @@ def create_dashboard(process_4dnexus):
                             # Plot2B uses Bokeh's default auto-ticker (same as Plot2)
                             # No manual tick updates needed - Bokeh will automatically adjust ticks when data changes
                             
-                            # Update range dynamically if in Dynamic mode
-                            if 'range2b_min_input' in locals() and range2b_min_input is not None:
-                                if range2b_min_input.disabled:  # Dynamic mode
+                            # Update range based on mode
+                            try:
+                                if range2b_min_input is not None and range2b_min_input.disabled:
+                                    # Dynamic mode - recompute from current slice
                                     probe2b_min = float(np.percentile(flipped_slice_b[~np.isnan(flipped_slice_b)], 1))
                                     probe2b_max = float(np.percentile(flipped_slice_b[~np.isnan(flipped_slice_b)], 99))
-                                    range2b_min_input.value = str(probe2b_min)
-                                    range2b_max_input.value = str(probe2b_max)
                                     color_mapper2b.low = probe2b_min
                                     color_mapper2b.high = probe2b_max
-                                else:  # User Specified mode
+                                    # Update range inputs so user can see the computed values
+                                    range2b_min_input.value = str(probe2b_min)
+                                    if range2b_max_input is not None:
+                                        range2b_max_input.value = str(probe2b_max)
+                                elif range2b_min_input is not None:
+                                    # User Specified mode - use input values
                                     try:
                                         min_val = float(range2b_min_input.value) if range2b_min_input.value else probe2b_min
                                         max_val = float(range2b_max_input.value) if range2b_max_input.value else probe2b_max
@@ -2565,6 +2584,12 @@ def create_dashboard(process_4dnexus):
                                         color_mapper2b.high = max_val
                                     except:
                                         pass
+                            except NameError:
+                                # Range inputs not defined yet - use Dynamic mode as default
+                                probe2b_min = float(np.percentile(flipped_slice_b[~np.isnan(flipped_slice_b)], 1))
+                                probe2b_max = float(np.percentile(flipped_slice_b[~np.isnan(flipped_slice_b)], 99))
+                                color_mapper2b.low = probe2b_min
+                                color_mapper2b.high = probe2b_max
                     except Exception as e:
                         print(f"Error updating Plot2B: {e}")
             else:
@@ -2615,15 +2640,19 @@ def create_dashboard(process_4dnexus):
                                 plot2b.xaxis.major_label_overrides = dict(zip(x_ticks_b, my_xticks_b))
                             
                             # Update range dynamically if in Dynamic mode
-                            if 'range2b_min_input' in locals() and range2b_min_input is not None:
-                                if range2b_min_input.disabled:  # Dynamic mode
+                            try:
+                                if range2b_min_input is not None and range2b_min_input.disabled:
+                                    # Dynamic mode - recompute from current slice
                                     probe2b_min = float(np.percentile(slice_1d_b[~np.isnan(slice_1d_b)], 1))
                                     probe2b_max = float(np.percentile(slice_1d_b[~np.isnan(slice_1d_b)], 99))
-                                    range2b_min_input.value = str(probe2b_min)
-                                    range2b_max_input.value = str(probe2b_max)
                                     plot2b.y_range.start = probe2b_min
                                     plot2b.y_range.end = probe2b_max
-                                else:  # User Specified mode
+                                    # Update range inputs so user can see the computed values
+                                    range2b_min_input.value = str(probe2b_min)
+                                    if range2b_max_input is not None:
+                                        range2b_max_input.value = str(probe2b_max)
+                                elif range2b_min_input is not None:
+                                    # User Specified mode - use input values
                                     try:
                                         min_val = float(range2b_min_input.value) if range2b_min_input.value else float(np.min(slice_1d_b))
                                         max_val = float(range2b_max_input.value) if range2b_max_input.value else float(np.max(slice_1d_b))
@@ -2632,6 +2661,12 @@ def create_dashboard(process_4dnexus):
                                     except:
                                         plot2b.y_range.start = float(np.min(slice_1d_b))
                                         plot2b.y_range.end = float(np.max(slice_1d_b))
+                            except NameError:
+                                # Range inputs not defined yet - use Dynamic mode as default
+                                probe2b_min = float(np.percentile(slice_1d_b[~np.isnan(slice_1d_b)], 1))
+                                probe2b_max = float(np.percentile(slice_1d_b[~np.isnan(slice_1d_b)], 99))
+                                plot2b.y_range.start = probe2b_min
+                                plot2b.y_range.end = probe2b_max
                     except Exception as e:
                         print(f"Error updating Plot2B: {e}")
         
@@ -2639,15 +2674,12 @@ def create_dashboard(process_4dnexus):
         def on_x_slider_change(attr, old, new):
             try:
                 draw_cross1()
-                show_slice()
+                show_slice()  # This already handles Plot2 Dynamic/User Specified range mode
                 # Update Plot1 range dynamically if in Dynamic mode
                 if map_plot.range_mode == RangeMode.DYNAMIC:
                     update_plot1_range_dynamic()
-                # Update Plot2 range dynamically if in Dynamic mode
-                if 'range2_min_input' in locals() and range2_min_input is not None and range2_min_input.disabled:
-                    update_plot2_range_dynamic()
                 # Update Plot2B if it exists
-                show_slice_b()
+                show_slice_b()  # This already handles Plot2B Dynamic/User Specified range mode
             except Exception as e:
                 print(f"⚠️ ERROR in on_x_slider_change(): {e}")
                 import traceback
@@ -2656,15 +2688,12 @@ def create_dashboard(process_4dnexus):
         def on_y_slider_change(attr, old, new):
             try:
                 draw_cross1()
-                show_slice()
+                show_slice()  # This already handles Plot2 Dynamic/User Specified range mode
                 # Update Plot1 range dynamically if in Dynamic mode
                 if map_plot.range_mode == RangeMode.DYNAMIC:
                     update_plot1_range_dynamic()
-                # Update Plot2 range dynamically if in Dynamic mode
-                if 'range2_min_input' in locals() and range2_min_input is not None and range2_min_input.disabled:
-                    update_plot2_range_dynamic()
                 # Update Plot2B if it exists
-                show_slice_b()
+                show_slice_b()  # This already handles Plot2B Dynamic/User Specified range mode
             except Exception as e:
                 print(f"⚠️ ERROR in on_y_slider_change(): {e}")
                 import traceback
