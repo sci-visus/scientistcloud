@@ -3591,13 +3591,21 @@ def create_dashboard(process_4dnexus):
                 if 'range1_mode_toggle' in locals() and range1_mode_toggle is not None:
                     range1_mode_toggle.label = "Dynamic"
                 
-                # Get current data from source1 (always use latest data)
+                # Get current data from map_plot (source of truth) - always use flipped data for consistency
                 current_data = None
-                if 'image' in source1.data and len(source1.data['image']) > 0:
-                    current_data = np.array(source1.data["image"][0])
-                elif plot1_data is not None:
-                    # Fallback to plot1_data if source1 doesn't have data yet
-                    current_data = plot1_data
+                try:
+                    # Primary source: get data directly from map_plot
+                    current_data = map_plot.get_flipped_data()
+                except:
+                    pass
+                
+                # Fallback to source1 if map_plot doesn't have data
+                if current_data is None or current_data.size == 0:
+                    if 'image' in source1.data and len(source1.data['image']) > 0:
+                        current_data = np.array(source1.data["image"][0])
+                    elif plot1_data is not None:
+                        # Final fallback to plot1_data
+                        current_data = plot1_data
                 
                 if current_data is not None and current_data.size > 0:
                     new_min = float(np.percentile(current_data[~np.isnan(current_data)], 1))
@@ -3661,6 +3669,10 @@ def create_dashboard(process_4dnexus):
         
         # Add toggle to the section so it's visible
         range1_section.children.append(range1_mode_toggle)
+        
+        # Initialize dynamic range if in dynamic mode (ensures range is calculated from actual data)
+        if map_plot.range_mode == RangeMode.DYNAMIC:
+            update_plot1_range_dynamic()
         
         # Create color scale and palette selectors using SCLib UI
         def on_color_scale_change(attr, old, new):

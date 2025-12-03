@@ -293,10 +293,16 @@ class UploadManager {
 
                 <div class="mb-3">
                     <label class="form-label">Local Source (file, folder, or zip): <span class="text-danger">*</span></label>
+                    <div class="d-flex gap-2 mb-2">
+                        <button type="button" class="btn btn-sm btn-outline-secondary" id="toggleFileModeBtn" title="Switch to directory selection">
+                            <i class="fas fa-folder"></i> Select Folder
+                        </button>
+                        <span class="align-self-center small text-muted" id="fileModeIndicator">File selection mode</span>
+                    </div>
                     <input type="file" class="form-control" id="localFileInput" 
-                           name="files" multiple webkitdirectory directory>
+                           name="files" multiple>
                     <small class="form-text text-muted">
-                        Select files, a folder, or a zip file. For folders, use the folder picker.
+                        Select files or a folder. Use the button above to switch between file and folder selection.
                     </small>
                 </div>
 
@@ -1128,6 +1134,40 @@ class UploadManager {
      */
     initializeLocalFileInput() {
         const fileInput = document.getElementById('localFileInput');
+        const toggleBtn = document.getElementById('toggleFileModeBtn');
+        const modeIndicator = document.getElementById('fileModeIndicator');
+        let isDirectoryMode = false;
+
+        // Setup toggle button to switch between file and directory modes
+        if (toggleBtn && fileInput) {
+            toggleBtn.addEventListener('click', () => {
+                isDirectoryMode = !isDirectoryMode;
+                
+                // Clear current selection
+                fileInput.value = '';
+                
+                if (isDirectoryMode) {
+                    // Enable directory selection
+                    fileInput.setAttribute('webkitdirectory', '');
+                    fileInput.setAttribute('directory', '');
+                    toggleBtn.innerHTML = '<i class="fas fa-file"></i> Select Files';
+                    toggleBtn.title = 'Switch to file selection';
+                    if (modeIndicator) {
+                        modeIndicator.textContent = 'Directory selection mode';
+                    }
+                } else {
+                    // Enable file selection
+                    fileInput.removeAttribute('webkitdirectory');
+                    fileInput.removeAttribute('directory');
+                    toggleBtn.innerHTML = '<i class="fas fa-folder"></i> Select Folder';
+                    toggleBtn.title = 'Switch to directory selection';
+                    if (modeIndicator) {
+                        modeIndicator.textContent = 'File selection mode';
+                    }
+                }
+            });
+        }
+
         if (fileInput) {
             // Allow both file and directory selection
             fileInput.addEventListener('change', (e) => {
