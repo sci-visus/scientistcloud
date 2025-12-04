@@ -1484,7 +1484,9 @@ class UploadManager {
                 uploadPromises.push(
                     fetch(uploadUrl, {
                         method: 'POST',
-                        body: uploadFormData
+                        body: uploadFormData,
+                        // Add timeout: 5 minutes for small files, up to 10 minutes for larger files
+                        signal: AbortSignal.timeout(Math.min(600000, 300000 + (file.size / 1024 / 1024) * 1000)) // 5-10 min based on file size
                     }).then(async response => {
                         // Mark file as uploading
                         this.updateUploadModalFile(fileIndex, fileName, 'uploading');
@@ -1534,7 +1536,15 @@ class UploadManager {
                     }).catch(error => {
                         console.error('Upload fetch error:', error);
                         // Mark file as failed
-                        const errorMsg = error.message || 'Network error';
+                        let errorMsg = error.message || 'Network error';
+                        
+                        // Handle specific error types
+                        if (error.name === 'AbortError' || error.name === 'TimeoutError') {
+                            errorMsg = 'Upload timeout - the server took too long to respond. The upload may still be processing in the background.';
+                        } else if (error.message && error.message.includes('Failed to fetch')) {
+                            errorMsg = 'Connection failed - unable to reach the upload server. Please check your connection and try again.';
+                        }
+                        
                         this.updateUploadModalFile(fileIndex, fileName, 'failed', null, errorMsg);
                         throw error;
                     })

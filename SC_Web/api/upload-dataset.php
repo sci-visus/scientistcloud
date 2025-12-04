@@ -244,6 +244,7 @@ try {
     }
     
     curl_setopt($ch, CURLOPT_TIMEOUT, $calculatedTimeout);
+    curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 10); // Fail fast if can't connect (10 seconds)
     error_log("Upload timeout set to {$calculatedTimeout}s for file size: {$fileSizeMB} MB ({$fileSizeGB} GB)");
     curl_setopt($ch, CURLOPT_VERBOSE, false); // Set to true for debugging
     
@@ -262,11 +263,20 @@ try {
     ob_end_clean();
 
     if ($curlError) {
+        // Log detailed connection error
+        error_log("CRITICAL: Failed to connect to FastAPI upload service: $curlError");
+        error_log("CRITICAL: Upload API URL was: $uploadApiUrl");
+        error_log("CRITICAL: Upload endpoint was: $uploadEndpoint");
+        error_log("CRITICAL: CURL info: " . print_r($curlInfo, true));
+        
+        ob_end_clean();
         http_response_code(500);
         echo json_encode([
             'success' => false,
             'error' => 'Failed to connect to upload service',
-            'message' => $curlError
+            'message' => $curlError ?: 'Connection timeout or network error',
+            'upload_api_url' => $uploadApiUrl,
+            'endpoint' => $uploadEndpoint
         ]);
         exit;
     }
