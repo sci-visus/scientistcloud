@@ -243,6 +243,10 @@ else
     echo "⏭️  Skipping main VisusDataPortalPrivate services (portal-only mode)"
 fi
 
+# Note: Nginx configs now use variables in proxy_pass (e.g., $upstream_fastapi) 
+# which defer hostname resolution to request time, preventing startup errors.
+# The resolver directive (127.0.0.11) is already configured in the nginx configs.
+
 # Setup portal nginx configuration after all services are running
 # Portal is part of ScientistCloud 2.0, so we should set it up even if main services are skipped
 # Also set up in dashboards-only mode if portal container is already running
