@@ -1593,7 +1593,16 @@ class UploadManager {
                 }
                 console.log(`Adding to activeUploads: job_id=${result.job_id}, file=${fileName}, dataset=${uploadData.dataset_name}`);
                 this.trackUpload(result.job_id, uploadData.dataset_name, fileName, uploadData.convert);
+                // Note: trackUpload() already calls pollUploadProgress() automatically
             });
+            
+            // Refresh dataset list immediately to show new upload
+            if (window.datasetManager && successful.length > 0) {
+                setTimeout(() => {
+                    window.datasetManager.loadDatasets();
+                    console.log('✅ Dataset list refreshed after upload');
+                }, 1000); // Small delay to ensure MongoDB entry is visible
+            }
             
             // Log if any uploads were successful but not tracked
             if (successful.length < results.filter(r => r.status === 'fulfilled').length) {

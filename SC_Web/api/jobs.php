@@ -107,6 +107,33 @@ try {
         error_log("Error getting queued conversion datasets: " . $e->getMessage());
     }
 
+    // Also get datasets with "uploading" status (status-based upload jobs)
+    try {
+        $uploadDatasets = getQueuedUploadDatasets($userEmail, $limit);
+        // Convert dataset status to job-like format
+        foreach ($uploadDatasets as $dataset) {
+            $status = $dataset['status'] ?? 'unknown';
+            // Use job_id from dataset if available, otherwise use dataset UUID
+            $jobId = $dataset['job_id'] ?? ('upload_' . $dataset['uuid']);
+            
+            $jobs[] = [
+                'job_id' => $jobId,
+                'id' => $jobId,
+                'job_type' => 'upload',  // Mark as upload job
+                'status' => 'uploading',  // Status is "uploading"
+                'dataset_uuid' => $dataset['uuid'],
+                'dataset_name' => $dataset['name'] ?? $dataset['dataset_name'] ?? 'Unnamed Dataset',
+                'created_at' => isset($dataset['created_at']) ? (is_object($dataset['created_at']) ? $dataset['created_at']->toDateTime()->format('c') : $dataset['created_at']) : null,
+                'updated_at' => isset($dataset['updated_at']) ? (is_object($dataset['updated_at']) ? $dataset['updated_at']->toDateTime()->format('c') : $dataset['updated_at']) : null,
+                'completed_at' => null,
+                'progress_percentage' => 0,
+                'error' => $dataset['error_message'] ?? null
+            ];
+        }
+    } catch (Exception $e) {
+        error_log("Error getting queued upload datasets: " . $e->getMessage());
+    }
+
     // Sort by created_at (most recent first)
     usort($jobs, function($a, $b) {
         $timeA = isset($a['created_at']) ? strtotime($a['created_at']) : 0;
@@ -322,6 +349,46 @@ function getQueuedConversionDatasets($userEmail, $limit = 50) {
         return $datasets;
     } catch (Exception $e) {
         error_log("Error getting queued conversion datasets: " . $e->getMessage());
+        return [];
+    }
+}
+
+/**
+ * Get datasets with "uploading" status (status-based upload jobs)
+ */
+function getQueuedUploadDatasets($userEmail, $limit = 50) {
+    try {
+        // Get MongoDB connection from config
+        $mongo_url = defined('MONGO_URL') ? MONGO_URL : (getenv('MONGO_URL') ?: 'mongodb://localhost:27017');
+        $db_name = defined('DB_NAME') ? DB_NAME : (getenv('DB_NAME') ?: 'scientistcloud');
+        
+        // Check if MongoDB extension is available
+        if (!class_exists('MongoDB\Client')) {
+            error_log("MongoDB PHP extension not available");
+            return [];
+        }
+        
+        // Use MongoDB PHP extension
+        $mongo_client = new MongoDB\Client($mongo_url);
+        $db = $mongo_client->selectDatabase($db_name);
+        $datasets_collection = $db->selectCollection('visstoredatas');
+        
+        // Find datasets owned by user with "uploading" status
+        // Note: Dataset uses 'user' field (email), not 'user_id'
+        $datasets = $datasets_collection->find([
+            '$or' => [
+                ['user' => $userEmail],  // Primary field name
+                ['user_id' => $userEmail]  // Fallback for compatibility
+            ],
+            'status' => 'uploading'
+        ])
+        ->sort(['created_at' => -1])
+        ->limit($limit)
+        ->toArray();
+        
+        return $datasets;
+    } catch (Exception $e) {
+        error_log("Error getting queued upload datasets: " . $e->getMessage());
         return [];
     }
 }
