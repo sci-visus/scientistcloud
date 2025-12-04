@@ -119,8 +119,8 @@ try {
     $addToExisting = isset($_POST['add_to_existing']) ? filter_var($_POST['add_to_existing'], FILTER_VALIDATE_BOOLEAN) : false;
 
     // Get SCLib Upload API URL from config
-    // In Docker, use service name; locally, use localhost
-    // Try multiple fallback options for Docker networking
+    // Priority: SCLIB_UPLOAD_URL (from env) > SCLIB_API_URL > EXISTING_API_URL > fallback
+    // SCLIB_UPLOAD_URL should be set in docker-compose.yml to use IP address for reliability
     $uploadApiUrl = getenv('SCLIB_UPLOAD_URL') 
         ?: getenv('SCLIB_API_URL') 
         ?: getenv('EXISTING_API_URL')

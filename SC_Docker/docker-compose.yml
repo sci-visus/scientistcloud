@@ -71,6 +71,9 @@ services:
       # SCLib API configuration - using existing SCLib services
       - SCLIB_API_URL=http://sclib_fastapi:5001
       - SCLIB_AUTH_URL=http://sclib_auth:8001
+      # Upload API URL - use IP address to avoid DNS resolution issues
+      # If FastAPI IP changes, update this value (get IP with: docker inspect sclib_fastapi | grep IPAddress)
+      - SCLIB_UPLOAD_URL=${SCLIB_UPLOAD_URL:-http://192.168.144.3:5001}
       
       # File paths (use existing volumes)
       - VISUS_DATASETS=${VISUS_DATASETS}
