@@ -3588,39 +3588,73 @@ def create_dashboard(process_4dnexus):
             """Update Plot1 range to 1st and 99th percentiles of current data."""
             if map_plot.range_mode == RangeMode.DYNAMIC:
                 # Update toggle label to show "Dynamic" while recalculating
-                if 'range1_mode_toggle' in locals() and range1_mode_toggle is not None:
-                    range1_mode_toggle.label = "Dynamic"
+                try:
+                    if 'range1_mode_toggle' in locals() and range1_mode_toggle is not None:
+                        range1_mode_toggle.label = "Dynamic"
+                except:
+                    pass
                 
                 # Get current data from map_plot (source of truth) - always use flipped data for consistency
                 current_data = None
                 try:
                     # Primary source: get data directly from map_plot
                     current_data = map_plot.get_flipped_data()
-                except:
-                    pass
+                    if current_data is not None and current_data.size == 0:
+                        current_data = None
+                except Exception as e:
+                    print(f"⚠️ WARNING in update_plot1_range_dynamic(): Failed to get data from map_plot: {e}")
+                    current_data = None
                 
                 # Fallback to source1 if map_plot doesn't have data
                 if current_data is None or current_data.size == 0:
-                    if 'image' in source1.data and len(source1.data['image']) > 0:
-                        current_data = np.array(source1.data["image"][0])
-                    elif plot1_data is not None:
-                        # Final fallback to plot1_data
+                    try:
+                        if 'source1' in locals() and source1 is not None and 'image' in source1.data and len(source1.data['image']) > 0:
+                            current_data = np.array(source1.data["image"][0])
+                    except Exception as e:
+                        print(f"⚠️ WARNING in update_plot1_range_dynamic(): Failed to get data from source1: {e}")
+                    
+                    # Final fallback to plot1_data
+                    if (current_data is None or current_data.size == 0) and 'plot1_data' in locals() and plot1_data is not None:
                         current_data = plot1_data
                 
                 if current_data is not None and current_data.size > 0:
-                    new_min = float(np.percentile(current_data[~np.isnan(current_data)], 1))
-                    new_max = float(np.percentile(current_data[~np.isnan(current_data)], 99))
-                    map_plot.range_min = new_min
-                    map_plot.range_max = new_max
-                    # Update UI inputs
-                    if 'range1_min_input' in locals() and range1_min_input is not None:
-                        range1_min_input.value = str(new_min)
-                    if 'range1_max_input' in locals() and range1_max_input is not None:
-                        range1_max_input.value = str(new_max)
-                    # Update color mapper
-                    if 'color_mapper1' in locals() and color_mapper1 is not None:
-                        color_mapper1.low = new_min
-                        color_mapper1.high = new_max
+                    try:
+                        # Filter out NaN and infinite values
+                        valid_data = current_data[~np.isnan(current_data) & ~np.isinf(current_data)]
+                        if valid_data.size > 0:
+                            new_min = float(np.percentile(valid_data, 1))
+                            new_max = float(np.percentile(valid_data, 99))
+                            
+                            # Update map_plot range
+                            map_plot.range_min = new_min
+                            map_plot.range_max = new_max
+                            
+                            # Update UI inputs - access from closure scope
+                            try:
+                                range1_min_input.value = str(new_min)
+                            except Exception as e:
+                                print(f"⚠️ WARNING in update_plot1_range_dynamic(): Failed to update range1_min_input: {e}")
+                            
+                            try:
+                                range1_max_input.value = str(new_max)
+                            except Exception as e:
+                                print(f"⚠️ WARNING in update_plot1_range_dynamic(): Failed to update range1_max_input: {e}")
+                            
+                            # Update color mapper
+                            try:
+                                if 'color_mapper1' in locals() and color_mapper1 is not None:
+                                    color_mapper1.low = new_min
+                                    color_mapper1.high = new_max
+                            except Exception as e:
+                                print(f"⚠️ WARNING in update_plot1_range_dynamic(): Failed to update color_mapper1: {e}")
+                        else:
+                            print(f"⚠️ WARNING in update_plot1_range_dynamic(): No valid data after filtering NaN/Inf")
+                    except Exception as e:
+                        print(f"⚠️ ERROR in update_plot1_range_dynamic(): Failed to compute percentiles: {e}")
+                        import traceback
+                        traceback.print_exc()
+                else:
+                    print(f"⚠️ WARNING in update_plot1_range_dynamic(): No data available (current_data is None or empty)")
         
         # Create range section with toggle for Plot1
         def on_plot1_range_mode_change(attr, old, new):
