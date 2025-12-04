@@ -3570,22 +3570,15 @@ def create_dashboard(process_4dnexus):
                 # Save state with debouncing to avoid excessive saves
                 debounced_save_state("Range changed", update_undo_redo=True)
         
-        range1_min_input, range1_max_input = create_range_inputs(
-            min_title="Map Range Min:",
-            max_title="Map Range Max:",
-            min_value=map_min_val,
-            max_value=map_max_val,
-            width=120,
-            min_callback=on_range_change,
-            max_callback=on_range_change,
-        )
-        
-        # Sync initial state from plot
-        sync_plot_to_range_inputs(map_plot, range1_min_input, range1_max_input)
+        # Note: range1_min_input and range1_max_input will be extracted from range1_section below
+        # We create them here as placeholders that will be overwritten
+        range1_min_input = None
+        range1_max_input = None
         
         # Function to update Plot1 range dynamically based on current data
         def update_plot1_range_dynamic():
             """Update Plot1 range to 1st and 99th percentiles of current data."""
+            print(f"🔍 DEBUG: update_plot1_range_dynamic() called, range_mode={map_plot.range_mode}")
             if map_plot.range_mode == RangeMode.DYNAMIC:
                 # Update toggle label to show "Dynamic" while recalculating
                 try:
@@ -3625,6 +3618,8 @@ def create_dashboard(process_4dnexus):
                             new_min = float(np.percentile(valid_data, 1))
                             new_max = float(np.percentile(valid_data, 99))
                             
+                            print(f"🔍 DEBUG: update_plot1_range_dynamic() computed range: min={new_min:.6f}, max={new_max:.6f}")
+                            
                             # Update map_plot range
                             map_plot.range_min = new_min
                             map_plot.range_max = new_max
@@ -3632,21 +3627,30 @@ def create_dashboard(process_4dnexus):
                             # Update UI inputs - access from closure scope
                             try:
                                 range1_min_input.value = str(new_min)
+                                print(f"✅ DEBUG: Updated range1_min_input.value = {new_min:.6f}")
                             except Exception as e:
                                 print(f"⚠️ WARNING in update_plot1_range_dynamic(): Failed to update range1_min_input: {e}")
+                                import traceback
+                                traceback.print_exc()
                             
                             try:
                                 range1_max_input.value = str(new_max)
+                                print(f"✅ DEBUG: Updated range1_max_input.value = {new_max:.6f}")
                             except Exception as e:
                                 print(f"⚠️ WARNING in update_plot1_range_dynamic(): Failed to update range1_max_input: {e}")
+                                import traceback
+                                traceback.print_exc()
                             
                             # Update color mapper
                             try:
                                 if 'color_mapper1' in locals() and color_mapper1 is not None:
                                     color_mapper1.low = new_min
                                     color_mapper1.high = new_max
+                                    print(f"✅ DEBUG: Updated color_mapper1: low={new_min:.6f}, high={new_max:.6f}")
                             except Exception as e:
                                 print(f"⚠️ WARNING in update_plot1_range_dynamic(): Failed to update color_mapper1: {e}")
+                                import traceback
+                                traceback.print_exc()
                         else:
                             print(f"⚠️ WARNING in update_plot1_range_dynamic(): No valid data after filtering NaN/Inf")
                     except Exception as e:
@@ -3655,6 +3659,10 @@ def create_dashboard(process_4dnexus):
                         traceback.print_exc()
                 else:
                     print(f"⚠️ WARNING in update_plot1_range_dynamic(): No data available (current_data is None or empty)")
+                    if current_data is None:
+                        print(f"   current_data is None")
+                    elif current_data.size == 0:
+                        print(f"   current_data.size == 0")
         
         # Create range section with toggle for Plot1
         def on_plot1_range_mode_change(attr, old, new):
@@ -3701,8 +3709,23 @@ def create_dashboard(process_4dnexus):
             max_callback=on_range_change,
         )
         
+        # Extract the actual input widgets from the section (they're in a row inside the column)
+        # range1_section.children structure: [label_div, row(min_input, max_input)]
+        # We need to find the row and extract the inputs from it
+        for child in range1_section.children:
+            if hasattr(child, 'children') and len(child.children) == 2:
+                # This is the row containing the two inputs
+                range1_min_input = child.children[0]  # First input is min
+                range1_max_input = child.children[1]  # Second input is max
+                print(f"✅ DEBUG: Extracted range1_min_input and range1_max_input from range1_section")
+                break
+        
         # Add toggle to the section so it's visible
         range1_section.children.append(range1_mode_toggle)
+        
+        # Sync initial state from plot to the extracted inputs
+        if range1_min_input is not None and range1_max_input is not None:
+            sync_plot_to_range_inputs(map_plot, range1_min_input, range1_max_input)
         
         # Initialize dynamic range if in dynamic mode (ensures range is calculated from actual data)
         if map_plot.range_mode == RangeMode.DYNAMIC:
