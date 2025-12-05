@@ -1257,7 +1257,7 @@ def create_dashboard(process_4dnexus):
         from bokeh.models import (
             Slider, Toggle, TapTool, CustomJS, HoverTool,
             ColorBar, LinearColorMapper, LogColorMapper, TextInput,
-            LogScale, LinearScale, FileInput, BoxSelectTool, BoxEditTool
+            LogScale, LinearScale, FileInput, BoxSelectTool, BoxEditTool, BoxAnnotation
         )
         from bokeh.transform import linear_cmap
         import matplotlib.colors as colors
@@ -1758,8 +1758,20 @@ def create_dashboard(process_4dnexus):
             # Create Bokeh figure (smaller size: 300x300)
             # For 1D plots, add BoxSelectTool configured for x-range selection only (bar selection)
             box_select_1d = BoxSelectTool(dimensions="width")  # Only select x-range (width dimension)
+            
+            # Check if memmap cache exists for current dataset
+            import os
+            plot2_title = "Plot2 - 1D Probe View"
+            if hasattr(process_4dnexus, 'volume_picked') and process_4dnexus.volume_picked:
+                try:
+                    cache_filename = process_4dnexus.get_memmap_filename_for(process_4dnexus.volume_picked)
+                    if os.path.exists(cache_filename):
+                        plot2_title = "Plot2 - 1D Probe View (cache ready)"
+                except Exception:
+                    pass  # If check fails, use default title
+            
             plot2 = figure(
-                title="Plot2 - 1D Probe View",
+                title=plot2_title,
                 tools="pan,wheel_zoom,box_zoom,reset,tap",
                 x_range=(float(np.min(plot2_x_coords_1d)), float(np.max(plot2_x_coords_1d))),
                 y_range=(float(np.min(initial_slice_1d)), float(np.max(initial_slice_1d))),
@@ -1911,17 +1923,41 @@ def create_dashboard(process_4dnexus):
             
             # If flipped methods return None, fall back to manual calculation
             if plot2_data is None:
-                plot2_data = np.transpose(initial_slice)  # Always transpose for Bokeh
+                plot2_data = initial_slice  # Use original data if get_flipped_data() returns None
             if plot2_x_coords is None:
                 plot2_x_coords = np.arange(plot2_data.shape[1])
             if plot2_y_coords is None:
                 plot2_y_coords = np.arange(plot2_data.shape[0])
             
+            # CRITICAL: Validate that coordinates match flipped data shape
+            # Bokeh expects: data.shape[1] == len(x_coords), data.shape[0] == len(y_coords)
+            if plot2_data is not None and plot2_x_coords is not None and plot2_y_coords is not None:
+                if plot2_data.shape[1] != len(plot2_x_coords) or plot2_data.shape[0] != len(plot2_y_coords):
+                    print(f"⚠️ WARNING in Plot2 initial setup: Coordinate mismatch detected!")
+                    print(f"   plot2_data.shape={plot2_data.shape}")
+                    print(f"   len(plot2_x_coords)={len(plot2_x_coords)}, len(plot2_y_coords)={len(plot2_y_coords)}")
+                    print(f"   Recomputing coordinates to match data shape...")
+                    # Recompute coordinates to match flipped data shape
+                    plot2_x_coords = np.arange(plot2_data.shape[1])
+                plot2_y_coords = np.arange(plot2_data.shape[0])
+            
             # Create Bokeh figure (smaller size: 300x300)
-            # Add BoxSelectTool for rectangle region selection
-            box_select_2d = BoxSelectTool(dimensions="both")  # Select both x and y ranges
+            # Add BoxSelectTool for rectangle region selection with persistent=True to keep box visible
+            box_select_2d = BoxSelectTool(dimensions="both", persistent=True)  # Select both x and y ranges, keep box visible
+            
+            # Check if memmap cache exists for current dataset
+            import os
+            plot2_title = "Plot2 - 2D Probe View"
+            if hasattr(process_4dnexus, 'volume_picked') and process_4dnexus.volume_picked:
+                try:
+                    cache_filename = process_4dnexus.get_memmap_filename_for(process_4dnexus.volume_picked)
+                    if os.path.exists(cache_filename):
+                        plot2_title = "Plot2 - 2D Probe View (cache ready)"
+                except Exception:
+                    pass  # If check fails, use default title
+            
             plot2 = figure(
-                title="Plot2 - 2D Probe View",
+                title=plot2_title,
                 tools="pan,wheel_zoom,box_zoom,reset,tap",
                 x_range=(float(np.min(plot2_x_coords)), float(np.max(plot2_x_coords))),
                 y_range=(float(np.min(plot2_y_coords)), float(np.max(plot2_y_coords))),
@@ -1931,47 +1967,47 @@ def create_dashboard(process_4dnexus):
             )
             plot2.add_tools(box_select_2d)
             
+            # Create BoxAnnotation for persistent selection rectangle on Plot2
+            box_annotation_2 = BoxAnnotation(
+                left=None, right=None, top=None, bottom=None,
+                fill_alpha=0.1, fill_color='blue',
+                line_color='blue', line_width=2, line_dash='dashed'
+            )
+            plot2.add_layout(box_annotation_2)
+            
             # Set axis labels using flipped methods from probe_2d_plot
             plot2.xaxis.axis_label = probe_2d_plot.get_flipped_x_axis_label() or original_probe_x_label
             plot2.yaxis.axis_label = probe_2d_plot.get_flipped_y_axis_label() or original_probe_y_label
             
             # VERIFICATION: For 4D volume (x, y, z, u), Plot2 shows slice (z, u)
             # - initial_slice = volume[:, :, :, :] gives shape (z, u) = (volume.shape[2], volume.shape[3])
-            # - User expectation: z should be on x-axis, u should be on y-axis
-            # - px (x_coords) should map to z dimension, py (y_coords) should map to u dimension
-            # - User says: data.shape[0] should match x_coords (z on x-axis)
-            # - This means: data.shape[0] = z, and z should be on x-axis
-            # - But Bokeh interprets: data.shape[0] = y-axis, data.shape[1] = x-axis
-            # - So if data.shape[0] = z and we want z on x-axis, we need data.shape[1] = z
-            # - This means we need to transpose: (z, u) → (u, z) so z becomes shape[1] (x-axis)
+            # - Bokeh interprets: data.shape[0] = rows = y-axis (height), data.shape[1] = cols = x-axis (width)
+            # - After flipping (if needed): data.shape[1] should match x_coords, data.shape[0] should match y_coords
             print("🔍 VERIFICATION: Plot2 data and coordinate mapping:")
             print(f"   For 4D volume (x, y, z, u): slice has shape (z, u) = (volume.shape[2], volume.shape[3])")
             print(f"   Volume dimensions: z={volume.shape[2]}, u={volume.shape[3]}")
-            print(f"   User expectation: z on x-axis, u on y-axis")
             print(f"   Our data.shape: {plot2_data.shape if plot2_data is not None else 'None'} (after flip if needed)")
-            print(f"   px (x_coords) length: {len(plot2_x_coords) if plot2_x_coords is not None else 'None'} (should map to z)")
-            print(f"   py (y_coords) length: {len(plot2_y_coords) if plot2_y_coords is not None else 'None'} (should map to u)")
-            print(f"   User requirement: data.shape[0] should match x_coords (z on x-axis)")
-            print(f"   Bokeh interprets: data.shape[0] = y-axis, data.shape[1] = x-axis")
+            print(f"   px (x_coords) length: {len(plot2_x_coords) if plot2_x_coords is not None else 'None'} (should map to x-axis/width)")
+            print(f"   py (y_coords) length: {len(plot2_y_coords) if plot2_y_coords is not None else 'None'} (should map to y-axis/height)")
+            print(f"   Bokeh interprets: data.shape[0] = rows = y-axis (height), data.shape[1] = cols = x-axis (width)")
             if plot2_data is not None and plot2_x_coords is not None and plot2_y_coords is not None:
-                # User requirement: data.shape[0] should match x_coords (z dimension)
-                # User requirement: data.shape[1] should match y_coords (u dimension)
-                shape0_matches_x = plot2_data.shape[0] == len(plot2_x_coords)
-                shape1_matches_y = plot2_data.shape[1] == len(plot2_y_coords)
+                # Bokeh convention: data.shape[1] (cols/x-axis/width) should match x_coords
+                # Bokeh convention: data.shape[0] (rows/y-axis/height) should match y_coords
+                shape1_matches_x = plot2_data.shape[1] == len(plot2_x_coords)
+                shape0_matches_y = plot2_data.shape[0] == len(plot2_y_coords)
                 
-                if shape0_matches_x and shape1_matches_y:
-                    print(f"   ✅ VERIFIED: Data and coordinates match user expectation!")
-                    print(f"      data.shape[0]={plot2_data.shape[0]} == len(px)={len(plot2_x_coords)} (z dimension)")
-                    print(f"      data.shape[1]={plot2_data.shape[1]} == len(py)={len(plot2_y_coords)} (u dimension)")
-                    print(f"      Note: Bokeh interprets shape[0] as y-axis and shape[1] as x-axis")
+                if shape1_matches_x and shape0_matches_y:
+                    print(f"   ✅ VERIFIED: Plot2 data format matches Bokeh expectations!")
+                    print(f"      data.shape[1]={plot2_data.shape[1]} == len(x_coords)={len(plot2_x_coords)} (x-axis/width)")
+                    print(f"      data.shape[0]={plot2_data.shape[0]} == len(y_coords)={len(plot2_y_coords)} (y-axis/height)")
                 else:
-                    print(f"   ❌ ERROR: Data and coordinates do NOT match user expectation!")
+                    print(f"   ❌ ERROR: Data and coordinates do NOT match Bokeh expectations!")
                     print(f"      data.shape[0]={plot2_data.shape[0]}, data.shape[1]={plot2_data.shape[1]}")
                     print(f"      len(px)={len(plot2_x_coords)}, len(py)={len(plot2_y_coords)}")
-                    if not shape0_matches_x:
-                        print(f"      data.shape[0]={plot2_data.shape[0]} != len(px)={len(plot2_x_coords)} (z should match x_coords)")
-                    if not shape1_matches_y:
-                        print(f"      data.shape[1]={plot2_data.shape[1]} != len(py)={len(plot2_y_coords)} (u should match y_coords)")
+                    if not shape1_matches_x:
+                        print(f"      data.shape[1]={plot2_data.shape[1]} != len(x_coords)={len(plot2_x_coords)} (x-axis/width should match)")
+                    if not shape0_matches_y:
+                        print(f"      data.shape[0]={plot2_data.shape[0]} != len(y_coords)={len(plot2_y_coords)} (y-axis/height should match)")
                     print(f"      This will cause misalignment between data and axes!")
             
             source2 = ColumnDataSource(
@@ -2032,19 +2068,46 @@ def create_dashboard(process_4dnexus):
         
         if hasattr(process_4dnexus, 'volume_picked_b') and process_4dnexus.volume_picked_b:
             try:
-                # Load Plot2B volume - check cache first
+                # Load Plot2B volume - check cache first, but always validate
+                cached_path = getattr(process_4dnexus, '_cached_volume_b_path', None)
                 if (hasattr(process_4dnexus, '_cached_volume_b') and 
-                    hasattr(process_4dnexus, '_cached_volume_b_path') and
-                    process_4dnexus._cached_volume_b_path == process_4dnexus.volume_picked_b):
+                    cached_path == process_4dnexus.volume_picked_b and
+                    process_4dnexus._cached_volume_b is not None):
+                    # Validate cached volume still has correct shape
                     volume_b = process_4dnexus._cached_volume_b
-                    print(f"✅ Using cached volume_b for {process_4dnexus.volume_picked_b}")
+                    # Double-check by verifying it's the right dataset
+                    try:
+                        # Quick validation: check if it's a valid array
+                        if hasattr(volume_b, 'shape') and len(volume_b.shape) >= 2:
+                            print(f"✅ Using cached volume_b for {process_4dnexus.volume_picked_b} (shape: {volume_b.shape})")
+                        else:
+                            print(f"⚠️ Cached volume_b invalid, reloading...")
+                            volume_b = None
+                    except:
+                        print(f"⚠️ Error validating cached volume_b, reloading...")
+                        volume_b = None
                 else:
+                    volume_b = None
+                
+                if volume_b is None:
+                    # Clear cache if path changed
+                    if cached_path != process_4dnexus.volume_picked_b:
+                        process_4dnexus._cached_volume_b = None
+                        process_4dnexus._cached_volume_b_path = None
+                    
                     # Load and cache volume_b
                     volume_b = process_4dnexus.load_dataset_by_path(process_4dnexus.volume_picked_b)
                     if volume_b is not None:
-                        process_4dnexus._cached_volume_b = volume_b
-                        process_4dnexus._cached_volume_b_path = process_4dnexus.volume_picked_b
-                        print(f"✅ Loaded and cached volume_b for {process_4dnexus.volume_picked_b} (type: {type(volume_b).__name__})")
+                        # Validate the loaded data
+                        if hasattr(volume_b, 'shape') and len(volume_b.shape) >= 2:
+                            process_4dnexus._cached_volume_b = volume_b
+                            process_4dnexus._cached_volume_b_path = process_4dnexus.volume_picked_b
+                            print(f"✅ Loaded and cached volume_b for {process_4dnexus.volume_picked_b} (type: {type(volume_b).__name__}, shape: {volume_b.shape})")
+                        else:
+                            print(f"⚠️ WARNING: Loaded volume_b has invalid shape: {volume_b.shape if hasattr(volume_b, 'shape') else 'N/A'}")
+                            volume_b = None
+                    else:
+                        print(f"⚠️ WARNING: Failed to load volume_b for {process_4dnexus.volume_picked_b}")
                 
                 if volume_b is not None:
                     plot2b_is_2d = len(volume_b.shape) == 4
@@ -2156,15 +2219,15 @@ def create_dashboard(process_4dnexus):
                         
                         # If flipped methods return None, fall back to manual calculation
                         if plot2b_data is None:
-                            plot2b_data = np.transpose(initial_slice_b)  # Always transpose for Bokeh
+                            plot2b_data = initial_slice_b  # Use original data if get_flipped_data() returns None
                         if plot2b_x_coords is None:
                             plot2b_x_coords = np.arange(plot2b_data.shape[1])
                         if plot2b_y_coords is None:
                             plot2b_y_coords = np.arange(plot2b_data.shape[0])
                         
                         # Create Bokeh figure (smaller size: 300x300)
-                        # Add BoxSelectTool for rectangle region selection
-                        box_select_2db = BoxSelectTool(dimensions="both")  # Select both x and y ranges
+                        # Add BoxSelectTool for rectangle region selection with persistent=True to keep box visible
+                        box_select_2db = BoxSelectTool(dimensions="both", persistent=True)  # Select both x and y ranges, keep box visible
                         plot2b = figure(
                             title="Plot2B - 2D Probe View",
                             tools="pan,wheel_zoom,box_zoom,reset,tap",
@@ -2175,6 +2238,14 @@ def create_dashboard(process_4dnexus):
                             height=300,
                         )
                         plot2b.add_tools(box_select_2db)
+                        
+                        # Create BoxAnnotation for persistent selection rectangle on Plot2B
+                        box_annotation_2b = BoxAnnotation(
+                            left=None, right=None, top=None, bottom=None,
+                            fill_alpha=0.1, fill_color='green',
+                            line_color='green', line_width=2, line_dash='dashed'
+                        )
+                        plot2b.add_layout(box_annotation_2b)
                         
                         # Set axis labels using flipped methods from probe_2d_plot_b
                         plot2b.xaxis.axis_label = probe_2d_plot_b.get_flipped_x_axis_label() or original_plot2b_x_label
@@ -2210,6 +2281,16 @@ def create_dashboard(process_4dnexus):
                                 print(f"      data.shape[0]={plot2b_data.shape[0]} != len(y_coords)={len(plot2b_y_coords)}")
                                 print(f"      This will cause misalignment between data and axes!")
                         
+                        # Debug: Check if data is valid
+                        print(f"🔍 DEBUG: Plot2B initial data check:")
+                        print(f"   initial_slice_b.shape: {initial_slice_b.shape}")
+                        print(f"   initial_slice_b min: {np.nanmin(initial_slice_b)}, max: {np.nanmax(initial_slice_b)}")
+                        print(f"   initial_slice_b sum: {np.nansum(initial_slice_b)}")
+                        print(f"   plot2b_data.shape: {plot2b_data.shape if plot2b_data is not None else 'None'}")
+                        if plot2b_data is not None:
+                            print(f"   plot2b_data min: {np.nanmin(plot2b_data)}, max: {np.nanmax(plot2b_data)}")
+                            print(f"   plot2b_data sum: {np.nansum(plot2b_data)}")
+                        
                         source2b = ColumnDataSource(
                             data={
                                 "image": [plot2b_data],
@@ -2219,8 +2300,15 @@ def create_dashboard(process_4dnexus):
                                 "dh": [float(np.max(plot2b_y_coords) - np.min(plot2b_y_coords))],
                             }
                         )
-                        probe2b_min_val = float(np.percentile(plot2b_data[~np.isnan(plot2b_data)], 1))
-                        probe2b_max_val = float(np.percentile(plot2b_data[~np.isnan(plot2b_data)], 99))
+                        # Check if data has valid values before computing percentiles
+                        valid_data = plot2b_data[~np.isnan(plot2b_data)]
+                        if len(valid_data) > 0:
+                            probe2b_min_val = float(np.percentile(valid_data, 1))
+                            probe2b_max_val = float(np.percentile(valid_data, 99))
+                        else:
+                            print(f"⚠️ WARNING: Plot2B data is all NaN or empty!")
+                            probe2b_min_val = 0.0
+                            probe2b_max_val = 1.0
                         # Store for later use in range controls
                         color_mapper2b = LinearColorMapper(palette="Viridis256", low=probe2b_min_val, high=probe2b_max_val)
                         image_renderer2b = plot2b.image(
@@ -2307,8 +2395,8 @@ def create_dashboard(process_4dnexus):
         plot3_x_coords = map_plot.get_flipped_x_coords()
         plot3_y_coords = map_plot.get_flipped_y_coords()
         
-        # Add BoxSelectTool for rectangle region selection on Plot3
-        box_select_3 = BoxSelectTool(dimensions="both")  # Select both x and y ranges
+        # Add BoxSelectTool for rectangle region selection on Plot3 with persistent=True to keep box visible
+        box_select_3 = BoxSelectTool(dimensions="both", persistent=True)  # Select both x and y ranges, keep box visible
         plot3 = figure(
             title="Plot3 - Additional View",
             tools="pan,wheel_zoom,box_zoom,reset,tap",
@@ -2318,6 +2406,15 @@ def create_dashboard(process_4dnexus):
             height=300,
         )
         plot3.add_tools(box_select_3)
+        
+        # Create BoxAnnotation for persistent selection rectangle on Plot3
+        box_annotation_3 = BoxAnnotation(
+            left=None, right=None, top=None, bottom=None,
+            fill_alpha=0.1, fill_color='red',
+            line_color='red', line_width=2, line_dash='dashed'
+        )
+        plot3.add_layout(box_annotation_3)
+        
         plot3.xaxis.axis_label = map_plot.get_flipped_x_axis_label()
         plot3.yaxis.axis_label = map_plot.get_flipped_y_axis_label()
         
@@ -2417,10 +2514,27 @@ def create_dashboard(process_4dnexus):
                         plot2.y_range.start = probe_min
                         plot2.y_range.end = probe_max
                         # Update range inputs so user can see the computed values
-                        if range2_min_input is not None:
-                            range2_min_input.value = str(probe_min)
-                        if range2_max_input is not None:
-                            range2_max_input.value = str(probe_max)
+                        # Use add_next_tick_callback to ensure updates happen in next Bokeh tick
+                        from bokeh.io import curdoc
+                        def update_range2_inputs():
+                            try:
+                                if range2_min_input is not None:
+                                    was_disabled = range2_min_input.disabled
+                                    if was_disabled:
+                                        range2_min_input.disabled = False
+                                    range2_min_input.value = str(probe_min)
+                                    if was_disabled:
+                                        range2_min_input.disabled = True
+                                if range2_max_input is not None:
+                                    was_disabled = range2_max_input.disabled
+                                    if was_disabled:
+                                        range2_max_input.disabled = False
+                                    range2_max_input.value = str(probe_max)
+                                    if was_disabled:
+                                        range2_max_input.disabled = True
+                            except Exception as e:
+                                print(f"⚠️ WARNING: Failed to update range2 inputs: {e}")
+                        curdoc().add_next_tick_callback(update_range2_inputs)
                 except NameError:
                     # Range inputs not defined yet - use Dynamic mode as default
                     probe_min = float(np.percentile(slice_1d[~np.isnan(slice_1d)], 1))
@@ -2441,10 +2555,22 @@ def create_dashboard(process_4dnexus):
                 
                 # Fallback if flipped methods return None
                 if flipped_slice is None:
-                    flipped_slice = np.transpose(slice_2d)  # Always transpose for Bokeh
+                    flipped_slice = slice_2d  # Use original data if get_flipped_data() returns None
                 if x_coords is None:
                     x_coords = np.arange(flipped_slice.shape[1])
                 if y_coords is None:
+                    y_coords = np.arange(flipped_slice.shape[0])
+                
+                # CRITICAL: Validate that coordinates match flipped data shape
+                # Bokeh expects: data.shape[1] == len(x_coords), data.shape[0] == len(y_coords)
+                if flipped_slice is not None and x_coords is not None and y_coords is not None:
+                    if flipped_slice.shape[1] != len(x_coords) or flipped_slice.shape[0] != len(y_coords):
+                        print(f"⚠️ WARNING in show_slice(): Coordinate mismatch detected!")
+                        print(f"   flipped_slice.shape={flipped_slice.shape}")
+                        print(f"   len(x_coords)={len(x_coords)}, len(y_coords)={len(y_coords)}")
+                        print(f"   Recomputing coordinates to match data shape...")
+                        # Recompute coordinates to match flipped data shape
+                        x_coords = np.arange(flipped_slice.shape[1])
                     y_coords = np.arange(flipped_slice.shape[0])
                 
                 # Calculate dimensions
@@ -2487,10 +2613,27 @@ def create_dashboard(process_4dnexus):
                         color_mapper2.low = probe_min
                         color_mapper2.high = probe_max
                         # CRITICAL: Always update range inputs in Dynamic mode so user can see the computed values
-                        if range2_min_input is not None:
-                            range2_min_input.value = str(probe_min)
-                        if range2_max_input is not None:
-                            range2_max_input.value = str(probe_max)
+                        # Use add_next_tick_callback to ensure updates happen in next Bokeh tick
+                        from bokeh.io import curdoc
+                        def update_range2_inputs():
+                            try:
+                                if range2_min_input is not None:
+                                    was_disabled = range2_min_input.disabled
+                                    if was_disabled:
+                                        range2_min_input.disabled = False
+                                    range2_min_input.value = str(probe_min)
+                                    if was_disabled:
+                                        range2_min_input.disabled = True
+                                if range2_max_input is not None:
+                                    was_disabled = range2_max_input.disabled
+                                    if was_disabled:
+                                        range2_max_input.disabled = False
+                                    range2_max_input.value = str(probe_max)
+                                    if was_disabled:
+                                        range2_max_input.disabled = True
+                            except Exception as e:
+                                print(f"⚠️ WARNING: Failed to update range2 inputs: {e}")
+                        curdoc().add_next_tick_callback(update_range2_inputs)
                 except NameError:
                     # Range inputs not defined yet - use Dynamic mode as default
                     probe_min = float(np.percentile(flipped_slice[~np.isnan(flipped_slice)], 1))
@@ -2511,12 +2654,25 @@ def create_dashboard(process_4dnexus):
                 # 4D volume: update 2D image plot
                 if hasattr(process_4dnexus, 'volume_picked_b') and process_4dnexus.volume_picked_b and probe_2d_plot_b is not None:
                     try:
-                        # Use cached volume_b if available
+                        # Use cached volume_b if available, but validate
+                        cached_path = getattr(process_4dnexus, '_cached_volume_b_path', None)
                         if (hasattr(process_4dnexus, '_cached_volume_b') and 
-                            hasattr(process_4dnexus, '_cached_volume_b_path') and
-                            process_4dnexus._cached_volume_b_path == process_4dnexus.volume_picked_b):
+                            cached_path == process_4dnexus.volume_picked_b and
+                            process_4dnexus._cached_volume_b is not None):
                             volume_b = process_4dnexus._cached_volume_b
+                            # Quick validation
+                            if not (hasattr(volume_b, 'shape') and len(volume_b.shape) >= 2):
+                                print(f"⚠️ Cached volume_b invalid in show_slice_b(), reloading...")
+                                volume_b = None
                         else:
+                            volume_b = None
+                        
+                        if volume_b is None:
+                            # Clear cache if path changed
+                            if cached_path != process_4dnexus.volume_picked_b:
+                                process_4dnexus._cached_volume_b = None
+                                process_4dnexus._cached_volume_b_path = None
+                            
                             # Load and cache volume_b
                             volume_b = process_4dnexus.load_dataset_by_path(process_4dnexus.volume_picked_b)
                             if volume_b is not None:
@@ -2536,10 +2692,22 @@ def create_dashboard(process_4dnexus):
                             
                             # Fallback if flipped methods return None
                             if flipped_slice_b is None:
-                                flipped_slice_b = np.transpose(new_slice_b)  # Always transpose for Bokeh
+                                flipped_slice_b = new_slice_b  # Use original data if get_flipped_data() returns None
                             if x_coords_b is None:
                                 x_coords_b = np.arange(flipped_slice_b.shape[1])
                             if y_coords_b is None:
+                                y_coords_b = np.arange(flipped_slice_b.shape[0])
+                            
+                            # CRITICAL: Validate that coordinates match flipped data shape
+                            # Bokeh expects: data.shape[1] == len(x_coords), data.shape[0] == len(y_coords)
+                            if flipped_slice_b is not None and x_coords_b is not None and y_coords_b is not None:
+                                if flipped_slice_b.shape[1] != len(x_coords_b) or flipped_slice_b.shape[0] != len(y_coords_b):
+                                    print(f"⚠️ WARNING in show_slice_b(): Coordinate mismatch detected!")
+                                    print(f"   flipped_slice_b.shape={flipped_slice_b.shape}")
+                                    print(f"   len(x_coords_b)={len(x_coords_b)}, len(y_coords_b)={len(y_coords_b)}")
+                                    print(f"   Recomputing coordinates to match data shape...")
+                                    # Recompute coordinates to match flipped data shape
+                                    x_coords_b = np.arange(flipped_slice_b.shape[1])
                                 y_coords_b = np.arange(flipped_slice_b.shape[0])
                             
                             # Calculate dimensions
@@ -2572,9 +2740,27 @@ def create_dashboard(process_4dnexus):
                                     color_mapper2b.low = probe2b_min
                                     color_mapper2b.high = probe2b_max
                                     # Update range inputs so user can see the computed values
-                                    range2b_min_input.value = str(probe2b_min)
-                                    if range2b_max_input is not None:
-                                        range2b_max_input.value = str(probe2b_max)
+                                    # Use add_next_tick_callback to ensure updates happen in next Bokeh tick
+                                    from bokeh.io import curdoc
+                                    def update_range2b_inputs():
+                                        try:
+                                            if range2b_min_input is not None:
+                                                was_disabled = range2b_min_input.disabled
+                                                if was_disabled:
+                                                    range2b_min_input.disabled = False
+                                                range2b_min_input.value = str(probe2b_min)
+                                                if was_disabled:
+                                                    range2b_min_input.disabled = True
+                                            if range2b_max_input is not None:
+                                                was_disabled = range2b_max_input.disabled
+                                                if was_disabled:
+                                                    range2b_max_input.disabled = False
+                                                range2b_max_input.value = str(probe2b_max)
+                                                if was_disabled:
+                                                    range2b_max_input.disabled = True
+                                        except Exception as e:
+                                            print(f"⚠️ WARNING: Failed to update range2b inputs: {e}")
+                                    curdoc().add_next_tick_callback(update_range2b_inputs)
                                 elif range2b_min_input is not None:
                                     # User Specified mode - use input values
                                     try:
@@ -2648,9 +2834,27 @@ def create_dashboard(process_4dnexus):
                                     plot2b.y_range.start = probe2b_min
                                     plot2b.y_range.end = probe2b_max
                                     # Update range inputs so user can see the computed values
-                                    range2b_min_input.value = str(probe2b_min)
-                                    if range2b_max_input is not None:
-                                        range2b_max_input.value = str(probe2b_max)
+                                    # Use add_next_tick_callback to ensure updates happen in next Bokeh tick
+                                    from bokeh.io import curdoc
+                                    def update_range2b_inputs():
+                                        try:
+                                            if range2b_min_input is not None:
+                                                was_disabled = range2b_min_input.disabled
+                                                if was_disabled:
+                                                    range2b_min_input.disabled = False
+                                                range2b_min_input.value = str(probe2b_min)
+                                                if was_disabled:
+                                                    range2b_min_input.disabled = True
+                                            if range2b_max_input is not None:
+                                                was_disabled = range2b_max_input.disabled
+                                                if was_disabled:
+                                                    range2b_max_input.disabled = False
+                                                range2b_max_input.value = str(probe2b_max)
+                                                if was_disabled:
+                                                    range2b_max_input.disabled = True
+                                        except Exception as e:
+                                            print(f"⚠️ WARNING: Failed to update range2b inputs: {e}")
+                                    curdoc().add_next_tick_callback(update_range2b_inputs)
                                 elif range2b_min_input is not None:
                                     # User Specified mode - use input values
                                     try:
@@ -2675,9 +2879,8 @@ def create_dashboard(process_4dnexus):
             try:
                 draw_cross1()
                 show_slice()  # This already handles Plot2 Dynamic/User Specified range mode
-                # Update Plot1 range dynamically if in Dynamic mode
-                if map_plot.range_mode == RangeMode.DYNAMIC:
-                    update_plot1_range_dynamic()
+                # Note: Plot1's range should NOT update when slider moves - it uses static map data
+                # Plot1's dynamic range is computed once at initialization or when mode changes
                 # Update Plot2B if it exists
                 show_slice_b()  # This already handles Plot2B Dynamic/User Specified range mode
             except Exception as e:
@@ -2689,9 +2892,8 @@ def create_dashboard(process_4dnexus):
             try:
                 draw_cross1()
                 show_slice()  # This already handles Plot2 Dynamic/User Specified range mode
-                # Update Plot1 range dynamically if in Dynamic mode
-                if map_plot.range_mode == RangeMode.DYNAMIC:
-                    update_plot1_range_dynamic()
+                # Note: Plot1's range should NOT update when slider moves - it uses static map data
+                # Plot1's dynamic range is computed once at initialization or when mode changes
                 # Update Plot2B if it exists
                 show_slice_b()  # This already handles Plot2B Dynamic/User Specified range mode
             except Exception as e:
@@ -3198,26 +3400,29 @@ def create_dashboard(process_4dnexus):
                 rect2.set(max_x=click_z, max_y=click_u)
         
         # Function to draw rect2 on Plot2
+        # DISABLED: Using Bokeh's BoxAnnotation instead
         def draw_rect2():
             """Draw selection rectangle on Plot2."""
-            if is_3d_volume:
-                plot_x1 = rect2.min_x
-                plot_x2 = rect2.max_x
-                plot_y1 = 0
-                plot_y2 = plot2.y_range.end
-            else:
-                plot2_needs_flip = probe_2d_plot.needs_flip if hasattr(probe_2d_plot, 'needs_flip') else False
-                if plot2_needs_flip:
-                    plot_x1 = rect2.min_y  # u min -> plot x
-                    plot_x2 = rect2.max_y  # u max -> plot x
-                    plot_y1 = rect2.min_x  # z min -> plot y
-                    plot_y2 = rect2.max_x  # z max -> plot y
-                else:
-                    plot_x1 = rect2.min_x  # z min -> plot x
-                    plot_x2 = rect2.max_x  # z max -> plot x
-                    plot_y1 = rect2.min_y  # u min -> plot y
-                    plot_y2 = rect2.max_y  # u max -> plot y
-            draw_rect(plot2, rect2, plot_x1, plot_x2, plot_y1, plot_y2)
+            # Disabled - using Bokeh's BoxAnnotation instead
+            pass
+            # if is_3d_volume:
+            #     plot_x1 = rect2.min_x
+            #     plot_x2 = rect2.max_x
+            #     plot_y1 = 0
+            #     plot_y2 = plot2.y_range.end
+            # else:
+            #     plot2_needs_flip = probe_2d_plot.needs_flip if hasattr(probe_2d_plot, 'needs_flip') else False
+            #     if plot2_needs_flip:
+            #         plot_x1 = rect2.min_y  # u min -> plot x
+            #         plot_x2 = rect2.max_y  # u max -> plot x
+            #         plot_y1 = rect2.min_x  # z min -> plot y
+            #         plot_y2 = rect2.max_x  # z max -> plot y
+            #     else:
+            #         plot_x1 = rect2.min_x  # z min -> plot x
+            #         plot_x2 = rect2.max_x  # z max -> plot x
+            #         plot_y1 = rect2.min_y  # u min -> plot y
+            #         plot_y2 = rect2.max_y  # u max -> plot y
+            # draw_rect(plot2, rect2, plot_x1, plot_x2, plot_y1, plot_y2)
         
         # Add Plot2B tap handlers if Plot2B exists
         if plot2b is not None:
@@ -3225,28 +3430,31 @@ def create_dashboard(process_4dnexus):
             plot2b.add_tools(tap_tool2b)
             
             # Function to draw rect2b on Plot2B
+            # DISABLED: Using Bokeh's BoxAnnotation instead
             def draw_rect2b():
                 """Draw selection rectangle on Plot2B."""
-                if not plot2b_is_2d:
-                    # 1D plot
-                    plot_x1 = rect2b.min_x
-                    plot_x2 = rect2b.max_x
-                    plot_y1 = 0
-                    plot_y2 = plot2b.y_range.end
-                else:
-                    # 2D plot
-                    plot2b_needs_flip = probe_2d_plot_b.needs_flip if hasattr(probe_2d_plot_b, 'needs_flip') else False
-                    if plot2b_needs_flip:
-                        plot_x1 = rect2b.min_y  # u min -> plot x
-                        plot_x2 = rect2b.max_y  # u max -> plot x
-                        plot_y1 = rect2b.min_x  # z min -> plot y
-                        plot_y2 = rect2b.max_x  # z max -> plot y
-                    else:
-                        plot_x1 = rect2b.min_x  # z min -> plot x
-                        plot_x2 = rect2b.max_x  # z max -> plot x
-                        plot_y1 = rect2b.min_y  # u min -> plot y
-                        plot_y2 = rect2b.max_y  # u max -> plot y
-                draw_rect(plot2b, rect2b, plot_x1, plot_x2, plot_y1, plot_y2)
+                # Disabled - using Bokeh's BoxAnnotation instead
+                pass
+                # if not plot2b_is_2d:
+                #     # 1D plot
+                #     plot_x1 = rect2b.min_x
+                #     plot_x2 = rect2b.max_x
+                #     plot_y1 = 0
+                #     plot_y2 = plot2b.y_range.end
+                # else:
+                #     # 2D plot
+                #     plot2b_needs_flip = probe_2d_plot_b.needs_flip if hasattr(probe_2d_plot_b, 'needs_flip') else False
+                #     if plot2b_needs_flip:
+                #         plot_x1 = rect2b.min_y  # u min -> plot x
+                #         plot_x2 = rect2b.max_y  # u max -> plot x
+                #         plot_y1 = rect2b.min_x  # z min -> plot y
+                #         plot_y2 = rect2b.max_x  # z max -> plot y
+                #     else:
+                #         plot_x1 = rect2b.min_x  # z min -> plot x
+                #         plot_x2 = rect2b.max_x  # z max -> plot x
+                #         plot_y1 = rect2b.min_y  # u min -> plot y
+                #         plot_y2 = rect2b.max_y  # u max -> plot y
+                # draw_rect(plot2b, rect2b, plot_x1, plot_x2, plot_y1, plot_y2)
             
             # Tap handler for Plot2B
             def on_plot2b_tap(event):
@@ -3285,10 +3493,10 @@ def create_dashboard(process_4dnexus):
                     
                     if hasattr(event, 'modifiers') and event.modifiers.get("shift", False):
                         rect2b.set(min_x=click_z, min_y=click_u)
-                        draw_rect2b()
+                        # draw_rect2b()  # Disabled - using Bokeh's BoxAnnotation instead
                     elif hasattr(event, 'modifiers') and (event.modifiers.get("ctrl", False) or event.modifiers.get('meta', False) or event.modifiers.get('cmd', False)):
                         rect2b.set(max_x=click_z, max_y=click_u)
-                        draw_rect2b()
+                        # draw_rect2b()  # Disabled - using Bokeh's BoxAnnotation instead
                     else:
                         clear_rect(plot2b, rect2b)
                         rect2b.set(min_x=click_z, min_y=click_u, max_x=click_z, max_y=click_u)
@@ -3374,6 +3582,7 @@ def create_dashboard(process_4dnexus):
                 update_undo_redo: Whether to update undo/redo buttons (can skip for frequent operations)
                 delay: Delay in seconds before actually saving (default 0.5s)
             """
+            from bokeh.io import curdoc
             nonlocal _state_save_timer, _pending_state_save
             
             def do_save():
@@ -3575,25 +3784,28 @@ def create_dashboard(process_4dnexus):
         range1_min_input = None
         range1_max_input = None
         
-        # Function to update Plot1 range dynamically based on current data
+        # Function to update Plot1 range dynamically based on static map data
         def update_plot1_range_dynamic():
-            """Update Plot1 range to 1st and 99th percentiles of current data."""
+            """Update Plot1 range to 1st and 99th percentiles of static map data (Plot1's own data, not slice data)."""
             print(f"🔍 DEBUG: update_plot1_range_dynamic() called, range_mode={map_plot.range_mode}")
             if map_plot.range_mode == RangeMode.DYNAMIC:
                 # Update toggle label to show "Dynamic" while recalculating
                 try:
                     if 'range1_mode_toggle' in locals() and range1_mode_toggle is not None:
-                        range1_mode_toggle.label = "Dynamic"
+                        range1_mode_toggle.label = "Dynamic Enabled"
                 except:
                     pass
                 
-                # Get current data from map_plot (source of truth) - always use flipped data for consistency
+                # Get static map data from Plot1 (NOT from Plot2's slice data)
+                # Plot1 shows a 2D map projection that doesn't change when slider moves
                 current_data = None
                 try:
                     # Primary source: get data directly from map_plot
                     current_data = map_plot.get_flipped_data()
                     if current_data is not None and current_data.size == 0:
                         current_data = None
+                    else:
+                        print(f"🔍 DEBUG: Got static map data from map_plot, shape={current_data.shape if current_data is not None else 'None'}")
                 except Exception as e:
                     print(f"⚠️ WARNING in update_plot1_range_dynamic(): Failed to get data from map_plot: {e}")
                     current_data = None
@@ -3603,12 +3815,14 @@ def create_dashboard(process_4dnexus):
                     try:
                         if 'source1' in locals() and source1 is not None and 'image' in source1.data and len(source1.data['image']) > 0:
                             current_data = np.array(source1.data["image"][0])
+                            print(f"🔍 DEBUG: Got static map data from source1, shape={current_data.shape}")
                     except Exception as e:
                         print(f"⚠️ WARNING in update_plot1_range_dynamic(): Failed to get data from source1: {e}")
                     
                     # Final fallback to plot1_data
                     if (current_data is None or current_data.size == 0) and 'plot1_data' in locals() and plot1_data is not None:
                         current_data = plot1_data
+                        print(f"🔍 DEBUG: Using plot1_data as final fallback, shape={current_data.shape if current_data is not None else 'None'}")
                 
                 if current_data is not None and current_data.size > 0:
                     try:
@@ -3625,23 +3839,38 @@ def create_dashboard(process_4dnexus):
                             map_plot.range_max = new_max
                             
                             # Update UI inputs - access from closure scope
-                            try:
-                                range1_min_input.value = str(new_min)
-                                print(f"✅ DEBUG: Updated range1_min_input.value = {new_min:.6f}")
-                            except Exception as e:
-                                print(f"⚠️ WARNING in update_plot1_range_dynamic(): Failed to update range1_min_input: {e}")
-                                import traceback
-                                traceback.print_exc()
+                            # Use add_next_tick_callback to ensure updates happen in next Bokeh tick
+                            from bokeh.io import curdoc
+                            def update_inputs():
+                                try:
+                                    was_min_disabled = range1_min_input.disabled if range1_min_input is not None else False
+                                    was_max_disabled = range1_max_input.disabled if range1_max_input is not None else False
+                                    
+                                    # Temporarily enable if disabled (so values update visually)
+                                    if range1_min_input is not None:
+                                        if was_min_disabled:
+                                            range1_min_input.disabled = False
+                                        range1_min_input.value = str(new_min)
+                                        if was_min_disabled:
+                                            range1_min_input.disabled = True
+                                    
+                                    if range1_max_input is not None:
+                                        if was_max_disabled:
+                                            range1_max_input.disabled = False
+                                        range1_max_input.value = str(new_max)
+                                        if was_max_disabled:
+                                            range1_max_input.disabled = True
+                                    
+                                    print(f"✅ DEBUG: Updated range1_min_input.value = {new_min:.6f}")
+                                    print(f"✅ DEBUG: Updated range1_max_input.value = {new_max:.6f}")
+                                except Exception as e:
+                                    print(f"⚠️ WARNING in update_plot1_range_dynamic(): Failed to update range inputs: {e}")
+                                    import traceback
+                                    traceback.print_exc()
                             
-                            try:
-                                range1_max_input.value = str(new_max)
-                                print(f"✅ DEBUG: Updated range1_max_input.value = {new_max:.6f}")
-                            except Exception as e:
-                                print(f"⚠️ WARNING in update_plot1_range_dynamic(): Failed to update range1_max_input: {e}")
-                                import traceback
-                                traceback.print_exc()
+                            curdoc().add_next_tick_callback(update_inputs)
                             
-                            # Update color mapper
+                    # Update color mapper
                             try:
                                 if 'color_mapper1' in locals() and color_mapper1 is not None:
                                     color_mapper1.low = new_min
@@ -3675,14 +3904,14 @@ def create_dashboard(process_4dnexus):
                 range1_max_input.disabled = False
                 # Update toggle label to "User Specified"
                 if 'range1_mode_toggle' in locals() and range1_mode_toggle is not None:
-                    range1_mode_toggle.label = "User Specified"
+                    range1_mode_toggle.label = "User Specified Enabled"
             else:  # Toggle is inactive = Dynamic mode
                 map_plot.range_mode = RangeMode.DYNAMIC
                 range1_min_input.disabled = True
                 range1_max_input.disabled = True
                 # Update toggle label to "Dynamic"
                 if 'range1_mode_toggle' in locals() and range1_mode_toggle is not None:
-                    range1_mode_toggle.label = "Dynamic"
+                    range1_mode_toggle.label = "Dynamic Enabled"
                 # Recompute range from current data
                 update_plot1_range_dynamic()
             # Save state immediately for mode changes (important state, not frequent)
@@ -3694,7 +3923,7 @@ def create_dashboard(process_4dnexus):
             curdoc().add_next_tick_callback(save_state_async)
         
         # Set initial label based on range mode
-        plot1_initial_label = "User Specified" if map_plot.range_mode == RangeMode.USER_SPECIFIED else "Dynamic"
+        plot1_initial_label = "User Specified Enabled" if map_plot.range_mode == RangeMode.USER_SPECIFIED else "Dynamic Enabled"
         range1_section, range1_mode_toggle = create_range_section_with_toggle(
             label="Plot1 Range:",
             min_title="Range Min:",
@@ -4533,17 +4762,17 @@ def create_dashboard(process_4dnexus):
                     range1b_max_input.disabled = False
                     # Update toggle label to "User Specified"
                     if 'range1b_mode_toggle' in locals() and range1b_mode_toggle is not None:
-                        range1b_mode_toggle.label = "User Specified"
+                        range1b_mode_toggle.label = "User Specified Enabled"
                 else:  # Toggle is inactive = Dynamic mode
                     map_plot_b.range_mode = RangeMode.DYNAMIC
                     range1b_min_input.disabled = True
                     range1b_max_input.disabled = True
                     # Update toggle label to "Dynamic"
                     if 'range1b_mode_toggle' in locals() and range1b_mode_toggle is not None:
-                        range1b_mode_toggle.label = "Dynamic"
+                        range1b_mode_toggle.label = "Dynamic Enabled"
             
             # Set initial label based on range mode
-            plot1b_initial_label = "User Specified" if map_plot_b.range_mode == RangeMode.USER_SPECIFIED else "Dynamic"
+            plot1b_initial_label = "User Specified Enabled" if map_plot_b.range_mode == RangeMode.USER_SPECIFIED else "Dynamic Enabled"
             range1b_section, range1b_mode_toggle = create_range_section_with_toggle(
                 label="Plot1B Range:",
                 min_title="Range Min:",
@@ -4584,10 +4813,29 @@ def create_dashboard(process_4dnexus):
                 if current_slice is not None and current_slice.size > 0:
                     new_min = float(np.percentile(current_slice[~np.isnan(current_slice)], 1))
                     new_max = float(np.percentile(current_slice[~np.isnan(current_slice)], 99))
-                    range2_min_input.value = str(new_min)
-                    range2_max_input.value = str(new_max)
                     plot2.y_range.start = new_min
                     plot2.y_range.end = new_max
+                    # Update range inputs using add_next_tick_callback
+                    from bokeh.io import curdoc
+                    def update_range2_inputs_init():
+                        try:
+                            if range2_min_input is not None:
+                                was_disabled = range2_min_input.disabled
+                                if was_disabled:
+                                    range2_min_input.disabled = False
+                                range2_min_input.value = str(new_min)
+                                if was_disabled:
+                                    range2_min_input.disabled = True
+                            if range2_max_input is not None:
+                                was_disabled = range2_max_input.disabled
+                                if was_disabled:
+                                    range2_max_input.disabled = False
+                                range2_max_input.value = str(new_max)
+                                if was_disabled:
+                                    range2_max_input.disabled = True
+                        except Exception as e:
+                            print(f"⚠️ WARNING: Failed to update range2 inputs in update_plot2_range_dynamic: {e}")
+                    curdoc().add_next_tick_callback(update_range2_inputs_init)
             else:
                 # For 2D plots, get current slice data
                 x_idx = get_x_index()
@@ -4598,10 +4846,29 @@ def create_dashboard(process_4dnexus):
                 if current_slice is not None and current_slice.size > 0:
                     new_min = float(np.percentile(current_slice[~np.isnan(current_slice)], 1))
                     new_max = float(np.percentile(current_slice[~np.isnan(current_slice)], 99))
-                    range2_min_input.value = str(new_min)
-                    range2_max_input.value = str(new_max)
                     color_mapper2.low = new_min
                     color_mapper2.high = new_max
+                    # Update range inputs using add_next_tick_callback
+                    from bokeh.io import curdoc
+                    def update_range2_inputs_init():
+                        try:
+                            if range2_min_input is not None:
+                                was_disabled = range2_min_input.disabled
+                                if was_disabled:
+                                    range2_min_input.disabled = False
+                                range2_min_input.value = str(new_min)
+                                if was_disabled:
+                                    range2_min_input.disabled = True
+                            if range2_max_input is not None:
+                                was_disabled = range2_max_input.disabled
+                                if was_disabled:
+                                    range2_max_input.disabled = False
+                                range2_max_input.value = str(new_max)
+                                if was_disabled:
+                                    range2_max_input.disabled = True
+                        except Exception as e:
+                            print(f"⚠️ WARNING: Failed to update range2 inputs in update_plot2_range_dynamic: {e}")
+                    curdoc().add_next_tick_callback(update_range2_inputs_init)
         
         def on_range2_change(attr, old, new):
             """Handle Plot2 range input changes."""
@@ -4617,15 +4884,10 @@ def create_dashboard(process_4dnexus):
             except:
                 pass
         
-        range2_min_input, range2_max_input = create_range_inputs(
-            min_title="Range Min:",
-            max_title="Range Max:",
-            min_value=probe_min_val,
-            max_value=probe_max_val,
-            width=120,
-            min_callback=on_range2_change,
-            max_callback=on_range2_change,
-        )
+        # Note: range2_min_input and range2_max_input will be extracted from range2_section below
+        # We create them here as placeholders that will be overwritten
+        range2_min_input = None
+        range2_max_input = None
         
         def on_plot2_range_mode_change(attr, old, new):
             """Handle Plot2 range mode toggle."""
@@ -4636,13 +4898,13 @@ def create_dashboard(process_4dnexus):
                 range2_max_input.disabled = False
                 # Update toggle label to "User Specified"
                 if 'range2_mode_toggle' in locals() and range2_mode_toggle is not None:
-                    range2_mode_toggle.label = "User Specified"
+                    range2_mode_toggle.label = "User Specified Enabled"
             else:  # Toggle is inactive = Dynamic mode
                 range2_min_input.disabled = True
                 range2_max_input.disabled = True
                 # Update toggle label to "Dynamic"
                 if 'range2_mode_toggle' in locals() and range2_mode_toggle is not None:
-                    range2_mode_toggle.label = "Dynamic"
+                    range2_mode_toggle.label = "Dynamic Enabled"
                 # Recompute range from current data
                 update_plot2_range_dynamic()
         
@@ -4653,15 +4915,31 @@ def create_dashboard(process_4dnexus):
             min_value=probe_min_val,
             max_value=probe_max_val,
             width=120,
-            toggle_label="Dynamic",  # Default to Dynamic mode
+            toggle_label="Dynamic Enabled",  # Default to Dynamic mode
             toggle_active=False,  # Default to Dynamic (False = Dynamic, True = User Specified)
             toggle_callback=on_plot2_range_mode_change,
             min_callback=on_range2_change,
             max_callback=on_range2_change,
         )
         
+        # Extract the actual input widgets from the section (they're in a row inside the column)
+        for child in range2_section.children:
+            if hasattr(child, 'children') and len(child.children) == 2:
+                # This is the row containing the two inputs
+                range2_min_input = child.children[0]  # First input is min
+                range2_max_input = child.children[1]  # Second input is max
+                print(f"✅ DEBUG: Extracted range2_min_input and range2_max_input from range2_section")
+                break
+        
         # Add toggle to the section so it's visible
         range2_section.children.append(range2_mode_toggle)
+        
+        # Initialize: Set inputs to disabled (Dynamic mode)
+        # Note: Initial dynamic range is already computed when the plot is created
+        # The range will update automatically when sliders move via show_slice()
+        if range2_min_input is not None and range2_max_input is not None:
+            range2_min_input.disabled = True  # Dynamic mode
+            range2_max_input.disabled = True  # Dynamic mode
         
         # Create range controls for Plot2B if it exists
         range2b_section = None
@@ -4690,15 +4968,10 @@ def create_dashboard(process_4dnexus):
                 except:
                     pass
             
-            range2b_min_input, range2b_max_input = create_range_inputs(
-                min_title="Range Min:",
-                max_title="Range Max:",
-                min_value=plot2b_min_val,
-                max_value=plot2b_max_val,
-                width=120,
-                min_callback=on_range2b_change,
-                max_callback=on_range2b_change,
-            )
+            # Note: range2b_min_input and range2b_max_input will be extracted from range2b_section below
+            # We create them here as placeholders that will be overwritten
+            range2b_min_input = None
+            range2b_max_input = None
             
             def on_plot2b_range_mode_change(attr, old, new):
                 """Handle Plot2B range mode toggle."""
@@ -4708,13 +4981,13 @@ def create_dashboard(process_4dnexus):
                     range2b_max_input.disabled = False
                     # Update toggle label to "User Specified"
                     if 'range2b_mode_toggle' in locals() and range2b_mode_toggle is not None:
-                        range2b_mode_toggle.label = "User Specified"
+                        range2b_mode_toggle.label = "User Specified Enabled"
                 else:  # Toggle is inactive = Dynamic mode
                     range2b_min_input.disabled = True
                     range2b_max_input.disabled = True
                     # Update toggle label to "Dynamic"
                     if 'range2b_mode_toggle' in locals() and range2b_mode_toggle is not None:
-                        range2b_mode_toggle.label = "Dynamic"
+                        range2b_mode_toggle.label = "Dynamic Enabled"
                     # Recompute range from current data
                     x_idx = get_x_index()
                     y_idx = get_y_index()
@@ -4755,10 +5028,30 @@ def create_dashboard(process_4dnexus):
                                     if current_slice is not None and current_slice.size > 0:
                                         new_min = float(np.percentile(current_slice[~np.isnan(current_slice)], 1))
                                         new_max = float(np.percentile(current_slice[~np.isnan(current_slice)], 99))
-                                        range2b_min_input.value = str(new_min)
-                                        range2b_max_input.value = str(new_max)
                                         color_mapper2b.low = new_min
                                         color_mapper2b.high = new_max
+                                        # Update range inputs so user can see the computed values
+                                        # Use add_next_tick_callback to ensure updates happen in next Bokeh tick
+                                        from bokeh.io import curdoc
+                                        def update_range2b_inputs_2d():
+                                            try:
+                                                if range2b_min_input is not None:
+                                                    was_disabled = range2b_min_input.disabled
+                                                    if was_disabled:
+                                                        range2b_min_input.disabled = False
+                                                    range2b_min_input.value = str(new_min)
+                                                    if was_disabled:
+                                                        range2b_min_input.disabled = True
+                                                if range2b_max_input is not None:
+                                                    was_disabled = range2b_max_input.disabled
+                                                    if was_disabled:
+                                                        range2b_max_input.disabled = False
+                                                    range2b_max_input.value = str(new_max)
+                                                    if was_disabled:
+                                                        range2b_max_input.disabled = True
+                                            except Exception as e:
+                                                print(f"⚠️ WARNING: Failed to update range2b inputs (2D): {e}")
+                                        curdoc().add_next_tick_callback(update_range2b_inputs_2d)
                             except:
                                 pass
                     else:
@@ -4782,10 +5075,30 @@ def create_dashboard(process_4dnexus):
                                     if current_slice is not None and current_slice.size > 0:
                                         new_min = float(np.percentile(current_slice[~np.isnan(current_slice)], 1))
                                         new_max = float(np.percentile(current_slice[~np.isnan(current_slice)], 99))
-                                        range2b_min_input.value = str(new_min)
-                                        range2b_max_input.value = str(new_max)
                                         plot2b.y_range.start = new_min
                                         plot2b.y_range.end = new_max
+                                        # Update range inputs so user can see the computed values
+                                        # Use add_next_tick_callback to ensure updates happen in next Bokeh tick
+                                        from bokeh.io import curdoc
+                                        def update_range2b_inputs_1d_alt():
+                                            try:
+                                                if range2b_min_input is not None:
+                                                    was_disabled = range2b_min_input.disabled
+                                                    if was_disabled:
+                                                        range2b_min_input.disabled = False
+                                                    range2b_min_input.value = str(new_min)
+                                                    if was_disabled:
+                                                        range2b_min_input.disabled = True
+                                                if range2b_max_input is not None:
+                                                    was_disabled = range2b_max_input.disabled
+                                                    if was_disabled:
+                                                        range2b_max_input.disabled = False
+                                                    range2b_max_input.value = str(new_max)
+                                                    if was_disabled:
+                                                        range2b_max_input.disabled = True
+                                            except Exception as e:
+                                                print(f"⚠️ WARNING: Failed to update range2b inputs (1D alt): {e}")
+                                        curdoc().add_next_tick_callback(update_range2b_inputs_1d_alt)
                             except:
                                 pass
             
@@ -4796,16 +5109,32 @@ def create_dashboard(process_4dnexus):
                 min_value=plot2b_min_val,
                 max_value=plot2b_max_val,
                 width=120,
-                toggle_label="Dynamic",  # Default to Dynamic mode
+                toggle_label="Dynamic Enabled",  # Default to Dynamic mode
                 toggle_active=False,  # Default to Dynamic (False = Dynamic, True = User Specified)
                 toggle_callback=on_plot2b_range_mode_change,
                 min_callback=on_range2b_change,
                 max_callback=on_range2b_change,
             )
             
+            # Extract the actual input widgets from the section (they're in a row inside the column)
+            for child in range2b_section.children:
+                if hasattr(child, 'children') and len(child.children) == 2:
+                    # This is the row containing the two inputs
+                    range2b_min_input = child.children[0]  # First input is min
+                    range2b_max_input = child.children[1]  # Second input is max
+                    print(f"✅ DEBUG: Extracted range2b_min_input and range2b_max_input from range2b_section")
+                    break
+            
             # Add toggle to the section so it's visible
             if range2b_mode_toggle not in range2b_section.children:
                 range2b_section.children.append(range2b_mode_toggle)
+            
+            # Initialize: Set inputs to disabled (Dynamic mode)
+            # Note: Initial dynamic range will be computed when show_slice_b() is first called
+            # (which happens when sliders are initialized), so we don't need to call it here
+            if range2b_min_input is not None and range2b_max_input is not None:
+                range2b_min_input.disabled = True  # Dynamic mode
+                range2b_max_input.disabled = True  # Dynamic mode
         
         # Create range controls for Plot3
         range3_section = None
@@ -4841,13 +5170,13 @@ def create_dashboard(process_4dnexus):
                 range3_max_input.disabled = False
                 # Update toggle label to "User Specified"
                 if 'range3_mode_toggle' in locals() and range3_mode_toggle is not None:
-                    range3_mode_toggle.label = "User Specified"
+                    range3_mode_toggle.label = "User Specified Enabled"
             else:  # Toggle is inactive = Dynamic mode
                 range3_min_input.disabled = True
                 range3_max_input.disabled = True
                 # Update toggle label to "Dynamic"
                 if 'range3_mode_toggle' in locals() and range3_mode_toggle is not None:
-                    range3_mode_toggle.label = "Dynamic"
+                    range3_mode_toggle.label = "Dynamic Enabled "
         
         range3_section, range3_mode_toggle = create_range_section_with_toggle(
             label="Plot3 Range:",
@@ -4856,7 +5185,7 @@ def create_dashboard(process_4dnexus):
             min_value=plot3_min_val,
             max_value=plot3_max_val,
             width=120,
-            toggle_label="Dynamic",  # Default to Dynamic mode
+            toggle_label="Dynamic Enabled",  # Default to Dynamic mode
             toggle_active=False,  # Default to Dynamic (False = Dynamic, True = User Specified)
             toggle_callback=on_plot3_range_mode_change,
             min_callback=on_range3_change,
@@ -5213,10 +5542,103 @@ def create_dashboard(process_4dnexus):
         )
         
         # Note: export_log_button and session_section are already created above
+        # Create clear cache button
+        clear_cache_button = create_button(
+            label="Clear Cache & Reload",
+            button_type="warning",
+            width=200
+        )
+        
+        def on_clear_cache():
+            """Clear all caches and force reload of data."""
+            import os
+            print("=" * 80)
+            print("🔄 Clearing all caches...")
+            
+            # Clear in-memory caches
+            cache_cleared = False
+            
+            # Clear volume_b cache
+            if hasattr(process_4dnexus, '_cached_volume_b'):
+                process_4dnexus._cached_volume_b = None
+                cache_cleared = True
+                print("  ✅ Cleared _cached_volume_b")
+            if hasattr(process_4dnexus, '_cached_volume_b_path'):
+                process_4dnexus._cached_volume_b_path = None
+                print("  ✅ Cleared _cached_volume_b_path")
+            
+            # Clear coordinate caches
+            if hasattr(process_4dnexus, '_cached_probe_x_coords'):
+                process_4dnexus._cached_probe_x_coords = None
+                cache_cleared = True
+                print("  ✅ Cleared _cached_probe_x_coords")
+            if hasattr(process_4dnexus, '_cached_probe_x_coords_path'):
+                process_4dnexus._cached_probe_x_coords_path = None
+                print("  ✅ Cleared _cached_probe_x_coords_path")
+            if hasattr(process_4dnexus, '_cached_probe_y_coords'):
+                process_4dnexus._cached_probe_y_coords = None
+                cache_cleared = True
+                print("  ✅ Cleared _cached_probe_y_coords")
+            if hasattr(process_4dnexus, '_cached_probe_y_coords_path'):
+                process_4dnexus._cached_probe_y_coords_path = None
+                print("  ✅ Cleared _cached_probe_y_coords_path")
+            
+            # Optionally delete memmap cache files
+            # This is more aggressive - only do if user wants to force recreation
+            memmap_files_deleted = 0
+            if hasattr(process_4dnexus, 'memmap_cache_dir') and process_4dnexus.memmap_cache_dir:
+                try:
+                    cache_dir = process_4dnexus.memmap_cache_dir
+                    if os.path.exists(cache_dir):
+                        # Find all memmap files for this nexus file
+                        nexus_basename = os.path.splitext(os.path.basename(process_4dnexus.filename))[0]
+                        for filename in os.listdir(cache_dir):
+                            if filename.startswith(nexus_basename) and filename.endswith('.float32.dat'):
+                                filepath = os.path.join(cache_dir, filename)
+                                try:
+                                    os.remove(filepath)
+                                    memmap_files_deleted += 1
+                                    print(f"  ✅ Deleted memmap cache: {filename}")
+                                except Exception as e:
+                                    print(f"  ⚠️ Could not delete {filename}: {e}")
+                except Exception as e:
+                    print(f"  ⚠️ Error accessing memmap cache directory: {e}")
+            
+            # Force reload by clearing volume dataset references
+            # This will cause load_dataset_by_path to reload from HDF5
+            if hasattr(process_4dnexus, 'volume_dataset'):
+                # Don't clear volume_dataset itself, but clear any cached references
+                pass
+            
+            print(f"✅ Cache clearing complete. Cleared {cache_cleared} in-memory caches, deleted {memmap_files_deleted} memmap files.")
+            print("=" * 80)
+            
+            # Update status (status_div is defined in the same function scope)
+            try:
+                status_div.text = f"<span style='color: green;'>✅ Cache cleared. Data will reload fresh on next update.</span>"
+            except NameError:
+                # status_div not available, just print to console
+                print("✅ Cache cleared. Data will reload fresh on next update.")
+            
+            # Force a refresh of the current plots
+            try:
+                # These functions are defined in the same scope, so they should be accessible
+                show_slice()
+            except (NameError, Exception) as e:
+                print(f"⚠️ Could not refresh Plot2: {e}")
+            
+            try:
+                show_slice_b()
+            except (NameError, Exception) as e:
+                print(f"⚠️ Could not refresh Plot2B: {e}")
+        
+        clear_cache_button.on_click(on_clear_cache)
+        
         # Build tools items list (needed for layout)
         # Note: Range inputs are now above each plot, not in tools column
         tools_items = [
             back_to_selection_button,
+            clear_cache_button,
             x_slider,
             y_slider,
             palette_section,
@@ -5230,14 +5652,8 @@ def create_dashboard(process_4dnexus):
         if plot2b_color_scale_section is not None:
             tools_items.append(plot2b_color_scale_section)
         
-        tools_items.extend([
-            create_label_div("Plot2 -> Plot3:", width=200),
-            compute_plot3_button,
-        ])
-        
-        # Add Plot2B button if it exists
-        if compute_plot3_from_plot2b_button is not None:
-            tools_items.append(compute_plot3_from_plot2b_button)
+        # Note: compute_plot3_button and compute_plot3_from_plot2b_button are now added to plot2_items
+        # (between plot2 and plot2b range) instead of tools_items
         
         tools_items.extend([
             create_div(text="<hr>", width=400),
@@ -5247,145 +5663,405 @@ def create_dashboard(process_4dnexus):
         # Function to compute Plot3 from Plot2 selection
         def compute_plot3_from_plot2():
             """Compute Plot3 image by summing over selected Z,U range in Plot2."""
-            print("=" * 80)
-            print("🔍 DEBUG: compute_plot3_from_plot2() called")
-            print(f"  rect2: min_x={rect2.min_x}, max_x={rect2.max_x}, min_y={rect2.min_y}, max_y={rect2.max_y}")
-            print(f"  is_3d_volume: {is_3d_volume}")
-            try:
-                if is_3d_volume:
-                    # For 3D: sum over Z dimension for selected range
-                    # rect2 stores indices, not coordinates
-                    z1, z2 = rect2.min_x, rect2.max_x
-                    z_lo, z_hi = (int(z1), int(z2)) if z1 <= z2 else (int(z2), int(z1))
-                    z_lo = max(0, min(z_lo, volume.shape[2]-1))
-                    z_hi = max(0, min(z_hi, volume.shape[2]-1))
-                    if z_hi <= z_lo:
-                        z_hi = min(z_lo + 1, volume.shape[2])
+            from bokeh.io import curdoc
+            
+            # Update button text IMMEDIATELY before any computation
+            original_button_label = compute_plot3_button.label
+            compute_plot3_button.label = "Computing ..."
+            compute_plot3_button.disabled = True
+            
+            # Schedule the actual computation in the next tick so button update is visible first
+            def do_computation():
+                print("=" * 80)
+                print("🔍 DEBUG: compute_plot3_from_plot2() called")
+                print(f"  rect2: min_x={rect2.min_x}, max_x={rect2.max_x}, min_y={rect2.min_y}, max_y={rect2.max_y}")
+                if box_annotation_2 is not None:
+                    print(f"  box_annotation_2: left={box_annotation_2.left}, right={box_annotation_2.right}, bottom={box_annotation_2.bottom}, top={box_annotation_2.top}")
+                
+                # Try to get selection from BoxSelectTool directly (if persistent=True, selection should be available)
+                box_select_tool = None
+                for tool in plot2.tools:
+                    if isinstance(tool, BoxSelectTool):
+                        box_select_tool = tool
+                        break
+                
+                if box_select_tool is not None:
+                    try:
+                        # Check if BoxSelectTool has a selection (when persistent=True, this should work)
+                        if hasattr(box_select_tool, 'overlay') and box_select_tool.overlay is not None:
+                            overlay = box_select_tool.overlay
+                            if hasattr(overlay, 'left') and overlay.left is not None:
+                                print(f"  ✅ Using BoxSelectTool overlay: left={overlay.left}, right={overlay.right}, bottom={overlay.bottom}, top={overlay.top}")
+                                # Update box_annotation_2 to match
+                                if box_annotation_2 is not None:
+                                    box_annotation_2.left = overlay.left
+                                    box_annotation_2.right = overlay.right
+                                    box_annotation_2.bottom = overlay.bottom
+                                    box_annotation_2.top = overlay.top
+                    except Exception as e:
+                        print(f"  ⚠️ Could not read from BoxSelectTool overlay: {e}")
+                
+                print(f"  is_3d_volume: {is_3d_volume}")
+                print(f"  volume.shape: {volume.shape}")
+                print(f"  len(volume.shape): {len(volume.shape)}")
+                
+                try:
+                    # Check if box_annotation_2 has valid selection (preferred source)
+                    # If it does, convert those coordinates to indices and use them
+                    use_box_annotation = False
+                    if box_annotation_2 is not None:
+                        # Get actual coordinate values (handle Node objects)
+                        try:
+                            left_val = float(box_annotation_2.left) if hasattr(box_annotation_2.left, '__float__') or isinstance(box_annotation_2.left, (int, float)) else None
+                            right_val = float(box_annotation_2.right) if hasattr(box_annotation_2.right, '__float__') or isinstance(box_annotation_2.right, (int, float)) else None
+                            bottom_val = float(box_annotation_2.bottom) if hasattr(box_annotation_2.bottom, '__float__') or isinstance(box_annotation_2.bottom, (int, float)) else None
+                            top_val = float(box_annotation_2.top) if hasattr(box_annotation_2.top, '__float__') or isinstance(box_annotation_2.top, (int, float)) else None
+                            
+                            if left_val is not None and right_val is not None and not (np.isnan(left_val) or np.isnan(right_val)):
+                                use_box_annotation = True
+                                print(f"  ✅ Using box_annotation_2 coordinates: left={left_val}, right={right_val}, bottom={bottom_val}, top={top_val}")
+                        except (ValueError, TypeError, AttributeError) as e:
+                            print(f"  ⚠️ Could not read box_annotation_2 coordinates: {e}")
+                            use_box_annotation = False
                     
-                    piece = volume[:, :, z_lo:z_hi]
-                    img = np.sum(piece, axis=2)  # sum over Z dimension
-                else:
-                    # For 4D: sum over Z and U dimensions
-                    # rect2 stores indices (z, u), not coordinates
-                    plot2_needs_flip = probe_2d_plot.needs_flip if hasattr(probe_2d_plot, 'needs_flip') else False
-                    if plot2_needs_flip:
-                        z1, z2 = rect2.min_x, rect2.max_x
-                        u1, u2 = rect2.min_y, rect2.max_y
+                    # Force 4D path if volume has 4 dimensions (should not be 3D)
+                    is_actually_3d = len(volume.shape) == 3
+                    if is_actually_3d:
+                        # For 3D: sum over Z dimension for selected range
+                        if use_box_annotation:
+                            # Convert annotation coordinates to indices (use extracted values)
+                            if hasattr(process_4dnexus, 'probe_x_coords_picked') and process_4dnexus.probe_x_coords_picked:
+                                try:
+                                    probe_coords = process_4dnexus.load_probe_coordinates()
+                                    if probe_coords is not None and len(probe_coords) > 0 and left_val is not None and right_val is not None:
+                                        z1_idx = int(np.argmin(np.abs(probe_coords - left_val)))
+                                        z2_idx = int(np.argmin(np.abs(probe_coords - right_val)))
+                                    else:
+                                        z1_idx = int(left_val) if left_val is not None and not np.isnan(left_val) else 0
+                                        z2_idx = int(right_val) if right_val is not None and not np.isnan(right_val) else volume.shape[2]-1
+                                except Exception:
+                                    z1_idx = int(left_val) if left_val is not None and not np.isnan(left_val) else 0
+                                    z2_idx = int(right_val) if right_val is not None and not np.isnan(right_val) else volume.shape[2]-1
+                            else:
+                                z1_idx = int(left_val) if left_val is not None and not np.isnan(left_val) else 0
+                                z2_idx = int(right_val) if right_val is not None and not np.isnan(right_val) else volume.shape[2]-1
+                            z_lo, z_hi = (z1_idx, z2_idx) if z1_idx <= z2_idx else (z2_idx, z1_idx)
+                        else:
+                            # Use rect2 values
+                            z1, z2 = rect2.min_x, rect2.max_x
+                            z_lo, z_hi = (int(z1), int(z2)) if z1 <= z2 else (int(z2), int(z1))
+                            
+                            z_lo = max(0, min(z_lo, volume.shape[2]-1))
+                            z_hi = max(0, min(z_hi, volume.shape[2]-1))
+                            if z_hi <= z_lo:
+                                z_hi = min(z_lo + 1, volume.shape[2])
+                            
+                            print(f"  ✅ Using Z range: {z_lo} to {z_hi}")
+                            piece = volume[:, :, z_lo:z_hi]
+                            img = np.sum(piece, axis=2)  # sum over Z dimension
                     else:
-                        z1, z2 = rect2.min_x, rect2.max_x
-                        u1, u2 = rect2.min_y, rect2.max_y
-                    
-                    z_lo, z_hi = (int(z1), int(z2)) if z1 <= z2 else (int(z2), int(z1))
-                    u_lo, u_hi = (int(u1), int(u2)) if u1 <= u2 else (int(u2), int(u1))
-                    z_lo = max(0, min(z_lo, volume.shape[2]-1))
-                    z_hi = max(0, min(z_hi, volume.shape[2]-1))
-                    u_lo = max(0, min(u_lo, volume.shape[3]-1))
-                    u_hi = max(0, min(u_hi, volume.shape[3]-1))
-                    if z_hi <= z_lo:
-                        z_hi = min(z_lo + 1, volume.shape[2])
-                    if u_hi <= u_lo:
-                        u_hi = min(u_lo + 1, volume.shape[3])
-                    
-                    piece = volume[:, :, z_lo:z_hi, u_lo:u_hi]
-                    img = np.sum(piece, axis=(2, 3))  # sum over Z and U
-                
-                # Normalize to [0,1]
-                img = np.nan_to_num(img, nan=0.0, posinf=0.0, neginf=0.0)
-                vmin = float(np.min(img))
-                vmax = float(np.max(img))
-                if vmax > vmin:
-                    img = (img - vmin) / (vmax - vmin)
-                else:
-                    img = np.zeros_like(img)
-                
-                # Apply Plot1's flip state to match Plot1's orientation
-                if plot1_needs_flip:
-                    img = np.transpose(img)
-                
-                source3.data = {
-                    "image": [img],
-                    "x": [plot3.x_range.start],
-                    "dw": [plot3.x_range.end - plot3.x_range.start],
-                    "y": [plot3.y_range.start],
-                    "dh": [plot3.y_range.end - plot3.y_range.start],
-                }
-                
-                color_mapper3.low = 0.0
-                color_mapper3.high = 1.0
-                print(f"  ✅ Plot3 computed successfully. Image shape: {img.shape}")
-                print("=" * 80)
-            except Exception as e:
-                import traceback
-                print(f"  ❌ Error computing Plot3: {e}")
-                traceback.print_exc()
-                print("=" * 80)
+                        # For 4D: sum over Z and U dimensions (box annotation is 2D: x=U, y=Z)
+                        if use_box_annotation:
+                            # Box annotation coordinates are in plot space (x=U dimension, y=Z dimension)
+                            # Convert annotation coordinates to volume indices
+                            plot2_x_coords = probe_2d_plot.get_flipped_x_coords()
+                            plot2_y_coords = probe_2d_plot.get_flipped_y_coords()
+                            
+                            # Use the extracted numeric values (left_val, right_val, bottom_val, top_val)
+                            # Convert x coordinates (U dimension) to indices
+                            if plot2_x_coords is not None and len(plot2_x_coords) > 0 and left_val is not None and right_val is not None:
+                                u1_idx = int(np.argmin(np.abs(plot2_x_coords - left_val)))
+                                u2_idx = int(np.argmin(np.abs(plot2_x_coords - right_val)))
+                            else:
+                                u1_idx = int(left_val) if left_val is not None and not np.isnan(left_val) else 0
+                                u2_idx = int(right_val) if right_val is not None and not np.isnan(right_val) else volume.shape[3]-1
+                            
+                            # Convert y coordinates (Z dimension) to indices
+                            if plot2_y_coords is not None and len(plot2_y_coords) > 0 and bottom_val is not None and top_val is not None:
+                                z1_idx = int(np.argmin(np.abs(plot2_y_coords - bottom_val)))
+                                z2_idx = int(np.argmin(np.abs(plot2_y_coords - top_val)))
+                            else:
+                                z1_idx = int(bottom_val) if bottom_val is not None and not np.isnan(bottom_val) else 0
+                                z2_idx = int(top_val) if top_val is not None and not np.isnan(top_val) else volume.shape[2]-1
+                            
+                            # Ensure indices are in correct order
+                            z_lo, z_hi = (z1_idx, z2_idx) if z1_idx <= z2_idx else (z2_idx, z1_idx)
+                            u_lo, u_hi = (u1_idx, u2_idx) if u1_idx <= u2_idx else (u2_idx, u1_idx)
+                            
+                            print(f"  🔍 Converted to indices: z_lo={z_lo}, z_hi={z_hi}, u_lo={u_lo}, u_hi={u_hi}")
+                        else:
+                            # Use rect2 values (fallback when box_annotation is not available)
+                            plot2_needs_flip = probe_2d_plot.needs_flip if hasattr(probe_2d_plot, 'needs_flip') else False
+                            if plot2_needs_flip:
+                                z1, z2 = rect2.min_x, rect2.max_x
+                                u1, u2 = rect2.min_y, rect2.max_y
+                            else:
+                                z1, z2 = rect2.min_x, rect2.max_x
+                                u1, u2 = rect2.min_y, rect2.max_y
+                            
+                            z_lo, z_hi = (int(z1), int(z2)) if z1 <= z2 else (int(z2), int(z1))
+                            u_lo, u_hi = (int(u1), int(u2)) if u1 <= u2 else (int(u2), int(u1))
+                            
+                            z_lo = max(0, min(z_lo, volume.shape[2]-1))
+                            z_hi = max(0, min(z_hi, volume.shape[2]-1))
+                            u_lo = max(0, min(u_lo, volume.shape[3]-1))
+                            u_hi = max(0, min(u_hi, volume.shape[3]-1))
+                            if z_hi <= z_lo:
+                                z_hi = min(z_lo + 1, volume.shape[2])
+                            if u_hi <= u_lo:
+                                u_hi = min(u_lo + 1, volume.shape[3])
+                            
+                            print(f"  ✅ Using Z range: {z_lo} to {z_hi}, U range: {u_lo} to {u_hi}")
+                            piece = volume[:, :, z_lo:z_hi, u_lo:u_hi]
+                            img = np.sum(piece, axis=(2, 3))  # sum over Z and U
+                        
+                        # Normalize to [0,1]
+                        img = np.nan_to_num(img, nan=0.0, posinf=0.0, neginf=0.0)
+                        vmin = float(np.min(img))
+                        vmax = float(np.max(img))
+                        if vmax > vmin:
+                            img = (img - vmin) / (vmax - vmin)
+                        else:
+                            img = np.zeros_like(img)
+                        
+                        # Apply Plot1's flip state to match Plot1's orientation
+                        if plot1_needs_flip:
+                            img = np.transpose(img)
+                        
+                        # Store image data for update (need to schedule in Bokeh event loop)
+                        plot3_img_data = img.copy()
+                        plot3_x_start = plot3.x_range.start
+                        plot3_x_end = plot3.x_range.end
+                        plot3_y_start = plot3.y_range.start
+                        plot3_y_end = plot3.y_range.end
+                        
+                        # Update source3 data in a separate callback to ensure plot redraws
+                        def update_plot3_source():
+                            source3.data = {
+                                "image": [plot3_img_data],
+                                "x": [plot3_x_start],
+                                "dw": [plot3_x_end - plot3_x_start],
+                                "y": [plot3_y_start],
+                                "dh": [plot3_y_end - plot3_y_start],
+                            }
+                            # Force change event
+                            try:
+                                source3.change.emit()
+                            except:
+                                pass
+                        
+                        # Schedule the update in the next Bokeh tick
+                        curdoc().add_next_tick_callback(update_plot3_source)
+                        
+                        # Update range based on mode (use the image data we just computed)
+                        try:
+                            if range3_min_input is not None and range3_min_input.disabled:
+                                # Dynamic mode - compute from actual image data
+                                plot3_min = float(np.percentile(plot3_img_data[~np.isnan(plot3_img_data) & ~np.isinf(plot3_img_data)], 1))
+                                plot3_max = float(np.percentile(plot3_img_data[~np.isnan(plot3_img_data) & ~np.isinf(plot3_img_data)], 99))
+                                color_mapper3.low = plot3_min
+                                color_mapper3.high = plot3_max
+                                # Update range inputs so user can see the computed values
+                                if range3_min_input is not None:
+                                    range3_min_input.value = str(plot3_min)
+                                if range3_max_input is not None:
+                                    range3_max_input.value = str(plot3_max)
+                                print(f"  ✅ Plot3 range updated dynamically: min={plot3_min:.6f}, max={plot3_max:.6f}")
+                            else:
+                                # User Specified mode - use input values or default [0, 1] for normalized data
+                                try:
+                                    if range3_min_input is not None and range3_min_input.value:
+                                        min_val = float(range3_min_input.value)
+                                    else:
+                                        min_val = 0.0
+                                    if range3_max_input is not None and range3_max_input.value:
+                                        max_val = float(range3_max_input.value)
+                                    else:
+                                        max_val = 1.0
+                                    color_mapper3.low = min_val
+                                    color_mapper3.high = max_val
+                                except:
+                                    color_mapper3.low = 0.0
+                                    color_mapper3.high = 1.0
+                        except NameError:
+                            # Range inputs not defined yet - use default [0, 1] for normalized data
+                            color_mapper3.low = 0.0
+                            color_mapper3.high = 1.0
+                        
+                        print(f"  ✅ Plot3 computed successfully. Image shape: {plot3_img_data.shape}")
+                    print("=" * 80)
+                except Exception as e:
+                    import traceback
+                    print(f"  ❌ Error computing Plot3: {e}")
+                    traceback.print_exc()
+                    print("=" * 80)
+                finally:
+                    # Restore button text and enable it immediately
+                    compute_plot3_button.label = original_button_label
+                    compute_plot3_button.disabled = False
+            
+            # Schedule computation in next tick so button update is visible first
+            curdoc().add_next_tick_callback(do_computation)
         
         compute_plot3_button.on_click(lambda: compute_plot3_from_plot2())
         
         # Function to compute Plot3 from Plot2B selection
         def compute_plot3_from_plot2b():
             """Compute Plot3 image by summing over selected Z,U range in Plot2B."""
-            if not plot2b_is_2d:
-                # For 3D: sum over Z dimension
-                z1, z2 = rect2b.min_x, rect2b.max_x
-                z_lo, z_hi = (int(z1), int(z2)) if z1 <= z2 else (int(z2), int(z1))
-                z_lo = max(0, min(z_lo, volume_b.shape[2]-1))
-                z_hi = max(0, min(z_hi, volume_b.shape[2]-1))
-                if z_hi <= z_lo:
-                    z_hi = min(z_lo + 1, volume_b.shape[2])
-                
-                piece = volume_b[:, :, z_lo:z_hi]
-                img = np.sum(piece, axis=2)
-            else:
-                # For 4D: sum over Z and U dimensions
-                plot2b_needs_flip = probe_2d_plot_b.needs_flip if hasattr(probe_2d_plot_b, 'needs_flip') else False
-                if plot2b_needs_flip:
-                    z1, z2 = rect2b.min_x, rect2b.max_x
-                    u1, u2 = rect2b.min_y, rect2b.max_y
-                else:
-                    z1, z2 = rect2.min_x, rect2.max_x
-                    u1, u2 = rect2.min_y, rect2.max_y
-                
-                z_lo, z_hi = (int(z1), int(z2)) if z1 <= z2 else (int(z2), int(z1))
-                u_lo, u_hi = (int(u1), int(u2)) if u1 <= u2 else (int(u2), int(u1))
-                z_lo = max(0, min(z_lo, volume_b.shape[2]-1))
-                z_hi = max(0, min(z_hi, volume_b.shape[2]-1))
-                u_lo = max(0, min(u_lo, volume_b.shape[3]-1))
-                u_hi = max(0, min(u_hi, volume_b.shape[3]-1))
-                if z_hi <= z_lo:
-                    z_hi = min(z_lo + 1, volume_b.shape[2])
-                if u_hi <= u_lo:
-                    u_hi = min(u_lo + 1, volume_b.shape[3])
-                
-                piece = volume_b[:, :, z_lo:z_hi, u_lo:u_hi]
-                img = np.sum(piece, axis=(2, 3))
+            from bokeh.io import curdoc
             
-            # Normalize to [0,1]
-            img = np.nan_to_num(img, nan=0.0, posinf=0.0, neginf=0.0)
-            vmin = float(np.min(img))
-            vmax = float(np.max(img))
-            if vmax > vmin:
-                img = (img - vmin) / (vmax - vmin)
-            else:
-                img = np.zeros_like(img)
+            # Update button text IMMEDIATELY before any computation
+            original_button_label_2b = compute_plot3_from_plot2b_button.label
+            compute_plot3_from_plot2b_button.label = "Computing ..."
+            compute_plot3_from_plot2b_button.disabled = True
             
-            # Apply Plot1's flip state to match Plot1's orientation
-            if plot1_needs_flip:
-                img = np.transpose(img)
+            # Schedule the actual computation in the next tick so button update is visible first
+            def do_computation_2b():
+                try:
+                    if not plot2b_is_2d:
+                        # For 3D: sum over Z dimension
+                        z1, z2 = rect2b.min_x, rect2b.max_x
+                        z_lo, z_hi = (int(z1), int(z2)) if z1 <= z2 else (int(z2), int(z1))
+                        z_lo = max(0, min(z_lo, volume_b.shape[2]-1))
+                        z_hi = max(0, min(z_hi, volume_b.shape[2]-1))
+                        if z_hi <= z_lo:
+                            z_hi = min(z_lo + 1, volume_b.shape[2])
+                        
+                        piece = volume_b[:, :, z_lo:z_hi]
+                        img = np.sum(piece, axis=2)
+                    else:
+                        # For 4D: sum over Z and U dimensions
+                        plot2b_needs_flip = probe_2d_plot_b.needs_flip if hasattr(probe_2d_plot_b, 'needs_flip') else False
+                        if plot2b_needs_flip:
+                            z1, z2 = rect2b.min_x, rect2b.max_x
+                            u1, u2 = rect2b.min_y, rect2b.max_y
+                        else:
+                            z1, z2 = rect2b.min_x, rect2b.max_x
+                            u1, u2 = rect2b.min_y, rect2b.max_y
+                        
+                        z_lo, z_hi = (int(z1), int(z2)) if z1 <= z2 else (int(z2), int(z1))
+                        u_lo, u_hi = (int(u1), int(u2)) if u1 <= u2 else (int(u2), int(u1))
+                        z_lo = max(0, min(z_lo, volume_b.shape[2]-1))
+                        z_hi = max(0, min(z_hi, volume_b.shape[2]-1))
+                        u_lo = max(0, min(u_lo, volume_b.shape[3]-1))
+                        u_hi = max(0, min(u_hi, volume_b.shape[3]-1))
+                        if z_hi <= z_lo:
+                            z_hi = min(z_lo + 1, volume_b.shape[2])
+                        if u_hi <= u_lo:
+                            u_hi = min(u_lo + 1, volume_b.shape[3])
+                        
+                        piece = volume_b[:, :, z_lo:z_hi, u_lo:u_hi]
+                        img = np.sum(piece, axis=(2, 3))
+                    
+                    # Normalize to [0,1]
+                    img = np.nan_to_num(img, nan=0.0, posinf=0.0, neginf=0.0)
+                    vmin = float(np.min(img))
+                    vmax = float(np.max(img))
+                    if vmax > vmin:
+                        img = (img - vmin) / (vmax - vmin)
+                    else:
+                        img = np.zeros_like(img)
+                    
+                    # Apply Plot1's flip state to match Plot1's orientation
+                    if plot1_needs_flip:
+                        img = np.transpose(img)
+                    
+                    # Store image data for update (need to schedule in Bokeh event loop)
+                    plot3_img_data_2b = img.copy()
+                    plot3_x_start_2b = plot3.x_range.start
+                    plot3_x_end_2b = plot3.x_range.end
+                    plot3_y_start_2b = plot3.y_range.start
+                    plot3_y_end_2b = plot3.y_range.end
+                    
+                    # Update source3 data in a separate callback to ensure plot redraws
+                    def update_plot3_source_2b():
+                        source3.data = {
+                            "image": [plot3_img_data_2b],
+                            "x": [plot3_x_start_2b],
+                            "dw": [plot3_x_end_2b - plot3_x_start_2b],
+                            "y": [plot3_y_start_2b],
+                            "dh": [plot3_y_end_2b - plot3_y_start_2b],
+                        }
+                        # Force change event
+                        try:
+                            source3.change.emit()
+                        except:
+                            pass
+                    
+                    # Schedule the update in the next Bokeh tick
+                    curdoc().add_next_tick_callback(update_plot3_source_2b)
+                    
+                    # Update range based on mode (use the image data we just computed)
+                    try:
+                        if range3_min_input is not None and range3_min_input.disabled:
+                            # Dynamic mode - compute from actual image data
+                            plot3_min = float(np.percentile(plot3_img_data_2b[~np.isnan(plot3_img_data_2b) & ~np.isinf(plot3_img_data_2b)], 1))
+                            plot3_max = float(np.percentile(plot3_img_data_2b[~np.isnan(plot3_img_data_2b) & ~np.isinf(plot3_img_data_2b)], 99))
+                            color_mapper3.low = plot3_min
+                            color_mapper3.high = plot3_max
+                            # Update range inputs so user can see the computed values
+                            if range3_min_input is not None:
+                                range3_min_input.value = str(plot3_min)
+                            if range3_max_input is not None:
+                                range3_max_input.value = str(plot3_max)
+                            print(f"  ✅ Plot3 range updated dynamically: min={plot3_min:.6f}, max={plot3_max:.6f}")
+                        else:
+                            # User Specified mode - use input values or default [0, 1] for normalized data
+                            try:
+                                if range3_min_input is not None and range3_min_input.value:
+                                    min_val = float(range3_min_input.value)
+                                else:
+                                    min_val = 0.0
+                                if range3_max_input is not None and range3_max_input.value:
+                                    max_val = float(range3_max_input.value)
+                                else:
+                                    max_val = 1.0
+                                color_mapper3.low = min_val
+                                color_mapper3.high = max_val
+                            except:
+                                color_mapper3.low = 0.0
+                                color_mapper3.high = 1.0
+                    except NameError:
+                        # Range inputs not defined yet - use default [0, 1] for normalized data
+                        color_mapper3.low = 0.0
+                        color_mapper3.high = 1.0
+                    
+                    print(f"  ✅ Plot3 computed successfully from Plot2B. Image shape: {plot3_img_data_2b.shape}")
+                except Exception as e:
+                    import traceback
+                    print(f"  ❌ Error computing Plot3 from Plot2B: {e}")
+                    traceback.print_exc()
+                finally:
+                    # Restore button text and enable it
+                    if compute_plot3_from_plot2b_button is not None:
+                        compute_plot3_from_plot2b_button.label = original_button_label_2b
+                        compute_plot3_from_plot2b_button.disabled = False
             
-            source3.data = {
-                "image": [img],
-                "x": [plot3.x_range.start],
-                "dw": [plot3.x_range.end - plot3.x_range.start],
-                "y": [plot3.y_range.start],
-                "dh": [plot3.y_range.end - plot3.y_range.start],
-            }
-            
-            color_mapper3.low = 0.0
-            color_mapper3.high = 1.0
+            # Schedule computation in next tick so button update is visible first
+            curdoc().add_next_tick_callback(do_computation_2b)
         
         if compute_plot3_from_plot2b_button is not None:
             compute_plot3_from_plot2b_button.on_click(lambda: compute_plot3_from_plot2b())
+        
+        # Create buttons to compute Plot2a and Plot2b from Plot3 selection
+        compute_plot2a_from_plot3_button = create_button(
+            label="<- Compute Plot2a",
+            button_type="success",
+            width=200
+        )
+        
+        compute_plot2b_from_plot3_button = None
+        if plot2b is not None:
+            compute_plot2b_from_plot3_button = create_button(
+                label="<- Compute Plot2b",
+                button_type="success",
+                width=200
+            )
+        
+        # Connect button click handlers
+        compute_plot2a_from_plot3_button.on_click(lambda: compute_plot2_from_plot3())
+        if compute_plot2b_from_plot3_button is not None:
+            compute_plot2b_from_plot3_button.on_click(lambda: compute_plot2b_from_plot3())
         
         # Add TapTool to Plot3 for region selection
         tap_tool3 = TapTool()
@@ -5426,73 +6102,257 @@ def create_dashboard(process_4dnexus):
         
         # Function to compute Plot2 from Plot3 selection
         def compute_plot2_from_plot3():
-            """Compute Plot2 by summing over selected X,Y region in Plot3."""
-            # Convert coordinates to indices
-            x1 = get_x_index(rect3.min_x)
-            y1 = get_y_index(rect3.min_y)
-            x2 = max(x1 + 1, get_x_index(rect3.max_x))
-            y2 = max(y1 + 1, get_y_index(rect3.max_y))
+            """Compute Plot2a by summing over selected X,Y region in Plot3."""
+            from bokeh.io import curdoc
             
-            if is_3d_volume:
-                # For 3D: sum over X,Y dimensions
-                piece = volume[x1:x2, y1:y2, :]
-                slice = np.sum(piece, axis=(0, 1)) / ((x2-x1)*(y2-y1))
-                
-                # Update 1D plot
-                if hasattr(process_4dnexus, 'probe_x_coords_picked') and process_4dnexus.probe_x_coords_picked:
-                    try:
-                        probe_coords = process_4dnexus.load_probe_coordinates()
-                        if probe_coords is not None and len(probe_coords) == len(slice):
-                            x_coords_1d = probe_coords
+            # Update button text IMMEDIATELY before any computation
+            original_button_label_2a = compute_plot2a_from_plot3_button.label
+            compute_plot2a_from_plot3_button.label = "Computing ..."
+            compute_plot2a_from_plot3_button.disabled = True
+            
+            # Schedule the actual computation in the next tick so button update is visible first
+            def do_computation_2a():
+                try:
+                    # Get selection from box_annotation_3 if available, otherwise use rect3
+                    use_box_annotation_3 = False
+                    x1_coord = None
+                    y1_coord = None
+                    x2_coord = None
+                    y2_coord = None
+                    
+                    if box_annotation_3 is not None:
+                        try:
+                            # Extract numeric values from box_annotation_3
+                            left_val_3 = float(box_annotation_3.left) if hasattr(box_annotation_3.left, '__float__') or isinstance(box_annotation_3.left, (int, float)) else None
+                            right_val_3 = float(box_annotation_3.right) if hasattr(box_annotation_3.right, '__float__') or isinstance(box_annotation_3.right, (int, float)) else None
+                            bottom_val_3 = float(box_annotation_3.bottom) if hasattr(box_annotation_3.bottom, '__float__') or isinstance(box_annotation_3.bottom, (int, float)) else None
+                            top_val_3 = float(box_annotation_3.top) if hasattr(box_annotation_3.top, '__float__') or isinstance(box_annotation_3.top, (int, float)) else None
+                            
+                            if (left_val_3 is not None and right_val_3 is not None and 
+                                bottom_val_3 is not None and top_val_3 is not None and
+                                not (np.isnan(left_val_3) or np.isnan(right_val_3) or np.isnan(bottom_val_3) or np.isnan(top_val_3))):
+                                use_box_annotation_3 = True
+                                x1_coord = min(left_val_3, right_val_3)
+                                x2_coord = max(left_val_3, right_val_3)
+                                y1_coord = min(bottom_val_3, top_val_3)
+                                y2_coord = max(bottom_val_3, top_val_3)
+                        except Exception as e:
+                            print(f"  ⚠️ Could not read box_annotation_3 coordinates: {e}")
+                    
+                    if not use_box_annotation_3:
+                        # Use rect3 values
+                        x1_coord = rect3.min_x
+                        x2_coord = rect3.max_x
+                        y1_coord = rect3.min_y
+                        y2_coord = rect3.max_y
+                    
+                    # Convert coordinates to indices
+                    x1 = get_x_index(x1_coord)
+                    y1 = get_y_index(y1_coord)
+                    x2 = max(x1 + 1, get_x_index(x2_coord))
+                    y2 = max(y1 + 1, get_y_index(y2_coord))
+                    
+                    if is_3d_volume:
+                        # For 3D: sum over X,Y dimensions
+                        piece = volume[x1:x2, y1:y2, :]
+                        slice = np.sum(piece, axis=(0, 1)) / ((x2-x1)*(y2-y1))
+                        
+                        # Update 1D plot
+                        if hasattr(process_4dnexus, 'probe_x_coords_picked') and process_4dnexus.probe_x_coords_picked:
+                            try:
+                                probe_coords = process_4dnexus.load_probe_coordinates()
+                                if probe_coords is not None and len(probe_coords) == len(slice):
+                                    x_coords_1d = probe_coords
+                                else:
+                                    x_coords_1d = np.arange(len(slice))
+                            except:
+                                x_coords_1d = np.arange(len(slice))
                         else:
                             x_coords_1d = np.arange(len(slice))
-                    except:
-                        x_coords_1d = np.arange(len(slice))
-                else:
-                    x_coords_1d = np.arange(len(slice))
-                
-                source2.data = {"x": x_coords_1d, "y": slice}
-                plot2.x_range.start = float(np.min(x_coords_1d))
-                plot2.x_range.end = float(np.max(x_coords_1d))
-                plot2.y_range.start = float(np.min(slice))
-                plot2.y_range.end = float(np.max(slice))
-            else:
-                # For 4D: sum over X,Y dimensions
-                piece = volume[x1:x2, y1:y2, :, :]
-                slice = np.sum(piece, axis=(0, 1)) / ((x2-x1)*(y2-y1))
-                
-                # Update probe_2d_plot's data and use its flipped methods
-                probe_2d_plot.data = slice
-                
-                # Get flipped data and coordinates from probe_2d_plot
-                flipped_slice = probe_2d_plot.get_flipped_data()
-                x_coords_slice = probe_2d_plot.get_flipped_x_coords()
-                y_coords_slice = probe_2d_plot.get_flipped_y_coords()
-                
-                # Fallback if flipped methods return None
-                if flipped_slice is None:
-                    flipped_slice = np.transpose(slice)  # Always transpose for Bokeh
-                if x_coords_slice is None:
-                    x_coords_slice = np.arange(flipped_slice.shape[1])
-                if y_coords_slice is None:
-                    y_coords_slice = np.arange(flipped_slice.shape[0])
-                
-                # Calculate dimensions
-                dw = float(np.max(x_coords_slice) - np.min(x_coords_slice)) if len(x_coords_slice) > 0 else float(flipped_slice.shape[1])
-                dh = float(np.max(y_coords_slice) - np.min(y_coords_slice)) if len(y_coords_slice) > 0 else float(flipped_slice.shape[0])
-                
-                source2.data = {
-                    "image": [flipped_slice],
-                    "x": [float(np.min(x_coords_slice))],
-                    "y": [float(np.min(y_coords_slice))],
-                    "dw": [dw],
-                    "dh": [dh],
-                }
-                # Update color mapper
-                probe_min = float(np.percentile(flipped_slice[~np.isnan(flipped_slice)], 1))
-                probe_max = float(np.percentile(flipped_slice[~np.isnan(flipped_slice)], 99))
-                color_mapper2.low = probe_min
-                color_mapper2.high = probe_max
+                        
+                        source2.data = {"x": x_coords_1d, "y": slice}
+                        source2.change.emit()
+                        plot2.x_range.start = float(np.min(x_coords_1d))
+                        plot2.x_range.end = float(np.max(x_coords_1d))
+                        plot2.y_range.start = float(np.min(slice))
+                        plot2.y_range.end = float(np.max(slice))
+                    else:
+                        # For 4D: sum over X,Y dimensions
+                        piece = volume[x1:x2, y1:y2, :, :]
+                        slice = np.sum(piece, axis=(0, 1)) / ((x2-x1)*(y2-y1))
+                        
+                        # Update probe_2d_plot's data and use its flipped methods
+                        probe_2d_plot.data = slice
+                        
+                        # Get flipped data and coordinates from probe_2d_plot
+                        flipped_slice = probe_2d_plot.get_flipped_data()
+                        x_coords_slice = probe_2d_plot.get_flipped_x_coords()
+                        y_coords_slice = probe_2d_plot.get_flipped_y_coords()
+                        
+                        # Fallback if flipped methods return None
+                        if flipped_slice is None:
+                            flipped_slice = np.transpose(slice)  # Always transpose for Bokeh
+                        if x_coords_slice is None:
+                            x_coords_slice = np.arange(flipped_slice.shape[1])
+                        if y_coords_slice is None:
+                            y_coords_slice = np.arange(flipped_slice.shape[0])
+                        
+                        # Calculate dimensions
+                        dw = float(np.max(x_coords_slice) - np.min(x_coords_slice)) if len(x_coords_slice) > 0 else float(flipped_slice.shape[1])
+                        dh = float(np.max(y_coords_slice) - np.min(y_coords_slice)) if len(y_coords_slice) > 0 else float(flipped_slice.shape[0])
+                        
+                        source2.data = {
+                            "image": [flipped_slice],
+                            "x": [float(np.min(x_coords_slice))],
+                            "y": [float(np.min(y_coords_slice))],
+                            "dw": [dw],
+                            "dh": [dh],
+                        }
+                        source2.change.emit()
+                        # Update color mapper
+                        probe_min = float(np.percentile(flipped_slice[~np.isnan(flipped_slice)], 1))
+                        probe_max = float(np.percentile(flipped_slice[~np.isnan(flipped_slice)], 99))
+                        color_mapper2.low = probe_min
+                        color_mapper2.high = probe_max
+                except Exception as e:
+                    import traceback
+                    print(f"  ❌ Error computing Plot2a from Plot3: {e}")
+                    traceback.print_exc()
+                finally:
+                    # Restore button text and enable it
+                    compute_plot2a_from_plot3_button.label = original_button_label_2a
+                    compute_plot2a_from_plot3_button.disabled = False
+            
+            # Schedule computation in next tick so button update is visible first
+            curdoc().add_next_tick_callback(do_computation_2a)
+        
+        def compute_plot2b_from_plot3():
+            """Compute Plot2b by summing over selected X,Y region in Plot3."""
+            from bokeh.io import curdoc
+            
+            if plot2b is None:
+                return
+            
+            # Update button text IMMEDIATELY before any computation
+            original_button_label_2b = compute_plot2b_from_plot3_button.label
+            compute_plot2b_from_plot3_button.label = "Computing ..."
+            compute_plot2b_from_plot3_button.disabled = True
+            
+            # Schedule the actual computation in the next tick so button update is visible first
+            def do_computation_2b():
+                try:
+                    # Get selection from box_annotation_3 if available, otherwise use rect3
+                    use_box_annotation_3 = False
+                    x1_coord = None
+                    y1_coord = None
+                    x2_coord = None
+                    y2_coord = None
+                    
+                    if box_annotation_3 is not None:
+                        try:
+                            # Extract numeric values from box_annotation_3
+                            left_val_3 = float(box_annotation_3.left) if hasattr(box_annotation_3.left, '__float__') or isinstance(box_annotation_3.left, (int, float)) else None
+                            right_val_3 = float(box_annotation_3.right) if hasattr(box_annotation_3.right, '__float__') or isinstance(box_annotation_3.right, (int, float)) else None
+                            bottom_val_3 = float(box_annotation_3.bottom) if hasattr(box_annotation_3.bottom, '__float__') or isinstance(box_annotation_3.bottom, (int, float)) else None
+                            top_val_3 = float(box_annotation_3.top) if hasattr(box_annotation_3.top, '__float__') or isinstance(box_annotation_3.top, (int, float)) else None
+                            
+                            if (left_val_3 is not None and right_val_3 is not None and 
+                                bottom_val_3 is not None and top_val_3 is not None and
+                                not (np.isnan(left_val_3) or np.isnan(right_val_3) or np.isnan(bottom_val_3) or np.isnan(top_val_3))):
+                                use_box_annotation_3 = True
+                                x1_coord = min(left_val_3, right_val_3)
+                                x2_coord = max(left_val_3, right_val_3)
+                                y1_coord = min(bottom_val_3, top_val_3)
+                                y2_coord = max(bottom_val_3, top_val_3)
+                        except Exception as e:
+                            print(f"  ⚠️ Could not read box_annotation_3 coordinates: {e}")
+                    
+                    if not use_box_annotation_3:
+                        # Use rect3 values
+                        x1_coord = rect3.min_x
+                        x2_coord = rect3.max_x
+                        y1_coord = rect3.min_y
+                        y2_coord = rect3.max_y
+                    
+                    # Convert coordinates to indices
+                    x1 = get_x_index(x1_coord)
+                    y1 = get_y_index(y1_coord)
+                    x2 = max(x1 + 1, get_x_index(x2_coord))
+                    y2 = max(y1 + 1, get_y_index(y2_coord))
+                    
+                    if not plot2b_is_2d:
+                        # For 3D: sum over X,Y dimensions
+                        piece = volume_b[x1:x2, y1:y2, :]
+                        slice = np.sum(piece, axis=(0, 1)) / ((x2-x1)*(y2-y1))
+                        
+                        # Update 1D plot
+                        if hasattr(process_4dnexus, 'probe_x_coords_picked_b') and process_4dnexus.probe_x_coords_picked_b:
+                            try:
+                                probe_coords_b = process_4dnexus.load_probe_coordinates(use_b=True)
+                                if probe_coords_b is not None and len(probe_coords_b) == len(slice):
+                                    x_coords_1d = probe_coords_b
+                                else:
+                                    x_coords_1d = np.arange(len(slice))
+                            except:
+                                x_coords_1d = np.arange(len(slice))
+                        else:
+                            x_coords_1d = np.arange(len(slice))
+                        
+                        source2b.data = {"x": x_coords_1d, "y": slice}
+                        source2b.change.emit()
+                        plot2b.x_range.start = float(np.min(x_coords_1d))
+                        plot2b.x_range.end = float(np.max(x_coords_1d))
+                        plot2b.y_range.start = float(np.min(slice))
+                        plot2b.y_range.end = float(np.max(slice))
+                    else:
+                        # For 4D: sum over X,Y dimensions
+                        piece = volume_b[x1:x2, y1:y2, :, :]
+                        slice = np.sum(piece, axis=(0, 1)) / ((x2-x1)*(y2-y1))
+                        
+                        # Update probe_2d_plot_b's data and use its flipped methods
+                        probe_2d_plot_b.data = slice
+                        
+                        # Get flipped data and coordinates from probe_2d_plot_b
+                        flipped_slice = probe_2d_plot_b.get_flipped_data()
+                        x_coords_slice = probe_2d_plot_b.get_flipped_x_coords()
+                        y_coords_slice = probe_2d_plot_b.get_flipped_y_coords()
+                        
+                        # Fallback if flipped methods return None
+                        if flipped_slice is None:
+                            flipped_slice = np.transpose(slice)  # Always transpose for Bokeh
+                        if x_coords_slice is None:
+                            x_coords_slice = np.arange(flipped_slice.shape[1])
+                        if y_coords_slice is None:
+                            y_coords_slice = np.arange(flipped_slice.shape[0])
+                        
+                        # Calculate dimensions
+                        dw = float(np.max(x_coords_slice) - np.min(x_coords_slice)) if len(x_coords_slice) > 0 else float(flipped_slice.shape[1])
+                        dh = float(np.max(y_coords_slice) - np.min(y_coords_slice)) if len(y_coords_slice) > 0 else float(flipped_slice.shape[0])
+                        
+                        source2b.data = {
+                            "image": [flipped_slice],
+                            "x": [float(np.min(x_coords_slice))],
+                            "y": [float(np.min(y_coords_slice))],
+                            "dw": [dw],
+                            "dh": [dh],
+                        }
+                        source2b.change.emit()
+                        # Update color mapper
+                        probe_min = float(np.percentile(flipped_slice[~np.isnan(flipped_slice)], 1))
+                        probe_max = float(np.percentile(flipped_slice[~np.isnan(flipped_slice)], 99))
+                        color_mapper2b.low = probe_min
+                        color_mapper2b.high = probe_max
+                except Exception as e:
+                    import traceback
+                    print(f"  ❌ Error computing Plot2b from Plot3: {e}")
+                    traceback.print_exc()
+                finally:
+                    # Restore button text and enable it
+                    compute_plot2b_from_plot3_button.label = original_button_label_2b
+                    compute_plot2b_from_plot3_button.disabled = False
+            
+            # Schedule computation in next tick so button update is visible first
+            curdoc().add_next_tick_callback(do_computation_2b)
         
         # Connect Plot3 selection to Plot2 computation
         # This will be triggered when user selects a region in Plot3
@@ -5526,6 +6386,11 @@ def create_dashboard(process_4dnexus):
         if range2_section is not None:
             plot2_items.append(range2_section)
         plot2_items.append(plot2)
+        # Add Plot3 computation buttons between plot2 and plot2b range
+        plot2_items.append(create_label_div("Plot2 -> Plot3:", width=200))
+        plot2_items.append(compute_plot3_button)
+        if compute_plot3_from_plot2b_button is not None:
+            plot2_items.append(compute_plot3_from_plot2b_button)
         if plot2b is not None:
             if range2b_section is not None:
                 plot2_items.append(range2b_section)
@@ -5537,6 +6402,11 @@ def create_dashboard(process_4dnexus):
         if range3_section is not None:
             plot3_items.append(range3_section)
         plot3_items.append(plot3)
+        # Add Plot3 -> Plot2 computation buttons
+        plot3_items.append(create_label_div("Plot3 -> Plot2:", width=200))
+        plot3_items.append(compute_plot2a_from_plot3_button)
+        if compute_plot2b_from_plot3_button is not None:
+            plot3_items.append(compute_plot2b_from_plot3_button)
         plot3_items.append(session_section)
         plot3_col = create_plot_column(plot3_items)
 
@@ -5566,6 +6436,17 @@ def create_dashboard(process_4dnexus):
             print("🔍 DEBUG: on_plot2_box_select_with_coords called!")
             print(f"  Coordinates: x0={x0}, y0={y0}, x1={x1}, y1={y1}")
             try:
+                # Update BoxAnnotation to show persistent selection rectangle
+                # This ensures the rectangle stays visible after BoxSelectTool selection disappears
+                try:
+                    if box_annotation_2 is not None:
+                        box_annotation_2.left = min(x0, x1)
+                        box_annotation_2.right = max(x0, x1)
+                        box_annotation_2.bottom = min(y0, y1)
+                        box_annotation_2.top = max(y0, y1)
+                        print(f"  ✅ Updated box_annotation_2: left={box_annotation_2.left}, right={box_annotation_2.right}, bottom={box_annotation_2.bottom}, top={box_annotation_2.top}")
+                except NameError:
+                    print(f"  ⚠️ box_annotation_2 not available in scope")
                 
                 # Convert selection coordinates to indices
                     print(f"  🔍 Converting coordinates to indices (is_3d_volume={is_3d_volume})")
@@ -5599,7 +6480,7 @@ def create_dashboard(process_4dnexus):
                         
                         # Update rect2 with selection
                         rect2.set(min_x=z1_idx, max_x=z2_idx, min_y=z1_idx, max_y=z2_idx)
-                        draw_rect2()
+                        # draw_rect2()  # Disabled - using Bokeh's BoxAnnotation instead
                         print(f"  ✅ Updated rect2: min_x={rect2.min_x}, max_x={rect2.max_x}")
                     else:
                         # For 2D plot: selection is both x and y ranges
@@ -5654,7 +6535,7 @@ def create_dashboard(process_4dnexus):
                         # Update rect2 with selection
                         rect2.set(min_x=min(click_z1, click_z2), max_x=max(click_z1, click_z2),
                                  min_y=min(click_u1, click_u2), max_y=max(click_u1, click_u2))
-                        draw_rect2()
+                        # draw_rect2()  # Disabled - using Bokeh's BoxAnnotation instead
                         print(f"  ✅ Updated rect2: min_x={rect2.min_x}, max_x={rect2.max_x}, min_y={rect2.min_y}, max_y={rect2.max_y}")
                     
                     # Automatically compute Plot3 from the selection
@@ -5711,6 +6592,18 @@ def create_dashboard(process_4dnexus):
                     
                     print(f"  ✅ Selection coordinates from data source: x0={x0}, y0={y0}, x1={x1}, y1={y1}")
                     
+                    # Update BoxAnnotation to show persistent selection rectangle
+                    # This ensures the rectangle stays visible after BoxSelectTool selection disappears
+                    try:
+                        if box_annotation_2 is not None:
+                            box_annotation_2.left = min(x0, x1)
+                            box_annotation_2.right = max(x0, x1)
+                            box_annotation_2.bottom = min(y0, y1)
+                            box_annotation_2.top = max(y0, y1)
+                            print(f"  ✅ Updated box_annotation_2: left={box_annotation_2.left}, right={box_annotation_2.right}, bottom={box_annotation_2.bottom}, top={box_annotation_2.top}")
+                    except NameError:
+                        print(f"  ⚠️ box_annotation_2 not available in scope")
+                    
                     # Now call the main handler with these coordinates
                     # We'll pass them as a tuple to avoid trying to get from tool again
                     on_plot2_box_select_with_coords(x0, y0, x1, y1)
@@ -5760,13 +6653,21 @@ def create_dashboard(process_4dnexus):
                     y1: [geometry.y1]
                 };
                 plot2_selection_trigger.change.emit();
+                
+                // Update BoxAnnotation to show persistent rectangle
+                if (box_annotation_2) {
+                    box_annotation_2.left = Math.min(geometry.x0, geometry.x1);
+                    box_annotation_2.right = Math.max(geometry.x0, geometry.x1);
+                    box_annotation_2.bottom = Math.min(geometry.y0, geometry.y1);
+                    box_annotation_2.top = Math.max(geometry.y0, geometry.y1);
+                }
             } else {
                 console.log('No valid geometry found');
             }
             """
             
             custom_callback = CustomJS(
-                args={'plot2_selection_trigger': plot2_selection_trigger},
+                args={'plot2_selection_trigger': plot2_selection_trigger, 'box_annotation_2': box_annotation_2},
                 code=callback_code
             )
             
@@ -5808,6 +6709,88 @@ def create_dashboard(process_4dnexus):
         
         print("🔍 DEBUG: BoxSelectTool selection handler setup complete")
         
+        # Add BoxAnnotation update handlers for Plot2B and Plot3 using CustomJS
+        # Similar to Plot2, we'll use CustomJS callbacks to update the BoxAnnotations
+        if plot2b is not None and 'box_annotation_2b' in locals() and box_annotation_2b is not None:
+            # Find BoxSelectTool for Plot2B
+            box_select_tool_2b = None
+            for tool in plot2b.tools:
+                if isinstance(tool, BoxSelectTool):
+                    box_select_tool_2b = tool
+                    break
+            
+            if box_select_tool_2b is not None:
+                callback_code_2b = """
+                console.log('🔍 Plot2B BoxSelectTool CustomJS callback fired!');
+                var geometry = null;
+                if (cb_obj.select_everything && cb_obj.select_everything.geometry) {
+                    geometry = cb_obj.select_everything.geometry;
+                } else if (cb_obj.plot) {
+                    var tools = cb_obj.plot.tools;
+                    for (var i = 0; i < tools.length; i++) {
+                        if (tools[i].type === 'BoxSelectTool') {
+                            if (tools[i].select_everything && tools[i].select_everything.geometry) {
+                                geometry = tools[i].select_everything.geometry;
+                                break;
+                            }
+                        }
+                    }
+                }
+                if (geometry && geometry.x0 !== undefined && geometry.y0 !== undefined && 
+                    geometry.x1 !== undefined && geometry.y1 !== undefined) {
+                    box_annotation_2b.left = Math.min(geometry.x0, geometry.x1);
+                    box_annotation_2b.right = Math.max(geometry.x0, geometry.x1);
+                    box_annotation_2b.bottom = Math.min(geometry.y0, geometry.y1);
+                    box_annotation_2b.top = Math.max(geometry.y0, geometry.y1);
+                }
+                """
+                custom_callback_2b = CustomJS(
+                    args={'box_annotation_2b': box_annotation_2b},
+                    code=callback_code_2b
+                )
+                if hasattr(box_select_tool_2b, 'callback'):
+                    box_select_tool_2b.callback = custom_callback_2b
+        
+        if 'box_annotation_3' in locals() and box_annotation_3 is not None:
+            # Find BoxSelectTool for Plot3
+            box_select_tool_3 = None
+            for tool in plot3.tools:
+                if isinstance(tool, BoxSelectTool):
+                    box_select_tool_3 = tool
+                    break
+            
+            if box_select_tool_3 is not None:
+                callback_code_3 = """
+                console.log('🔍 Plot3 BoxSelectTool CustomJS callback fired!');
+                var geometry = null;
+                if (cb_obj.select_everything && cb_obj.select_everything.geometry) {
+                    geometry = cb_obj.select_everything.geometry;
+                } else if (cb_obj.plot) {
+                    var tools = cb_obj.plot.tools;
+                    for (var i = 0; i < tools.length; i++) {
+                        if (tools[i].type === 'BoxSelectTool') {
+                            if (tools[i].select_everything && tools[i].select_everything.geometry) {
+                                geometry = tools[i].select_everything.geometry;
+                                break;
+                            }
+                        }
+                    }
+                }
+                if (geometry && geometry.x0 !== undefined && geometry.y0 !== undefined && 
+                    geometry.x1 !== undefined && geometry.y1 !== undefined) {
+                    box_annotation_3.left = Math.min(geometry.x0, geometry.x1);
+                    box_annotation_3.right = Math.max(geometry.x0, geometry.x1);
+                    box_annotation_3.bottom = Math.min(geometry.y0, geometry.y1);
+                    box_annotation_3.top = Math.max(geometry.y0, geometry.y1);
+                }
+                """
+                custom_callback_3 = CustomJS(
+                    args={'box_annotation_3': box_annotation_3},
+                    code=callback_code_3
+                )
+                if hasattr(box_select_tool_3, 'callback'):
+                    box_select_tool_3.callback = custom_callback_3
+        
         # Draw initial rectangles if needed
         if not is_3d_volume:
             # Initialize rect2 to cover full range for 4D volumes
@@ -5815,7 +6798,7 @@ def create_dashboard(process_4dnexus):
                 min_x=0, max_x=volume.shape[2]-1,
                 min_y=0, max_y=volume.shape[3]-1
             )
-            draw_rect2()
+            # draw_rect2()  # Disabled - using Bokeh's BoxAnnotation instead
         
         # Initialize rect3 to cover full range (use original coordinates, not flipped)
         # rect3 stores original coordinate values, not plot coordinates
@@ -5835,19 +6818,23 @@ def create_dashboard(process_4dnexus):
         # This allows the dashboard to display immediately while memmap is computed in background
         from bokeh.io import curdoc
         def start_background_memmap():
-            """Start memmap cache creation in background after dashboard is rendered."""
+            """Start memmap cache creation in background after dashboard is rendered.
+            
+            Only starts the main volume memmap. Other memmap files will be created
+            on-demand when needed, or can be created later to avoid HDF5 contention.
+            """
             try:
+                # Only start main volume memmap creation to avoid overwhelming HDF5 file
+                # Other memmap files (volume_picked, volume_picked_b) will be created
+                # on-demand when those datasets are accessed, or can be created later
                 process_4dnexus.create_memmap_cache_background()
-                if hasattr(process_4dnexus, 'volume_picked') and process_4dnexus.volume_picked:
-                    process_4dnexus.create_memmap_cache_background_for(process_4dnexus.volume_picked)
-                if hasattr(process_4dnexus, 'volume_picked_b') and process_4dnexus.volume_picked_b:
-                    process_4dnexus.create_memmap_cache_background_for(process_4dnexus.volume_picked_b)
-                print("✅ Background memmap cache creation started")
+                print("✅ Background memmap cache creation started (main volume only)")
             except Exception as e:
                 print(f"⚠️ Warning: failed to start background memmap caching: {e}")
         
         # Schedule background memmap creation after the dashboard is rendered
-        curdoc().add_next_tick_callback(start_background_memmap)
+        # Use a 10 second delay to ensure dashboard is fully interactive first
+        curdoc().add_timeout_callback(start_background_memmap, 10000)  # 10 seconds
         
         # If session was loaded from tmp_dashboard or main dashboard, automatically load it after dashboard is created
         session_filepath = None
