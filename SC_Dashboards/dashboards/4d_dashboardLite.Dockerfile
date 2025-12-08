@@ -34,6 +34,10 @@ COPY SCLib_Dashboards/utils_bokeh_dashboard.py ./utils_bokeh_dashboard.py
 COPY SCLib_Dashboards/utils_bokeh_auth.py ./utils_bokeh_auth.py
 # Copy shared utility: utils_bokeh_param.py
 COPY SCLib_Dashboards/utils_bokeh_param.py ./utils_bokeh_param.py
+# Copy shared utility: 4d_dashboard_implementation.py
+COPY SCLib_Dashboards/4d_dashboard_implementation.py ./4d_dashboard_implementation.py
+# Copy shared utility: 4d_dashboard_builder.py
+COPY SCLib_Dashboards/4d_dashboard_builder.py ./4d_dashboard_builder.py
 
 
 # Copy dashboard-specific files (flat structure)

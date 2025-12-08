@@ -64,6 +64,8 @@ ENV APP_HOME=/app
 WORKDIR $APP_HOME
 
 # Copy shared dashboard utilities from SCLib_Dashboards
+# Copy entire SCLib_Dashboards package directory
+COPY SCLib_Dashboards ./SCLib_Dashboards
 # Copy shared utility: mongo_connection.py
 COPY SCLib_Dashboards/mongo_connection.py ./mongo_connection.py
 # Copy shared utility: utils_bokeh_mongodb.py

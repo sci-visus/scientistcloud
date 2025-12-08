@@ -1,6 +1,6 @@
 {
   "version": "1.0.0",
-  "last_updated": "2025-11-11T15:48:34Z",
+  "last_updated": "2025-12-08T20:10:57Z",
   "dashboards": [
     {
       "id": "3DPlotly",
@@ -61,6 +61,18 @@
       "url_template": "/dashboard/magicscan/?uuid={uuid}&server={server}&name={name}",
       "enabled": true,
       "config_file": "../dashboards/magicscan.json"
+    },
+    {
+      "id": "4d_dashboardLite",
+      "name": "4D Dashboard (New)",
+      "type": "dash",
+      "display_name": "4D Dashboard (New)",
+      "description": "Dashboard description",
+      "port": 8056,
+      "nginx_path": "/dashboard/4d_dashboardLite",
+      "url_template": "/dashboard/4d_dashboardLite/?uuid={uuid}&server={server}&name={name}",
+      "enabled": true,
+      "config_file": "../dashboards/4d_dashboardLite.json"
     }
   ]
 }
