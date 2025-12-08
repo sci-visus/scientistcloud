@@ -450,10 +450,14 @@ class DashboardBuilder:
         except ImportError:
             pass
         
-        # Path 3: Same directory (fallback)
+        # Path 3: In Docker build context, SCLib_Dashboards is copied to build context root
+        # From /app/4d_dashboard_builder.py to /app/SCLib_Dashboards/4d_dashboard_implementation.py
+        possible_paths.append(os.path.join(dashboard_dir, 'SCLib_Dashboards', '4d_dashboard_implementation.py'))
+        
+        # Path 4: Same directory (fallback)
         possible_paths.append(os.path.join(dashboard_dir, '4d_dashboard_implementation.py'))
         
-        # Path 4: Old location/name (fallback for backwards compatibility)
+        # Path 5: Old location/name (fallback for backwards compatibility)
         possible_paths.append(os.path.join(dashboard_dir, '_extracted_implementation.py'))
         
         extracted_file = None

@@ -107,6 +107,12 @@ elif [ -f "$DASHBOARDS_DIR/${DASHBOARD_NAME}.ipynb" ]; then
     ENTRY_POINT="${DASHBOARD_NAME}.ipynb"
 fi
 
+# Copy dashboard builder file if it exists (for 4d_dashboardLite)
+if [ -f "$DASHBOARDS_DIR/4d_dashboard_builder.py" ]; then
+    cp "$DASHBOARDS_DIR/4d_dashboard_builder.py" "$BUILD_CONTEXT/4d_dashboard_builder.py"
+    echo "📋 Copied 4d_dashboard_builder.py to build context"
+fi
+
 # Copy requirements if exists
 # Try multiple naming patterns for requirements file
 REQUIREMENTS_COPIED=false

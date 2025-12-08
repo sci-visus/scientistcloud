@@ -459,24 +459,57 @@ try:
     # Function to draw crosshairs on Plot1B (synchronized with Plot1)
     def draw_cross1b():
         """Draw crosshairs on Plot1B using the same coordinates as Plot1."""
-        if 'plot1b' not in locals() or plot1b is None or map_plot_b is None:
-            return
-
         try:
+            # Check if plot1b exists using try-except instead of locals() check
+            try:
+                current_plot1b = plot1b
+            except NameError:
+                return  # Plot1B not created yet
+            
+            try:
+                current_map_plot_b = map_plot_b
+            except NameError:
+                return  # map_plot_b not created yet
+            
+            try:
+                current_rect1b = rect1b
+            except NameError:
+                return  # rect1b not initialized yet
+            
+            if current_plot1b is None or current_map_plot_b is None or current_rect1b is None:
+                return
+
             x_index = get_x_index()
             y_index = get_y_index()
+            
+            # Get coordinates to verify they're correct
+            plot1b_x_coords = current_map_plot_b.get_flipped_x_coords()
+            plot1b_y_coords = current_map_plot_b.get_flipped_y_coords()
+            
+            print(f"🔍 DEBUG: draw_cross1b() called - x_index={x_index}, y_index={y_index}")
+            print(f"   plot1b={current_plot1b is not None}, map_plot_b={current_map_plot_b is not None}, rect1b={current_rect1b is not None}")
+            print(f"   crosshairs_enabled={current_map_plot_b.crosshairs_enabled if hasattr(current_map_plot_b, 'crosshairs_enabled') else 'N/A'}")
+            print(f"   plot1b_x_coords length={len(plot1b_x_coords) if plot1b_x_coords is not None else 'None'}")
+            print(f"   plot1b_y_coords length={len(plot1b_y_coords) if plot1b_y_coords is not None else 'None'}")
 
             # Use the utility function from the plot library
             # It will automatically get coordinates from map_plot_b if not provided
             draw_crosshairs_from_indices(
-                map_plot=map_plot_b,
-                bokeh_figure=plot1b,
+                map_plot=current_map_plot_b,
+                bokeh_figure=current_plot1b,
                 x_index=x_index,
                 y_index=y_index,
-                x_coords=None,  # Will use map_plot_b.get_flipped_x_coords()
-                y_coords=None,  # Will use map_plot_b.get_flipped_y_coords()
-                rect_storage=rect1b,
+                x_coords=plot1b_x_coords,  # Explicitly pass coordinates
+                y_coords=plot1b_y_coords,  # Explicitly pass coordinates
+                rect_storage=current_rect1b,
             )
+            
+            # Check if crosshair lines were created
+            has_h_line = hasattr(current_map_plot_b, '_crosshair_h_line') and current_map_plot_b._crosshair_h_line is not None
+            has_v_line = hasattr(current_map_plot_b, '_crosshair_v_line') and current_map_plot_b._crosshair_v_line is not None
+            print(f"✅ DEBUG: draw_cross1b() completed - map_plot_b has crosshair lines: h_line={has_h_line}, v_line={has_v_line}")
+            print(f"   rect1b.h1line={current_rect1b.h1line is not None if hasattr(current_rect1b, 'h1line') else 'N/A'}, rect1b.v1line={current_rect1b.v1line is not None if hasattr(current_rect1b, 'v1line') else 'N/A'}")
+            print(f"   plot1b.renderers count={len(current_plot1b.renderers) if current_plot1b is not None else 'N/A'}")
         except Exception as e:
             print(f"⚠️ ERROR in draw_cross1b(): {e}")
             import traceback
@@ -1794,6 +1827,8 @@ try:
 
                     # Initialize rect1b for Plot1B crosshairs
                     rect1b = Rectangle(0, 0, volume.shape[0] - 1, volume.shape[1] - 1)
+                    rect1b.h1line = None  # Initialize crosshair line attributes
+                    rect1b.v1line = None
 
                     # Tap handler for Plot1B (updates sliders, which updates both Plot1 and Plot1B crosshairs)
                     def on_plot1b_tap(event):
@@ -1928,6 +1963,8 @@ try:
 
                 # Initialize rect1b for Plot1B crosshairs
                 rect1b = Rectangle(0, 0, volume.shape[0] - 1, volume.shape[1] - 1)
+                rect1b.h1line = None  # Initialize crosshair line attributes
+                rect1b.v1line = None
 
                 # Tap handler for Plot1B
                 def on_plot1b_tap(event):
@@ -2839,7 +2876,7 @@ try:
                     except:
                         pass
                 
-                color_mapper1b, image_renderer1b = map_plot_b.update_color_scale(
+                new_color_mapper1b, new_image_renderer1b = map_plot_b.update_color_scale(
                     plot1b,
                     current_image_renderer1b,
                     current_color_mapper1b,
@@ -2849,10 +2886,25 @@ try:
                     preserve_crosshairs=preserve_crosshairs_1b,
                     restore_crosshairs=restore_crosshairs_1b,
                 )
+                # Update outer scope variables
+                import sys
+                frame = sys._getframe(1)
+                frame.f_locals['color_mapper1b'] = new_color_mapper1b
+                frame.f_locals['image_renderer1b'] = new_image_renderer1b
+                # Trigger source change to refresh the plot
+                try:
+                    (source1b if 'source1b' in locals() else source1).change.emit()
+                except:
+                    pass
 
             # Redraw crosshairs after color scale change (they might have been affected)
             try:
-                draw_cross1()
+                draw_cross1()  # This will also call draw_cross1b()
+            except:
+                pass
+            # Also explicitly redraw Plot1B crosshairs
+            try:
+                draw_cross1b()
             except:
                 pass
 
@@ -2883,6 +2935,27 @@ try:
     
     # Sync color scale selector to plot state
     sync_plot_to_color_scale_selector(map_plot, plot1_color_scale_selector)
+    
+    # Create color scale selector for Plot1B (no label, inline with toggle)
+    # Now that on_color_scale_change is defined, we can create the selector
+    if range1b_section is not None and range1b_mode_toggle is not None:
+        plot1b_color_scale_selector = create_color_scale_selector(
+            active=0,
+            width=120,
+            callback=on_color_scale_change
+        )
+        
+        # Replace the toggle with a row containing both toggle and color scale selector
+        if range1b_mode_toggle in range1b_section.children:
+            range1b_section.children = [child for child in range1b_section.children if child != range1b_mode_toggle]
+        range1b_section.children.append(row(range1b_mode_toggle, plot1b_color_scale_selector))
+        
+        # Sync color scale selector to plot state
+        try:
+            if map_plot_b is not None:
+                sync_plot_to_color_scale_selector(map_plot_b, plot1b_color_scale_selector)
+        except NameError:
+            pass  # map_plot_b not created yet
 
     def on_palette_change(attr, old, new):
         """Handle palette change for all plots."""
@@ -3922,7 +3995,9 @@ try:
             max_callback=on_range1b_change,
         )
 
-        # Add toggle to the section so it's visible
+        # Create color scale selector for Plot1B (no label, inline with toggle)
+        # Note: on_color_scale_change is defined later, so we'll create this after it's defined
+        # For now, just add the toggle - color scale selector will be added after on_color_scale_change is defined
         if range1b_mode_toggle not in range1b_section.children:
             range1b_section.children.append(range1b_mode_toggle)
 
