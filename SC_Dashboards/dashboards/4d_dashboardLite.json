@@ -16,7 +16,8 @@
     "utils_bokeh_mongodb.py",
     "utils_bokeh_dashboard.py",
     "utils_bokeh_auth.py",
-    "utils_bokeh_param.py"
+    "utils_bokeh_param.py",
+    "4d_dashboard_implementation.py"
   ],
   "environment_variables": {
     "SECRET_KEY": "${SECRET_KEY}",
