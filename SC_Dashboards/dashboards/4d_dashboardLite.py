@@ -1208,15 +1208,44 @@ def create_dashboard(process_4dnexus):
     if _current_dir not in sys.path:
         sys.path.insert(0, _current_dir)
     
-    # Dynamically import DashboardBuilder
-    builder_file = os.path.join(_current_dir, '4d_dashboard_builder.py')
-    if os.path.exists(builder_file):
-        spec = importlib.util.spec_from_file_location("dashboard_builder", builder_file)
-        builder_module = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(builder_module)
-        DashboardBuilder = builder_module.DashboardBuilder
-    else:
-        raise ImportError(f"DashboardBuilder file not found: {builder_file}")
+    # Dynamically import DashboardBuilder from SCLib_Dashboards
+    # Try multiple possible paths:
+    # 1. Via Python module import (Docker/installed)
+    # 2. In SCLib_Dashboards directory (same directory as implementation file)
+    # 3. Same directory as this file (fallback for development)
+    builder_file = None
+    possible_paths = []
+    
+    # Path 1: Try to find via Python module path (for Docker/installed packages)
+    try:
+        import SCLib_Dashboards
+        if hasattr(SCLib_Dashboards, '__file__'):
+            sc_lib_dir = os.path.dirname(SCLib_Dashboards.__file__)
+            possible_paths.append(os.path.join(sc_lib_dir, '4d_dashboard_builder.py'))
+    except ImportError:
+        pass
+    
+    # Path 2: In Docker build context, SCLib_Dashboards is copied to build context root
+    # From /app/4d_dashboardLite.py to /app/SCLib_Dashboards/4d_dashboard_builder.py
+    possible_paths.append(os.path.join(_current_dir, 'SCLib_Dashboards', '4d_dashboard_builder.py'))
+    
+    # Path 3: Same directory (fallback for development)
+    possible_paths.append(os.path.join(_current_dir, '4d_dashboard_builder.py'))
+    
+    # Try each path
+    for path in possible_paths:
+        if os.path.exists(path):
+            builder_file = path
+            print(f"✅ Found DashboardBuilder at: {builder_file}")
+            break
+    
+    if builder_file is None:
+        raise ImportError(f"DashboardBuilder file not found. Tried paths: {possible_paths}")
+    
+    spec = importlib.util.spec_from_file_location("dashboard_builder", builder_file)
+    builder_module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(builder_module)
+    DashboardBuilder = builder_module.DashboardBuilder
     
     # Use the new DashboardBuilder
     builder = DashboardBuilder(process_4dnexus)

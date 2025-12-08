@@ -108,9 +108,11 @@ elif [ -f "$DASHBOARDS_DIR/${DASHBOARD_NAME}.ipynb" ]; then
 fi
 
 # Copy dashboard builder file if it exists (for 4d_dashboardLite)
+# It's now in SCLib_Dashboards, so it will be copied with shared utilities
+# But also check old location for backwards compatibility
 if [ -f "$DASHBOARDS_DIR/4d_dashboard_builder.py" ]; then
     cp "$DASHBOARDS_DIR/4d_dashboard_builder.py" "$BUILD_CONTEXT/4d_dashboard_builder.py"
-    echo "📋 Copied 4d_dashboard_builder.py to build context"
+    echo "📋 Copied 4d_dashboard_builder.py to build context (from dashboards directory)"
 fi
 
 # Copy requirements if exists
