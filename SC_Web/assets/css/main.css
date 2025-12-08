@@ -64,6 +64,11 @@ body {
   flex-direction: column;
 }
 
+/* Disable transition during resize for smooth dragging */
+.sidebar.resizing, .details.resizing {
+  transition: none !important;
+}
+
 .sidebar {
   width: var(--sidebar-width, 600px);  /* Resizable via CSS variable */
   min-width: 200px;  /* Minimum width to prevent collapse */

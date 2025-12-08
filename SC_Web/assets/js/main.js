@@ -702,6 +702,7 @@ function initializeResizeHandles() {
         startX = e.clientX;
         startWidth = sidebar.offsetWidth;
         resizeHandleLeft.classList.add('resizing');
+        sidebar.classList.add('resizing'); // Add class to disable transition
         document.body.style.cursor = 'col-resize';
         document.body.style.userSelect = 'none';
         e.preventDefault();
@@ -715,6 +716,7 @@ function initializeResizeHandles() {
         startX = e.clientX;
         startWidth = details.offsetWidth;
         resizeHandleRight.classList.add('resizing');
+        details.classList.add('resizing'); // Add class to disable transition
         document.body.style.cursor = 'col-resize';
         document.body.style.userSelect = 'none';
         e.preventDefault();
@@ -724,34 +726,49 @@ function initializeResizeHandles() {
     document.addEventListener('mousemove', (e) => {
         if (!isResizingLeft && !isResizingRight) return;
         
+        e.preventDefault(); // Prevent text selection and other default behaviors
+        
         if (isResizingLeft) {
             // When dragging right (e.clientX > startX), diff is positive, sidebar should grow
             // When dragging left (e.clientX < startX), diff is negative, sidebar should shrink
             const diff = e.clientX - startX;
             const newWidth = Math.max(200, Math.min(startWidth + diff, window.innerWidth * 0.8));
+            // Apply width directly to element during resize for immediate feedback
+            sidebar.style.width = newWidth + 'px';
             saveSidebarWidth(newWidth);
         }
         
         if (isResizingRight) {
-            const diff = e.clientX - startX;
+            const diff = startX - e.clientX; // Inverted for right sidebar (dragging right = negative diff)
             const newWidth = Math.max(200, Math.min(startWidth + diff, window.innerWidth * 0.8));
+            // Apply width directly to element during resize for immediate feedback
+            details.style.width = newWidth + 'px';
             saveDetailsWidth(newWidth);
         }
     });
     
     // Mouse up handler
-    document.addEventListener('mouseup', () => {
+    const stopResizing = () => {
         if (isResizingLeft) {
             isResizingLeft = false;
             resizeHandleLeft.classList.remove('resizing');
+            sidebar.classList.remove('resizing'); // Remove class to re-enable transition
+            sidebar.style.width = ''; // Clear inline style to use CSS variable
         }
         if (isResizingRight) {
             isResizingRight = false;
             resizeHandleRight.classList.remove('resizing');
+            details.classList.remove('resizing'); // Remove class to re-enable transition
+            details.style.width = ''; // Clear inline style to use CSS variable
         }
         document.body.style.cursor = '';
         document.body.style.userSelect = '';
-    });
+    };
+    
+    document.addEventListener('mouseup', stopResizing);
+    
+    // Also stop resizing if mouse leaves the window
+    document.addEventListener('mouseleave', stopResizing);
 }
 
 // Export functions for global access
