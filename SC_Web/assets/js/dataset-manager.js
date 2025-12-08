@@ -111,6 +111,24 @@ class DatasetManager {
                     console.error('Could not find dataset ID for delete button');
                 }
             }
+            
+            if (e.target.closest('[data-action="copy-dashboard-link"]')) {
+                e.preventDefault();
+                const button = e.target.closest('[data-action="copy-dashboard-link"]');
+                const datasetId = button.dataset.datasetId || button.getAttribute('data-dataset-id');
+                const datasetUuid = button.dataset.datasetUuid || button.getAttribute('data-dataset-uuid');
+                const datasetName = button.dataset.datasetName || button.getAttribute('data-dataset-name');
+                const datasetServer = button.dataset.datasetServer || button.getAttribute('data-dataset-server');
+                if (datasetId) {
+                    this.copyDashboardLink(datasetId, {
+                        uuid: datasetUuid,
+                        name: datasetName,
+                        server: datasetServer
+                    });
+                } else {
+                    console.error('Could not find dataset ID for copy dashboard link button');
+                }
+            }
         });
 
         // Search functionality
@@ -1431,7 +1449,7 @@ class DatasetManager {
                     <h6 class="text-primary mb-2">${this.escapeHtml(dataset.name || 'Unnamed Dataset')}</h6>
                 </div>
                 
-                <!-- Action Buttons (Share, Delete, Edit, Retry) -->
+                <!-- Action Buttons (Share, Delete, Edit, Retry, Copy Dashboard Link) -->
                 <div class="dataset-actions mb-3 pb-2 border-bottom">
                     <div class="btn-group btn-group-sm w-100" role="group">
                         <button type="button" class="btn btn-sm btn-outline-secondary" data-action="share" data-dataset-id="${dataset.id || dataset.uuid}">
@@ -1447,6 +1465,16 @@ class DatasetManager {
                                 data-dataset-uuid="${dataset.uuid || dataset.id}"
                                 data-dataset-name="${this.escapeHtml(dataset.name || 'Dataset')}">
                             <i class="fas fa-redo"></i> Retry
+                        </button>
+                    </div>
+                    <div class="mt-2">
+                        <button type="button" class="btn btn-sm btn-outline-info w-100" data-action="copy-dashboard-link" 
+                                data-dataset-id="${dataset.id || dataset.uuid}"
+                                data-dataset-uuid="${dataset.uuid || dataset.id}"
+                                data-dataset-name="${this.escapeHtml(dataset.name || '')}"
+                                data-dataset-server="${this.escapeHtml(dataset.server || '')}"
+                                title="Copy direct link to open this dataset's dashboard in a new window">
+                            <i class="fas fa-link"></i> Copy Dashboard Link
                         </button>
                     </div>
                 </div>
@@ -1990,6 +2018,177 @@ class DatasetManager {
         
         // Show share interface in viewerContainer
         this.showShareInterface(datasetUuid, datasetName);
+    }
+    
+    /**
+     * Copy dashboard link to clipboard
+     */
+    async copyDashboardLink(datasetId, buttonData = {}) {
+        try {
+            // Get dataset details
+            let dataset = this.currentDataset?.details || this.currentDataset;
+            
+            // If we don't have full details, fetch them
+            if (!dataset || !dataset.uuid) {
+                // Use button data if available
+                if (buttonData.uuid) {
+                    dataset = {
+                        uuid: buttonData.uuid,
+                        name: buttonData.name || 'Dataset',
+                        server: buttonData.server || '',
+                        preferred_dashboard: this.currentDataset?.details?.preferred_dashboard
+                    };
+                } else {
+                    const response = await fetch(`${getApiBasePath()}/dataset-details.php?dataset_id=${datasetId}`);
+                    const data = await response.json();
+                    if (data.success && data.dataset) {
+                        dataset = data.dataset;
+                    } else {
+                        throw new Error('Failed to fetch dataset details');
+                    }
+                }
+            }
+            
+            const datasetUuid = dataset.uuid || buttonData.uuid || datasetId;
+            const datasetName = dataset.name || buttonData.name || 'Dataset';
+            const datasetServer = dataset.server || buttonData.server || '';
+            
+            // Determine the default dashboard
+            // Priority: 1. dataset.preferred_dashboard, 2. viewer selector, 3. OpenVisusSlice
+            let dashboardType = dataset.preferred_dashboard;
+            
+            if (!dashboardType || dashboardType.trim() === '') {
+                const viewerTypeSelect = document.getElementById('viewerType');
+                if (viewerTypeSelect && viewerTypeSelect.value) {
+                    dashboardType = viewerTypeSelect.value;
+                } else {
+                    dashboardType = 'OpenVisusSlice';
+                }
+            }
+            
+            // Generate the dashboard URL using the same logic as viewer-manager
+            const dashboardUrl = await this.generateDashboardUrl(datasetUuid, datasetServer, datasetName, dashboardType);
+            
+            // Copy to clipboard
+            await navigator.clipboard.writeText(dashboardUrl);
+            
+            // Show success feedback
+            const button = document.querySelector(`[data-action="copy-dashboard-link"][data-dataset-id="${datasetId}"]`);
+            if (button) {
+                const originalHTML = button.innerHTML;
+                button.innerHTML = '<i class="fas fa-check"></i> Copied!';
+                button.classList.remove('btn-outline-info');
+                button.classList.add('btn-success');
+                setTimeout(() => {
+                    button.innerHTML = originalHTML;
+                    button.classList.remove('btn-success');
+                    button.classList.add('btn-outline-info');
+                }, 2000);
+            }
+            
+            // Also show a toast/alert
+            console.log('Dashboard link copied to clipboard:', dashboardUrl);
+        } catch (error) {
+            console.error('Error copying dashboard link:', error);
+            alert('Failed to copy dashboard link. Please try again.');
+        }
+    }
+    
+    /**
+     * Generate dashboard URL (similar to viewer-manager's generateViewerUrl)
+     */
+    async generateDashboardUrl(datasetUuid, datasetServer, datasetName, dashboardType) {
+        // Get dashboard configuration from viewer-manager or API
+        let viewer = null;
+        
+        if (window.viewerManager && window.viewerManager.viewers) {
+            // Try to find viewer by dashboard type
+            viewer = window.viewerManager.viewers[dashboardType];
+            
+            // If not found, try case-insensitive match
+            if (!viewer) {
+                const normalizedType = dashboardType.toLowerCase();
+                viewer = Object.values(window.viewerManager.viewers).find(v => {
+                    const vId = (v.id || '').toLowerCase();
+                    const vType = (v.type || '').toLowerCase();
+                    return vId === normalizedType || vType === normalizedType;
+                });
+            }
+        }
+        
+        // If viewer not found, try to load from API
+        if (!viewer) {
+            try {
+                const dashResponse = await fetch(`${getApiBasePath()}/dashboards.php`);
+                if (dashResponse.ok) {
+                    const dashData = await dashResponse.json();
+                    if (dashData.success && dashData.dashboards) {
+                        const dashboard = dashData.dashboards.find(d => 
+                            d.enabled && (
+                                d.id === dashboardType || 
+                                d.id.toLowerCase() === dashboardType.toLowerCase() ||
+                                d.type === dashboardType ||
+                                d.type?.toLowerCase() === dashboardType.toLowerCase()
+                            )
+                        );
+                        
+                        if (dashboard) {
+                            let urlTemplate = dashboard.url_template;
+                            if (!urlTemplate && dashboard.nginx_path) {
+                                urlTemplate = dashboard.nginx_path + '?uuid={uuid}&server={server}&name={name}';
+                            }
+                            
+                            viewer = {
+                                id: dashboard.id,
+                                url_template: urlTemplate,
+                                nginx_path: dashboard.nginx_path,
+                                port: dashboard.port
+                            };
+                        }
+                    }
+                }
+            } catch (error) {
+                console.warn('Could not load dashboard from API:', error);
+            }
+        }
+        
+        // If still no viewer, construct default URL
+        let urlTemplate;
+        if (viewer && viewer.url_template) {
+            urlTemplate = viewer.url_template;
+        } else {
+            // Fallback: construct URL from dashboard type
+            const pathId = dashboardType.toLowerCase().replace(/[_-]/g, '');
+            urlTemplate = `/dashboard/${pathId}?uuid={uuid}&server={server}&name={name}`;
+        }
+        
+        // Replace placeholders
+        let url = urlTemplate
+            .replace(/{uuid}/g, encodeURIComponent(datasetUuid))
+            .replace(/{server}/g, encodeURIComponent(datasetServer || 'false'))
+            .replace(/{name}/g, encodeURIComponent(datasetName || ''));
+        
+        // For local development, convert /dashboard/ paths to direct port access
+        const isLocal = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+        if (isLocal && url.startsWith('/dashboard/') && viewer && viewer.port) {
+            const match = url.match(/\/dashboard\/([^/?]+)/);
+            const dashboardPathName = match?.[1];
+            
+            if (dashboardPathName && viewer) {
+                const pathAfterDashboard = url.replace(/^\/dashboard\/[^/?]+/, '');
+                const appPath = '/' + (viewer.id || dashboardPathName) + (pathAfterDashboard || '/');
+                url = `http://localhost:${viewer.port}${appPath}`;
+            }
+        }
+        
+        // Make it an absolute URL if it's relative
+        if (url.startsWith('/')) {
+            const baseUrl = window.location.origin;
+            const portalPath = isLocal ? '' : '/portal';
+            url = baseUrl + portalPath + url;
+        }
+        
+        return url;
     }
     
     /**
