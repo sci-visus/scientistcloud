@@ -1400,6 +1400,7 @@ class DatasetManager {
         
         // Load dashboard options from API
         let dashboardOptions = [];
+        let dashboardMap = {}; // Map dashboard ID to display name
         try {
             const dashResponse = await fetch(`${getApiBasePath()}/dashboards.php`);
             if (dashResponse.ok) {
@@ -1411,6 +1412,8 @@ class DatasetManager {
                         .filter(d => d.enabled && !seen.has(d.id))
                         .map(d => {
                             seen.add(d.id);
+                            // Store mapping of ID to display name
+                            dashboardMap[d.id] = d.display_name || d.name || d.id;
                             return d.id;
                         });
                 }
@@ -1428,6 +1431,42 @@ class DatasetManager {
                 '3DVTK',
                 'magicscan'
             ];
+            // Create fallback map
+            dashboardOptions.forEach(id => {
+                dashboardMap[id] = id; // Use ID as fallback display name
+            });
+        }
+        
+        // Get preferred dashboard display name
+        const preferredDashboardId = dataset.preferred_dashboard || '';
+        let preferredDashboardDisplayName = 'Default';
+        
+        if (preferredDashboardId) {
+            // Try to get display name from dashboardMap first
+            if (dashboardMap[preferredDashboardId]) {
+                preferredDashboardDisplayName = dashboardMap[preferredDashboardId];
+            } else if (window.viewerManager && window.viewerManager.viewers) {
+                // Fallback to viewerManager if available
+                const viewer = window.viewerManager.viewers[preferredDashboardId];
+                if (viewer && viewer.name) {
+                    preferredDashboardDisplayName = viewer.name;
+                } else {
+                    // Try case-insensitive match
+                    const normalizedId = preferredDashboardId.toLowerCase();
+                    const matchingViewer = Object.values(window.viewerManager.viewers).find(v => {
+                        const vId = (v.id || '').toLowerCase();
+                        const vType = (v.type || '').toLowerCase();
+                        return vId === normalizedId || vType === normalizedId;
+                    });
+                    if (matchingViewer && matchingViewer.name) {
+                        preferredDashboardDisplayName = matchingViewer.name;
+                    } else {
+                        preferredDashboardDisplayName = preferredDashboardId;
+                    }
+                }
+            } else {
+                preferredDashboardDisplayName = preferredDashboardId;
+            }
         }
         
         // Build folder options HTML
@@ -1511,7 +1550,7 @@ class DatasetManager {
                         
                         <div class="detail-item mb-2">
                             <span class="detail-label">Preferred Dashboard:</span>
-                            <span class="detail-value">${this.escapeHtml(dataset.preferred_dashboard || 'Default')}</span>
+                            <span class="detail-value">${this.escapeHtml(preferredDashboardDisplayName)}</span>
                         </div>
                         
                         <div class="detail-item mb-2">
