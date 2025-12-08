@@ -210,3 +210,9 @@ fi
 
 echo "✅ Built dashboard image: $IMAGE_NAME:$TAG"
 
+# Register dashboard in registry (if not already registered or if config changed)
+echo "📝 Registering dashboard in registry..."
+"$SCRIPT_DIR/register_dashboard.sh" "$DASHBOARD_NAME" "$CONFIG_FILE" || {
+    echo "⚠️  Warning: Failed to register dashboard (may already be registered)"
+}
+

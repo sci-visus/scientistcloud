@@ -1,6 +1,6 @@
 {
   "version": "1.0.0",
-  "last_updated": "2025-11-11T15:48:34Z",
+  "last_updated": "2025-12-08T20:10:57Z",
   "port_range": {
     "start": 8050,
     "end": 8999,
@@ -46,6 +46,14 @@
       "port": 8053,
       "nginx_path": "/dashboard/magicscan",
       "config_file": "../dashboards/magicscan.json"
+    },
+    "4d_dashboardLite": {
+      "name": "4d_dashboardLite",
+      "display_name": "4D Dashboard (New)",
+      "enabled": true,
+      "port": 8056,
+      "nginx_path": "/dashboard/4d_dashboardLite",
+      "config_file": "../dashboards/4d_dashboardLite.json"
     }
   }
 }

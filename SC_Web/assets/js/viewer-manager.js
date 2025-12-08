@@ -22,7 +22,9 @@ class ViewerManager {
                 const isLocal = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
                 return isLocal ? '/api' : '/portal/api';
             };
-            const response = await fetch(`${getApiBasePath()}/dashboards.php`);
+            const response = await fetch(`${getApiBasePath()}/dashboards.php`, {
+                credentials: 'include'  // Include cookies for authentication
+            });
             
             if (!response.ok) {
                 console.warn('Failed to load dashboards from API, using defaults');
@@ -276,7 +278,21 @@ class ViewerManager {
             if (dashboardType) {
                 url += `&dashboard=${encodeURIComponent(dashboardType)}`;
             }
-            const response = await fetch(url);
+            const response = await fetch(url, {
+                credentials: 'include'  // Include cookies for authentication
+            });
+            
+            // Handle authentication errors
+            if (response.status === 401) {
+                console.error('Authentication required for dataset status check');
+                return 'error';
+            }
+            
+            if (!response.ok) {
+                console.error(`Error checking dataset status: ${response.status} ${response.statusText}`);
+                return 'error';
+            }
+            
             const data = await response.json();
             return data.status || 'unknown';
         } catch (error) {
@@ -621,7 +637,15 @@ class ViewerManager {
                 const isLocal = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
                 return isLocal ? '/api' : '/portal/api';
             };
-            const response = await fetch(`${getApiBasePath()}/dataset-status.php?dataset_id=${datasetId}`);
+            const response = await fetch(`${getApiBasePath()}/dataset-status.php?dataset_id=${datasetId}`, {
+                credentials: 'include'  // Include cookies for authentication
+            });
+            
+            if (!response.ok) {
+                console.error(`Error checking dataset status: ${response.status} ${response.statusText}`);
+                return;
+            }
+            
             const data = await response.json();
             
             if (data.status === 'ready') {
