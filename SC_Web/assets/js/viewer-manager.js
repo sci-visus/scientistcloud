@@ -229,9 +229,17 @@ class ViewerManager {
     /**
      * Load dashboard
      */
-    async loadDashboard(datasetId, datasetName, datasetUuid, datasetServer, dashboardType = 'OpenVisusSlice') {
+    async loadDashboard(datasetId, datasetName, datasetUuid, datasetServer, dashboardType = 'OpenVisusSlice', triedDashboards = new Set()) {
         const viewerContainer = document.getElementById('viewerContainer');
         if (!viewerContainer) return;
+
+        // Prevent infinite loops by tracking which dashboards we've already tried
+        if (triedDashboards.has(dashboardType)) {
+            console.error(`❌ Already tried dashboard ${dashboardType}, preventing infinite loop`);
+            this.showErrorDashboard('No compatible dashboard found for this dataset');
+            return;
+        }
+        triedDashboards.add(dashboardType);
 
         // Show loading state
         viewerContainer.innerHTML = `
@@ -254,7 +262,45 @@ class ViewerManager {
             } else if (status === 'processing') {
                 this.showProcessingDashboard(datasetId, datasetName);
             } else if (status === 'unsupported') {
-                this.showUnsupportedDashboard(datasetId, datasetName);
+                // Instead of showing error, automatically find and load a compatible dashboard
+                console.log(`⚠️ Dashboard ${dashboardType} is not supported for this dataset. Automatically selecting compatible dashboard...`);
+                
+                // Use smart dashboard selection to find a compatible dashboard
+                if (window.datasetManager && window.datasetManager.selectDashboardForDataset) {
+                    try {
+                        // Get preferred dashboard from current dataset if available
+                        const preferredDashboard = window.datasetManager.currentDataset?.preferred_dashboard || null;
+                        
+                        // Automatically select the best compatible dashboard
+                        // selectDashboardForDataset returns a dashboard ID (string)
+                        const selectedDashboardId = await window.datasetManager.selectDashboardForDataset(
+                            datasetId,
+                            datasetUuid,
+                            preferredDashboard
+                        );
+                        
+                        if (selectedDashboardId && typeof selectedDashboardId === 'string') {
+                            console.log(`✅ Auto-selected compatible dashboard: ${selectedDashboardId}`);
+                            // Recursively load the selected dashboard (pass triedDashboards to prevent loops)
+                            if (selectedDashboardId !== dashboardType) {
+                                await this.loadDashboard(datasetId, datasetName, datasetUuid, datasetServer, selectedDashboardId, triedDashboards);
+                            } else {
+                                // If we somehow got the same dashboard, show error
+                                this.showErrorDashboard('No compatible dashboard found for this dataset');
+                            }
+                        } else {
+                            console.error('❌ No compatible dashboard found');
+                            this.showErrorDashboard('No compatible dashboard found for this dataset');
+                        }
+                    } catch (selectionError) {
+                        console.error('Error selecting compatible dashboard:', selectionError);
+                        this.showErrorDashboard('Failed to find compatible dashboard');
+                    }
+                } else {
+                    // Fallback if datasetManager is not available
+                    console.error('DatasetManager not available for smart dashboard selection');
+                    this.showErrorDashboard('Dashboard not available and cannot auto-select alternative');
+                }
             } else {
                 this.showErrorDashboard('Unknown error occurred');
             }

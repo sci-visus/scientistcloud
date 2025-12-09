@@ -38,7 +38,19 @@ if ($datasetId) {
                 displayProcessingDashboard($dataset);
                 break;
             case 'unsupported':
-                displayUnsupportedDashboard($dataset);
+                // Instead of showing error, automatically find and redirect to a compatible dashboard
+                $availableDashboards = getAvailableDashboards($datasetId);
+                if (!empty($availableDashboards)) {
+                    // Get the first available compatible dashboard
+                    $compatibleDashboard = $availableDashboards[0];
+                    // Redirect to load the compatible dashboard
+                    $redirectUrl = "?dataset_id={$datasetId}&dashboard=" . urlencode($compatibleDashboard['type']);
+                    header("Location: $redirectUrl");
+                    exit;
+                } else {
+                    // No compatible dashboard found, show error
+                    displayUnsupportedDashboard($dataset);
+                }
                 break;
             default:
                 displayErrorDashboard($dataset, 'Unknown error occurred');
