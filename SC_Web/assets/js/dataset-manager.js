@@ -1622,23 +1622,23 @@ class DatasetManager {
                 <!-- Action Buttons (Share, Delete, Edit, Retry, Copy Dashboard Link) -->
                 <div class="dataset-actions mb-3 pb-2 border-bottom">
                     <div class="btn-group btn-group-sm w-100" role="group">
-                        <button type="button" class="btn btn-sm btn-outline-primary" data-action="share" data-dataset-id="${dataset.id || dataset.uuid}">
+                        <button type="button" class="btn btn-sm btn-primary" data-action="share" data-dataset-id="${dataset.id || dataset.uuid}">
                             <i class="fas fa-share"></i> Share
                         </button>
-                        <button type="button" class="btn btn-sm btn-outline-primary" data-action="delete" data-dataset-id="${dataset.id || dataset.uuid}">
+                        <button type="button" class="btn btn-sm btn-primary" data-action="delete" data-dataset-id="${dataset.id || dataset.uuid}">
                             <i class="fas fa-trash"></i> Delete
                         </button>
-                        <button type="button" class="btn btn-sm btn-outline-primary" id="editDatasetBtn" data-dataset-id="${dataset.id || dataset.uuid}">
+                        <button type="button" class="btn btn-sm btn-primary" id="editDatasetBtn" data-dataset-id="${dataset.id || dataset.uuid}">
                             <i class="fas fa-edit"></i> Edit
                         </button>
-                        <button type="button" class="btn btn-sm btn-outline-primary retry-conversion-details-btn" 
+                        <button type="button" class="btn btn-sm btn-primary retry-conversion-details-btn" 
                                 data-dataset-uuid="${dataset.uuid || dataset.id}"
                                 data-dataset-name="${this.escapeHtml(dataset.name || 'Dataset')}">
                             <i class="fas fa-redo"></i> Retry
                         </button>
                     </div>
                     <div class="mt-2">
-                        <button type="button" class="btn btn-sm btn-outline-info w-100" data-action="copy-dashboard-link" 
+                        <button type="button" class="btn btn-sm btn-info w-100" data-action="copy-dashboard-link" 
                                 data-dataset-id="${dataset.id || dataset.uuid}"
                                 data-dataset-uuid="${dataset.uuid || dataset.id}"
                                 data-dataset-name="${this.escapeHtml(dataset.name || '')}"

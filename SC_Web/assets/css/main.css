@@ -12,7 +12,7 @@
   --viewer-bg: #000;
 
   --primary-color:#4E477F;
-  --info-color:  #B5AEDF;
+  --info-color:  #1a4d73;
   --danger-color: #6BB6E9;
   --success-color:#3BA68A;
   --warning-color: #E3A54F;
@@ -31,7 +31,7 @@
   --danger-color: #6BB6E9;
   --success-color:#3BA68A;
   --warning-color: #E3A54F;
-  }
+}
 
 /* Base styles */
 body {
@@ -641,11 +641,65 @@ body {
 .btn-primary {
   background-color: var(--primary-color);
   border-color: var(--primary-color);
+  color: white;
 }
 
 .btn-primary:hover {
   background-color: #0056b3;
   border-color: #0056b3;
+  color: white;
+}
+
+.btn-info {
+  background-color: var(--info-color);
+  border-color: var(--info-color);
+  color: white;
+}
+
+.btn-info:hover {
+  background-color: var(--info-color);
+  border-color: var(--info-color);
+  color: white;
+  opacity: 0.9;
+}
+
+.btn-danger {
+  background-color: var(--danger-color);
+  border-color: var(--danger-color);
+  color: white;
+}
+
+.btn-danger:hover {
+  background-color: var(--danger-color);
+  border-color: var(--danger-color);
+  color: white;
+  opacity: 0.9;
+}
+
+.btn-success {
+  background-color: var(--success-color);
+  border-color: var(--success-color);
+  color: white;
+}
+
+.btn-success:hover {
+  background-color: var(--success-color);
+  border-color: var(--success-color);
+  color: white;
+  opacity: 0.9;
+}
+
+.btn-warning {
+  background-color: var(--warning-color);
+  border-color: var(--warning-color);
+  color: white;
+}
+
+.btn-warning:hover {
+  background-color: var(--warning-color);
+  border-color: var(--warning-color);
+  color: white;
+  opacity: 0.9;
 }
 
 .btn-outline-primary {
