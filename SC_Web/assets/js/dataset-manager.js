@@ -418,20 +418,22 @@ class DatasetManager {
                 
                 // Smart dashboard selection based on dataset dimension and user preferences
                 if (window.viewerManager) {
-                    // Use smart dashboard selection
+                    // Use smart dashboard selection FIRST, before loading
+                    // This ensures we get the best dashboard based on dimension, not the toolbar value
                     const selectedDashboard = await this.selectDashboardForDataset(
                         datasetId, 
                         effectiveUuid, 
                         this.currentDataset?.preferred_dashboard
                     );
                     
-                    console.log('Loading dashboard with UUID:', effectiveUuid, 'server:', effectiveServer, 'selected dashboard:', selectedDashboard);
+                    console.log('✅ Smart selection complete. Loading dashboard with UUID:', effectiveUuid, 'server:', effectiveServer, 'selected dashboard:', selectedDashboard);
                     
                     // Update toolbar selector to match the auto-selected dashboard
                     if (window.viewerManager && typeof window.viewerManager.updateViewerSelector === 'function') {
                         window.viewerManager.updateViewerSelector(selectedDashboard);
                     }
                     
+                    // Now load the dashboard with the smart-selected one
                     window.viewerManager.loadDashboard(datasetId, datasetName, effectiveUuid, effectiveServer, selectedDashboard);
                 } else if (typeof loadDashboard === 'function') {
                     console.log('Using fallback loadDashboard with UUID:', effectiveUuid);
@@ -1337,9 +1339,31 @@ class DatasetManager {
             this.loadDatasetDetails(datasetId);
         }
 
-        // Load dashboard with dataset details to avoid re-fetching
-        // Pass datasetDetails so it can use preferred_dashboard
-        await this.loadDashboard(datasetId, datasetName, datasetUuid, datasetServer, null, datasetDetails);
+        // Use smart dashboard selection FIRST, before loading
+        // This ensures we get the best dashboard based on dimension, not the toolbar value
+        let selectedDashboard = null;
+        if (window.viewerManager && this.selectDashboardForDataset) {
+            try {
+                selectedDashboard = await this.selectDashboardForDataset(
+                    datasetId,
+                    datasetUuid,
+                    datasetDetails?.preferred_dashboard || this.currentDataset?.preferred_dashboard || null
+                );
+                
+                // Update toolbar selector to match the auto-selected dashboard
+                if (window.viewerManager && typeof window.viewerManager.updateViewerSelector === 'function') {
+                    window.viewerManager.updateViewerSelector(selectedDashboard);
+                }
+                
+                console.log('✅ Smart selection complete. Selected dashboard:', selectedDashboard);
+            } catch (error) {
+                console.error('Error in smart dashboard selection:', error);
+                // Fall back to loadDashboard's own selection logic
+            }
+        }
+
+        // Load dashboard with the smart-selected dashboard (or let it use its own logic if selection failed)
+        await this.loadDashboard(datasetId, datasetName, datasetUuid, datasetServer, selectedDashboard, datasetDetails);
 
         console.log('Dataset selected:', this.currentDataset);
     }
@@ -2160,18 +2184,29 @@ class DatasetManager {
             const data = await response.json();
             
             if (data.success && data.dataset) {
+                // Debug: log what's in the dataset object
+                console.log('🔍 Dataset object keys:', Object.keys(data.dataset));
+                console.log('🔍 Dataset dimensions field:', data.dataset.dimensions, 'type:', typeof data.dataset.dimensions);
+                
                 // Check if dimensions is stored in metadata (field is "dimensions" plural, format is "4D", "3D", etc.)
                 if (data.dataset.dimensions) {
                     // Parse dimensions string (e.g., "4D", "3D", "2D", "1D") to extract number
                     const dimensionsStr = String(data.dataset.dimensions).trim().toUpperCase();
+                    console.log('🔍 Parsing dimensions string:', dimensionsStr);
                     const dimensionMatch = dimensionsStr.match(/(\d+)D?/);
                     if (dimensionMatch && dimensionMatch[1]) {
                         const dimension = parseInt(dimensionMatch[1]);
                         if (dimension >= 1 && dimension <= 4) {
                             console.log(`✅ Found dimension from dataset.dimensions: ${dimensionsStr} -> ${dimension}D`);
                             return dimension;
+                        } else {
+                            console.warn(`⚠️ Dimension out of range: ${dimension} (expected 1-4)`);
                         }
+                    } else {
+                        console.warn(`⚠️ Could not parse dimension from: ${dimensionsStr}`);
                     }
+                } else {
+                    console.log('⚠️ Dataset.dimensions field is missing or empty');
                 }
                 
                 // Also check for singular "dimension" field (for backwards compatibility)
