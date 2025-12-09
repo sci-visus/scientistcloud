@@ -77,44 +77,63 @@ else
     echo "   Continuing without custom environment variables..."
 fi
 
+# Always update GitHub repos (even in dashboards-only mode)
+# Start Update SCLib_TryTest
+echo "📦 Update SCLib_TryTest and copy env.scientistcloud to SCLib and SC Website..."
+SCLIB_TRYTEST_DIR="$HOME/ScientistCloud2.0/SCLib_TryTest"
+if [ -d "$SCLIB_TRYTEST_DIR" ]; then
+    pushd "$SCLIB_TRYTEST_DIR"
+    git fetch origin
+    git reset --hard origin/main
+    cp env.scientistcloud "$HOME/ScientistCloud2.0/scientistCloudLib/Docker/.env"
+    cp env.scientistcloud "$HOME/ScientistCloud2.0/scientistcloud/SC_Docker/.env"
+    popd
+    echo "✅ Environment files copied (includes DOMAIN_NAME for dashboard containers)"
+else
+    echo "⚠️ SCLib_TryTest directory not found: $SCLIB_TRYTEST_DIR"
+fi
+
+# Pull latest code from scientistCloudLib repository (parent of Docker directory)
+SCLIB_CODE_DIR="$HOME/ScientistCloud2.0/scientistCloudLib"
+if [ -d "$SCLIB_CODE_DIR" ]; then
+    echo "📥 Pulling latest SCLib code..."
+    pushd "$SCLIB_CODE_DIR"
+    git fetch origin
+    git reset --hard origin/main
+    popd
+    echo "✅ SCLib code updated"
+fi
+
+# Pull SCLib Docker code
+SCLIB_DOCKER_DIR="$HOME/ScientistCloud2.0/scientistCloudLib/Docker"
+if [ -d "$SCLIB_DOCKER_DIR" ]; then
+    echo "📥 Pulling latest SCLib Docker code..."
+    pushd "$SCLIB_DOCKER_DIR"
+    git fetch origin
+    git reset --hard origin/main
+    popd
+    echo "✅ SCLib Docker code updated"
+fi
+
+# Pull Portal Docker code
+PORTAL_DOCKER_DIR="$HOME/ScientistCloud2.0/scientistcloud/SC_Docker"
+if [ -d "$PORTAL_DOCKER_DIR" ]; then
+    echo "📥 Pulling latest Portal Docker code..."
+    pushd "$PORTAL_DOCKER_DIR"
+    git fetch origin
+    git reset --hard origin/main
+    popd
+    echo "✅ Portal Docker code updated"
+fi
+
+# Start services only if not in dashboards-only mode
 if [ "$DASHBOARDS_ONLY" = false ]; then
     echo "🚀 Starting all ScientistCloud services..."
 
-    # Start Update SCLib_TryTest
-    echo "📦 Update SCLib_TryTest and copy env.scientistcloud to SCLib and SC Website..."
-    SCLIB_TRYTEST_DIR="$HOME/ScientistCloud2.0/SCLib_TryTest"
-    if [ -d "$SCLIB_TRYTEST_DIR" ]; then
-        pushd "$SCLIB_TRYTEST_DIR"
-        git fetch origin
-        git reset --hard origin/main
-        cp env.scientistcloud "$HOME/ScientistCloud2.0/scientistCloudLib/Docker/.env"
-        cp env.scientistcloud "$HOME/ScientistCloud2.0/scientistcloud/SC_Docker/.env"
-        popd
-        echo "✅ Environment files copied (includes DOMAIN_NAME for dashboard containers)"
-    else
-        echo "⚠️ SCLib_TryTest directory not found: $SCLIB_TRYTEST_DIR"
-    fi
-
-    # Start SCLib services first
+    # Start SCLib services
     echo "📦 Starting SCLib services..."
-    SCLIB_DOCKER_DIR="$HOME/ScientistCloud2.0/scientistCloudLib/Docker"
-    SCLIB_CODE_DIR="$HOME/ScientistCloud2.0/scientistCloudLib"
-    
-    # Pull latest code from scientistCloudLib repository (parent of Docker directory)
-    if [ -d "$SCLIB_CODE_DIR" ]; then
-        echo "   📥 Pulling latest SCLib code..."
-        pushd "$SCLIB_CODE_DIR"
-        git fetch origin
-        git reset --hard origin/main
-        popd
-        echo "   ✅ SCLib code updated"
-    fi
-    
     if [ -d "$SCLIB_DOCKER_DIR" ]; then
         pushd "$SCLIB_DOCKER_DIR"
-        git fetch origin
-        git reset --hard origin/main
-        
         if [ "$REBUILD_SCLIB" = true ]; then
             echo "   🔨 Rebuilding SCLib containers (code changes detected)..."
             # Clean containers, then rebuild and start
@@ -135,12 +154,8 @@ if [ "$DASHBOARDS_ONLY" = false ]; then
 
     # Start Portal services
     echo "🌐 Starting Portal services..."
-    PORTAL_DOCKER_DIR="$HOME/ScientistCloud2.0/scientistcloud/SC_Docker"
     if [ -d "$PORTAL_DOCKER_DIR" ]; then
         pushd "$PORTAL_DOCKER_DIR"
-        git fetch origin
-        git reset --hard origin/main
-        
         if [ "$REBUILD_WEB" = true ]; then
             echo "   🔨 Rebuilding SC_Web portal container (Dockerfile or dependencies changed)..."
             ./start.sh clean
@@ -158,7 +173,7 @@ if [ "$DASHBOARDS_ONLY" = false ]; then
         exit 1
     fi
 else
-    echo "📊 Dashboards-only mode: Skipping SCLib and Portal services"
+    echo "📊 Dashboards-only mode: Skipping SCLib and Portal service startup"
     echo "   (Only running dashboard setup)"
 fi
 
