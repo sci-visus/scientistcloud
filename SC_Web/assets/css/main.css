@@ -524,7 +524,7 @@ body:not(.light-theme) .viewer-container #dashboardFrame {
 }
 
 .bg-primary {
-  background-color: var(--primary-color) !important; /* "info", "pending" */
+  background-color: #2f6bc4 !important; /*var(--primary-color) !important;*/ /* "info", "pending" */
 }
 
 /* File text content viewer - theme-aware styling */
