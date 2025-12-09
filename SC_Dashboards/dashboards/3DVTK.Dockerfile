@@ -96,6 +96,19 @@ RUN if [ -s requirements.txt ]; then \
 RUN python3 -m pip install --no-cache-dir pyvista>=0.44.0 vtk>=9.3.0 panel>=1.3.0 numpy>=1.21.0 matplotlib>=3.5.0
 
 
+# Fix permissions: Create bokehuser if it doesn't exist and add to www-data group
+# This allows the dashboard to create sessions directories in /mnt/visus_datasets/upload/<UUID>/sessions
+# IMPORTANT: Host directories at /mnt/visus_datasets/upload/<UUID> must have:
+#   - Group ownership: www-data (or be group-writable)
+#   - Permissions: 775 or 2775 (setgid) to allow group writes
+#   Run on host: sudo chgrp -R www-data /mnt/visus_datasets/upload && sudo chmod -R g+w /mnt/visus_datasets/upload
+USER root
+RUN groupadd -f www-data && \
+    (id -u bokehuser >/dev/null 2>&1 || useradd -m -s /bin/bash -u 10001 bokehuser) && \
+    usermod -a -G www-data bokehuser && \
+    chown -R bokehuser:bokehuser /app
+USER bokehuser
+
 # Set environment variables from configuration
 
 

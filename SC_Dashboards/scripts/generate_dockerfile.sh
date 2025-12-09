@@ -286,7 +286,7 @@ fi
 # Check if base image uses bokehuser (4d-dashboard-base, bokeh-dashboard-base, magicscan-base)
 if echo "$BASE_IMAGE" | grep -qiE "(4d-dashboard|bokeh-dashboard|magicscan)"; then
     # Insert user/group configuration after requirements install
-    PERMISSIONS_SECTION="# Fix permissions: Add bokehuser to www-data group to allow writing to mounted volumes\n"
+    PERMISSIONS_SECTION="# Fix permissions: Create bokehuser if it doesn't exist and add to www-data group\n"
     PERMISSIONS_SECTION="${PERMISSIONS_SECTION}# This allows the dashboard to create sessions directories in /mnt/visus_datasets/upload/<UUID>/sessions\n"
     PERMISSIONS_SECTION="${PERMISSIONS_SECTION}# IMPORTANT: Host directories at /mnt/visus_datasets/upload/<UUID> must have:\n"
     PERMISSIONS_SECTION="${PERMISSIONS_SECTION}#   - Group ownership: www-data (or be group-writable)\n"
@@ -294,7 +294,9 @@ if echo "$BASE_IMAGE" | grep -qiE "(4d-dashboard|bokeh-dashboard|magicscan)"; th
     PERMISSIONS_SECTION="${PERMISSIONS_SECTION}#   Run on host: sudo chgrp -R www-data /mnt/visus_datasets/upload && sudo chmod -R g+w /mnt/visus_datasets/upload\n"
     PERMISSIONS_SECTION="${PERMISSIONS_SECTION}USER root\n"
     PERMISSIONS_SECTION="${PERMISSIONS_SECTION}RUN groupadd -f www-data && \\\\\n"
-    PERMISSIONS_SECTION="${PERMISSIONS_SECTION}    usermod -a -G www-data bokehuser || echo \"bokehuser already in www-data group or group modification failed\"\n"
+    PERMISSIONS_SECTION="${PERMISSIONS_SECTION}    (id -u bokehuser >/dev/null 2>&1 || useradd -m -s /bin/bash -u 10001 bokehuser) && \\\\\n"
+    PERMISSIONS_SECTION="${PERMISSIONS_SECTION}    usermod -a -G www-data bokehuser && \\\\\n"
+    PERMISSIONS_SECTION="${PERMISSIONS_SECTION}    chown -R bokehuser:bokehuser /app\n"
     PERMISSIONS_SECTION="${PERMISSIONS_SECTION}USER bokehuser\n"
     
     # Find the line with "# Set environment variables" or "# Expose dashboard port" and insert before it
