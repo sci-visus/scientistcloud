@@ -416,13 +416,17 @@ class DatasetManager {
                     loadDatasetDetails(datasetId);
                 }
                 
-                // Load dashboard using viewer manager
+                // Smart dashboard selection based on dataset dimension and user preferences
                 if (window.viewerManager) {
-                    const viewerType = document.getElementById('viewerType');
-                    const dashboardType = viewerType ? viewerType.value : (Object.keys(window.viewerManager.viewers)[0] || 'OpenVisusSlice');
+                    // Use smart dashboard selection
+                    const selectedDashboard = await this.selectDashboardForDataset(
+                        datasetId, 
+                        effectiveUuid, 
+                        this.currentDataset?.preferred_dashboard
+                    );
                     
-                    console.log('Loading dashboard with UUID:', effectiveUuid, 'server:', effectiveServer, 'dashboard type:', dashboardType);
-                    window.viewerManager.loadDashboard(datasetId, datasetName, effectiveUuid, effectiveServer, dashboardType);
+                    console.log('Loading dashboard with UUID:', effectiveUuid, 'server:', effectiveServer, 'selected dashboard:', selectedDashboard);
+                    window.viewerManager.loadDashboard(datasetId, datasetName, effectiveUuid, effectiveServer, selectedDashboard);
                 } else if (typeof loadDashboard === 'function') {
                     console.log('Using fallback loadDashboard with UUID:', effectiveUuid);
                     loadDashboard(datasetId, datasetName, effectiveUuid, effectiveServer);
@@ -2045,6 +2049,214 @@ class DatasetManager {
     viewDataset(datasetId) {
         if (this.currentDataset) {
             this.loadDashboard(this.currentDataset.id, this.currentDataset.name, this.currentDataset.uuid, this.currentDataset.server);
+        }
+    }
+
+    /**
+     * Smart dashboard selection based on dataset dimension and user preferences
+     * @param {string} datasetId - Dataset ID
+     * @param {string} datasetUuid - Dataset UUID
+     * @param {string} preferredDashboardId - User's preferred dashboard ID (optional)
+     * @returns {Promise<string>} Selected dashboard ID
+     */
+    async selectDashboardForDataset(datasetId, datasetUuid, preferredDashboardId = null) {
+        try {
+            // Step 1: Get dataset dimension
+            const datasetDimension = await this.getDatasetDimension(datasetId, datasetUuid);
+            console.log(`📊 Dataset dimension: ${datasetDimension}D`);
+            
+            if (!datasetDimension) {
+                console.warn('⚠️ Could not determine dataset dimension, using default dashboard');
+                const viewerType = document.getElementById('viewerType');
+                return viewerType ? viewerType.value : (Object.keys(window.viewerManager.viewers)[0] || 'OpenVisusSlice');
+            }
+            
+            // Step 2: Get all dashboards and filter by supported dimensions
+            const compatibleDashboards = await this.getCompatibleDashboards(datasetDimension);
+            console.log(`✅ Found ${compatibleDashboards.length} compatible dashboard(s) for ${datasetDimension}D:`, compatibleDashboards.map(d => d.id));
+            
+            if (compatibleDashboards.length === 0) {
+                console.warn(`⚠️ No dashboards found for ${datasetDimension}D, using default`);
+                const viewerType = document.getElementById('viewerType');
+                return viewerType ? viewerType.value : (Object.keys(window.viewerManager.viewers)[0] || 'OpenVisusSlice');
+            }
+            
+            // Step 3: If only one compatible dashboard, use it
+            if (compatibleDashboards.length === 1) {
+                console.log(`✅ Only one compatible dashboard, selecting: ${compatibleDashboards[0].id}`);
+                return compatibleDashboards[0].id;
+            }
+            
+            // Step 4: Multiple dashboards - check user preference
+            if (preferredDashboardId) {
+                const preferredDashboard = compatibleDashboards.find(d => 
+                    d.id.toLowerCase() === preferredDashboardId.toLowerCase() ||
+                    d.name.toLowerCase() === preferredDashboardId.toLowerCase()
+                );
+                
+                if (preferredDashboard) {
+                    console.log(`✅ User preference found and compatible: ${preferredDashboard.id}`);
+                    return preferredDashboard.id;
+                } else {
+                    console.log(`⚠️ User preferred dashboard (${preferredDashboardId}) not compatible with ${datasetDimension}D, selecting from available options`);
+                }
+            }
+            
+            // Step 5: No preference or preference not compatible - pick first available
+            const selectedDashboard = compatibleDashboards[0];
+            console.log(`✅ Selected dashboard: ${selectedDashboard.id} (${selectedDashboard.display_name})`);
+            return selectedDashboard.id;
+            
+        } catch (error) {
+            console.error('❌ Error in smart dashboard selection:', error);
+            // Fallback to default behavior
+            const viewerType = document.getElementById('viewerType');
+            return viewerType ? viewerType.value : (Object.keys(window.viewerManager.viewers)[0] || 'OpenVisusSlice');
+        }
+    }
+
+    /**
+     * Get dataset dimension by checking nexus file or dataset metadata
+     * @param {string} datasetId - Dataset ID
+     * @param {string} datasetUuid - Dataset UUID
+     * @returns {Promise<number|null>} Dataset dimension (1, 2, 3, or 4) or null if cannot determine
+     */
+    async getDatasetDimension(datasetId, datasetUuid) {
+        try {
+            // Try to get dimension from dataset details
+            const response = await fetch(`${getApiBasePath()}/dataset-details.php?uuid=${datasetUuid}`);
+            const data = await response.json();
+            
+            if (data.success && data.dataset) {
+                // Check if dimension is stored in metadata
+                if (data.dataset.dimension) {
+                    return parseInt(data.dataset.dimension);
+                }
+                
+                // Try to get dimension from API endpoint that can read nexus file
+                try {
+                    const dimensionResponse = await fetch(`${getApiBasePath()}/get_dataset_dimension.php?uuid=${datasetUuid}`);
+                    if (dimensionResponse.ok) {
+                        const dimensionData = await dimensionResponse.json();
+                        if (dimensionData.success && dimensionData.dimension) {
+                            return parseInt(dimensionData.dimension);
+                        }
+                    }
+                } catch (dimError) {
+                    // API endpoint might not exist yet, continue with other methods
+                    console.log('Dimension API endpoint not available, trying other methods');
+                }
+                
+                // Try to infer from file structure or names
+                // This is a fallback - ideally dimension should be stored in metadata
+                if (data.dataset.files && Array.isArray(data.dataset.files)) {
+                    // Look for .nxs files
+                    const nxsFiles = data.dataset.files.filter(f => f.name && f.name.endsWith('.nxs'));
+                    if (nxsFiles.length > 0) {
+                        // Could try to read nexus file header, but that's expensive
+                        // For now, return null and let system use default
+                    }
+                }
+            }
+            
+            return null;
+        } catch (error) {
+            console.error('Error getting dataset dimension:', error);
+            return null;
+        }
+    }
+
+    /**
+     * Get dashboards compatible with a given dimension
+     * @param {number} dimension - Dataset dimension (1, 2, 3, or 4)
+     * @returns {Promise<Array>} Array of compatible dashboard objects
+     */
+    async getCompatibleDashboards(dimension) {
+        try {
+            // Load dashboard registry
+            const dashResponse = await fetch(`${getApiBasePath()}/dashboards.php`);
+            const dashData = await dashResponse.json();
+            
+            if (!dashData.success) {
+                console.warn('⚠️ Could not load dashboard registry');
+                return [];
+            }
+            
+            // dashData.dashboards might be an array or object
+            const dashboards = Array.isArray(dashData.dashboards) 
+                ? dashData.dashboards 
+                : Object.entries(dashData.dashboards || {}).map(([id, dash]) => ({ id, ...dash }));
+            
+            const dimensionStr = `${dimension}D`;
+            const compatibleDashboards = [];
+            
+            // Check each dashboard's supported_dimensions
+            for (const dashboard of dashboards) {
+                const dashboardId = dashboard.id || dashboard.name;
+                if (!dashboardId || !dashboard.enabled) {
+                    continue; // Skip disabled dashboards or those without ID
+                }
+                
+                // Load dashboard config to check supported_dimensions
+                try {
+                    // Try multiple possible paths for dashboard config
+                    const configPaths = [
+                        `${getApiBasePath()}/../SC_Dashboards/dashboards/${dashboardId}.json`,
+                        `/portal/SC_Dashboards/dashboards/${dashboardId}.json`,
+                        `/SC_Dashboards/dashboards/${dashboardId}.json`
+                    ];
+                    
+                    let config = null;
+                    for (const configPath of configPaths) {
+                        try {
+                            const configResponse = await fetch(configPath);
+                            if (configResponse.ok) {
+                                config = await configResponse.json();
+                                break;
+                            }
+                        } catch (e) {
+                            continue;
+                        }
+                    }
+                    
+                    if (config) {
+                        const supportedDimensions = config.supported_dimensions || [];
+                        
+                        // Check if this dashboard supports the dataset dimension
+                        if (supportedDimensions.includes(dimensionStr)) {
+                            compatibleDashboards.push({
+                                id: dashboardId,
+                                name: dashboard.name || dashboardId,
+                                display_name: dashboard.display_name || config.display_name || dashboard.name || dashboardId,
+                                config: config
+                            });
+                        }
+                    } else {
+                        // If we can't load the config, check if dashboard is in viewerManager
+                        // and assume it might be compatible (fallback for dashboards without JSON configs)
+                        if (window.viewerManager && window.viewerManager.viewers[dashboardId]) {
+                            console.log(`⚠️ Could not load config for ${dashboardId}, but it's in viewerManager - including as fallback`);
+                            compatibleDashboards.push({
+                                id: dashboardId,
+                                name: dashboard.name || dashboardId,
+                                display_name: dashboard.display_name || dashboard.name || dashboardId,
+                                config: null
+                            });
+                        }
+                    }
+                } catch (configError) {
+                    console.warn(`Error loading config for ${dashboardId}:`, configError);
+                }
+            }
+            
+            // Sort by display name for consistent ordering
+            compatibleDashboards.sort((a, b) => a.display_name.localeCompare(b.display_name));
+            
+            return compatibleDashboards;
+            
+        } catch (error) {
+            console.error('Error getting compatible dashboards:', error);
+            return [];
         }
     }
 
