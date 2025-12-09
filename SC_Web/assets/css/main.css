@@ -11,8 +11,8 @@
   --toolbar-bg: rgba(30,30,30,0.7);
   --viewer-bg: #000;
 
-  --primary-color:#4E477F;
-  --info-color:  #1a4d73;
+  --primary-color:#6f66a9;
+  --info-color:  #B5AEDF;
   --danger-color: #6BB6E9;
   --success-color:#76a38e;
   --warning-color: #E3A54F;
@@ -27,7 +27,7 @@
   --viewer-bg: #F0F0F0;
   
   --primary-color:#4E477F;
-  --info-color:  #B5AEDF;
+  --info-color:  #1a4d73;
   --danger-color: #6BB6E9;
   --success-color:#76a38e;
   --warning-color: #E3A54F;
@@ -492,9 +492,25 @@ body {
   margin-left: 0.5rem;
 }
 
-/* Override bg-success color for "done" status badges */
+/* Override badge background colors for upload pipeline statuses */
 .bg-success {
-  background-color: #76a38e !important;
+  background-color: #76a38e !important; /* "done", "ready", "completed" */
+}
+
+.bg-warning {
+  background-color: var(--warning-color) !important; /* "converting", "processing", "queued", "pending", "uploading" */
+}
+
+.bg-danger {
+  background-color: var(--danger-color) !important; /* "failed", "error" */
+}
+
+.bg-info {
+  background-color: var(--info-color) !important; /* "info", "pending" */
+}
+
+.bg-secondary {
+  background-color: #6c757d !important; /* default/unknown status */
 }
 
 .folder-group {
