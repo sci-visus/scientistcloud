@@ -87,7 +87,16 @@ class DatasetManager {
         document.addEventListener('click', (e) => {
             if (e.target.closest('.dataset-link')) {
                 e.preventDefault();
-                this.handleDatasetSelection(e.target.closest('.dataset-link'));
+                const datasetLink = e.target.closest('.dataset-link');
+                const datasetId = datasetLink.dataset?.datasetId;
+                
+                // Prevent duplicate clicks on the same dataset within 500ms
+                if (datasetId && this.currentDataset?.id === datasetId && this.lastLoadTime && (Date.now() - this.lastLoadTime) < 500) {
+                    console.log('⏭️ Ignoring rapid duplicate click on same dataset');
+                    return;
+                }
+                
+                this.handleDatasetSelection(datasetLink);
             }
         });
 
@@ -1275,19 +1284,32 @@ class DatasetManager {
      * Handle dataset selection
      */
     async handleDatasetSelection(datasetLink) {
-        // Prevent multiple simultaneous selections
-        if (this.isSelectingDataset) {
-            console.log('⏭️ Dataset selection already in progress, queuing this selection');
-            this.pendingSelection = datasetLink;
-            return;
-        }
-        
         const datasetId = datasetLink.dataset.datasetId;
         const datasetName = datasetLink.dataset.datasetName;
         const datasetUuid = datasetLink.dataset.datasetUuid;
         const datasetServer = datasetLink.dataset.datasetServer;
         
-        // Mark as selecting
+        // Check if we just loaded this dataset (prevent rapid re-clicks within 1 second)
+        const currentId = this.currentDataset?.id;
+        if (currentId === datasetId && this.lastLoadTime && (Date.now() - this.lastLoadTime) < 1000) {
+            console.log('⏭️ Same dataset was just loaded, ignoring rapid re-click');
+            return;
+        }
+        
+        // Prevent multiple simultaneous selections
+        if (this.isSelectingDataset) {
+            // Check if it's the same dataset
+            if (currentId === datasetId) {
+                console.log('⏭️ Same dataset already being selected, ignoring duplicate click');
+                return;
+            }
+            // Different dataset - queue it
+            console.log('⏭️ Dataset selection already in progress, queuing this selection');
+            this.pendingSelection = datasetLink;
+            return;
+        }
+        
+        // Mark as selecting (do this early to prevent duplicate calls)
         this.isSelectingDataset = true;
         
         try {
@@ -1405,21 +1427,31 @@ class DatasetManager {
         // Use effectiveUuid and effectiveServer which may have been updated
         await this.loadDashboard(datasetId, datasetName, effectiveUuid, effectiveServer, selectedDashboard, datasetDetails);
 
+        // Record load time to prevent rapid re-clicks
+        this.lastLoadTime = Date.now();
+
         console.log('Dataset selected:', this.currentDataset);
         
         } finally {
             // Clear selection flag
             this.isSelectingDataset = false;
             
-            // Process any pending selection
+            // Process any pending selection ONLY if it's different from what we just loaded
             if (this.pendingSelection) {
                 const pending = this.pendingSelection;
+                const pendingId = pending.dataset?.datasetId;
                 this.pendingSelection = null;
-                console.log('🔄 Processing pending dataset selection');
-                // Use setTimeout to avoid recursion issues
-                setTimeout(() => {
-                    this.handleDatasetSelection(pending);
-                }, 100);
+                
+                // Only process if it's a different dataset
+                if (pendingId && pendingId !== this.currentDataset?.id) {
+                    console.log('🔄 Processing pending dataset selection for different dataset:', pendingId);
+                    // Use setTimeout to avoid recursion issues
+                    setTimeout(() => {
+                        this.handleDatasetSelection(pending);
+                    }, 100);
+                } else {
+                    console.log('⏭️ Skipping pending selection - same dataset or invalid');
+                }
             }
         }
     }

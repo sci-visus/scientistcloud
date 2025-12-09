@@ -328,6 +328,14 @@ function loadTheme() {
  * Handle dataset selection
  */
 function handleDatasetSelection(datasetLink) {
+    // If datasetManager is available, it handles everything - don't duplicate
+    // The dataset-manager.js has its own click handler that will call handleDatasetSelection
+    // So this function should only run as a fallback if datasetManager is not available
+    if (window.datasetManager && typeof window.datasetManager.handleDatasetSelection === 'function') {
+        // Let datasetManager handle it - it has its own event listener
+        return;
+    }
+    
     const datasetId = datasetLink.dataset.datasetId;
     const datasetName = datasetLink.dataset.datasetName;
     const datasetUuid = datasetLink.dataset.datasetUuid;
