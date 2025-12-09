@@ -2390,17 +2390,100 @@ class DatasetManager {
             const datasetServer = dataset.server || buttonData.server || '';
             
             // Determine the default dashboard
-            // Priority: 1. dataset.preferred_dashboard, 2. viewer selector, 3. OpenVisusSlice
-            let dashboardType = dataset.preferred_dashboard;
+            // Priority: 1. Currently loaded dashboard (from toolbar), 2. dataset.preferred_dashboard, 3. smart selection, 4. OpenVisusSlice
+            let dashboardType = null;
             
-            if (!dashboardType || dashboardType.trim() === '') {
-                const viewerTypeSelect = document.getElementById('viewerType');
-                if (viewerTypeSelect && viewerTypeSelect.value) {
-                    dashboardType = viewerTypeSelect.value;
-                } else {
+            // First, try to get the currently loaded dashboard from the toolbar selector
+            const viewerTypeSelect = document.getElementById('viewerType');
+            if (viewerTypeSelect && viewerTypeSelect.value) {
+                dashboardType = viewerTypeSelect.value;
+                console.log('Using dashboard from toolbar selector:', dashboardType);
+            }
+            
+            // If not available, try preferred_dashboard (but normalize it to dashboard ID)
+            if (!dashboardType && dataset.preferred_dashboard && dataset.preferred_dashboard.trim() !== '') {
+                const preferredValue = dataset.preferred_dashboard.trim();
+                console.log('Using preferred_dashboard:', preferredValue);
+                
+                // Normalize preferred_dashboard display name to dashboard ID
+                // Map display names to dashboard IDs
+                const dashboardNameToId = {
+                    '3D Plotly Explorer': '3DPlotly',
+                    '3D Plotly Dashboard': '3DPlotly',
+                    '3d plotly explorer': '3DPlotly',
+                    '3d plotly dashboard': '3DPlotly',
+                    '3D Plotly': '3DPlotly',
+                    '3d plotly': '3DPlotly',
+                    'plotly': '3DPlotly',
+                    '3D VTK Dashboard': '3DVTK',
+                    '3d vtk dashboard': '3DVTK',
+                    '3D VTK': '3DVTK',
+                    '3d vtk': '3DVTK',
+                    '4D Dashboard (New)': '4d_dashboardLite',
+                    '4D Dashboard': '4d_dashboardLite',
+                    '4d dashboard (new)': '4d_dashboardLite',
+                    '4d dashboard': '4d_dashboardLite',
+                    '4D Dashboard': '4d_dashboardLite',
+                    'OpenVisus Slice Dashboard': 'OpenVisusSlice',
+                    'openvisus slice dashboard': 'OpenVisusSlice',
+                    'OpenVisus Slice': 'OpenVisusSlice',
+                    'openvisus slice': 'OpenVisusSlice',
+                    'MagicScan Dashboard': 'magicscan',
+                    'magicscan dashboard': 'magicscan',
+                    'MagicScan': 'magicscan',
+                    'magicscan': 'magicscan'
+                };
+                
+                // Try direct mapping first
+                dashboardType = dashboardNameToId[preferredValue] || dashboardNameToId[preferredValue.toLowerCase()];
+                
+                // If not found, try to find in viewerManager by name
+                if (!dashboardType && window.viewerManager && window.viewerManager.viewers) {
+                    const preferredLower = preferredValue.toLowerCase();
+                    const matchingViewer = Object.values(window.viewerManager.viewers).find(v => {
+                        const vId = (v.id || '').toLowerCase();
+                        const vName = (v.name || '').toLowerCase();
+                        const vDisplayName = (v.display_name || '').toLowerCase();
+                        // Try exact match first
+                        if (vName === preferredLower || vDisplayName === preferredLower) {
+                            return true;
+                        }
+                        // Try partial match
+                        if (vName.includes(preferredLower) || preferredLower.includes(vName) ||
+                            vDisplayName.includes(preferredLower) || preferredLower.includes(vDisplayName)) {
+                            return true;
+                        }
+                        // Try matching "plotly" to "3DPlotly", "3d plotly" to "3DPlotly", etc.
+                        if (preferredLower.includes('plotly') && (vId.includes('plotly') || vId === '3dplotly')) {
+                            return true;
+                        }
+                        return false;
+                    });
+                    
+                    if (matchingViewer) {
+                        dashboardType = matchingViewer.id;
+                        console.log('Found matching viewer by name:', preferredValue, '->', dashboardType);
+                    }
+                }
+            }
+            
+            // If still no dashboard, use smart selection
+            if (!dashboardType) {
+                try {
+                    dashboardType = await this.selectDashboardForDataset(datasetId, datasetUuid, null);
+                    console.log('Using smart-selected dashboard:', dashboardType);
+                } catch (error) {
+                    console.warn('Smart selection failed, using default:', error);
                     dashboardType = 'OpenVisusSlice';
                 }
             }
+            
+            // Final fallback
+            if (!dashboardType) {
+                dashboardType = 'OpenVisusSlice';
+            }
+            
+            console.log('Final dashboard type for URL generation:', dashboardType);
             
             // Generate the dashboard URL using the same logic as viewer-manager
             const dashboardUrl = await this.generateDashboardUrl(datasetUuid, datasetServer, datasetName, dashboardType);
@@ -2464,7 +2547,11 @@ class DatasetManager {
                                 d.id === dashboardType || 
                                 d.id.toLowerCase() === dashboardType.toLowerCase() ||
                                 d.type === dashboardType ||
-                                d.type?.toLowerCase() === dashboardType.toLowerCase()
+                                d.type?.toLowerCase() === dashboardType.toLowerCase() ||
+                                d.name === dashboardType ||
+                                d.name?.toLowerCase() === dashboardType.toLowerCase() ||
+                                d.display_name === dashboardType ||
+                                d.display_name?.toLowerCase() === dashboardType.toLowerCase()
                             )
                         );
                         
@@ -2488,14 +2575,95 @@ class DatasetManager {
             }
         }
         
-        // If still no viewer, construct default URL
+        // If still no viewer, try to find by display name or construct default URL
         let urlTemplate;
         if (viewer && viewer.url_template) {
             urlTemplate = viewer.url_template;
         } else {
-            // Fallback: construct URL from dashboard type
-            const pathId = dashboardType.toLowerCase().replace(/[_-]/g, '');
-            urlTemplate = `/dashboard/${pathId}?uuid={uuid}&server={server}&name={name}`;
+            // Try to find viewer by display name match
+            if (window.viewerManager && window.viewerManager.viewers) {
+                const matchingViewer = Object.values(window.viewerManager.viewers).find(v => {
+                    const vName = (v.name || '').toLowerCase();
+                    const vDisplayName = (v.display_name || '').toLowerCase();
+                    const dashboardTypeLower = dashboardType.toLowerCase();
+                    return vName === dashboardTypeLower || 
+                           vDisplayName === dashboardTypeLower ||
+                           vName.includes(dashboardTypeLower) ||
+                           dashboardTypeLower.includes(vName);
+                });
+                
+                if (matchingViewer && matchingViewer.url_template) {
+                    viewer = matchingViewer;
+                    urlTemplate = matchingViewer.url_template;
+                    console.log('Found viewer by display name match:', dashboardType, '->', matchingViewer.id);
+                }
+            }
+            
+            // If still no viewer, construct URL from dashboard ID (not display name)
+            if (!urlTemplate) {
+                // Use the viewer ID if we found one, otherwise try to extract ID from dashboardType
+                let pathId;
+                if (viewer && viewer.nginx_path) {
+                    // Extract from nginx_path (e.g., "/dashboard/plotly" -> "plotly")
+                    const match = viewer.nginx_path.match(/\/dashboard\/([^/?]+)/);
+                    if (match) {
+                        pathId = match[1]; // Use the path as-is (e.g., "plotly", "3DVTK")
+                    } else {
+                        // If nginx_path doesn't match pattern, use viewer ID
+                        pathId = viewer.id ? viewer.id.toLowerCase().replace(/[_-]/g, '') : 'plotly';
+                    }
+                } else if (viewer && viewer.id) {
+                    // If no nginx_path, try to construct from ID
+                    // Map dashboard IDs to their nginx paths
+                    const idToPath = {
+                        '3dplotly': 'plotly',
+                        '3dvtk': '3DVTK',
+                        '4ddashboardlite': '4d_dashboardLite',
+                        'openvisusslice': 'OpenVisusSlice',
+                        'magicscan': 'magicscan'
+                    };
+                    const normalizedId = viewer.id.toLowerCase().replace(/[_-]/g, '');
+                    pathId = idToPath[normalizedId] || normalizedId;
+                } else {
+                    // Last resort: try to map display name to nginx path
+                    const displayNameToPath = {
+                        '3d plotly explorer': 'plotly',
+                        '3d plotly dashboard': 'plotly',
+                        '3d plotly': 'plotly',
+                        'plotly': 'plotly',
+                        '3d vtk dashboard': '3DVTK',
+                        '3d vtk': '3DVTK',
+                        '4d dashboard (new)': '4d_dashboardLite',
+                        '4d dashboard': '4d_dashboard',
+                        'openvisus slice dashboard': 'OpenVisusSlice',
+                        'openvisus slice': 'OpenVisusSlice',
+                        'magicscan dashboard': 'magicscan',
+                        'magicscan': 'magicscan'
+                    };
+                    const normalizedName = dashboardType.toLowerCase().trim();
+                    pathId = displayNameToPath[normalizedName];
+                    
+                    // If still not found, try to extract from "3D Plotly Explorer" -> "plotly"
+                    if (!pathId) {
+                        if (normalizedName.includes('plotly')) {
+                            pathId = 'plotly';
+                        } else if (normalizedName.includes('vtk')) {
+                            pathId = '3DVTK';
+                        } else if (normalizedName.includes('4d') || normalizedName.includes('4 d')) {
+                            pathId = '4d_dashboardLite';
+                        } else if (normalizedName.includes('openvisus') || normalizedName.includes('slice')) {
+                            pathId = 'OpenVisusSlice';
+                        } else if (normalizedName.includes('magicscan') || normalizedName.includes('magic')) {
+                            pathId = 'magicscan';
+                        } else {
+                            // Last resort: remove spaces and special chars
+                            pathId = dashboardType.toLowerCase().replace(/[^a-z0-9]/g, '');
+                        }
+                    }
+                }
+                urlTemplate = `/dashboard/${pathId}?uuid={uuid}&server={server}&name={name}`;
+                console.warn('Constructed URL from dashboard type (fallback):', urlTemplate);
+            }
         }
         
         // Replace placeholders
