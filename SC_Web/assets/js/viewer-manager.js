@@ -286,6 +286,22 @@ class ViewerManager {
         const viewerContainer = document.getElementById('viewerContainer');
         if (!viewerContainer) return;
 
+        // Validate dashboardType - it should be a dashboard ID, not a dataset name
+        // If dashboardType looks like a dataset name (contains spaces, is too long, etc.), use default
+        if (!dashboardType || 
+            dashboardType === datasetName || 
+            dashboardType.length > 50 || 
+            dashboardType.includes(' ') && !this.viewers[dashboardType]) {
+            console.warn(`⚠️ Invalid dashboardType detected: "${dashboardType}" (looks like dataset name). Using default.`);
+            dashboardType = 'OpenVisusSlice';
+        }
+        
+        // Ensure dashboardType exists in viewers
+        if (!this.viewers[dashboardType]) {
+            console.warn(`⚠️ Dashboard "${dashboardType}" not found in viewers. Using default.`);
+            dashboardType = Object.keys(this.viewers)[0] || 'OpenVisusSlice';
+        }
+
         // Create a unique key for this load operation
         const loadKey = `${datasetId}-${dashboardType}`;
         
@@ -841,7 +857,28 @@ document.addEventListener('DOMContentLoaded', function() {
 });
 
 // Export functions for global access
+// Legacy function - use viewerManager.loadDashboard instead
+// This function signature is incorrect - it should take (datasetId, datasetName, datasetUuid, datasetServer, dashboardType)
 window.loadDashboard = function(datasetId, dashboardType) {
+    console.warn('⚠️ Using legacy loadDashboard function. This may have incorrect parameters.');
+    // Try to get dataset info from currentDataset if available
+    if (window.datasetManager && window.datasetManager.currentDataset) {
+        const dataset = window.datasetManager.currentDataset;
+        if (window.viewerManager) {
+            window.viewerManager.loadDashboard(
+                datasetId || dataset.id,
+                dataset.name || 'Dataset',
+                dataset.uuid || datasetId,
+                dataset.server || 'false',
+                dashboardType || 'OpenVisusSlice'
+            );
+        }
+    } else {
+        // Fallback - use default values
+        if (window.viewerManager) {
+            window.viewerManager.loadDashboard(datasetId, 'Dataset', datasetId, 'false', dashboardType || 'OpenVisusSlice');
+        }
+    }
     if (window.viewerManager && window.datasetManager && window.datasetManager.currentDataset) {
         window.viewerManager.loadDashboard(
             window.datasetManager.currentDataset.id,

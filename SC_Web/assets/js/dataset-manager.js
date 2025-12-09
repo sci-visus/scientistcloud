@@ -2180,13 +2180,24 @@ class DatasetManager {
     async getDatasetDimension(datasetId, datasetUuid) {
         try {
             // Try to get dimension from dataset details using dataset_id (not uuid)
+            console.log(`🔍 Fetching dimension for dataset_id: ${datasetId}, uuid: ${datasetUuid}`);
             const response = await fetch(`${getApiBasePath()}/dataset-details.php?dataset_id=${datasetId}`);
+            
+            if (!response.ok) {
+                console.warn(`⚠️ dataset-details.php returned status ${response.status}`);
+                return null;
+            }
+            
             const data = await response.json();
+            console.log('🔍 Raw API response:', data);
+            console.log('🔍 Response success:', data.success);
+            console.log('🔍 Response has dataset:', !!data.dataset);
             
             if (data.success && data.dataset) {
                 // Debug: log what's in the dataset object
                 console.log('🔍 Dataset object keys:', Object.keys(data.dataset));
                 console.log('🔍 Dataset dimensions field:', data.dataset.dimensions, 'type:', typeof data.dataset.dimensions);
+                console.log('🔍 Full dataset object:', JSON.stringify(data.dataset, null, 2));
                 
                 // Check if dimensions is stored in metadata (field is "dimensions" plural, format is "4D", "3D", etc.)
                 if (data.dataset.dimensions) {
@@ -2220,9 +2231,11 @@ class DatasetManager {
                 
                 // Try to get dimension from API endpoint that can read nexus file
                 try {
+                    console.log(`🔍 Trying get_dataset_dimension.php for uuid: ${datasetUuid}`);
                     const dimensionResponse = await fetch(`${getApiBasePath()}/get_dataset_dimension.php?uuid=${datasetUuid}`);
                     if (dimensionResponse.ok) {
                         const dimensionData = await dimensionResponse.json();
+                        console.log('🔍 get_dataset_dimension.php response:', dimensionData);
                         if (dimensionData.success && dimensionData.dimension) {
                             const dim = parseInt(dimensionData.dimension);
                             if (dim >= 1 && dim <= 4) {
@@ -2230,10 +2243,12 @@ class DatasetManager {
                                 return dim;
                             }
                         }
+                    } else {
+                        console.warn(`⚠️ get_dataset_dimension.php returned status ${dimensionResponse.status}`);
                     }
                 } catch (dimError) {
                     // API endpoint might not exist yet, continue with other methods
-                    console.log('Dimension API endpoint not available, trying other methods');
+                    console.log('⚠️ Dimension API endpoint error:', dimError.message);
                 }
                 
                 // Try to infer from file structure or names
@@ -2246,6 +2261,8 @@ class DatasetManager {
                         // For now, return null and let system use default
                     }
                 }
+            } else {
+                console.warn('⚠️ API response missing success or dataset:', { success: data.success, hasDataset: !!data.dataset });
             }
             
             return null;
@@ -2296,54 +2313,24 @@ class DatasetManager {
                     }
                 }
                 
-                // Load dashboard config to check supported_dimensions
-                try {
-                    // Try multiple possible paths for dashboard config
-                    const configPaths = [
-                        `${getApiBasePath()}/../SC_Dashboards/dashboards/${dashboardId}.json`,
-                        `/portal/SC_Dashboards/dashboards/${dashboardId}.json`,
-                        `/SC_Dashboards/dashboards/${dashboardId}.json`
-                    ];
-                    
-                    let config = null;
-                    for (const configPath of configPaths) {
-                        try {
-                            const configResponse = await fetch(configPath);
-                            if (configResponse.ok) {
-                                config = await configResponse.json();
-                                break;
-                            }
-                        } catch (e) {
-                            continue;
-                        }
-                    }
-                    
-                    if (config) {
-                        const supportedDimensions = config.supported_dimensions || [];
-                        
-                        // Check if this dashboard supports the dataset dimension
-                        if (supportedDimensions.includes(dimensionStr)) {
-                            compatibleDashboards.push({
-                                id: dashboardId,
-                                name: dashboard.name || dashboardId,
-                                display_name: dashboard.display_name || config.display_name || dashboard.name || dashboardId,
-                                config: config
-                            });
-                        }
-                    } else {
-                        // If we can't load the config, but dashboard is in viewerManager, 
-                        // assume it might be compatible (fallback for dashboards without JSON configs)
-                        // But only if it's actually in viewerManager (already checked above)
-                        console.log(`⚠️ Could not load config for ${dashboardId}, but it's in viewerManager - including as fallback`);
-                        compatibleDashboards.push({
-                            id: dashboardId,
-                            name: dashboard.name || dashboardId,
-                            display_name: dashboard.display_name || dashboard.name || dashboardId,
-                            config: null
-                        });
-                    }
-                } catch (configError) {
-                    console.warn(`Error loading config for ${dashboardId}:`, configError);
+                // Check supported_dimensions from the dashboard registry response
+                // The dashboards.php API should already include this info in the dashboard object
+                // If not available, we'll include all dashboards that are in viewerManager
+                // (fallback for dashboards without explicit dimension restrictions)
+                const supportedDimensions = dashboard.supported_dimensions || dashboard.config?.supported_dimensions || [];
+                
+                // If no supported_dimensions specified, assume dashboard supports all dimensions
+                // Otherwise, check if it supports the dataset dimension
+                if (supportedDimensions.length === 0 || supportedDimensions.includes(dimensionStr)) {
+                    compatibleDashboards.push({
+                        id: dashboardId,
+                        name: dashboard.name || dashboardId,
+                        display_name: dashboard.display_name || dashboard.name || dashboardId,
+                        config: dashboard.config || null,
+                        supported_dimensions: supportedDimensions
+                    });
+                } else {
+                    console.log(`⚠️ Dashboard ${dashboardId} does not support ${dimensionStr} (supports: ${supportedDimensions.join(', ')})`);
                 }
             }
             
