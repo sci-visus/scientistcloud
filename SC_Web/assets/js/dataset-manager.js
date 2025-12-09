@@ -2149,8 +2149,8 @@ class DatasetManager {
      */
     async getDatasetDimension(datasetId, datasetUuid) {
         try {
-            // Try to get dimension from dataset details
-            const response = await fetch(`${getApiBasePath()}/dataset-details.php?uuid=${datasetUuid}`);
+            // Try to get dimension from dataset details using dataset_id (not uuid)
+            const response = await fetch(`${getApiBasePath()}/dataset-details.php?dataset_id=${datasetId}`);
             const data = await response.json();
             
             if (data.success && data.dataset) {

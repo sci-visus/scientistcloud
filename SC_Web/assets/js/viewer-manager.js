@@ -9,6 +9,8 @@ class ViewerManager {
         this.viewers = {}; // Will be loaded from API
         // No default viewers - all should come from API to avoid duplicates
         this.defaultViewers = {};
+        this.isLoading = false; // Flag to prevent double loading
+        this.currentLoadingKey = null; // Track what's currently loading
         this.initialize();
     }
     
@@ -233,6 +235,15 @@ class ViewerManager {
         const viewerContainer = document.getElementById('viewerContainer');
         if (!viewerContainer) return;
 
+        // Create a unique key for this load operation
+        const loadKey = `${datasetId}-${dashboardType}`;
+        
+        // Prevent double loading - if we're already loading the same dashboard, skip
+        if (this.isLoading && this.currentLoadingKey === loadKey) {
+            console.log(`⏭️ Already loading ${dashboardType} for dataset ${datasetId}, skipping duplicate request`);
+            return;
+        }
+
         // Prevent infinite loops by tracking which dashboards we've already tried
         if (triedDashboards.has(dashboardType)) {
             console.error(`❌ Already tried dashboard ${dashboardType}, preventing infinite loop`);
@@ -240,6 +251,10 @@ class ViewerManager {
             return;
         }
         triedDashboards.add(dashboardType);
+        
+        // Set loading flag
+        this.isLoading = true;
+        this.currentLoadingKey = loadKey;
 
         // Show loading state
         viewerContainer.innerHTML = `
@@ -258,9 +273,18 @@ class ViewerManager {
             
             if (status === 'ready') {
                 // Load the dashboard
-                await this.loadDashboardContent(datasetId, datasetName, datasetUuid, datasetServer, dashboardType);
+                try {
+                    await this.loadDashboardContent(datasetId, datasetName, datasetUuid, datasetServer, dashboardType);
+                } finally {
+                    // Clear loading flag after loadDashboardContent completes (success or error)
+                    this.isLoading = false;
+                    this.currentLoadingKey = null;
+                }
             } else if (status === 'processing') {
                 this.showProcessingDashboard(datasetId, datasetName);
+                // Clear loading flag
+                this.isLoading = false;
+                this.currentLoadingKey = null;
             } else if (status === 'unsupported') {
                 // Instead of showing error, automatically find and load a compatible dashboard
                 console.log(`⚠️ Dashboard ${dashboardType} is not supported for this dataset. Automatically selecting compatible dashboard...`);
@@ -283,29 +307,44 @@ class ViewerManager {
                             console.log(`✅ Auto-selected compatible dashboard: ${selectedDashboardId}`);
                             // Recursively load the selected dashboard (pass triedDashboards to prevent loops)
                             if (selectedDashboardId !== dashboardType) {
+                                // Clear current loading flag before recursive call
+                                this.isLoading = false;
+                                this.currentLoadingKey = null;
                                 await this.loadDashboard(datasetId, datasetName, datasetUuid, datasetServer, selectedDashboardId, triedDashboards);
                             } else {
                                 // If we somehow got the same dashboard, show error
+                                this.isLoading = false;
+                                this.currentLoadingKey = null;
                                 this.showErrorDashboard('No compatible dashboard found for this dataset');
                             }
                         } else {
                             console.error('❌ No compatible dashboard found');
+                            this.isLoading = false;
+                            this.currentLoadingKey = null;
                             this.showErrorDashboard('No compatible dashboard found for this dataset');
                         }
                     } catch (selectionError) {
                         console.error('Error selecting compatible dashboard:', selectionError);
+                        this.isLoading = false;
+                        this.currentLoadingKey = null;
                         this.showErrorDashboard('Failed to find compatible dashboard');
                     }
                 } else {
                     // Fallback if datasetManager is not available
                     console.error('DatasetManager not available for smart dashboard selection');
+                    this.isLoading = false;
+                    this.currentLoadingKey = null;
                     this.showErrorDashboard('Dashboard not available and cannot auto-select alternative');
                 }
             } else {
+                this.isLoading = false;
+                this.currentLoadingKey = null;
                 this.showErrorDashboard('Unknown error occurred');
             }
         } catch (error) {
             console.error('Error loading dashboard:', error);
+            this.isLoading = false;
+            this.currentLoadingKey = null;
             this.showErrorDashboard('Failed to load dashboard');
         }
     }
