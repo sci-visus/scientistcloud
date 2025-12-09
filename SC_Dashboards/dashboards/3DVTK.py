@@ -199,8 +199,31 @@ except Exception as e:
     print("🔄 Falling back to Panel's native VTK volume rendering")
     PYVISTA_AVAILABLE = False
 
-# Enable PyVista for Panel
-pn.extension('vtk')
+# Enable PyVista for Panel and properly initialize Panel with Bokeh
+# Panel needs to be initialized early to register its models with Bokeh
+# IMPORTANT: pn.extension() must be called before creating any Panel objects
+# and it automatically registers Panel's Bokeh models
+try:
+    # Initialize Panel extension - this registers Panel models with Bokeh
+    # The 'vtk' extension enables VTK support
+    pn.extension('vtk', sizing_mode='stretch_both', template=None)
+    # Configure Panel for Bokeh integration
+    pn.config.sizing_mode = 'stretch_both'
+    # Ensure Panel's Bokeh models are loaded
+    import panel as pn_module
+    if hasattr(pn_module, '_models'):
+        print("✅ Panel extension initialized with Bokeh models")
+    else:
+        print("✅ Panel extension initialized")
+except Exception as e:
+    print(f"⚠️ Panel initialization warning: {e}")
+    # Fallback: try basic initialization
+    try:
+        pn.extension('vtk')
+        print("✅ Panel extension initialized (fallback)")
+    except Exception as e2:
+        print(f"❌ Panel initialization failed: {e2}")
+        raise
 
 
 # In[ ]:
@@ -776,7 +799,25 @@ volumeCtrls = initial_volume.controls(jslink=True, parameters=[
 
 # Create the initial layout
 Tools = pn.Column( myTitlePanel, uuid_selection, uuid_reload_button, resolution_slider, volumeCtrls, notifications )
-Viz = pn.Row( Tools, pn.Row( initial_volume, name=uuid_arg)).servable()
+Viz = pn.Row( Tools, pn.Row( initial_volume, name=uuid_arg))
+
+# Convert Panel objects to Bokeh models and add to document
+# Panel's .get_root() method converts Panel objects to Bokeh models
+try:
+    bokeh_root = Viz.get_root()
+    curdoc().add_root(bokeh_root)
+    print("✅ Panel layout added to Bokeh document")
+except Exception as e:
+    print(f"⚠️ Error adding Panel layout to Bokeh document: {e}")
+    # Fallback: try using .servable() which might work in some Panel versions
+    try:
+        Viz.servable()
+        print("✅ Panel layout marked as servable (fallback)")
+    except Exception as e2:
+        print(f"❌ Failed to add Panel layout: {e2}")
+        # Last resort: create a simple error message
+        error_div = Div(text=f"<h2>Error loading dashboard</h2><p>Panel integration error: {e2}</p>")
+        curdoc().add_root(error_div)
 
 
 # In[ ]:
