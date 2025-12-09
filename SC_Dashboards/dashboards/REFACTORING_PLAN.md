@@ -157,3 +157,4 @@ def set_crosshair_position(self, x: float, y: float):
 - Consider adding a `PlotRenderer` class that handles Bokeh figure creation from plot state
 
 
+
