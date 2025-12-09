@@ -14,6 +14,8 @@ class DatasetManager {
         this.currentDataset = null;
         this.datasets = [];
         this.folders = [];
+        this.isSelectingDataset = false; // Flag to prevent multiple simultaneous selections
+        this.pendingSelection = null; // Store pending selection if one is already in progress
         this.initialize();
     }
 
@@ -357,6 +359,39 @@ class DatasetManager {
                 
                 console.log('Dataset clicked:', { datasetId, datasetName, datasetUuid, datasetServer });
                 
+                // Prevent duplicate processing
+                if (this.isSelectingDataset && this.currentDataset?.id === datasetId) {
+                    console.log('⏭️ Already selecting this dataset, skipping duplicate click');
+                    return;
+                }
+                
+                // Show immediate loading state in right column to prevent flashing
+                const detailsContainer = document.getElementById('datasetDetails');
+                if (detailsContainer) {
+                    detailsContainer.innerHTML = `
+                        <div class="text-center">
+                            <div class="spinner-border text-primary" role="status">
+                                <span class="visually-hidden">Loading...</span>
+                            </div>
+                            <p class="mt-2">Loading ${datasetName}...</p>
+                        </div>
+                    `;
+                }
+                
+                // Show immediate loading state in middle column (dashboard area)
+                const viewerContainer = document.getElementById('viewerContainer');
+                if (viewerContainer) {
+                    viewerContainer.innerHTML = `
+                        <div class="text-center">
+                            <div class="spinner-border text-primary" role="status">
+                                <span class="visually-hidden">Loading...</span>
+                            </div>
+                            <h5 class="mt-3">Loading Dashboard</h5>
+                            <p class="text-muted">Preparing visualization for ${datasetName}</p>
+                        </div>
+                    `;
+                }
+                
                 // Update active state
                 document.querySelectorAll('.dataset-link').forEach((l) => {
                     l.classList.remove('active');
@@ -370,78 +405,13 @@ class DatasetManager {
                     return;
                 }
                 
-                // Fetch full dataset details to get google_drive_link
-                let effectiveUuid = datasetUuid;
-                let effectiveServer = datasetServer;
-                
-                try {
-                    const response = await fetch(`${getApiBasePath()}/dataset-details.php?dataset_id=${encodeURIComponent(datasetId)}`);
-                    const data = await response.json();
-                    
-                    if (data.success && data.dataset) {
-                        const dataset = data.dataset;
-                        const googleDriveLink = dataset.google_drive_link || '';
-                        
-                        // Determine server flag and effective UUID
-                        // If google_drive_link exists and contains 'http' but not 'google.com', use it as UUID
-                        if (googleDriveLink) {
-                            const containsHttp = googleDriveLink.includes('http');
-                            const containsGoogle = googleDriveLink.includes('google.com');
-                            
-                            if (containsHttp && !containsGoogle) {
-                                // Use the link as the UUID for remote loading
-                                effectiveUuid = googleDriveLink;
-                                effectiveServer = 'true';
-                                console.log('Using google_drive_link as UUID:', effectiveUuid);
-                            }
-                        }
-                    }
-                } catch (error) {
-                    console.warn('Could not fetch dataset details, using defaults:', error);
-                    // Continue with defaults if fetch fails
-                }
-                
-                // Store current dataset
-                this.currentDataset = {
-                    id: datasetId,
-                    name: datasetName,
-                    uuid: effectiveUuid,
-                    server: effectiveServer
-                };
-                
-                console.log('Final dataset config:', this.currentDataset);
-                
-                // Load dataset details
-                if (typeof loadDatasetDetails === 'function') {
-                    loadDatasetDetails(datasetId);
-                }
-                
-                // Smart dashboard selection based on dataset dimension and user preferences
-                if (window.viewerManager) {
-                    // Use smart dashboard selection FIRST, before loading
-                    // This ensures we get the best dashboard based on dimension, not the toolbar value
-                    const selectedDashboard = await this.selectDashboardForDataset(
-                        datasetId, 
-                        effectiveUuid, 
-                        this.currentDataset?.preferred_dashboard
-                    );
-                    
-                    console.log('✅ Smart selection complete. Loading dashboard with UUID:', effectiveUuid, 'server:', effectiveServer, 'selected dashboard:', selectedDashboard);
-                    
-                    // Update toolbar selector to match the auto-selected dashboard
-                    if (window.viewerManager && typeof window.viewerManager.updateViewerSelector === 'function') {
-                        window.viewerManager.updateViewerSelector(selectedDashboard);
-                    }
-                    
-                    // Now load the dashboard with the smart-selected one
-                    window.viewerManager.loadDashboard(datasetId, datasetName, effectiveUuid, effectiveServer, selectedDashboard);
-                } else if (typeof loadDashboard === 'function') {
-                    console.log('Using fallback loadDashboard with UUID:', effectiveUuid);
-                    loadDashboard(datasetId, datasetName, effectiveUuid, effectiveServer);
-                } else {
-                    console.error('No dashboard loader available');
-                    alert('Error: Dashboard loader not available. Please refresh the page.');
-                }
+                // Use selectDataset method which handles everything in one place:
+                // - Fetches dataset details (including google_drive_link handling)
+                // - Displays dataset details in right column
+                // - Performs smart dashboard selection
+                // - Loads the dashboard
+                // This prevents duplicate processing and flashing
+                this.selectDataset(datasetId, datasetName, datasetUuid, datasetServer);
             }
             
             // Handle retry conversion button using event delegation
@@ -1267,10 +1237,22 @@ class DatasetManager {
      * Handle dataset selection
      */
     async handleDatasetSelection(datasetLink) {
+        // Prevent multiple simultaneous selections
+        if (this.isSelectingDataset) {
+            console.log('⏭️ Dataset selection already in progress, queuing this selection');
+            this.pendingSelection = datasetLink;
+            return;
+        }
+        
         const datasetId = datasetLink.dataset.datasetId;
         const datasetName = datasetLink.dataset.datasetName;
         const datasetUuid = datasetLink.dataset.datasetUuid;
         const datasetServer = datasetLink.dataset.datasetServer;
+        
+        // Mark as selecting
+        this.isSelectingDataset = true;
+        
+        try {
 
         // Update active state
         document.querySelectorAll('.dataset-link').forEach(link => {
@@ -1295,6 +1277,20 @@ class DatasetManager {
                 datasetDetails = data.dataset;
                 // Store full dataset details in currentDataset
                 this.currentDataset.details = datasetDetails;
+                
+                // Handle google_drive_link for remote datasets
+                const googleDriveLink = datasetDetails.google_drive_link || '';
+                if (googleDriveLink) {
+                    const containsHttp = googleDriveLink.includes('http');
+                    const containsGoogle = googleDriveLink.includes('google.com');
+                    
+                    if (containsHttp && !containsGoogle) {
+                        // Use the link as the UUID for remote loading
+                        this.currentDataset.uuid = googleDriveLink;
+                        this.currentDataset.server = 'true';
+                        console.log('Using google_drive_link as UUID:', googleDriveLink);
+                    }
+                }
                 
                 console.log('Dataset details fetched:', {
                     preferred_dashboard: datasetDetails.preferred_dashboard,
@@ -1341,12 +1337,16 @@ class DatasetManager {
 
         // Use smart dashboard selection FIRST, before loading
         // This ensures we get the best dashboard based on dimension, not the toolbar value
+        // Use currentDataset.uuid which may have been updated with google_drive_link
+        const effectiveUuid = this.currentDataset?.uuid || datasetUuid;
+        const effectiveServer = this.currentDataset?.server || datasetServer;
+        
         let selectedDashboard = null;
         if (window.viewerManager && this.selectDashboardForDataset) {
             try {
                 selectedDashboard = await this.selectDashboardForDataset(
                     datasetId,
-                    datasetUuid,
+                    effectiveUuid,
                     datasetDetails?.preferred_dashboard || this.currentDataset?.preferred_dashboard || null
                 );
                 
@@ -1363,9 +1363,26 @@ class DatasetManager {
         }
 
         // Load dashboard with the smart-selected dashboard (or let it use its own logic if selection failed)
-        await this.loadDashboard(datasetId, datasetName, datasetUuid, datasetServer, selectedDashboard, datasetDetails);
+        // Use effectiveUuid and effectiveServer which may have been updated
+        await this.loadDashboard(datasetId, datasetName, effectiveUuid, effectiveServer, selectedDashboard, datasetDetails);
 
         console.log('Dataset selected:', this.currentDataset);
+        
+        } finally {
+            // Clear selection flag
+            this.isSelectingDataset = false;
+            
+            // Process any pending selection
+            if (this.pendingSelection) {
+                const pending = this.pendingSelection;
+                this.pendingSelection = null;
+                console.log('🔄 Processing pending dataset selection');
+                // Use setTimeout to avoid recursion issues
+                setTimeout(() => {
+                    this.handleDatasetSelection(pending);
+                }, 100);
+            }
+        }
     }
 
     /**
@@ -2084,6 +2101,14 @@ class DatasetManager {
 
     /**
      * Smart dashboard selection based on dataset dimension and user preferences
+     * 
+     * PRIORITY ORDER:
+     * 1. Dataset dimension compatibility (filter dashboards by supported_dimensions)
+     * 2. Single compatible dashboard (if only one matches dimension, use it)
+     * 3. User's preferred_dashboard (if compatible with dimension)
+     * 4. OpenVisusSlice (most general dashboard, works with all dimensions)
+     * 5. First available compatible dashboard (as last resort)
+     * 
      * @param {string} datasetId - Dataset ID
      * @param {string} datasetUuid - Dataset UUID
      * @param {string} preferredDashboardId - User's preferred dashboard ID (optional)
@@ -2096,7 +2121,12 @@ class DatasetManager {
             console.log(`📊 Dataset dimension: ${datasetDimension}D`);
             
             if (!datasetDimension) {
-                console.warn('⚠️ Could not determine dataset dimension, using default dashboard');
+                console.warn('⚠️ Could not determine dataset dimension, using OpenVisusSlice as default/general dashboard');
+                // OpenVisusSlice is the most general dashboard - use it as default
+                if (window.viewerManager && window.viewerManager.viewers && window.viewerManager.viewers['OpenVisusSlice']) {
+                    return 'OpenVisusSlice';
+                }
+                // Fallback to toolbar selector or first available
                 const viewerType = document.getElementById('viewerType');
                 return viewerType ? viewerType.value : (Object.keys(window.viewerManager.viewers)[0] || 'OpenVisusSlice');
             }
@@ -2106,7 +2136,12 @@ class DatasetManager {
             console.log(`✅ Found ${compatibleDashboards.length} compatible dashboard(s) for ${datasetDimension}D:`, compatibleDashboards.map(d => d.id));
             
             if (compatibleDashboards.length === 0) {
-                console.warn(`⚠️ No dashboards found for ${datasetDimension}D, using default`);
+                console.warn(`⚠️ No dashboards found for ${datasetDimension}D, using OpenVisusSlice as default/general dashboard`);
+                // OpenVisusSlice is the most general dashboard - use it as default
+                if (window.viewerManager && window.viewerManager.viewers && window.viewerManager.viewers['OpenVisusSlice']) {
+                    return 'OpenVisusSlice';
+                }
+                // Fallback to toolbar selector or first available
                 const viewerType = document.getElementById('viewerType');
                 return viewerType ? viewerType.value : (Object.keys(window.viewerManager.viewers)[0] || 'OpenVisusSlice');
             }
@@ -2145,9 +2180,36 @@ class DatasetManager {
                 }
             }
             
-            // Step 5: No preference or preference not compatible - pick first available
+            // Step 5: No preference or preference not compatible - prioritize OpenVisusSlice as the most general dashboard
+            // Priority order:
+            // 1. OpenVisusSlice (most general, works with all dimensions)
+            // 2. Other compatible dashboards that exist in viewerManager
+            // 3. First compatible dashboard as last resort
+            
+            // First, try to find OpenVisusSlice in compatible dashboards
+            let selectedDashboard = compatibleDashboards.find(d => {
+                const dashboardId = (d.id || '').toLowerCase();
+                return dashboardId === 'openvisusslice' || dashboardId === 'openvisus' || dashboardId === 'openvisusslice';
+            });
+            
+            // If OpenVisusSlice is compatible and available, use it
+            if (selectedDashboard) {
+                // Verify it exists in viewerManager
+                if (window.viewerManager && window.viewerManager.viewers) {
+                    if (window.viewerManager.viewers[selectedDashboard.id]) {
+                        console.log(`✅ Selected OpenVisusSlice as general/default dashboard: ${selectedDashboard.id}`);
+                        return selectedDashboard.id;
+                    }
+                } else {
+                    // viewerManager not available, but we found it in compatible list
+                    console.log(`✅ Selected OpenVisusSlice as general/default dashboard: ${selectedDashboard.id}`);
+                    return selectedDashboard.id;
+                }
+            }
+            
+            // If OpenVisusSlice not compatible or not found, pick first available compatible dashboard
             // Validate that the selected dashboard actually exists in viewerManager
-            const selectedDashboard = compatibleDashboards.find(d => {
+            selectedDashboard = compatibleDashboards.find(d => {
                 // Check if dashboard exists in viewerManager
                 if (window.viewerManager && window.viewerManager.viewers) {
                     return window.viewerManager.viewers[d.id] !== undefined;
@@ -2165,7 +2227,12 @@ class DatasetManager {
             
         } catch (error) {
             console.error('❌ Error in smart dashboard selection:', error);
-            // Fallback to default behavior
+            // Fallback to OpenVisusSlice as the most general/default dashboard
+            if (window.viewerManager && window.viewerManager.viewers && window.viewerManager.viewers['OpenVisusSlice']) {
+                console.log('✅ Using OpenVisusSlice as fallback default dashboard');
+                return 'OpenVisusSlice';
+            }
+            // Last resort: toolbar selector or first available
             const viewerType = document.getElementById('viewerType');
             return viewerType ? viewerType.value : (Object.keys(window.viewerManager.viewers)[0] || 'OpenVisusSlice');
         }
