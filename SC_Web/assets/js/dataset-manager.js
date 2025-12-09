@@ -405,13 +405,17 @@ class DatasetManager {
                     return;
                 }
                 
-                // Use selectDataset method which handles everything in one place:
-                // - Fetches dataset details (including google_drive_link handling)
-                // - Displays dataset details in right column
-                // - Performs smart dashboard selection
-                // - Loads the dashboard
-                // This prevents duplicate processing and flashing
-                this.selectDataset(datasetId, datasetName, datasetUuid, datasetServer);
+                // Create a dataset link element to pass to handleDatasetSelection
+                // This consolidates all logic in one place to prevent flashing
+                const fakeLink = {
+                    dataset: {
+                        datasetId: datasetId,
+                        datasetName: datasetName,
+                        datasetUuid: datasetUuid,
+                        datasetServer: datasetServer
+                    }
+                };
+                this.handleDatasetSelection(fakeLink);
             }
             
             // Handle retry conversion button using event delegation
@@ -1234,6 +1238,40 @@ class DatasetManager {
     }
 
     /**
+     * Select dataset - public method that can be called directly
+     * This is an alias for handleDatasetSelection that accepts parameters directly
+     */
+    async selectDataset(datasetId, datasetName, datasetUuid, datasetServer) {
+        // Create a fake dataset link object to pass to handleDatasetSelection
+        const fakeLink = {
+            dataset: {
+                datasetId: datasetId,
+                datasetName: datasetName,
+                datasetUuid: datasetUuid,
+                datasetServer: datasetServer
+            }
+        };
+        return this.handleDatasetSelection(fakeLink);
+    }
+
+    /**
+     * Select dataset - public method that can be called directly
+     * This is an alias for handleDatasetSelection that accepts parameters directly
+     */
+    async selectDataset(datasetId, datasetName, datasetUuid, datasetServer) {
+        // Create a fake dataset link object to pass to handleDatasetSelection
+        const fakeLink = {
+            dataset: {
+                datasetId: datasetId,
+                datasetName: datasetName,
+                datasetUuid: datasetUuid,
+                datasetServer: datasetServer
+            }
+        };
+        return this.handleDatasetSelection(fakeLink);
+    }
+
+    /**
      * Handle dataset selection
      */
     async handleDatasetSelection(datasetLink) {
@@ -1253,12 +1291,13 @@ class DatasetManager {
         this.isSelectingDataset = true;
         
         try {
-
-        // Update active state
-        document.querySelectorAll('.dataset-link').forEach(link => {
-            link.classList.remove('active');
-        });
-        datasetLink.classList.add('active');
+            // Update active state (only if datasetLink is a real DOM element)
+            if (datasetLink && datasetLink.classList) {
+                document.querySelectorAll('.dataset-link').forEach(link => {
+                    link.classList.remove('active');
+                });
+                datasetLink.classList.add('active');
+            }
 
         // Store current dataset
         this.currentDataset = {
@@ -1464,7 +1503,16 @@ class DatasetManager {
                         .map(d => {
                             seen.add(d.id);
                             // Store mapping of ID to display name
-                            dashboardMap[d.id] = d.display_name || d.name || d.id;
+                            // Also create reverse mapping: display_name -> id for preference matching
+                            const displayName = d.display_name || d.name || d.id;
+                            dashboardMap[d.id] = displayName;
+                            // Also map display name variations to ID for preference matching
+                            dashboardMap[displayName] = d.id;
+                            dashboardMap[displayName.toLowerCase()] = d.id;
+                            if (d.name && d.name !== displayName) {
+                                dashboardMap[d.name] = d.id;
+                                dashboardMap[d.name.toLowerCase()] = d.id;
+                            }
                             return d.id;
                         });
                 }
@@ -1699,9 +1747,15 @@ class DatasetManager {
                         <div class="mb-2">
                             <label class="form-label small">Dashboard Preferred:</label>
                             <select class="form-select form-select-sm" name="preferred_dashboard">
-                                ${dashboardOptions.map(opt => 
-                                    `<option value="${opt}" ${(dataset.preferred_dashboard || '').toLowerCase() === opt.toLowerCase() ? 'selected' : ''}>${opt}</option>`
-                                ).join('')}
+                                ${dashboardOptions.map(opt => {
+                                    // Use dashboard ID as value, but display name as text
+                                    const displayName = dashboardMap[opt] || opt;
+                                    // Check if this option matches the saved preferred_dashboard
+                                    // Try both ID and display name matching
+                                    const isSelected = (dataset.preferred_dashboard || '').toLowerCase() === opt.toLowerCase() ||
+                                                      (dataset.preferred_dashboard || '').toLowerCase() === displayName.toLowerCase();
+                                    return `<option value="${opt}" ${isSelected ? 'selected' : ''}>${displayName}</option>`;
+                                }).join('')}
                             </select>
                         </div>
                         
@@ -1980,9 +2034,11 @@ class DatasetManager {
                     'openvisus': 'OpenVisusSlice',
                     'OpenVisus': 'OpenVisusSlice',
                     'openvisusslice': 'OpenVisusSlice',
-                    '3d_plotly': '3D Plotly Explorer',
-                    '3D Plotly': '3D Plotly Explorer',
-                    'plotly': '3D Plotly Explorer'
+                    '3d_plotly': '3DPlotly',  // Map to ID, not display name
+                    '3D Plotly': '3DPlotly',
+                    'plotly': '3DPlotly',
+                    '3D Plotly Explorer': '3DPlotly',  // User might have selected this variation
+                    '3d plotly explorer': '3DPlotly'
                 };
                 
                 // Check if we need to normalize
@@ -2154,29 +2210,94 @@ class DatasetManager {
             
             // Step 4: Multiple dashboards - check user preference
             if (preferredDashboardId) {
-                // Map old dashboard names to new ones for backwards compatibility
+                // Map old dashboard names and display names to dashboard IDs for backwards compatibility
+                // This should match what users see in the upload dropdown
                 const dashboardNameMapping = {
+                    // Old dashboard IDs
                     '4D_Dashboard': '4d_dashboardLite',
                     '4d_dashboard': '4d_dashboardLite',
                     '4D_dashboard': '4d_dashboardLite',
                     'Magicscan': 'magicscan',
+                    'magicscan': 'magicscan',
+                    // Display names to IDs (from dashboards-list.json)
+                    '3D Plotly Explorer': '3DPlotly',
+                    '3D Plotly Dashboard': '3DPlotly',
+                    '3d plotly explorer': '3DPlotly',
+                    '3d plotly dashboard': '3DPlotly',
+                    '3D Plotly': '3DPlotly',
+                    '3d plotly': '3DPlotly',
+                    'plotly': '3DPlotly',
+                    '3D VTK Dashboard': '3DVTK',
+                    '3d vtk dashboard': '3DVTK',
+                    '3D VTK': '3DVTK',
+                    '3d vtk': '3DVTK',
+                    '4D Dashboard (New)': '4d_dashboardLite',
+                    '4D Dashboard': '4d_dashboardLite',
+                    '4d dashboard (new)': '4d_dashboardLite',
+                    '4d dashboard': '4d_dashboardLite',
+                    'OpenVisus Slice Dashboard': 'OpenVisusSlice',
+                    'openvisus slice dashboard': 'OpenVisusSlice',
+                    'OpenVisus Slice': 'OpenVisusSlice',
+                    'openvisus slice': 'OpenVisusSlice',
+                    'MagicScan Dashboard': 'magicscan',
+                    'magicscan dashboard': 'magicscan',
+                    'MagicScan': 'magicscan',
                     'magicscan': 'magicscan'
                 };
                 
-                // Try mapped name first
-                const mappedName = dashboardNameMapping[preferredDashboardId] || preferredDashboardId;
+                // Try mapped name first (check both original and lowercase)
+                let mappedName = dashboardNameMapping[preferredDashboardId];
+                if (!mappedName) {
+                    mappedName = dashboardNameMapping[preferredDashboardId.toLowerCase()];
+                }
+                if (!mappedName) {
+                    mappedName = preferredDashboardId;
+                }
                 
-                const preferredDashboard = compatibleDashboards.find(d => 
-                    d.id.toLowerCase() === mappedName.toLowerCase() ||
-                    d.id.toLowerCase() === preferredDashboardId.toLowerCase() ||
-                    d.name.toLowerCase() === preferredDashboardId.toLowerCase()
-                );
+                // Try multiple matching strategies
+                const preferredDashboard = compatibleDashboards.find(d => {
+                    const dId = (d.id || '').toLowerCase();
+                    const dName = (d.name || '').toLowerCase();
+                    const dDisplayName = (d.display_name || '').toLowerCase();
+                    const preferredLower = preferredDashboardId.toLowerCase();
+                    const mappedLower = mappedName.toLowerCase();
+                    
+                    // Try exact ID match
+                    if (dId === mappedLower || dId === preferredLower) {
+                        return true;
+                    }
+                    // Try name match
+                    if (dName === preferredLower || dName === mappedLower) {
+                        return true;
+                    }
+                    // Try display name match
+                    if (dDisplayName === preferredLower || dDisplayName === mappedLower) {
+                        return true;
+                    }
+                    // Try partial match (e.g., "3D Plotly Explorer" contains "plotly")
+                    if (preferredLower.includes('plotly') && (dId.includes('plotly') || dId === '3dplotly')) {
+                        return true;
+                    }
+                    if (preferredLower.includes('vtk') && dId.includes('vtk')) {
+                        return true;
+                    }
+                    if ((preferredLower.includes('4d') || preferredLower.includes('4 d')) && dId.includes('dashboard')) {
+                        return true;
+                    }
+                    if ((preferredLower.includes('openvisus') || preferredLower.includes('slice')) && dId.includes('openvisus')) {
+                        return true;
+                    }
+                    if ((preferredLower.includes('magic') || preferredLower.includes('scan')) && dId.includes('magic')) {
+                        return true;
+                    }
+                    return false;
+                });
                 
                 if (preferredDashboard) {
-                    console.log(`✅ User preference found and compatible: ${preferredDashboard.id}`);
+                    console.log(`✅ User preference found and compatible: ${preferredDashboardId} -> ${preferredDashboard.id}`);
                     return preferredDashboard.id;
                 } else {
-                    console.log(`⚠️ User preferred dashboard (${preferredDashboardId}) not compatible with ${datasetDimension}D, selecting from available options`);
+                    console.log(`⚠️ User preferred dashboard (${preferredDashboardId}) not found in compatible dashboards for ${datasetDimension}D, selecting from available options`);
                 }
             }
             
