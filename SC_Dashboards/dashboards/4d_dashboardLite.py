@@ -521,25 +521,93 @@ def create_tmp_dashboard(process_4dnexus):
         try:
             from pathlib import Path
             import os
+            import re
             
             if DATA_IS_LOCAL:
                 save_dir_path = Path(local_base_dir)
             else:
-                save_dir_path = Path(save_dir) if save_dir else Path(local_base_dir)
+                # Sessions are saved in base_dir (upload directory), not save_dir (converted directory)
+                # Extract UUID from base_dir or save_dir to construct the correct path
+                if base_dir:
+                    base_dir_path = Path(base_dir)
+                    # Check if this is a dataset directory (contains UUID pattern)
+                    path_str = str(base_dir_path)
+                    if '/mnt/visus_datasets/upload/' in path_str:
+                        # Extract UUID from path: /mnt/visus_datasets/upload/{uuid}
+                        match = re.search(r'/mnt/visus_datasets/upload/([a-f0-9-]{36})', path_str)
+                        if match:
+                            uuid = match.group(1)
+                            # Use the upload directory for sessions
+                            save_dir_path = Path(f'/mnt/visus_datasets/upload/{uuid}')
+                        else:
+                            save_dir_path = base_dir_path
+                    else:
+                        save_dir_path = base_dir_path
+                elif save_dir:
+                    # Fallback: try to extract UUID from save_dir
+                    save_dir_path_str = str(save_dir)
+                    if '/mnt/visus_datasets/converted/' in save_dir_path_str:
+                        match = re.search(r'/mnt/visus_datasets/converted/([a-f0-9-]{36})', save_dir_path_str)
+                        if match:
+                            uuid = match.group(1)
+                            # Use the upload directory for sessions
+                            save_dir_path = Path(f'/mnt/visus_datasets/upload/{uuid}')
+                        else:
+                            save_dir_path = Path(save_dir)
+                    else:
+                        save_dir_path = Path(save_dir)
+                else:
+                    save_dir_path = Path(local_base_dir)
             
             sessions_dir = save_dir_path / "sessions"
+            print(f"🔍 DEBUG tmp_dashboard get_available_sessions: Looking in {sessions_dir}")
             
-            if not sessions_dir.exists():
+            # Check BOTH preferred and fallback locations to find all sessions
+            all_session_files = []
+            
+            # Check preferred location first
+            if sessions_dir.exists() and sessions_dir.is_dir():
+                try:
+                    # Get all session files from preferred location
+                    session_files = sorted(sessions_dir.glob("session_*.json"), key=os.path.getmtime, reverse=True)
+                    all_session_files.extend(session_files)
+                    print(f"✅ DEBUG tmp_dashboard: Found {len(session_files)} session file(s) in preferred location: {sessions_dir}")
+                except (PermissionError, OSError) as e:
+                    print(f"⚠️ DEBUG tmp_dashboard: Cannot read preferred sessions directory: {e}")
+            else:
+                print(f"⚠️ DEBUG tmp_dashboard: Preferred sessions directory does not exist: {sessions_dir}")
+            
+            # Also check fallback location (where sessions might actually be saved)
+            try:
+                import os as os_module
+                server_sessions_base = os_module.getenv('SC_SESSIONS_DIR', '/tmp/scientistcloud_sessions')
+                if save_dir_path and save_dir_path.name:
+                    dataset_id = save_dir_path.name
+                    fallback_sessions_dir = Path(server_sessions_base) / dataset_id
+                    if fallback_sessions_dir.exists() and fallback_sessions_dir.is_dir():
+                        fallback_files = sorted(fallback_sessions_dir.glob("session_*.json"), key=os.path.getmtime, reverse=True)
+                        # Only add files that aren't already in the list (avoid duplicates)
+                        for f in fallback_files:
+                            if f not in all_session_files:
+                                all_session_files.append(f)
+                        if fallback_files:
+                            print(f"✅ DEBUG tmp_dashboard: Found {len(fallback_files)} session file(s) in fallback location: {fallback_sessions_dir}")
+            except Exception as e:
+                print(f"⚠️ DEBUG tmp_dashboard: Could not check fallback location: {e}")
+            
+            # If no session files found in either location
+            if not all_session_files:
+                print(f"⚠️ DEBUG tmp_dashboard: No session files found in either location")
                 return [], []
             
-            # Get all session files, sorted by modification time (newest first)
-            session_files = sorted(sessions_dir.glob("session_*.json"), key=os.path.getmtime, reverse=True)
+            # Sort all session files by modification time (newest first)
+            all_session_files = sorted(all_session_files, key=os.path.getmtime, reverse=True)
             
             # Create display names with timestamp
             from datetime import datetime
             import json
             session_choices = []
-            for filepath in session_files:
+            for filepath in all_session_files:
                 # Extract timestamp from filename or use modification time
                 try:
                     with open(filepath, 'r') as f:
@@ -564,7 +632,8 @@ def create_tmp_dashboard(process_4dnexus):
                 display_name = f"{filepath.name} ({timestamp_str})"
                 session_choices.append(display_name)
             
-            return session_choices, session_files
+            print(f"✅ DEBUG tmp_dashboard: Total sessions found: {len(all_session_files)}")
+            return session_choices, all_session_files
         except Exception as e:
             print(f"Error getting available sessions: {e}")
             return [], []
