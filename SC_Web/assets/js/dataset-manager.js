@@ -2089,7 +2089,20 @@ class DatasetManager {
             
             // Step 4: Multiple dashboards - check user preference
             if (preferredDashboardId) {
+                // Map old dashboard names to new ones for backwards compatibility
+                const dashboardNameMapping = {
+                    '4D_Dashboard': '4d_dashboardLite',
+                    '4d_dashboard': '4d_dashboardLite',
+                    '4D_dashboard': '4d_dashboardLite',
+                    'Magicscan': 'magicscan',
+                    'magicscan': 'magicscan'
+                };
+                
+                // Try mapped name first
+                const mappedName = dashboardNameMapping[preferredDashboardId] || preferredDashboardId;
+                
                 const preferredDashboard = compatibleDashboards.find(d => 
+                    d.id.toLowerCase() === mappedName.toLowerCase() ||
                     d.id.toLowerCase() === preferredDashboardId.toLowerCase() ||
                     d.name.toLowerCase() === preferredDashboardId.toLowerCase()
                 );
@@ -2103,9 +2116,22 @@ class DatasetManager {
             }
             
             // Step 5: No preference or preference not compatible - pick first available
-            const selectedDashboard = compatibleDashboards[0];
-            console.log(`✅ Selected dashboard: ${selectedDashboard.id} (${selectedDashboard.display_name})`);
-            return selectedDashboard.id;
+            // Validate that the selected dashboard actually exists in viewerManager
+            const selectedDashboard = compatibleDashboards.find(d => {
+                // Check if dashboard exists in viewerManager
+                if (window.viewerManager && window.viewerManager.viewers) {
+                    return window.viewerManager.viewers[d.id] !== undefined;
+                }
+                return true;  // If viewerManager not available, assume it exists
+            }) || compatibleDashboards[0];  // Fallback to first if none found in viewerManager
+            
+            if (selectedDashboard) {
+                console.log(`✅ Selected dashboard: ${selectedDashboard.id} (${selectedDashboard.display_name})`);
+                return selectedDashboard.id;
+            } else {
+                console.warn(`⚠️ No valid dashboard found in viewerManager, using first compatible`);
+                return compatibleDashboards[0].id;
+            }
             
         } catch (error) {
             console.error('❌ Error in smart dashboard selection:', error);
@@ -2197,6 +2223,16 @@ class DatasetManager {
                     continue; // Skip disabled dashboards or those without ID
                 }
                 
+                // IMPORTANT: Only include dashboards that actually exist in viewerManager
+                // This ensures backwards compatibility - old dashboards won't be selected
+                if (window.viewerManager && window.viewerManager.viewers) {
+                    if (!window.viewerManager.viewers[dashboardId]) {
+                        // Dashboard not in viewerManager - skip it (it's been removed/renamed)
+                        console.log(`⚠️ Skipping ${dashboardId} - not found in viewerManager (may have been removed)`);
+                        continue;
+                    }
+                }
+                
                 // Load dashboard config to check supported_dimensions
                 try {
                     // Try multiple possible paths for dashboard config
@@ -2232,17 +2268,16 @@ class DatasetManager {
                             });
                         }
                     } else {
-                        // If we can't load the config, check if dashboard is in viewerManager
-                        // and assume it might be compatible (fallback for dashboards without JSON configs)
-                        if (window.viewerManager && window.viewerManager.viewers[dashboardId]) {
-                            console.log(`⚠️ Could not load config for ${dashboardId}, but it's in viewerManager - including as fallback`);
-                            compatibleDashboards.push({
-                                id: dashboardId,
-                                name: dashboard.name || dashboardId,
-                                display_name: dashboard.display_name || dashboard.name || dashboardId,
-                                config: null
-                            });
-                        }
+                        // If we can't load the config, but dashboard is in viewerManager, 
+                        // assume it might be compatible (fallback for dashboards without JSON configs)
+                        // But only if it's actually in viewerManager (already checked above)
+                        console.log(`⚠️ Could not load config for ${dashboardId}, but it's in viewerManager - including as fallback`);
+                        compatibleDashboards.push({
+                            id: dashboardId,
+                            name: dashboard.name || dashboardId,
+                            display_name: dashboard.display_name || dashboard.name || dashboardId,
+                            config: null
+                        });
                     }
                 } catch (configError) {
                     console.warn(`Error loading config for ${dashboardId}:`, configError);

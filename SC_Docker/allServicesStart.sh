@@ -309,10 +309,12 @@ if [ -d "$DASHBOARDS_DIR" ]; then
     pushd "$DASHBOARDS_DIR"
     
     # Regenerate registry from actual filenames to ensure keys match what user named them
+    # This also updates port-registry.json to remove entries for deleted dashboards
     echo "   Regenerating dashboard registry from filenames..."
     if [ -f "./scripts/regenerate_registry.sh" ]; then
-        ./scripts/regenerate_registry.sh 2>&1 | grep -E "(✅|⚠️|❌|Error|Registering)" || true
-        echo "   ✅ Registry regenerated"
+        # Run without grep filter to see all output, including port registry updates
+        ./scripts/regenerate_registry.sh 2>&1 | grep -E "(✅|⚠️|❌|Error|Registering|Port registry)" || true
+        echo "   ✅ Registry and port-registry.json regenerated"
     else
         echo "   ⚠️  regenerate_registry.sh not found - using existing registry"
     fi

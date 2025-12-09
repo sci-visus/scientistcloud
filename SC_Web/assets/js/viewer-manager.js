@@ -310,14 +310,21 @@ class ViewerManager {
 
         // Map common aliases to actual dashboard IDs
         // Note: 'openvisus' is kept as a separate fallback viewer, but aliases map to 'OpenVisusSlice' from API
+        // Also map old dashboard names to new ones for backwards compatibility
         const dashboardAliases = {
             'openvisus': 'OpenVisusSlice',  // Map lowercase alias to the API dashboard
             'OpenVisus': 'OpenVisusSlice',
-            'openvisusslice': 'OpenVisusSlice'
+            'openvisusslice': 'OpenVisusSlice',
+            // Map old dashboard names to new ones
+            '4D_Dashboard': '4d_dashboardLite',  // Old 4D dashboard -> new one
+            '4d_dashboard': '4d_dashboardLite',  // Alternative spelling
+            '4D_dashboard': '4d_dashboardLite',
+            'Magicscan': 'magicscan',  // Normalize case
+            'magicscan': 'magicscan'
         };
         
         // Resolve dashboard type to actual ID
-        const resolvedDashboardType = dashboardAliases[dashboardType] || dashboardType;
+        let resolvedDashboardType = dashboardAliases[dashboardType] || dashboardType;
         
         // Find viewer by id, type, or key (try multiple lookup strategies)
         let viewer = this.viewers[resolvedDashboardType] || this.viewers[dashboardType];
@@ -338,6 +345,30 @@ class ViewerManager {
         // Fallback to default viewers if not found
         if (!viewer) {
             viewer = this.defaultViewers[resolvedDashboardType] || this.defaultViewers[dashboardType];
+        }
+        
+        // If still not found, try smart selection based on dataset dimension
+        if (!viewer && datasetUuid) {
+            console.warn(`⚠️ Dashboard "${dashboardType}" not found, attempting smart selection based on dataset dimension...`);
+            try {
+                // Use smart selection to find a compatible dashboard
+                if (window.datasetManager && typeof window.datasetManager.selectDashboardForDataset === 'function') {
+                    const smartSelected = await window.datasetManager.selectDashboardForDataset(
+                        datasetId || datasetUuid, 
+                        datasetUuid, 
+                        null  // Don't use preference since it's invalid
+                    );
+                    if (smartSelected && this.viewers[smartSelected]) {
+                        console.log(`✅ Smart selection found compatible dashboard: ${smartSelected}`);
+                        viewer = this.viewers[smartSelected];
+                        // Update dashboardType and resolvedDashboardType for the rest of the function
+                        dashboardType = smartSelected;
+                        resolvedDashboardType = smartSelected;
+                    }
+                }
+            } catch (smartError) {
+                console.warn('Smart selection failed:', smartError);
+            }
         }
         
         if (!viewer) {

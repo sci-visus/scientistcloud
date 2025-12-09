@@ -13,7 +13,7 @@ REGISTRY_FILE="$CONFIG_DIR/dashboard-registry.json"
 echo "Regenerating dashboard registry from files in: $DASHBOARDS_DIR"
 echo ""
 
-# Initialize registry
+# Initialize registry (start with empty dashboards to remove deleted ones)
 cat > "$REGISTRY_FILE" <<EOF
 {
   "version": "1.0.0",
@@ -88,25 +88,42 @@ EOF
 fi
 
 # Update reserved_ports from registry
+# IMPORTANT: Start with empty reserved_ports to remove entries for deleted dashboards
 PORT_REGISTRY_TEMP=$(mktemp)
 jq '.reserved_ports = {}' "$PORT_REGISTRY" > "$PORT_REGISTRY_TEMP"
+
+# Track which ports we've seen to detect duplicates
+declare -A SEEN_PORTS
 
 for CONFIG_FILE in "$DASHBOARDS_DIR"/*.json; do
     [ -f "$CONFIG_FILE" ] || continue
     BASENAME=$(basename "$CONFIG_FILE" .json)
+    
+    # Skip demo or test files
     if [[ "$BASENAME" == demo_* ]] || [[ "$BASENAME" == test_* ]]; then
         continue
     fi
+    
     PORT=$(jq -r '.port // 8050' "$CONFIG_FILE")
+    
+    # Check for port conflicts
+    if [[ -n "${SEEN_PORTS[$PORT]}" ]]; then
+        echo "⚠️  Port conflict: $PORT is used by both ${SEEN_PORTS[$PORT]} and $BASENAME"
+    else
+        SEEN_PORTS[$PORT]=$BASENAME
+    fi
+    
+    # Add to port registry
     PORT_REGISTRY_TEMP=$(echo "$PORT_REGISTRY_TEMP" | jq --arg port "$PORT" --arg name "$BASENAME" '.reserved_ports[$port] = $name')
 done
 
-# Calculate next available port
-NEXT_AVAILABLE=$(echo "$PORT_REGISTRY_TEMP" | jq '[.reserved_ports | to_entries[] | (.key | tonumber)] | max + 1 // 8050')
+# Calculate next available port (find the highest port + 1, or start from 8050)
+NEXT_AVAILABLE=$(echo "$PORT_REGISTRY_TEMP" | jq '[.reserved_ports | to_entries[] | (.key | tonumber)] | if length > 0 then max + 1 else 8050 end')
 PORT_REGISTRY_TEMP=$(echo "$PORT_REGISTRY_TEMP" | jq --arg next "$NEXT_AVAILABLE" '.next_available = ($next | tonumber)')
 
+# Write updated port registry
 mv "$PORT_REGISTRY_TEMP" "$PORT_REGISTRY"
-echo "✅ Port registry updated"
+echo "✅ Port registry updated (removed entries for deleted dashboards)"
 
 echo ""
 echo "✅ Registry regenerated with $DASHBOARD_COUNT dashboard(s)"
