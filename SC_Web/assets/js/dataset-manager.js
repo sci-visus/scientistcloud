@@ -2223,8 +2223,17 @@ class DatasetManager {
         // Make it an absolute URL if it's relative
         if (url.startsWith('/')) {
             const baseUrl = window.location.origin;
-            const portalPath = isLocal ? '' : '/portal';
-            url = baseUrl + portalPath + url;
+            // Dashboards are served from root, not under /portal
+            // Only add /portal for portal-specific paths (which dashboards are not)
+            // Dashboard paths like /dashboard/... should be at root level
+            if (url.startsWith('/dashboard/')) {
+                // Dashboard URLs are at root, not under /portal
+                url = baseUrl + url;
+            } else {
+                // For other paths, check if we're in portal context
+                const portalPath = isLocal ? '' : '/portal';
+                url = baseUrl + portalPath + url;
+            }
         }
         
         return url;
