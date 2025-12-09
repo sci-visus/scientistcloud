@@ -291,19 +291,39 @@ class ViewerManager {
         if (!dashboardType || 
             dashboardType === datasetName || 
             dashboardType.length > 50 || 
-            dashboardType.includes(' ') && !this.viewers[dashboardType]) {
-            console.warn(`⚠️ Invalid dashboardType detected: "${dashboardType}" (looks like dataset name). Using default.`);
+            (dashboardType.includes(' ') && !this.viewers[dashboardType])) {
+            console.warn(`⚠️ Invalid dashboardType detected: "${dashboardType}" (looks like dataset name: "${datasetName}"). Using default.`);
             dashboardType = 'OpenVisusSlice';
         }
         
         // Ensure dashboardType exists in viewers
         if (!this.viewers[dashboardType]) {
-            console.warn(`⚠️ Dashboard "${dashboardType}" not found in viewers. Using default.`);
+            console.warn(`⚠️ Dashboard "${dashboardType}" not found in viewers. Available: ${Object.keys(this.viewers).join(', ')}. Using default.`);
             dashboardType = Object.keys(this.viewers)[0] || 'OpenVisusSlice';
         }
 
         // Create a unique key for this load operation
         const loadKey = `${datasetId}-${dashboardType}`;
+        
+        // If we're loading a different dataset, clear the loading state and viewer container first
+        if (this.isLoading && this.currentLoadingKey && !this.currentLoadingKey.startsWith(datasetId)) {
+            const previousDatasetId = this.currentLoadingKey.split('-')[0];
+            console.log(`🔄 Switching from dataset ${previousDatasetId} to ${datasetId}, clearing previous load`);
+            // Clear the viewer container to stop the old dashboard from loading
+            if (viewerContainer) {
+                viewerContainer.innerHTML = `
+                    <div class="text-center">
+                        <div class="spinner-border text-primary" role="status">
+                            <span class="visually-hidden">Loading...</span>
+                        </div>
+                        <h5 class="mt-3">Switching Dataset</h5>
+                        <p class="text-muted">Loading ${datasetName}...</p>
+                    </div>
+                `;
+            }
+            this.isLoading = false;
+            this.currentLoadingKey = null;
+        }
         
         // Prevent double loading - if we're already loading the same dashboard, skip
         if (this.isLoading && this.currentLoadingKey === loadKey) {
@@ -859,34 +879,42 @@ document.addEventListener('DOMContentLoaded', function() {
 // Export functions for global access
 // Legacy function - use viewerManager.loadDashboard instead
 // This function signature is incorrect - it should take (datasetId, datasetName, datasetUuid, datasetServer, dashboardType)
+// WARNING: This function is deprecated. Use datasetManager.selectDataset() or viewerManager.loadDashboard() instead.
 window.loadDashboard = function(datasetId, dashboardType) {
     console.warn('⚠️ Using legacy loadDashboard function. This may have incorrect parameters.');
+    console.warn('⚠️ Consider using datasetManager.selectDataset() or viewerManager.loadDashboard() instead.');
+    
+    // Validate parameters - if dashboardType looks like a dataset name, it's probably wrong
+    if (dashboardType && (dashboardType.length > 50 || dashboardType.includes(' '))) {
+        console.error('❌ Invalid dashboardType detected in legacy loadDashboard:', dashboardType);
+        console.error('❌ This looks like a dataset name, not a dashboard ID. Ignoring this call.');
+        return;
+    }
+    
     // Try to get dataset info from currentDataset if available
     if (window.datasetManager && window.datasetManager.currentDataset) {
         const dataset = window.datasetManager.currentDataset;
-        if (window.viewerManager) {
-            window.viewerManager.loadDashboard(
-                datasetId || dataset.id,
-                dataset.name || 'Dataset',
-                dataset.uuid || datasetId,
-                dataset.server || 'false',
-                dashboardType || 'OpenVisusSlice'
-            );
+        // Only proceed if the datasetId matches the current dataset
+        if (datasetId === dataset.id || datasetId === dataset.uuid) {
+            if (window.viewerManager) {
+                window.viewerManager.loadDashboard(
+                    dataset.id,
+                    dataset.name || 'Dataset',
+                    dataset.uuid || datasetId,
+                    dataset.server || 'false',
+                    dashboardType || 'OpenVisusSlice'
+                );
+            }
+        } else {
+            console.warn('⚠️ Legacy loadDashboard called with different datasetId than currentDataset. Ignoring.');
         }
     } else {
-        // Fallback - use default values
-        if (window.viewerManager) {
-            window.viewerManager.loadDashboard(datasetId, 'Dataset', datasetId, 'false', dashboardType || 'OpenVisusSlice');
+        // Fallback - use default values, but only if dashboardType is valid
+        if (window.viewerManager && dashboardType && !dashboardType.includes(' ')) {
+            window.viewerManager.loadDashboard(datasetId, 'Dataset', datasetId, 'false', dashboardType);
+        } else {
+            console.warn('⚠️ Legacy loadDashboard called without valid parameters. Ignoring.');
         }
-    }
-    if (window.viewerManager && window.datasetManager && window.datasetManager.currentDataset) {
-        window.viewerManager.loadDashboard(
-            window.datasetManager.currentDataset.id,
-            window.datasetManager.currentDataset.name,
-            window.datasetManager.currentDataset.uuid,
-            window.datasetManager.currentDataset.server,
-            dashboardType
-        );
     }
 };
 

@@ -344,8 +344,35 @@ function handleDatasetSelection(datasetLink) {
     // Load dataset details
     loadDatasetDetails(datasetId);
     
-    // Load dashboard
-    loadDashboard(datasetId, datasetName, datasetUuid, datasetServer);
+    // Use dataset manager's selectDataset method instead of direct loadDashboard
+    // This ensures smart dashboard selection happens first
+    if (window.datasetManager && typeof window.datasetManager.selectDataset === 'function') {
+        window.datasetManager.selectDataset(datasetId, datasetName, datasetUuid, datasetServer);
+    } else if (window.viewerManager && typeof window.viewerManager.loadDashboard === 'function') {
+        // Fallback: use viewer manager directly with smart selection
+        // First, let dataset manager do smart selection
+        if (window.datasetManager && typeof window.datasetManager.selectDashboardForDataset === 'function') {
+            window.datasetManager.selectDashboardForDataset(datasetId, datasetUuid, null)
+                .then(selectedDashboard => {
+                    if (window.viewerManager) {
+                        window.viewerManager.loadDashboard(datasetId, datasetName, datasetUuid, datasetServer, selectedDashboard);
+                    }
+                })
+                .catch(error => {
+                    console.error('Error in smart dashboard selection:', error);
+                    // Fallback to default
+                    if (window.viewerManager) {
+                        window.viewerManager.loadDashboard(datasetId, datasetName, datasetUuid, datasetServer);
+                    }
+                });
+        } else {
+            // No smart selection available, use default
+            window.viewerManager.loadDashboard(datasetId, datasetName, datasetUuid, datasetServer);
+        }
+    } else {
+        // Last resort: use legacy loadDashboard
+        loadDashboard(datasetId, datasetName, datasetUuid, datasetServer);
+    }
     
     console.log('Dataset selected:', AppState.currentDataset);
 }
@@ -449,7 +476,38 @@ function displayErrorDetails(error) {
 /**
  * Load dashboard
  */
+// DEPRECATED: This function is kept for backwards compatibility but should not be used
+// Use datasetManager.selectDataset() or viewerManager.loadDashboard() instead
 function loadDashboard(datasetId, datasetName, datasetUuid, datasetServer) {
+    console.warn('⚠️ Using deprecated loadDashboard function from main.js. Consider using datasetManager.selectDataset() instead.');
+    
+    // Redirect to use dataset manager if available
+    if (window.datasetManager && typeof window.datasetManager.selectDataset === 'function') {
+        console.log('✅ Redirecting to datasetManager.selectDataset()');
+        window.datasetManager.selectDataset(datasetId, datasetName, datasetUuid, datasetServer);
+        return;
+    }
+    
+    // Fallback to viewer manager if dataset manager not available
+    if (window.viewerManager && typeof window.viewerManager.loadDashboard === 'function') {
+        console.log('✅ Using viewerManager.loadDashboard() as fallback');
+        // Use smart selection if available
+        if (window.datasetManager && typeof window.datasetManager.selectDashboardForDataset === 'function') {
+            window.datasetManager.selectDashboardForDataset(datasetId, datasetUuid, null)
+                .then(selectedDashboard => {
+                    window.viewerManager.loadDashboard(datasetId, datasetName, datasetUuid, datasetServer, selectedDashboard);
+                })
+                .catch(error => {
+                    console.error('Error in smart selection:', error);
+                    window.viewerManager.loadDashboard(datasetId, datasetName, datasetUuid, datasetServer);
+                });
+        } else {
+            window.viewerManager.loadDashboard(datasetId, datasetName, datasetUuid, datasetServer);
+        }
+        return;
+    }
+    
+    // Last resort: old fetch-based method (deprecated)
     const viewerContainer = document.getElementById('viewerContainer');
     if (!viewerContainer) return;
     
@@ -503,7 +561,35 @@ function handleViewerTypeChange(event) {
     
     // Update dashboard based on viewer type
     if (AppState.currentDataset) {
-        loadDashboard(AppState.currentDataset.id, AppState.currentDataset.name, AppState.currentDataset.uuid, AppState.currentDataset.server, viewerType);
+        // Use viewer manager directly with the selected viewer type
+        if (window.viewerManager && typeof window.viewerManager.loadDashboard === 'function') {
+            window.viewerManager.loadDashboard(
+                AppState.currentDataset.id,
+                AppState.currentDataset.name,
+                AppState.currentDataset.uuid,
+                AppState.currentDataset.server,
+                viewerType
+            );
+        } else {
+            // Use dataset manager if available
+            if (window.datasetManager && typeof window.datasetManager.selectDataset === 'function') {
+                window.datasetManager.selectDataset(
+                    AppState.currentDataset.id,
+                    AppState.currentDataset.name,
+                    AppState.currentDataset.uuid,
+                    AppState.currentDataset.server
+                );
+            } else if (window.viewerManager && typeof window.viewerManager.loadDashboard === 'function') {
+                window.viewerManager.loadDashboard(
+                    AppState.currentDataset.id,
+                    AppState.currentDataset.name,
+                    AppState.currentDataset.uuid,
+                    AppState.currentDataset.server
+                );
+            } else {
+                loadDashboard(AppState.currentDataset.id, AppState.currentDataset.name, AppState.currentDataset.uuid, AppState.currentDataset.server);
+            }
+        }
     }
 }
 
@@ -512,7 +598,24 @@ function handleViewerTypeChange(event) {
  */
 function viewDataset(datasetId) {
     if (AppState.currentDataset) {
-        loadDashboard(AppState.currentDataset.id, AppState.currentDataset.name, AppState.currentDataset.uuid, AppState.currentDataset.server);
+        // Use dataset manager if available
+        if (window.datasetManager && typeof window.datasetManager.selectDataset === 'function') {
+            window.datasetManager.selectDataset(
+                AppState.currentDataset.id,
+                AppState.currentDataset.name,
+                AppState.currentDataset.uuid,
+                AppState.currentDataset.server
+            );
+        } else if (window.viewerManager && typeof window.viewerManager.loadDashboard === 'function') {
+            window.viewerManager.loadDashboard(
+                AppState.currentDataset.id,
+                AppState.currentDataset.name,
+                AppState.currentDataset.uuid,
+                AppState.currentDataset.server
+            );
+        } else {
+            loadDashboard(AppState.currentDataset.id, AppState.currentDataset.name, AppState.currentDataset.uuid, AppState.currentDataset.server);
+        }
     }
 }
 
@@ -599,7 +702,24 @@ function getStatusColor(status) {
  */
 function refreshDashboard() {
     if (AppState.currentDataset) {
-        loadDashboard(AppState.currentDataset.id, AppState.currentDataset.name, AppState.currentDataset.uuid, AppState.currentDataset.server);
+        // Use dataset manager if available
+        if (window.datasetManager && typeof window.datasetManager.selectDataset === 'function') {
+            window.datasetManager.selectDataset(
+                AppState.currentDataset.id,
+                AppState.currentDataset.name,
+                AppState.currentDataset.uuid,
+                AppState.currentDataset.server
+            );
+        } else if (window.viewerManager && typeof window.viewerManager.loadDashboard === 'function') {
+            window.viewerManager.loadDashboard(
+                AppState.currentDataset.id,
+                AppState.currentDataset.name,
+                AppState.currentDataset.uuid,
+                AppState.currentDataset.server
+            );
+        } else {
+            loadDashboard(AppState.currentDataset.id, AppState.currentDataset.name, AppState.currentDataset.uuid, AppState.currentDataset.server);
+        }
     }
 }
 
@@ -772,7 +892,9 @@ function initializeResizeHandles() {
 }
 
 // Export functions for global access
-window.loadDashboard = loadDashboard;
+// Don't overwrite window.loadDashboard - viewer-manager.js already defines it
+// If we need to expose the local function, use a different name
+// window.loadDashboard = loadDashboard; // DEPRECATED - use datasetManager.selectDataset() instead
 window.refreshDashboard = refreshDashboard;
 window.checkProcessingStatus = checkProcessingStatus;
 window.showUploadModal = showUploadModal;
