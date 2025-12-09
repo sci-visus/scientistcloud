@@ -220,7 +220,7 @@ if [ "$SKIP_MAIN_SERVICES" = false ]; then
             ./sync_with_github.sh
         fi
         if [ -f "./scientistCloud_docker_start_fresh.sh" ]; then
-            ./scientistCloud_docker_start_fresh.sh d x
+            ./scientistCloud_docker_start_fresh.sh x
         fi
         if [ -f "./setup_ssl.sh" ]; then
             ./setup_ssl.sh
