@@ -98,6 +98,8 @@ CONFIG_BASENAME=$(basename "$CONFIG_FILE" .json)
 # For container name, use the config file basename (matches docker-compose logic)
 # Docker container names must be lowercase, so ensure it's lowercase
 CONTAINER_NAME_SERVICE=$(echo "$CONFIG_BASENAME" | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9]/_/g')
+# Also create a version without underscores for some nginx variable usage
+DASHBOARD_NAME_LOWER="$CONTAINER_NAME_SERVICE"
 
 # Ensure NGINX_PATH has trailing slash (matches working pattern like /dataExplorer/)
 if [[ ! "$NGINX_PATH" =~ /$ ]]; then
@@ -200,11 +202,66 @@ location ${NGINX_PATH}assets/ {
 STATICEOF
 elif [[ "$DASHBOARD_TYPE" == "bokeh" ]]; then
     # Bokeh uses /static/ for static files (shared across all apps, served from root)
-    cat > "$STATIC_TEMP" << STATICEOF
+    # Check if dashboard uses Panel (common for VTK dashboards)
+    USES_PANEL=$(jq -r '.additional_requirements[]? | select(. | test("panel"; "i"))' "$CONFIG_FILE" | head -1)
+    if [ -n "$USES_PANEL" ]; then
+        # Dashboard uses Panel - add Panel static file routes
+        cat > "$STATIC_TEMP" << STATICEOF
 # Static files (Bokeh - uses static/ at root level, not app path)
 location ${NGINX_PATH}static/ {
     # Use variable to defer hostname resolution
-    set \$upstream_host "dashboard_${DASHBOARD_NAME_LOWER}";
+    set \$upstream_host "dashboard_${CONTAINER_NAME_SERVICE}";
+    set \$upstream_port "${DASHBOARD_PORT}";
+    # Bokeh serves static files from /static/ at root, not from app path
+    proxy_pass http://\$upstream_host:\$upstream_port/static/;
+    proxy_set_header Host \$host;
+    proxy_set_header X-Real-IP \$remote_addr;
+    proxy_set_header X-Forwarded-For "\$proxy_add_x_forwarded_for";
+    proxy_set_header X-Forwarded-Proto \$scheme;
+}
+
+# Panel static files (Panel extensions need to be served)
+# Panel serves its static files from /static/extensions/panel/
+location /static/extensions/panel/ {
+    # Proxy to the dashboard container for Panel static files
+    set \$upstream_host "dashboard_${CONTAINER_NAME_SERVICE}";
+    set \$upstream_port "${DASHBOARD_PORT}";
+    proxy_pass http://\$upstream_host:\$upstream_port/static/extensions/panel/;
+    proxy_set_header Host \$host;
+    proxy_set_header X-Real-IP \$remote_addr;
+    proxy_set_header X-Forwarded-For "\$proxy_add_x_forwarded_for";
+    proxy_set_header X-Forwarded-Proto \$scheme;
+    
+    # Cache Panel static files
+    expires 1y;
+    add_header Cache-Control "public, immutable";
+}
+
+# Panel bundled files (Panel serves bundled resources from /static/extensions/panel/bundled/)
+location ${NGINX_PATH}static/extensions/panel/ {
+    # Proxy to the dashboard container
+    set \$upstream_host "dashboard_${CONTAINER_NAME_SERVICE}";
+    set \$upstream_port "${DASHBOARD_PORT}";
+    # Rewrite to remove nginx path prefix and pass to container
+    rewrite ^${NGINX_PATH}static/extensions/panel/(.*)$ /static/extensions/panel/\$1 break;
+    proxy_pass http://\$upstream_host:\$upstream_port;
+    proxy_set_header Host \$host;
+    proxy_set_header X-Real-IP \$remote_addr;
+    proxy_set_header X-Forwarded-For "\$proxy_add_x_forwarded_for";
+    proxy_set_header X-Forwarded-Proto \$scheme;
+    
+    # Cache Panel static files
+    expires 1y;
+    add_header Cache-Control "public, immutable";
+}
+STATICEOF
+    else
+        # Standard Bokeh dashboard without Panel
+        cat > "$STATIC_TEMP" << STATICEOF
+# Static files (Bokeh - uses static/ at root level, not app path)
+location ${NGINX_PATH}static/ {
+    # Use variable to defer hostname resolution
+    set \$upstream_host "dashboard_${CONTAINER_NAME_SERVICE}";
     set \$upstream_port "${DASHBOARD_PORT}";
     # Bokeh serves static files from /static/ at root, not from app path
     proxy_pass http://\$upstream_host:\$upstream_port/static/;
@@ -214,6 +271,7 @@ location ${NGINX_PATH}static/ {
     proxy_set_header X-Forwarded-Proto \$scheme;
 }
 STATICEOF
+    fi
 else
     # Other types (vtk, etc.) - no static file section
     echo "# Static files not configured for type: $DASHBOARD_TYPE" > "$STATIC_TEMP"

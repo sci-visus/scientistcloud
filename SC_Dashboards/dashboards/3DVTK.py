@@ -176,6 +176,11 @@ curdoc().add_root(column(row(home_button, info_button), info_div))
 import OpenVisus as  ov
 os.environ["VISUS_NETSERVICE_VERBOSE"]="0"
 
+# IMPORTANT: Panel must be initialized BEFORE importing other Panel components
+# and it must be initialized with the Bokeh document context
+from bokeh.plotting import curdoc
+doc = curdoc()
+
 import panel as pn
 import numpy as np
 
@@ -199,31 +204,9 @@ except Exception as e:
     print("🔄 Falling back to Panel's native VTK volume rendering")
     PYVISTA_AVAILABLE = False
 
-# Enable PyVista for Panel and properly initialize Panel with Bokeh
-# Panel needs to be initialized early to register its models with Bokeh
-# IMPORTANT: pn.extension() must be called before creating any Panel objects
-# and it automatically registers Panel's Bokeh models
-try:
-    # Initialize Panel extension - this registers Panel models with Bokeh
-    # The 'vtk' extension enables VTK support
-    pn.extension('vtk', sizing_mode='stretch_both', template=None)
-    # Configure Panel for Bokeh integration
-    pn.config.sizing_mode = 'stretch_both'
-    # Ensure Panel's Bokeh models are loaded
-    import panel as pn_module
-    if hasattr(pn_module, '_models'):
-        print("✅ Panel extension initialized with Bokeh models")
-    else:
-        print("✅ Panel extension initialized")
-except Exception as e:
-    print(f"⚠️ Panel initialization warning: {e}")
-    # Fallback: try basic initialization
-    try:
-        pn.extension('vtk')
-        print("✅ Panel extension initialized (fallback)")
-    except Exception as e2:
-        print(f"❌ Panel initialization failed: {e2}")
-        raise
+# Enable PyVista for Panel
+# Use the same simple initialization as the working Visus.py
+pn.extension('vtk')
 
 
 # In[ ]:
@@ -801,20 +784,25 @@ volumeCtrls = initial_volume.controls(jslink=True, parameters=[
 Tools = pn.Column( myTitlePanel, uuid_selection, uuid_reload_button, resolution_slider, volumeCtrls, notifications )
 Viz = pn.Row( Tools, pn.Row( initial_volume, name=uuid_arg))
 
-# Convert Panel objects to Bokeh models and add to document
-# Panel's .get_root() method converts Panel objects to Bokeh models
+# Use Panel's .servable() method - this is how the working Visus.py does it
+# Panel's .servable() automatically handles Bokeh integration when running under bokeh serve
+# This is simpler and more reliable than manually calling .get_root()
 try:
-    bokeh_root = Viz.get_root()
-    curdoc().add_root(bokeh_root)
-    print("✅ Panel layout added to Bokeh document")
+    Viz.servable()
+    print("✅ Panel layout marked as servable (Panel will handle Bokeh integration)")
 except Exception as e:
-    print(f"⚠️ Error adding Panel layout to Bokeh document: {e}")
-    # Fallback: try using .servable() which might work in some Panel versions
+    print(f"⚠️ Error marking Panel layout as servable: {e}")
+    import traceback
+    traceback.print_exc()
+    # Fallback: try .get_root() method
     try:
-        Viz.servable()
-        print("✅ Panel layout marked as servable (fallback)")
+        bokeh_root = Viz.get_root()
+        curdoc().add_root(bokeh_root)
+        print("✅ Panel layout added to Bokeh document via get_root() (fallback)")
     except Exception as e2:
         print(f"❌ Failed to add Panel layout: {e2}")
+        import traceback
+        traceback.print_exc()
         # Last resort: create a simple error message
         error_div = Div(text=f"<h2>Error loading dashboard</h2><p>Panel integration error: {e2}</p>")
         curdoc().add_root(error_div)
