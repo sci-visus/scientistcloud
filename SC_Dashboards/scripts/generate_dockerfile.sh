@@ -281,4 +281,38 @@ ARG ${arg}\\
     rm -f "$OUTPUT_FILE.bak"
 fi
 
+# Add user/group configuration for permissions (after requirements install, before CMD)
+# This allows bokehuser to write to mounted volumes like /mnt/visus_datasets
+# Check if base image uses bokehuser (4d-dashboard-base, bokeh-dashboard-base, magicscan-base)
+if echo "$BASE_IMAGE" | grep -qiE "(4d-dashboard|bokeh-dashboard|magicscan)"; then
+    # Insert user/group configuration after requirements install
+    PERMISSIONS_SECTION="# Fix permissions: Add bokehuser to www-data group to allow writing to mounted volumes\n"
+    PERMISSIONS_SECTION="${PERMISSIONS_SECTION}# This allows the dashboard to create sessions directories in /mnt/visus_datasets/upload/<UUID>/sessions\n"
+    PERMISSIONS_SECTION="${PERMISSIONS_SECTION}# IMPORTANT: Host directories at /mnt/visus_datasets/upload/<UUID> must have:\n"
+    PERMISSIONS_SECTION="${PERMISSIONS_SECTION}#   - Group ownership: www-data (or be group-writable)\n"
+    PERMISSIONS_SECTION="${PERMISSIONS_SECTION}#   - Permissions: 775 or 2775 (setgid) to allow group writes\n"
+    PERMISSIONS_SECTION="${PERMISSIONS_SECTION}#   Run on host: sudo chgrp -R www-data /mnt/visus_datasets/upload && sudo chmod -R g+w /mnt/visus_datasets/upload\n"
+    PERMISSIONS_SECTION="${PERMISSIONS_SECTION}USER root\n"
+    PERMISSIONS_SECTION="${PERMISSIONS_SECTION}RUN groupadd -f www-data && \\\\\n"
+    PERMISSIONS_SECTION="${PERMISSIONS_SECTION}    usermod -a -G www-data bokehuser || echo \"bokehuser already in www-data group or group modification failed\"\n"
+    PERMISSIONS_SECTION="${PERMISSIONS_SECTION}USER bokehuser\n"
+    
+    # Find the line with "# Set environment variables" or "# Expose dashboard port" and insert before it
+    if grep -q "# Set environment variables from configuration" "$OUTPUT_FILE"; then
+        sed -i.bak "/^# Set environment variables from configuration$/i\\
+${PERMISSIONS_SECTION}\\
+" "$OUTPUT_FILE"
+    elif grep -q "# Expose dashboard port" "$OUTPUT_FILE"; then
+        sed -i.bak "/^# Expose dashboard port$/i\\
+${PERMISSIONS_SECTION}\\
+" "$OUTPUT_FILE"
+    else
+        # Insert before CMD if no other marker found
+        sed -i.bak "/^CMD /i\\
+${PERMISSIONS_SECTION}\\
+" "$OUTPUT_FILE"
+    fi
+    rm -f "$OUTPUT_FILE.bak"
+fi
+
 echo "✅ Generated Dockerfile: $OUTPUT_FILE"

@@ -53,6 +53,16 @@ RUN if [ -s requirements.txt ]; then \
         echo "No requirements to install (requirements.txt is empty)"; \
     fi
 
+# Fix permissions: Add bokehuser to www-data group to allow writing to mounted volumes
+# This allows the dashboard to create sessions directories in /mnt/visus_datasets/upload/<UUID>/sessions
+# IMPORTANT: Host directories at /mnt/visus_datasets/upload/<UUID> must have:
+#   - Group ownership: www-data (or be group-writable)
+#   - Permissions: 775 or 2775 (setgid) to allow group writes
+#   Run on host: sudo chgrp -R www-data /mnt/visus_datasets/upload && sudo chmod -R g+w /mnt/visus_datasets/upload
+USER root
+RUN groupadd -f www-data && \
+    usermod -a -G www-data bokehuser || echo "bokehuser already in www-data group or group modification failed"
+USER bokehuser
 
 # Set environment variables from configuration
 
