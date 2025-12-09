@@ -1638,7 +1638,7 @@ class DatasetManager {
                         </button>
                     </div>
                     <div class="mt-2">
-                        <button type="button" class="btn btn-sm btn-outline-info w-100" data-action="copy-dashboard-link" 
+                        <button type="button" class="btn btn-sm btn-outline-primary w-100" data-action="copy-dashboard-link" 
                                 data-dataset-id="${dataset.id || dataset.uuid}"
                                 data-dataset-uuid="${dataset.uuid || dataset.id}"
                                 data-dataset-name="${this.escapeHtml(dataset.name || '')}"
