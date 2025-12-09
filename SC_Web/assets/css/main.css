@@ -14,7 +14,7 @@
   --primary-color:#4E477F;
   --info-color:  #1a4d73;
   --danger-color: #6BB6E9;
-  --success-color:#3BA68A;
+  --success-color:#76a38e;
   --warning-color: #E3A54F;
 }
 
@@ -29,7 +29,7 @@
   --primary-color:#4E477F;
   --info-color:  #B5AEDF;
   --danger-color: #6BB6E9;
-  --success-color:#3BA68A;
+  --success-color:#76a38e;
   --warning-color: #E3A54F;
 }
 
@@ -490,6 +490,11 @@ body {
 .badge {
   font-size: 0.75rem;
   margin-left: 0.5rem;
+}
+
+/* Override bg-success color for "done" status badges */
+.bg-success {
+  background-color: #76a38e !important;
 }
 
 .folder-group {
