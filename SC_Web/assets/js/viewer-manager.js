@@ -626,6 +626,9 @@ class ViewerManager {
      * Generate viewer URL with uuid, server, and name parameters
      */
     generateViewerUrl(datasetUuid, datasetServer, datasetName, urlTemplate) {
+        // Get current theme from AppState or localStorage
+        const currentTheme = window.AppState?.theme || localStorage.getItem('theme') || 'dark';
+        
         if (!urlTemplate || typeof urlTemplate !== 'string') {
             console.error('generateViewerUrl: urlTemplate is empty or invalid:', urlTemplate);
             return '#';
@@ -688,6 +691,14 @@ class ViewerManager {
                 }
             }
         }
+        
+        // Get current theme from AppState or localStorage
+        const currentTheme = window.AppState?.theme || localStorage.getItem('theme') || 'dark';
+        
+        // Add theme parameter to URL to help dashboards adapt to dark/light mode
+        // Check if URL already has query parameters
+        const separator = url.includes('?') ? '&' : '?';
+        url += `${separator}theme=${encodeURIComponent(currentTheme)}`;
         
         return url;
     }

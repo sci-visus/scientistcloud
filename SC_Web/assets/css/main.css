@@ -375,6 +375,16 @@ body {
   height: 100%;
   border: none;
   display: block;
+  /* Force dark background for iframe in dark mode to help with text visibility */
+  background-color: var(--viewer-bg);
+}
+
+/* In dark mode, add a filter to help with dashboard visibility */
+body:not(.light-theme) .viewer-container iframe,
+body:not(.light-theme) .viewer-container #dashboardFrame {
+  /* Note: CSS filters can't style cross-origin iframe content,
+     but we can at least ensure the iframe itself has a dark background */
+  background-color: #000;
 }
 
 .viewer-container > * {
@@ -511,6 +521,32 @@ body {
 
 .bg-secondary {
   background-color: #6c757d !important; /* default/unknown status */
+}
+
+.bg-primary {
+  background-color: var(--primary-color) !important; /* "info", "pending" */
+}
+
+/* File text content viewer - theme-aware styling */
+.file-text-content {
+  background-color: var(--panel-bg) !important;
+  color: var(--fg-color) !important;
+  border: 1px solid var(--panel-border);
+  font-family: 'Courier New', monospace;
+  font-size: 0.9rem;
+  line-height: 1.5;
+}
+
+.file-text-content code {
+  background-color: transparent !important;
+  color: var(--fg-color) !important;
+  padding: 0;
+  font-size: inherit;
+}
+
+.file-content-viewer {
+  background-color: var(--viewer-bg);
+  color: var(--fg-color);
 }
 
 .folder-group {

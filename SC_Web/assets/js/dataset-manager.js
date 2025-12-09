@@ -840,13 +840,13 @@ class DatasetManager {
                 if (isJson) {
                     try {
                         const jsonObj = JSON.parse(content);
-                        contentHtml = `<pre class="bg-light p-3 rounded"><code>${this.escapeHtml(JSON.stringify(jsonObj, null, 2))}</code></pre>`;
+                        contentHtml = `<pre class="file-text-content p-3 rounded"><code>${this.escapeHtml(JSON.stringify(jsonObj, null, 2))}</code></pre>`;
                     } catch (e) {
                         // Not valid JSON, display as plain text
-                        contentHtml = `<pre class="bg-light p-3 rounded" style="white-space: pre-wrap; word-wrap: break-word;"><code>${this.escapeHtml(content)}</code></pre>`;
+                        contentHtml = `<pre class="file-text-content p-3 rounded" style="white-space: pre-wrap; word-wrap: break-word;"><code>${this.escapeHtml(content)}</code></pre>`;
                     }
                 } else {
-                    contentHtml = `<pre class="bg-light p-3 rounded" style="white-space: pre-wrap; word-wrap: break-word;"><code>${this.escapeHtml(content)}</code></pre>`;
+                    contentHtml = `<pre class="file-text-content p-3 rounded" style="white-space: pre-wrap; word-wrap: break-word;"><code>${this.escapeHtml(content)}</code></pre>`;
                 }
 
                 viewerContainer.innerHTML = `
