@@ -426,6 +426,12 @@ class DatasetManager {
                     );
                     
                     console.log('Loading dashboard with UUID:', effectiveUuid, 'server:', effectiveServer, 'selected dashboard:', selectedDashboard);
+                    
+                    // Update toolbar selector to match the auto-selected dashboard
+                    if (window.viewerManager && typeof window.viewerManager.updateViewerSelector === 'function') {
+                        window.viewerManager.updateViewerSelector(selectedDashboard);
+                    }
+                    
                     window.viewerManager.loadDashboard(datasetId, datasetName, effectiveUuid, effectiveServer, selectedDashboard);
                 } else if (typeof loadDashboard === 'function') {
                     console.log('Using fallback loadDashboard with UUID:', effectiveUuid);
@@ -2154,9 +2160,27 @@ class DatasetManager {
             const data = await response.json();
             
             if (data.success && data.dataset) {
-                // Check if dimension is stored in metadata
+                // Check if dimensions is stored in metadata (field is "dimensions" plural, format is "4D", "3D", etc.)
+                if (data.dataset.dimensions) {
+                    // Parse dimensions string (e.g., "4D", "3D", "2D", "1D") to extract number
+                    const dimensionsStr = String(data.dataset.dimensions).trim().toUpperCase();
+                    const dimensionMatch = dimensionsStr.match(/(\d+)D?/);
+                    if (dimensionMatch && dimensionMatch[1]) {
+                        const dimension = parseInt(dimensionMatch[1]);
+                        if (dimension >= 1 && dimension <= 4) {
+                            console.log(`✅ Found dimension from dataset.dimensions: ${dimensionsStr} -> ${dimension}D`);
+                            return dimension;
+                        }
+                    }
+                }
+                
+                // Also check for singular "dimension" field (for backwards compatibility)
                 if (data.dataset.dimension) {
-                    return parseInt(data.dataset.dimension);
+                    const dim = parseInt(data.dataset.dimension);
+                    if (dim >= 1 && dim <= 4) {
+                        console.log(`✅ Found dimension from dataset.dimension: ${dim}D`);
+                        return dim;
+                    }
                 }
                 
                 // Try to get dimension from API endpoint that can read nexus file
@@ -2165,7 +2189,11 @@ class DatasetManager {
                     if (dimensionResponse.ok) {
                         const dimensionData = await dimensionResponse.json();
                         if (dimensionData.success && dimensionData.dimension) {
-                            return parseInt(dimensionData.dimension);
+                            const dim = parseInt(dimensionData.dimension);
+                            if (dim >= 1 && dim <= 4) {
+                                console.log(`✅ Found dimension from get_dataset_dimension.php: ${dim}D`);
+                                return dim;
+                            }
                         }
                     }
                 } catch (dimError) {

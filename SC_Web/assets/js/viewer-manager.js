@@ -114,6 +114,57 @@ class ViewerManager {
     }
 
     /**
+     * Update the viewer toolbar selector to match the selected dashboard
+     * @param {string} dashboardId - The dashboard ID to set in the selector
+     */
+    updateViewerSelector(dashboardId) {
+        const viewerType = document.getElementById('viewerType');
+        if (!viewerType || !dashboardId) {
+            return;
+        }
+
+        // Try to find an option that matches the dashboard ID
+        // Check by value, id, or case-insensitive match
+        const normalizedId = dashboardId.toLowerCase();
+        let matchingOption = null;
+
+        // First, try exact match
+        matchingOption = Array.from(viewerType.options).find(opt => 
+            opt.value === dashboardId || opt.value.toLowerCase() === normalizedId
+        );
+
+        // If not found, try matching by dashboard ID in viewerManager
+        if (!matchingOption && window.viewerManager && window.viewerManager.viewers) {
+            const viewer = window.viewerManager.viewers[dashboardId];
+            if (viewer) {
+                // Try to find by viewer id or type
+                matchingOption = Array.from(viewerType.options).find(opt => {
+                    const optValue = opt.value.toLowerCase();
+                    const viewerId = (viewer.id || '').toLowerCase();
+                    const viewerType = (viewer.type || '').toLowerCase();
+                    return optValue === viewerId || optValue === viewerType || optValue === normalizedId;
+                });
+            }
+        }
+
+        // If still not found, try case-insensitive partial match
+        if (!matchingOption) {
+            matchingOption = Array.from(viewerType.options).find(opt => {
+                const optValue = opt.value.toLowerCase();
+                return optValue.includes(normalizedId) || normalizedId.includes(optValue);
+            });
+        }
+
+        if (matchingOption) {
+            viewerType.value = matchingOption.value;
+            console.log(`✅ Updated viewer-toolbar selector to: ${matchingOption.value} (from auto-detected: ${dashboardId})`);
+        } else {
+            console.warn(`⚠️ Could not find viewer-toolbar option for auto-detected dashboard: ${dashboardId}`);
+            console.log('Available options:', Array.from(viewerType.options).map(opt => opt.value));
+        }
+    }
+
+    /**
      * Initialize the viewer manager
      */
     async initialize() {
@@ -272,6 +323,9 @@ class ViewerManager {
             const status = await this.checkDatasetStatus(datasetId, dashboardType);
             
             if (status === 'ready') {
+                // Update toolbar selector to match the dashboard being loaded
+                this.updateViewerSelector(dashboardType);
+                
                 // Load the dashboard
                 try {
                     await this.loadDashboardContent(datasetId, datasetName, datasetUuid, datasetServer, dashboardType);
@@ -305,6 +359,9 @@ class ViewerManager {
                         
                         if (selectedDashboardId && typeof selectedDashboardId === 'string') {
                             console.log(`✅ Auto-selected compatible dashboard: ${selectedDashboardId}`);
+                            // Update toolbar selector to match the auto-selected dashboard
+                            this.updateViewerSelector(selectedDashboardId);
+                            
                             // Recursively load the selected dashboard (pass triedDashboards to prevent loops)
                             if (selectedDashboardId !== dashboardType) {
                                 // Clear current loading flag before recursive call
@@ -449,6 +506,8 @@ class ViewerManager {
                         // Update dashboardType and resolvedDashboardType for the rest of the function
                         dashboardType = smartSelected;
                         resolvedDashboardType = smartSelected;
+                        // Update toolbar selector to match the smart-selected dashboard
+                        this.updateViewerSelector(smartSelected);
                     }
                 }
             } catch (smartError) {
