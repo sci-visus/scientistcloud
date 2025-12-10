@@ -2610,14 +2610,22 @@ class DatasetManager {
             const datasetServer = dataset.server || buttonData.server || '';
             
             // Determine the default dashboard
-            // Priority: 1. Currently loaded dashboard (from toolbar), 2. dataset.preferred_dashboard, 3. smart selection, 4. OpenVisusSlice
+            // Priority: 1. Currently loaded dashboard (from viewerManager), 2. Toolbar selector, 3. dataset.preferred_dashboard, 4. smart selection, 5. OpenVisusSlice
             let dashboardType = null;
             
-            // First, try to get the currently loaded dashboard from the toolbar selector
-            const viewerTypeSelect = document.getElementById('viewerType');
-            if (viewerTypeSelect && viewerTypeSelect.value) {
-                dashboardType = viewerTypeSelect.value;
-                console.log('Using dashboard from toolbar selector:', dashboardType);
+            // First, try to get the currently loaded dashboard from viewerManager
+            if (window.viewerManager && window.viewerManager.currentDashboard) {
+                dashboardType = window.viewerManager.currentDashboard;
+                console.log('Using dashboard from viewerManager.currentDashboard:', dashboardType);
+            }
+            
+            // If not available, try the toolbar selector
+            if (!dashboardType) {
+                const viewerTypeSelect = document.getElementById('viewerType');
+                if (viewerTypeSelect && viewerTypeSelect.value) {
+                    dashboardType = viewerTypeSelect.value;
+                    console.log('Using dashboard from toolbar selector:', dashboardType);
+                }
             }
             
             // If not available, try preferred_dashboard (but normalize it to dashboard ID)

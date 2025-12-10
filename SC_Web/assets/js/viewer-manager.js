@@ -11,6 +11,7 @@ class ViewerManager {
         this.defaultViewers = {};
         this.isLoading = false; // Flag to prevent double loading
         this.currentLoadingKey = null; // Track what's currently loading
+        this.currentDashboard = null; // Track the currently loaded dashboard type
         this.initialize();
     }
     
@@ -118,6 +119,9 @@ class ViewerManager {
      * @param {string} dashboardId - The dashboard ID to set in the selector
      */
     updateViewerSelector(dashboardId) {
+        // Store the current dashboard type
+        this.currentDashboard = dashboardId;
+        
         const viewerType = document.getElementById('viewerType');
         if (!viewerType || !dashboardId) {
             return;
@@ -503,6 +507,9 @@ class ViewerManager {
         
         // Resolve dashboard type to actual ID
         let resolvedDashboardType = dashboardAliases[dashboardType] || dashboardType;
+        
+        // Store the current dashboard type for reference (e.g., for copy dashboard link)
+        this.currentDashboard = resolvedDashboardType;
         
         // Find viewer by id, type, or key (try multiple lookup strategies)
         let viewer = this.viewers[resolvedDashboardType] || this.viewers[dashboardType];
