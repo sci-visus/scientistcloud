@@ -3,6 +3,8 @@
  * Handles viewer operations and dashboard management
  */
 
+console.log('📦 viewer-manager.js loaded');
+
 class ViewerManager {
     constructor() {
         this.currentViewer = null;
@@ -24,6 +26,7 @@ class ViewerManager {
      * Load dashboards from API
      */
     async loadDashboards() {
+        console.log('📡 loadDashboards() called');
         try {
             // Helper function to get API base path (detects local vs server)
             const getApiBasePath = () => {
@@ -32,7 +35,7 @@ class ViewerManager {
             };
             
             const apiUrl = `${getApiBasePath()}/dashboards.php`;
-            console.log('Loading dashboards from:', apiUrl);
+            console.log('🌐 Loading dashboards from:', apiUrl);
             
             const response = await fetch(apiUrl, {
                 credentials: 'include'  // Include cookies for authentication
@@ -84,12 +87,16 @@ class ViewerManager {
             }
             
             // Always populate the selector, even if empty
+            console.log('📋 Calling populateViewerSelector()...');
             this.populateViewerSelector();
+            console.log('✅ populateViewerSelector() completed');
             
         } catch (error) {
-            console.error('Error loading dashboards:', error);
+            console.error('❌ Error loading dashboards:', error);
+            console.error('Error details:', error.message, error.stack);
             // Fallback to default viewers
             this.viewers = this.defaultViewers;
+            console.log('📋 Calling populateViewerSelector() after error...');
             this.populateViewerSelector();
         }
     }
@@ -200,9 +207,18 @@ class ViewerManager {
      * Initialize the viewer manager
      */
     async initialize() {
-        this.setupEventListeners();
-        await this.loadDashboards(); // Load dashboards from API first
-        this.loadViewerSettings();
+        console.log('🔧 ViewerManager.initialize() called');
+        try {
+            this.setupEventListeners();
+            console.log('📡 Calling loadDashboards()...');
+            await this.loadDashboards(); // Load dashboards from API first
+            console.log('✅ loadDashboards() completed');
+            this.loadViewerSettings();
+        } catch (error) {
+            console.error('❌ Error in ViewerManager.initialize():', error);
+            // Ensure selector is populated even on error
+            this.populateViewerSelector();
+        }
     }
 
     /**
@@ -918,7 +934,48 @@ class ViewerManager {
 
 // Initialize viewer manager when DOM is loaded
 document.addEventListener('DOMContentLoaded', function() {
-    window.viewerManager = new ViewerManager();
+    console.log('🚀 DOMContentLoaded: Initializing ViewerManager...');
+    
+    // Check if viewerType element exists
+    const viewerType = document.getElementById('viewerType');
+    if (!viewerType) {
+        console.error('❌ viewerType element not found in DOM!');
+        return;
+    }
+    console.log('✅ viewerType element found');
+    
+    try {
+        window.viewerManager = new ViewerManager();
+        console.log('✅ ViewerManager instance created');
+        
+        // Fallback: If dashboards aren't loaded after 5 seconds, try again and show error
+        setTimeout(() => {
+            const checkViewerType = document.getElementById('viewerType');
+            if (checkViewerType && checkViewerType.options.length <= 1) {
+                const firstOption = checkViewerType.options[0];
+                if (firstOption && (firstOption.textContent.includes('Loading') || firstOption.value === '')) {
+                    console.warn('⚠️ Dashboards still not loaded after 5 seconds, retrying...');
+                    if (window.viewerManager && typeof window.viewerManager.loadDashboards === 'function') {
+                        window.viewerManager.loadDashboards().catch(err => {
+                            console.error('❌ Retry failed:', err);
+                            // Show error in selector
+                            checkViewerType.innerHTML = '<option value="">Error: Could not load dashboards</option>';
+                        });
+                    } else {
+                        console.error('❌ viewerManager or loadDashboards not available');
+                        checkViewerType.innerHTML = '<option value="">Error: ViewerManager not initialized</option>';
+                    }
+                }
+            }
+        }, 5000);
+    } catch (error) {
+        console.error('❌ Failed to create ViewerManager:', error);
+        console.error('Error stack:', error.stack);
+        // Try to populate selector with fallback even if initialization fails
+        if (viewerType) {
+            viewerType.innerHTML = '<option value="">Error loading dashboards</option>';
+        }
+    }
 });
 
 // Export functions for global access
