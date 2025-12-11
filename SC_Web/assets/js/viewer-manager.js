@@ -12,7 +12,12 @@ class ViewerManager {
         this.isLoading = false; // Flag to prevent double loading
         this.currentLoadingKey = null; // Track what's currently loading
         this.currentDashboard = null; // Track the currently loaded dashboard type
-        this.initialize();
+        // Initialize asynchronously - don't await in constructor
+        this.initialize().catch(error => {
+            console.error('Failed to initialize ViewerManager:', error);
+            // Still try to populate selector even if initialization fails
+            this.populateViewerSelector();
+        });
     }
     
     /**
@@ -25,18 +30,23 @@ class ViewerManager {
                 const isLocal = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
                 return isLocal ? '/api' : '/portal/api';
             };
-            const response = await fetch(`${getApiBasePath()}/dashboards.php`, {
+            
+            const apiUrl = `${getApiBasePath()}/dashboards.php`;
+            console.log('Loading dashboards from:', apiUrl);
+            
+            const response = await fetch(apiUrl, {
                 credentials: 'include'  // Include cookies for authentication
             });
             
             if (!response.ok) {
-                console.warn('Failed to load dashboards from API, using defaults');
+                console.warn(`Failed to load dashboards from API (${response.status} ${response.statusText}), using defaults`);
                 this.viewers = this.defaultViewers;
                 this.populateViewerSelector();
                 return;
             }
             
             const data = await response.json();
+            console.log('Dashboards API response:', data);
             
             if (data.success && data.dashboards) {
                 // Convert API response to viewer format
@@ -67,12 +77,13 @@ class ViewerManager {
                 // No need to merge defaults - all dashboards should come from API
                 // This prevents duplicates
                 
-                console.log('Loaded dashboards from API:', Object.keys(this.viewers).length);
+                console.log('Loaded dashboards from API:', Object.keys(this.viewers).length, 'dashboards:', Object.keys(this.viewers));
             } else {
-                console.warn('Invalid dashboard API response, using defaults');
+                console.warn('Invalid dashboard API response:', data, 'using defaults');
                 this.viewers = this.defaultViewers;
             }
             
+            // Always populate the selector, even if empty
             this.populateViewerSelector();
             
         } catch (error) {
@@ -93,8 +104,23 @@ class ViewerManager {
             return;
         }
         
-        // Clear existing options (except first empty one if exists)
+        // Clear existing options
         viewerType.innerHTML = '';
+        
+        // Check if we have any viewers loaded
+        const viewerCount = Object.keys(this.viewers).length;
+        console.log('Populating viewer selector with', viewerCount, 'viewer(s)');
+        
+        if (viewerCount === 0) {
+            // No dashboards loaded - show error message
+            const option = document.createElement('option');
+            option.value = '';
+            option.textContent = 'No dashboards available';
+            option.disabled = true;
+            viewerType.appendChild(option);
+            console.warn('No dashboards available to populate selector');
+            return;
+        }
         
         // Add options from loaded viewers
         // Use dashboard id as value for consistency
@@ -102,16 +128,18 @@ class ViewerManager {
             const option = document.createElement('option');
             // Use id if available, otherwise use the key or type
             option.value = viewer.id || viewerKey || viewer.type;
-            option.textContent = viewer.name;
+            option.textContent = viewer.name || viewer.id || viewerKey;
             viewerType.appendChild(option);
+            console.log('Added dashboard option:', option.value, '-', option.textContent);
         });
         
         // Set default viewer if available
         if (viewerType.options.length > 0) {
             viewerType.value = viewerType.options[0].value;
+            console.log('Set default dashboard to:', viewerType.value);
         }
         
-        console.log('Populated viewer selector with', viewerType.options.length, 'dashboards');
+        console.log('✅ Populated viewer selector with', viewerType.options.length, 'dashboards');
     }
 
     /**
