@@ -633,9 +633,6 @@ class ViewerManager {
      * Generate viewer URL with uuid, server, and name parameters
      */
     generateViewerUrl(datasetUuid, datasetServer, datasetName, urlTemplate) {
-        // Get current theme from AppState or localStorage
-        const currentTheme = window.AppState?.theme || localStorage.getItem('theme') || 'dark';
-        
         if (!urlTemplate || typeof urlTemplate !== 'string') {
             console.error('generateViewerUrl: urlTemplate is empty or invalid:', urlTemplate);
             return '#';
@@ -646,6 +643,9 @@ class ViewerManager {
         
         // Detect local development mode
         const isLocal = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+        
+        // Get current theme from AppState or localStorage (declare once at function start)
+        const currentTheme = window.AppState?.theme || localStorage.getItem('theme') || 'dark';
         
         // If urlTemplate doesn't start with / or http, it's likely just an ID - construct proper path
         if (!urlTemplate.startsWith('/') && !urlTemplate.startsWith('http')) {
@@ -699,12 +699,11 @@ class ViewerManager {
             }
         }
         
-        // Get current theme from AppState or localStorage
-        const currentTheme = window.AppState?.theme || localStorage.getItem('theme') || 'dark';
-        
+        // Get current theme from AppState or localStorage and add to URL
         // Add theme parameter to URL to help dashboards adapt to dark/light mode
         // Check if URL already has query parameters
         const separator = url.includes('?') ? '&' : '?';
+        const currentTheme = window.AppState?.theme || localStorage.getItem('theme') || 'dark';
         url += `${separator}theme=${encodeURIComponent(currentTheme)}`;
         
         return url;

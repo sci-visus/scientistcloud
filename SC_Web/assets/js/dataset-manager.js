@@ -2652,18 +2652,28 @@ class DatasetManager {
                     '4d dashboard (new)': '4d_dashboardLite',
                     '4d dashboard': '4d_dashboardLite',
                     '4D Dashboard': '4d_dashboardLite',
+                    '4d_dashboardLite': '4d_dashboardLite',  // Direct ID match
+                    '4D_dashboardLite': '4d_dashboardLite',
                     'OpenVisus Slice Dashboard': 'OpenVisusSlice',
                     'openvisus slice dashboard': 'OpenVisusSlice',
                     'OpenVisus Slice': 'OpenVisusSlice',
                     'openvisus slice': 'OpenVisusSlice',
+                    'OpenVisusSlice': 'OpenVisusSlice',  // Direct ID match
                     'MagicScan Dashboard': 'magicscan',
                     'magicscan dashboard': 'magicscan',
                     'MagicScan': 'magicscan',
-                    'magicscan': 'magicscan'
+                    'magicscan': 'magicscan',
+                    'magicscan': 'magicscan'  // Direct ID match
                 };
                 
-                // Try direct mapping first
+                // Try direct mapping first (exact match, then case-insensitive)
                 dashboardType = dashboardNameToId[preferredValue] || dashboardNameToId[preferredValue.toLowerCase()];
+                
+                // If still not found and preferredValue looks like a dashboard ID, use it directly
+                if (!dashboardType && (preferredValue.includes('_') || preferredValue.match(/^[A-Z][a-zA-Z0-9_]+$/))) {
+                    dashboardType = preferredValue;
+                    console.log('Using preferred_dashboard as direct dashboard ID:', dashboardType);
+                }
                 
                 // If not found, try to find in viewerManager by name
                 if (!dashboardType && window.viewerManager && window.viewerManager.viewers) {
