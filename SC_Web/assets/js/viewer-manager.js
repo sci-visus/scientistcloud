@@ -283,7 +283,7 @@ class ViewerManager {
      */
     saveViewerSettings() {
         const settings = {
-            viewerType: document.getElementById('viewerType')?.value || 'OpenVisusSlice',
+            viewerType: (document.getElementById('viewerType') && document.getElementById('viewerType').value) || 'OpenVisusSlice',
             theme: document.body.classList.contains('light-theme') ? 'light' : 'dark'
         };
         
@@ -743,11 +743,10 @@ class ViewerManager {
             }
         }
         
-        // Get current theme from AppState or localStorage and add to URL
         // Add theme parameter to URL to help dashboards adapt to dark/light mode
         // Check if URL already has query parameters
         const separator = url.includes('?') ? '&' : '?';
-        const currentTheme = window.AppState?.theme || localStorage.getItem('theme') || 'dark';
+        // Use currentTheme already declared at function start (line 692)
         url += `${separator}theme=${encodeURIComponent(currentTheme)}`;
         
         return url;
@@ -977,6 +976,74 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     }
 });
+
+// Also try to initialize immediately if DOM is already loaded (in case script loads after DOMContentLoaded)
+if (document.readyState === 'loading') {
+    // DOM is still loading, wait for DOMContentLoaded (handled above)
+    console.log('⏳ DOM still loading, waiting for DOMContentLoaded...');
+} else {
+    // DOM is already loaded, initialize immediately
+    console.log('✅ DOM already loaded, initializing ViewerManager immediately...');
+    try {
+        const viewerType = document.getElementById('viewerType');
+        if (viewerType) {
+            console.log('✅ viewerType element found (immediate init)');
+            if (!window.viewerManager) {
+                window.viewerManager = new ViewerManager();
+                console.log('✅ ViewerManager instance created (immediate init)');
+            } else {
+                console.log('✅ ViewerManager already exists, calling loadDashboards()...');
+                window.viewerManager.loadDashboards().catch(err => {
+                    console.error('❌ loadDashboards failed:', err);
+                });
+            }
+        } else {
+            console.warn('⚠️ viewerType element not found (immediate init)');
+        }
+    } catch (error) {
+        console.error('❌ Failed to create ViewerManager (immediate init):', error);
+        console.error('Error details:', error.message, error.stack);
+    }
+}
+
+// Fallback: If ViewerManager didn't initialize, try to manually load dashboards after a delay
+setTimeout(function() {
+    const viewerType = document.getElementById('viewerType');
+    if (viewerType && viewerType.options.length <= 1 && viewerType.options[0]?.textContent.includes('Loading')) {
+        console.warn('⚠️ Fallback: ViewerManager may not have initialized, manually loading dashboards...');
+        
+        // Helper function to get API base path
+        const getApiBasePath = () => {
+            const isLocal = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+            return isLocal ? '/api' : '/portal/api';
+        };
+        
+        // Manually fetch and populate
+        fetch(`${getApiBasePath()}/dashboards.php`, { credentials: 'include' })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success && data.dashboards) {
+                    viewerType.innerHTML = '';
+                    data.dashboards.forEach(dashboard => {
+                        if (dashboard.enabled) {
+                            const option = document.createElement('option');
+                            option.value = dashboard.id;
+                            option.textContent = dashboard.display_name || dashboard.name;
+                            viewerType.appendChild(option);
+                        }
+                    });
+                    if (viewerType.options.length > 0) {
+                        viewerType.value = viewerType.options[0].value;
+                    }
+                    console.log('✅ Fallback: Manually populated', viewerType.options.length, 'dashboards');
+                }
+            })
+            .catch(err => {
+                console.error('❌ Fallback: Failed to load dashboards:', err);
+                viewerType.innerHTML = '<option value="">Error loading dashboards</option>';
+            });
+    }
+}, 2000);
 
 // Export functions for global access
 // Legacy function - use viewerManager.loadDashboard instead
