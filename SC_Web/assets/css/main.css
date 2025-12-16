@@ -9,7 +9,7 @@
   --panel-bg: rgba(30,30,30,0.8);
   --panel-border: #333;
   --toolbar-bg: rgba(30,30,30,0.7);
-  --viewer-bg: #000;
+  --viewer-bg: #ffffff;
 
   --primary-color:#6f66a9;
   --info-color:  #B5AEDF;
@@ -24,7 +24,7 @@
   --panel-bg: rgba(240,240,240,0.8);
   --panel-border: #CCC;
   --toolbar-bg: rgba(240,240,240,0.7);
-  --viewer-bg: #F0F0F0;
+  --viewer-bg: #ffffff;
   
   --primary-color:#4E477F;
   --info-color:  #1a4d73;
