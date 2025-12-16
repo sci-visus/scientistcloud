@@ -169,3 +169,4 @@ To add undo/redo for a new operation:
 - UI widgets need to be updated after restore via `update_ui_after_state_change()`
 - This function syncs all UI widgets to match the restored state
 
+

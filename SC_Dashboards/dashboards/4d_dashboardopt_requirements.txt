@@ -1,0 +1,5 @@
+# Requirements for 4d Dashboard (2x2)
+bokeh>=3.0.0
+numpy>=1.20.0
+h5py>=3.0.0
+pymongo>=4.0.0

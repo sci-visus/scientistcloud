@@ -1,6 +1,6 @@
 {
   "version": "1.0.0",
-  "last_updated": "2025-12-08T20:32:35Z",
+  "last_updated": "2025-12-16T14:47:57Z",
   "port_range": {
     "start": 8050,
     "end": 8999,
@@ -54,6 +54,14 @@
       "port": 8056,
       "nginx_path": "/dashboard/4d_dashboardLite",
       "config_file": "../dashboards/4d_dashboardLite.json"
+    },
+    "4d_dashboardopt": {
+      "name": "4d_dashboardopt",
+      "display_name": "4d Dashboard (2x2)",
+      "enabled": true,
+      "port": 8057,
+      "nginx_path": "/dashboard/4d_dashboardopt",
+      "config_file": "../dashboards/4d_dashboardopt.json"
     }
   }
 }

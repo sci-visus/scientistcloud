@@ -47,8 +47,8 @@ BASE_IMAGE=${BASE_IMAGE:-plotly-dashboard-base}
 read -p "Base image tag [latest]: " BASE_IMAGE_TAG
 BASE_IMAGE_TAG=${BASE_IMAGE_TAG:-latest}
 
-read -p "Nginx path (e.g., /dashboard/mynew) [/dashboard/${DASHBOARD_NAME,,}]: " NGINX_PATH
-NGINX_PATH=${NGINX_PATH:-/dashboard/${DASHBOARD_NAME,,}}
+read -p "Nginx path (e.g., /dashboard/mynew) [/dashboard/${DASHBOARD_NAME}]: " NGINX_PATH
+NGINX_PATH=${NGINX_PATH:-/dashboard/${DASHBOARD_NAME}}
 
 # Get next available port
 PORT_REGISTRY="$CONFIG_DIR/port-registry.json"

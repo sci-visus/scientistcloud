@@ -46,3 +46,4 @@ echo "   - Permissions: g+w (group writable)"
 echo "   - Setgid: enabled (new files inherit group)"
 echo ""
 echo "💡 Dashboard containers should now be able to create sessions directories"
+

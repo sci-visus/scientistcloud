@@ -4910,8 +4910,8 @@ def create_dashboard(process_4dnexus):
         
         range2_section, range2_mode_toggle = create_range_section_with_toggle(
             label="Plot2 Range:",
-            min_title="Plot2 Range Min:",
-            max_title="Range Max:",
+            min_title="Min:",
+            max_title="Max:",
             min_value=probe_min_val,
             max_value=probe_max_val,
             width=120,
@@ -5180,8 +5180,8 @@ def create_dashboard(process_4dnexus):
         
         range3_section, range3_mode_toggle = create_range_section_with_toggle(
             label="Plot3 Range:",
-            min_title="Plot3 Range Min:",
-            max_title="Range Max:",
+            min_title="Min:",
+            max_title="Max:",
             min_value=plot3_min_val,
             max_value=plot3_max_val,
             width=120,

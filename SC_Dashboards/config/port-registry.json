@@ -5,12 +5,12 @@
     "8051": "3DVTK",
     "8052": "4D_Dashboard",
     "8053": "Magicscan",
-    "8054": "OpenVisusSlice"
+    "8054": "OpenVisusSlice",
+    "8057": "4d_dashboardopt"
   },
   "port_range": {
     "start": 8050,
     "end": 8999
   },
-  "next_available": 8065
+  "next_available": 8058
 }
-

@@ -1,0 +1,40 @@
+{
+  "name": "4d_dashboardopt",
+  "display_name": "4d Dashboard (2x2)",
+  "description": "Optimal Dashboard with 2x2 layout for CHESS (Dec 11, 2025)",
+  "version": "1.0.0",
+  "type": "bokeh",
+  "entry_point": "4d_dashboardopt.py",
+  "entry_point_type": "python",
+  "port": 8057,
+  "base_image": "visstore-4d-dashboard-base",
+  "base_image_tag": "latest",
+  "requirements_file": "4d_dashboardopt_requirements.txt",
+  "additional_requirements": [],
+  "shared_utilities": [
+    "mongo_connection.py",
+    "utils_bokeh_mongodb.py",
+    "utils_bokeh_dashboard.py",
+    "utils_bokeh_auth.py",
+    "utils_bokeh_param.py",
+    "4d_dashboard_implementation.py",
+    "4d_dashboard_builder.py"
+  ],
+  "environment_variables": {
+    "SECRET_KEY": "${SECRET_KEY}",
+    "DEPLOY_SERVER": "${DEPLOY_SERVER}",
+    "DB_NAME": "${DB_NAME}",
+    "MONGO_URL": "${MONGO_URL}"
+  },
+  "nginx_path": "/dashboard/4d_dashboardopt",
+  "health_check_path": "/health",
+  "build_args": {
+    "D_GIT_TOKEN": "${D_GIT_TOKEN}"
+  },
+  "volume_mounts": [],
+  "exposed_ports": [
+    8057
+  ],
+  "depends_on": [],
+  "enabled": true
+}

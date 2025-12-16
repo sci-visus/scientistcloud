@@ -74,3 +74,4 @@ if __name__ == '__main__':
     else:
         print("Could not determine dimension", file=sys.stderr)
         sys.exit(1)
+
