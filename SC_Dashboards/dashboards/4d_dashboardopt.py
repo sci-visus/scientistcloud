@@ -1433,6 +1433,10 @@ def create_tmp_dashboard(process_4dnexus):
     # Callback to auto-populate Probe coordinates when Plot2B dataset is selected
     def on_plot2b_dataset_change(attr, old, new):
         """Auto-populate Probe2B X/Y when Plot2B dataset is selected."""
+        # Only proceed if Plot2B is enabled
+        if not enable_plot2b_toggle.active:
+            return
+        
         plot2b_path = extract_dataset_path(new)
         if plot2b_path == "No 3D/4D datasets":
             return
@@ -1446,19 +1450,19 @@ def create_tmp_dashboard(process_4dnexus):
                 probe_x_selector_b.value = probe_x_choice
             if probe_y_choice and probe_y_choice in probe_y_selector_b.options:
                 probe_y_selector_b.value = probe_y_choice
-                probe_y_selector_b.visible = True
+                probe_y_selector_b.visible = True  # Only visible if Plot2B is enabled (checked above)
             elif probe_y_choice is None and len(plot2b_shape) == 3:
                 # 3D dataset
                 if plot1_is_1d:
                     # When Plot1 is 1D, a 3D volume (x,z,u) means Plot2B shows 2D slice (z,u)
                     # So we need both probe_x (for z) and probe_y (for u) coordinates
-                    probe_y_selector_b.visible = True
+                    probe_y_selector_b.visible = True  # Only visible if Plot2B is enabled (checked above)
                 else:
                     # When Plot1 is 2D, a 3D volume means Plot2B shows 1D probe, so hide Probe Y
                     probe_y_selector_b.visible = False
             elif len(plot2b_shape) == 4:
                 # 4D dataset - show Probe Y
-                probe_y_selector_b.visible = True
+                probe_y_selector_b.visible = True  # Only visible if Plot2B is enabled (checked above)
     
     # Attach callback for Plot2B
     plot2b_selector.on_change("value", on_plot2b_dataset_change)
