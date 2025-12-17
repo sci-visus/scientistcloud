@@ -214,8 +214,8 @@ status_messages = []
 
 DOMAIN_NAME = os.getenv('DOMAIN_NAME', '')
 DATA_IS_LOCAL = (DOMAIN_NAME == 'localhost' or DOMAIN_NAME == '' or DOMAIN_NAME is None)
+#local_base_dir = f"/Users/amygooch/GIT/SCI/DATA/s14_nxs/"
 local_base_dir = f"/Users/amygooch/GIT/SCI/DATA/waxs/pil11/"
-
 
 def add_status_message(message):
     """Add a status message to the collection"""
@@ -364,6 +364,44 @@ def create_tmp_dashboard(process_4dnexus):
         }
         .bk-input, .bk-select {
             font-size: 16px !important;
+        }
+        .config-outline {
+            border: 2px solid #5716e5 !important;
+            border-radius: 8px !important;
+            padding: 15px !important;
+            margin: 10px 0 !important;
+            background-color: #f9f9f9 !important;
+        }
+        .config-wrapper {
+            border: 2px solid #5716e5 !important;
+            border-radius: 8px !important;
+            padding: 15px !important;
+            margin: 10px 0 !important;
+            background-color: #f9f9f9 !important;
+        }
+        .config-section {
+            border: 2px solid #5716e5 !important;
+            border-radius: 8px !important;
+            padding: 15px !important;
+            margin: 10px 0 !important;
+            background-color: #f9f9f9 !important;
+            box-sizing: border-box !important;
+        }
+        /* Target Bokeh column and row elements with config-section class - multiple selectors for compatibility */
+        .bk-column.config-section,
+        .bk-row.config-section,
+        .bk-column.bk-layout-column.config-section,
+        .bk-row.bk-layout-row.config-section,
+        div.config-section,
+        .bk-root .config-section,
+        [class*="config-section"] {
+            border: 2px solid #5716e5 !important;
+            border-radius: 8px !important;
+            padding: 15px !important;
+            margin: 10px 0 !important;
+            background-color: #f9f9f9 !important;
+            box-sizing: border-box !important;
+            display: block !important;
         }
         </style>
     """)
@@ -1219,8 +1257,17 @@ def create_tmp_dashboard(process_4dnexus):
     plot1b_separator = create_div(text="<hr>", width=300)
     plot1b_separator.visible = False  # Hide the separator
     
+    # Create outlined sections for Plot1 and Plot2 configurations
+    # Apply CSS class directly to column containers to create visual boxes
+    
+    # Plot1 configuration: Create a column with title and all widgets, apply CSS class for outline
+    plot1_config_title = create_div(
+        text="<h3 style='margin-top: 0; margin-bottom: 10px; color: #5716e5;'>Plot1 Configuration</h3>",
+        width=350
+    )
+    
     plot1_section = column(
-        create_label_div("Plot1 Configuration:", width=300),
+        plot1_config_title,
         plot1_mode_selector,
         plot1_single_selector,
         plot1_numerator_selector,
@@ -1234,10 +1281,19 @@ def create_tmp_dashboard(process_4dnexus):
         plot1b_single_selector,  # Hidden
         plot1b_numerator_selector,  # Hidden
         plot1b_denominator_selector,  # Hidden
+        width=350
+    )
+    # Apply CSS class to create visual outline box
+    plot1_section.css_classes = ["config-section"]
+    
+    # Plot2 configuration: Create a column with title and all widgets, apply CSS class for outline
+    plot2_config_title = create_div(
+        text="<h3 style='margin-top: 0; margin-bottom: 10px; color: #5716e5;'>Plot2 Configuration</h3>",
+        width=350
     )
     
     plot2_section = column(
-        create_label_div("Plot2 Configuration:", width=300),
+        plot2_config_title,
         plot2_selector,
         probe_x_selector,
         probe_y_selector,
@@ -1247,23 +1303,59 @@ def create_tmp_dashboard(process_4dnexus):
         plot2b_selector,
         probe_x_selector_b,
         probe_y_selector_b,
-        create_div(text="<hr>", width=300),
-        create_label_div("Load Session:", width=300),
-        load_session_select,
-        row(refresh_sessions_button, load_session_button),
-        create_div(text="<hr>", width=300),
-        initialize_button,
+        width=350
+    )
+    # Apply CSS class to create visual outline box
+    plot2_section.css_classes = ["config-section"]
+    
+    # Create column containing plot1_section and plot2_section (stacked vertically)
+    # Apply CSS class to create outline around the entire configs column
+    configs_column = row(
+        plot1_section,
+        plot2_section,
+        sizing_mode="fixed"
+    )
+    # Apply CSS class to create outline around the entire configs column
+    configs_column.css_classes = ["config-section"]
+    
+    initialize_spacer = create_div(text="<hr>", height=80)
+    # Create column for Load Session and Initialize button
+    actions_column = row(
+        column(
+            create_label_div("Load Session:", width=300),
+            load_session_select,
+            row(refresh_sessions_button, load_session_button),
+        ),
+        column(initialize_spacer,initialize_button),
+        sizing_mode="fixed"
     )
     
     status_display = create_status_display_widget()
     
-    main_layout = create_initialization_layout(
-        title="4D Dashboard - Dataset Selection",
-        plot1_section=plot1_section,
-        plot2_section=plot2_section,
-        initialize_button=initialize_button,
-        status_display=status_display
+    # Create main row: title, configs_column (with outline), actions_column
+    # Structure: row(title, column(plot1_section, plot2_section), column(load_session, initialize))
+    main_content = column(
+        create_div(text="<h2>4D Dashboard - Dataset Selection</h2>"),
+        configs_column,
+        actions_column,
+        sizing_mode="stretch_width"
     )
+    
+    # Build main layout with content and status
+    main_layout_items = [
+        main_content,
+    ]
+    
+    # Add status display at the bottom
+    if status_display:
+        main_layout_items.append(create_div(text="<hr>", width=800))
+        if hasattr(status_display, 'height') and status_display.height:
+            pass
+        else:
+            status_display.height = 200
+        main_layout_items.append(status_display)
+    
+    main_layout = column(*main_layout_items, sizing_mode="fixed")
     
     return column(css_style, main_layout)
 
