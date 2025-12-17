@@ -214,8 +214,8 @@ status_messages = []
 
 DOMAIN_NAME = os.getenv('DOMAIN_NAME', '')
 DATA_IS_LOCAL = (DOMAIN_NAME == 'localhost' or DOMAIN_NAME == '' or DOMAIN_NAME is None)
-#local_base_dir = f"/Users/amygooch/GIT/SCI/DATA/s14_nxs/"
-local_base_dir = f"/Users/amygooch/GIT/SCI/DATA/waxs/pil11/"
+local_base_dir = f"/Users/amygooch/GIT/SCI/DATA/s14_nxs/"
+#local_base_dir = f"/Users/amygooch/GIT/SCI/DATA/waxs/pil11/"
 
 def add_status_message(message):
     """Add a status message to the collection"""
@@ -395,7 +395,8 @@ def create_tmp_dashboard(process_4dnexus):
     )
     
     # Create choices for selectors with size information
-    plot1_h5_choices = [f"{dataset['path']} {dataset['shape']}" for dataset in datasets_2d]
+    plot1_1d_choices = [f"{dataset['path']} {dataset['shape']}" for dataset in datasets_1d]
+    plot1_2d_choices = [f"{dataset['path']} {dataset['shape']}" for dataset in datasets_2d]
     plot2_h5_choices = [f"{dataset['path']} {dataset['shape']}" for dataset in datasets_4d + datasets_3d]
     coord_choices = [f"{dataset['path']} {dataset['shape']}" for dataset in datasets_1d]
     
@@ -414,50 +415,82 @@ def create_tmp_dashboard(process_4dnexus):
                 return choice
         return None
     
-    # First try exact path match for numerator (postsample)
-    default_numerator = find_choice_by_path(plot1_h5_choices, "map_mi_sic_0p33mm_002/scalar_data/postsample_intensity")
+    # First try exact path match for numerator (postsample) - 2D datasets
+    default_numerator = find_choice_by_path(plot1_2d_choices, "map_mi_sic_0p33mm_002/scalar_data/postsample_intensity")
     if not default_numerator:
         # Try to find any dataset with "postsample" in the name
-        default_numerator = find_choice_by_name_pattern(plot1_h5_choices, "postsample")
+        default_numerator = find_choice_by_name_pattern(plot1_2d_choices, "postsample")
     if not default_numerator:
         # Fallback to first choice
-        default_numerator = plot1_h5_choices[0] if plot1_h5_choices else "No 2D datasets"
+        default_numerator = plot1_2d_choices[0] if plot1_2d_choices else "No 2D datasets"
     
-    # First try exact path match for denominator (presample)
-    default_denominator = find_choice_by_path(plot1_h5_choices, "map_mi_sic_0p33mm_002/scalar_data/presample_intensity")
+    # First try exact path match for denominator (presample) - 2D datasets
+    default_denominator = find_choice_by_path(plot1_2d_choices, "map_mi_sic_0p33mm_002/scalar_data/presample_intensity")
     if not default_denominator:
         # Try to find any dataset with "presample" in the name
-        default_denominator = find_choice_by_name_pattern(plot1_h5_choices, "presample")
+        default_denominator = find_choice_by_name_pattern(plot1_2d_choices, "presample")
     if not default_denominator:
         # Fallback to a different choice than numerator
-        if len(plot1_h5_choices) > 1:
+        if len(plot1_2d_choices) > 1:
             # Try to find a choice that's different from numerator
             default_denominator = None
-            for choice in plot1_h5_choices:
+            for choice in plot1_2d_choices:
                 if choice != default_numerator:
                     default_denominator = choice
                     break
             # If we couldn't find a different choice, use the second one (or first if only one exists)
             if default_denominator is None or default_denominator == default_numerator:
-                default_denominator = plot1_h5_choices[1] if len(plot1_h5_choices) > 1 else plot1_h5_choices[0] if plot1_h5_choices else "No 2D datasets"
+                default_denominator = plot1_2d_choices[1] if len(plot1_2d_choices) > 1 else plot1_2d_choices[0] if plot1_2d_choices else "No 2D datasets"
         else:
-            default_denominator = plot1_h5_choices[0] if plot1_h5_choices else "No 2D datasets"
+            default_denominator = plot1_2d_choices[0] if plot1_2d_choices else "No 2D datasets"
+    
+    # Default for 1D dataset
+    default_1d = plot1_1d_choices[0] if plot1_1d_choices else "No 1D datasets"
     default_plot2 = find_choice_by_path(plot2_h5_choices, "map_mi_sic_0p33mm_002/data/PIL11") or (plot2_h5_choices[0] if plot2_h5_choices else "No 3D/4D datasets")
     default_map_x = find_choice_by_path(coord_choices, "map_mi_sic_0p33mm_002/data/samx") or "Use Default"
     default_map_y = find_choice_by_path(coord_choices, "map_mi_sic_0p33mm_002/data/samz") or "Use Default"
     
-    # Create Plot1 dataset selection group using SCLib UI
-    plot1_mode_selector, plot1_single_selector, plot1_numerator_selector, plot1_denominator_selector = \
-        create_dataset_selection_group(
-            plot_label="Plot1",
-            dataset_choices=plot1_h5_choices,
-            default_dataset=default_numerator,
-            default_mode=1,  # Ratio mode
-        )
+    # Create Plot1 mode selector with 3 options: Single Dataset (1D), Single Dataset (2D), Ratio
+    plot1_mode_selector = create_radio_button_group(
+        labels=["Single Dataset (1D)", "Single Dataset (2D)", "Ratio"],
+        active=1,  # Default to Single Dataset (2D)
+        width=400
+    )
     
-    # Set denominator to presample (different from numerator which is postsample)
-    if default_denominator and default_denominator in plot1_denominator_selector.options:
-        plot1_denominator_selector.value = default_denominator
+    # Create separate selectors for 1D, 2D, and Ratio modes
+    plot1_1d_selector = create_select(
+        title="Plot1 Dataset (1D):",
+        value=default_1d,
+        options=plot1_1d_choices if plot1_1d_choices else ["No 1D datasets"],
+        width=300
+    )
+    
+    plot1_2d_selector = create_select(
+        title="Plot1 Dataset (2D):",
+        value=default_numerator,
+        options=plot1_2d_choices if plot1_2d_choices else ["No 2D datasets"],
+        width=300
+    )
+    
+    plot1_numerator_selector = create_select(
+        title="Plot1 Numerator (2D):",
+        value=default_numerator,
+        options=plot1_2d_choices if plot1_2d_choices else ["No 2D datasets"],
+        width=300
+    )
+    
+    plot1_denominator_selector = create_select(
+        title="Plot1 Denominator (2D):",
+        value=default_denominator,
+        options=plot1_2d_choices if plot1_2d_choices else ["No 2D datasets"],
+        width=300
+    )
+    
+    # Initially show only 2D selector (mode 1 = Single Dataset 2D)
+    plot1_1d_selector.visible = False
+    plot1_2d_selector.visible = True
+    plot1_numerator_selector.visible = False
+    plot1_denominator_selector.visible = False
     
     # Create Plot2 dataset selector
     plot2_selector = create_select(
@@ -482,11 +515,11 @@ def create_tmp_dashboard(process_4dnexus):
         width=250
     )
     
-    # Plot1B dataset selection group (similar to Plot1)
+    # Plot1B dataset selection group (similar to Plot1, but only 2D and Ratio modes)
     plot1b_mode_selector, plot1b_single_selector, plot1b_numerator_selector, plot1b_denominator_selector = \
         create_dataset_selection_group(
             plot_label="Plot1B",
-            dataset_choices=plot1_h5_choices,
+            dataset_choices=plot1_2d_choices,
             default_dataset=default_numerator,
             default_mode=1,  # Ratio mode
         )
@@ -730,19 +763,35 @@ def create_tmp_dashboard(process_4dnexus):
                 print("ERROR: Please select valid datasets before initializing plots")
                 return
             
-            process_4dnexus.volume_picked = plot2_path
-            
             # Determine Plot1 selection based on mode
-            if plot1_mode_selector.active == 0:  # Single dataset mode
-                plot1_selection = plot1_single_selector.value
+            if plot1_mode_selector.active == 0:  # Single Dataset (1D) mode
+                plot1_selection = plot1_1d_selector.value
+                plot1_path = extract_dataset_path(plot1_selection)
+                if plot1_path == "No 1D datasets":
+                    print("Please select a valid 1D dataset before initializing plots")
+                    return
+                # When Plot1 is 1D, Plot2/Plot2B becomes the volume
+                process_4dnexus.plot1_single_dataset_picked = plot1_path
+                process_4dnexus.presample_picked = None
+                process_4dnexus.postsample_picked = None
+                # Set Plot2 as the volume (2D or 3D)
+                process_4dnexus.volume_picked = plot2_path
+                # Set flag to indicate Plot1 is 1D (so y_coords should not be set)
+                process_4dnexus.plot1_is_1d = True
+            elif plot1_mode_selector.active == 1:  # Single Dataset (2D) mode
+                plot1_selection = plot1_2d_selector.value
                 plot1_path = extract_dataset_path(plot1_selection)
                 if plot1_path == "No 2D datasets":
-                    print("Please select valid datasets before initializing plots")
+                    print("Please select a valid 2D dataset before initializing plots")
                     return
                 process_4dnexus.plot1_single_dataset_picked = plot1_path
                 process_4dnexus.presample_picked = None
                 process_4dnexus.postsample_picked = None
-            else:  # Ratio mode
+                # Set Plot2 as the volume (3D/4D)
+                process_4dnexus.volume_picked = plot2_path
+                # Plot1 is not 1D
+                process_4dnexus.plot1_is_1d = False
+            else:  # Ratio mode (active == 2)
                 numerator_path = extract_dataset_path(plot1_numerator_selector.value)
                 denominator_path = extract_dataset_path(plot1_denominator_selector.value)
                 if numerator_path == "No 2D datasets" or denominator_path == "No 2D datasets":
@@ -751,6 +800,10 @@ def create_tmp_dashboard(process_4dnexus):
                 process_4dnexus.plot1_single_dataset_picked = None
                 process_4dnexus.presample_picked = numerator_path
                 process_4dnexus.postsample_picked = denominator_path
+                # Set Plot2 as the volume (3D/4D)
+                process_4dnexus.volume_picked = plot2_path
+                # Plot1 is not 1D
+                process_4dnexus.plot1_is_1d = False
             
             # Set coordinates
             map_x_coords = extract_dataset_path(map_x_selector.value)
@@ -758,15 +811,26 @@ def create_tmp_dashboard(process_4dnexus):
             probe_x_coords = extract_dataset_path(probe_x_selector.value)
             probe_y_coords = extract_dataset_path(probe_y_selector.value)
             
-            if map_x_coords != "Use Default":
-                process_4dnexus.x_coords_picked = map_x_coords
+            # When Plot1 is 1D, we don't need y coordinates (Plot1 is the 1D dataset itself)
+            if plot1_mode_selector.active == 0:  # Single Dataset (1D) mode
+                # Set x coordinates for the volume if provided
+                if map_x_coords != "Use Default":
+                    process_4dnexus.x_coords_picked = map_x_coords
+                else:
+                    process_4dnexus.x_coords_picked = "map_mi_sic_0p33mm_002/data/samx"
+                # Don't set y_coords when Plot1 is 1D
+                process_4dnexus.y_coords_picked = None
             else:
-                process_4dnexus.x_coords_picked = "map_mi_sic_0p33mm_002/data/samx"
-                
-            if map_y_coords != "Use Default":
-                process_4dnexus.y_coords_picked = map_y_coords
-            else:
-                process_4dnexus.y_coords_picked = "map_mi_sic_0p33mm_002/data/samz"
+                # For 2D and Ratio modes, set both x and y coordinates
+                if map_x_coords != "Use Default":
+                    process_4dnexus.x_coords_picked = map_x_coords
+                else:
+                    process_4dnexus.x_coords_picked = "map_mi_sic_0p33mm_002/data/samx"
+                    
+                if map_y_coords != "Use Default":
+                    process_4dnexus.y_coords_picked = map_y_coords
+                else:
+                    process_4dnexus.y_coords_picked = "map_mi_sic_0p33mm_002/data/samz"
             
             process_4dnexus.probe_x_coords_picked = probe_x_coords if probe_x_coords != "Use Default" else None
             process_4dnexus.probe_y_coords_picked = probe_y_coords if probe_y_coords != "Use Default" else None
@@ -811,10 +875,13 @@ def create_tmp_dashboard(process_4dnexus):
             print("=" * 80)
             print("🔍 DEBUG: User Settings from tmp_dashboard:")
             print("=" * 80)
-            print(f"  Plot1 Mode: {'Single Dataset' if plot1_mode_selector.active == 0 else 'Ratio'}")
-            if plot1_mode_selector.active == 0:
-                print(f"    Plot1 Single Dataset: {plot1_path}")
-            else:
+            mode_names = ["Single Dataset (1D)", "Single Dataset (2D)", "Ratio"]
+            print(f"  Plot1 Mode: {mode_names[plot1_mode_selector.active]}")
+            if plot1_mode_selector.active == 0:  # 1D
+                print(f"    Plot1 1D Dataset: {plot1_path}")
+            elif plot1_mode_selector.active == 1:  # 2D
+                print(f"    Plot1 2D Dataset: {plot1_path}")
+            else:  # Ratio
                 print(f"    Plot1 Numerator: {numerator_path}")
                 print(f"    Plot1 Denominator: {denominator_path}")
             print(f"  Plot2 Dataset: {plot2_path}")
@@ -1053,23 +1120,36 @@ def create_tmp_dashboard(process_4dnexus):
     
     load_session_button.on_click(on_load_session)
     
-    # Set initial visibility for Plot1 selectors
-    plot1_single_selector.visible = False
-    plot1_numerator_selector.visible = True
-    plot1_denominator_selector.visible = True
-    
-    # Mode change callback
-    def on_mode_change(attr, old, new):
-        if new == 0:  # Single dataset mode
-            plot1_single_selector.visible = True
+    # Mode change callback for Plot1
+    def on_plot1_mode_change(attr, old, new):
+        if new == 0:  # Single Dataset (1D) mode
+            plot1_1d_selector.visible = True
+            plot1_2d_selector.visible = False
             plot1_numerator_selector.visible = False
             plot1_denominator_selector.visible = False
-        else:  # Ratio mode
-            plot1_single_selector.visible = False
+            # Hide map_y_selector when Plot1 is 1D (no y coordinates needed)
+            map_y_selector.visible = False
+        elif new == 1:  # Single Dataset (2D) mode
+            plot1_1d_selector.visible = False
+            plot1_2d_selector.visible = True
+            plot1_numerator_selector.visible = False
+            plot1_denominator_selector.visible = False
+            # Show map_y_selector for 2D mode
+            map_y_selector.visible = True
+        else:  # Ratio mode (new == 2)
+            plot1_1d_selector.visible = False
+            plot1_2d_selector.visible = False
             plot1_numerator_selector.visible = True
             plot1_denominator_selector.visible = True
+            # Show map_y_selector for Ratio mode
+            map_y_selector.visible = True
+        
+        # Update Plot2 coordinate visibility based on Plot1 mode and Plot2 dataset
+        # Trigger the Plot2 dataset change callback to update coordinate visibility
+        if plot2_selector.value and plot2_selector.value != "No 3D/4D datasets":
+            on_plot2_dataset_change(None, None, plot2_selector.value)
     
-    plot1_mode_selector.on_change("active", on_mode_change)
+    plot1_mode_selector.on_change("active", on_plot1_mode_change)
     
     # Plot1B enable/disable callback
     def on_enable_plot1b(attr, old, new):
@@ -1112,10 +1192,18 @@ def create_tmp_dashboard(process_4dnexus):
     
     enable_plot2b_toggle.on_change("active", on_enable_plot2b)
     
-    # Callback to auto-populate Map coordinates when Plot1 dataset is selected
-    def on_plot1_single_dataset_change(attr, old, new):
-        """Auto-populate Map X/Y when Plot1 single dataset is selected."""
-        if plot1_mode_selector.active == 0:  # Single dataset mode
+    # Callback to auto-populate Map coordinates when Plot1 1D dataset is selected
+    def on_plot1_1d_dataset_change(attr, old, new):
+        """Auto-populate coordinates when Plot1 1D dataset is selected."""
+        if plot1_mode_selector.active == 0:  # Single Dataset (1D) mode
+            # For 1D datasets, we might not need map coordinates in the same way
+            # This could be used for probe coordinates instead
+            pass
+    
+    # Callback to auto-populate Map coordinates when Plot1 2D dataset is selected
+    def on_plot1_2d_dataset_change(attr, old, new):
+        """Auto-populate Map X/Y when Plot1 2D dataset is selected."""
+        if plot1_mode_selector.active == 1:  # Single Dataset (2D) mode
             plot1_shape = extract_shape(new)
             if plot1_shape:
                 map_x_choice, map_y_choice = process_4dnexus.auto_populate_map_coords(plot1_shape)
@@ -1126,7 +1214,7 @@ def create_tmp_dashboard(process_4dnexus):
     
     def on_plot1_numerator_change(attr, old, new):
         """Auto-populate Map X/Y when Plot1 numerator is selected."""
-        if plot1_mode_selector.active == 1:  # Ratio mode
+        if plot1_mode_selector.active == 2:  # Ratio mode
             plot1_shape = extract_shape(new)
             if plot1_shape:
                 map_x_choice, map_y_choice = process_4dnexus.auto_populate_map_coords(plot1_shape)
@@ -1137,7 +1225,7 @@ def create_tmp_dashboard(process_4dnexus):
     
     def on_plot1_denominator_change(attr, old, new):
         """Auto-populate Map X/Y when Plot1 denominator is selected."""
-        if plot1_mode_selector.active == 1:  # Ratio mode
+        if plot1_mode_selector.active == 2:  # Ratio mode
             plot1_shape = extract_shape(new)
             if plot1_shape:
                 map_x_choice, map_y_choice = process_4dnexus.auto_populate_map_coords(plot1_shape)
@@ -1147,7 +1235,8 @@ def create_tmp_dashboard(process_4dnexus):
                     map_y_selector.value = map_y_choice
     
     # Attach callbacks for Plot1
-    plot1_single_selector.on_change("value", on_plot1_single_dataset_change)
+    plot1_1d_selector.on_change("value", on_plot1_1d_dataset_change)
+    plot1_2d_selector.on_change("value", on_plot1_2d_dataset_change)
     plot1_numerator_selector.on_change("value", on_plot1_numerator_change)
     plot1_denominator_selector.on_change("value", on_plot1_denominator_change)
     
@@ -1159,6 +1248,9 @@ def create_tmp_dashboard(process_4dnexus):
             return
         plot2_shape = extract_shape(new)
         if plot2_shape:
+            # Check if Plot1 is in 1D mode
+            plot1_is_1d = (plot1_mode_selector.active == 0)
+            
             probe_x_choice, probe_y_choice = process_4dnexus.auto_populate_probe_coords(plot2_path, plot2_shape)
             if probe_x_choice and probe_x_choice in probe_x_selector.options:
                 probe_x_selector.value = probe_x_choice
@@ -1166,8 +1258,14 @@ def create_tmp_dashboard(process_4dnexus):
                 probe_y_selector.value = probe_y_choice
                 probe_y_selector.visible = True
             elif probe_y_choice is None and len(plot2_shape) == 3:
-                # 3D dataset - hide Probe Y
-                probe_y_selector.visible = False
+                # 3D dataset
+                if plot1_is_1d:
+                    # When Plot1 is 1D, a 3D volume (x,z,u) means Plot2 shows 2D slice (z,u)
+                    # So we need both probe_x (for z) and probe_y (for u) coordinates
+                    probe_y_selector.visible = True
+                else:
+                    # When Plot1 is 2D, a 3D volume means Plot2 shows 1D probe, so hide Probe Y
+                    probe_y_selector.visible = False
             elif len(plot2_shape) == 4:
                 # 4D dataset - show Probe Y
                 probe_y_selector.visible = True
@@ -1183,6 +1281,9 @@ def create_tmp_dashboard(process_4dnexus):
             return
         plot2b_shape = extract_shape(new)
         if plot2b_shape:
+            # Check if Plot1 is in 1D mode
+            plot1_is_1d = (plot1_mode_selector.active == 0)
+            
             probe_x_choice, probe_y_choice = process_4dnexus.auto_populate_probe_coords(plot2b_path, plot2b_shape)
             if probe_x_choice and probe_x_choice in probe_x_selector_b.options:
                 probe_x_selector_b.value = probe_x_choice
@@ -1190,8 +1291,14 @@ def create_tmp_dashboard(process_4dnexus):
                 probe_y_selector_b.value = probe_y_choice
                 probe_y_selector_b.visible = True
             elif probe_y_choice is None and len(plot2b_shape) == 3:
-                # 3D dataset - hide Probe Y
-                probe_y_selector_b.visible = False
+                # 3D dataset
+                if plot1_is_1d:
+                    # When Plot1 is 1D, a 3D volume (x,z,u) means Plot2B shows 2D slice (z,u)
+                    # So we need both probe_x (for z) and probe_y (for u) coordinates
+                    probe_y_selector_b.visible = True
+                else:
+                    # When Plot1 is 2D, a 3D volume means Plot2B shows 1D probe, so hide Probe Y
+                    probe_y_selector_b.visible = False
             elif len(plot2b_shape) == 4:
                 # 4D dataset - show Probe Y
                 probe_y_selector_b.visible = True
@@ -1257,7 +1364,8 @@ def create_tmp_dashboard(process_4dnexus):
     plot1_section = column(
         plot1_config_title,
         plot1_mode_selector,
-        plot1_single_selector,
+        plot1_1d_selector,  # 1D dataset selector
+        plot1_2d_selector,  # 2D dataset selector
         plot1_numerator_selector,
         plot1_denominator_selector,
         map_x_selector,
