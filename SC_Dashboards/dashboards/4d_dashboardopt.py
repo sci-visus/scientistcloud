@@ -1148,6 +1148,19 @@ def create_tmp_dashboard(process_4dnexus):
                 if "probe_y_coords_picked_b" in metadata:
                     process_4dnexus.probe_y_coords_picked_b = metadata["probe_y_coords_picked_b"]
                     print(f"✅ Restored probe_y_coords_picked_b: {metadata.get('probe_y_coords_picked_b')}")
+                
+                # Restore plot1_mode and set plot1_is_1d BEFORE load_data() is called
+                # This is critical to prevent load_data() from setting a default y_coords when Plot1 is 1D
+                if "plot1_mode" in metadata:
+                    plot1_mode = metadata["plot1_mode"]
+                    # Mode 0: Single Dataset (1D), Mode 2: Ratio (1D) -> plot1_is_1d = True
+                    # Mode 1: Single Dataset (2D), Mode 3: Ratio (2D) -> plot1_is_1d = False
+                    process_4dnexus.plot1_is_1d = (plot1_mode == 0 or plot1_mode == 2)
+                    print(f"✅ Restored plot1_mode: {plot1_mode}, set plot1_is_1d: {process_4dnexus.plot1_is_1d}")
+                elif "y_coords_picked" in metadata and metadata["y_coords_picked"] is None:
+                    # If y_coords_picked is explicitly None, assume Plot1 is 1D
+                    process_4dnexus.plot1_is_1d = True
+                    print(f"✅ Inferred plot1_is_1d=True from y_coords_picked=None")
             
             # Store the session filepath for the dashboard to load
             # We'll pass this to the dashboard so it can load the session after creating the dashboard
