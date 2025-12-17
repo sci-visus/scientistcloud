@@ -1153,14 +1153,40 @@ def create_tmp_dashboard(process_4dnexus):
                 # This is critical to prevent load_data() from setting a default y_coords when Plot1 is 1D
                 if "plot1_mode" in metadata:
                     plot1_mode = metadata["plot1_mode"]
-                    # Mode 0: Single Dataset (1D), Mode 2: Ratio (1D) -> plot1_is_1d = True
-                    # Mode 1: Single Dataset (2D), Mode 3: Ratio (2D) -> plot1_is_1d = False
-                    process_4dnexus.plot1_is_1d = (plot1_mode == 0 or plot1_mode == 2)
-                    print(f"✅ Restored plot1_mode: {plot1_mode}, set plot1_is_1d: {process_4dnexus.plot1_is_1d}")
+                    # Handle both old string format ("single"/"ratio") and new numeric format (0,1,2,3)
+                    if isinstance(plot1_mode, str):
+                        # Old format: "single" or "ratio" - need to infer 1D/2D from y_coords
+                        if plot1_mode == "single":
+                            # Old single mode - check if y_coords is None to determine 1D vs 2D
+                            if "y_coords_picked" in metadata and metadata["y_coords_picked"] is None:
+                                process_4dnexus.plot1_is_1d = True  # Single 1D
+                            else:
+                                process_4dnexus.plot1_is_1d = False  # Single 2D
+                        elif plot1_mode == "ratio":
+                            # Old ratio mode - check if y_coords is None to determine 1D vs 2D
+                            if "y_coords_picked" in metadata and metadata["y_coords_picked"] is None:
+                                process_4dnexus.plot1_is_1d = True  # Ratio 1D
+                            else:
+                                process_4dnexus.plot1_is_1d = False  # Ratio 2D
+                        else:
+                            # Unknown string format - default based on y_coords
+                            process_4dnexus.plot1_is_1d = ("y_coords_picked" in metadata and metadata["y_coords_picked"] is None)
+                    else:
+                        # New numeric format: 0=Single (1D), 1=Single (2D), 2=Ratio (1D), 3=Ratio (2D)
+                        # Mode 0: Single Dataset (1D), Mode 2: Ratio (1D) -> plot1_is_1d = True
+                        # Mode 1: Single Dataset (2D), Mode 3: Ratio (2D) -> plot1_is_1d = False
+                        process_4dnexus.plot1_is_1d = (plot1_mode == 0 or plot1_mode == 2)
+                    print(f"✅ Restored plot1_mode: {plot1_mode} (type: {type(plot1_mode).__name__}), set plot1_is_1d: {process_4dnexus.plot1_is_1d}")
                 elif "y_coords_picked" in metadata and metadata["y_coords_picked"] is None:
                     # If y_coords_picked is explicitly None, assume Plot1 is 1D
                     process_4dnexus.plot1_is_1d = True
                     print(f"✅ Inferred plot1_is_1d=True from y_coords_picked=None")
+                
+                # CRITICAL: If Plot1 is 1D, force y_coords_picked to None even if session had a value
+                # This prevents dimension mismatch errors when loading sessions
+                if process_4dnexus.plot1_is_1d:
+                    process_4dnexus.y_coords_picked = None
+                    print(f"✅ Forced y_coords_picked=None because plot1_is_1d=True")
             
             # Store the session filepath for the dashboard to load
             # We'll pass this to the dashboard so it can load the session after creating the dashboard
