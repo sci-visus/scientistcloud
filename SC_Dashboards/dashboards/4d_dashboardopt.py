@@ -349,9 +349,11 @@ def create_tmp_dashboard(process_4dnexus):
         traceback.print_exc()
         raise
     
-    # Create CSS style
-    css_style = create_div(text="""
+    # Create CSS style using a Div with style tags (works across Bokeh versions)
+    css_style = create_div(
+        text="""
         <style>
+        border: 2px solid #5716e5 !important;
         h3 {
             color: #5716e5 !important;
             font-size: 24px !important;
@@ -365,20 +367,6 @@ def create_tmp_dashboard(process_4dnexus):
         .bk-input, .bk-select {
             font-size: 16px !important;
         }
-        .config-outline {
-            border: 2px solid #5716e5 !important;
-            border-radius: 8px !important;
-            padding: 15px !important;
-            margin: 10px 0 !important;
-            background-color: #f9f9f9 !important;
-        }
-        .config-wrapper {
-            border: 2px solid #5716e5 !important;
-            border-radius: 8px !important;
-            padding: 15px !important;
-            margin: 10px 0 !important;
-            background-color: #f9f9f9 !important;
-        }
         .config-section {
             border: 2px solid #5716e5 !important;
             border-radius: 8px !important;
@@ -387,24 +375,24 @@ def create_tmp_dashboard(process_4dnexus):
             background-color: #f9f9f9 !important;
             box-sizing: border-box !important;
         }
-        /* Target Bokeh column and row elements with config-section class - multiple selectors for compatibility */
+        /* Target Bokeh column and row elements with config-section class */
         .bk-column.config-section,
         .bk-row.config-section,
         .bk-column.bk-layout-column.config-section,
-        .bk-row.bk-layout-row.config-section,
-        div.config-section,
-        .bk-root .config-section,
-        [class*="config-section"] {
+        .bk-row.bk-layout-row.config-section {
             border: 2px solid #5716e5 !important;
             border-radius: 8px !important;
             padding: 15px !important;
             margin: 10px 0 !important;
             background-color: #f9f9f9 !important;
             box-sizing: border-box !important;
-            display: block !important;
         }
         </style>
-    """)
+        """,
+        width=1,
+        height=1,
+        styles={"display": "none"}  # Hide the style div
+    )
     
     # Create choices for selectors with size information
     plot1_h5_choices = [f"{dataset['path']} {dataset['shape']}" for dataset in datasets_2d]
@@ -1307,14 +1295,24 @@ def create_tmp_dashboard(process_4dnexus):
     )
     # Apply CSS class to create visual outline box
     plot2_section.css_classes = ["config-section"]
-    
+    initialize_button.align = "end"
     # Create column containing plot1_section and plot2_section (stacked vertically)
     # Apply CSS class to create outline around the entire configs column
-    configs_column = row(
-        plot1_section,
-        plot2_section,
-        sizing_mode="fixed"
-    )
+    configs_column = column(
+        row(
+            plot1_section,
+            plot2_section,
+            sizing_mode="fixed",
+        ),
+        initialize_button,
+        styles={
+                "background-color": "#f0f0f0",
+                "border": "2px solid #444",
+                "padding": "10px",
+                "border-radius": "8px"
+            }
+        )
+
     # Apply CSS class to create outline around the entire configs column
     configs_column.css_classes = ["config-section"]
     
@@ -1326,8 +1324,14 @@ def create_tmp_dashboard(process_4dnexus):
             load_session_select,
             row(refresh_sessions_button, load_session_button),
         ),
-        column(initialize_spacer,initialize_button),
-        sizing_mode="fixed"
+        #column(initialize_spacer,initialize_button),
+        sizing_mode="fixed",
+        styles={
+                "background-color": "#fff",
+                "border": "0px solid #444",
+                "padding": "20px",
+                "border-radius": "8px"
+        }
     )
     
     status_display = create_status_display_widget()
@@ -1336,8 +1340,8 @@ def create_tmp_dashboard(process_4dnexus):
     # Structure: row(title, column(plot1_section, plot2_section), column(load_session, initialize))
     main_content = column(
         create_div(text="<h2>4D Dashboard - Dataset Selection</h2>"),
-        configs_column,
-        actions_column,
+        row(configs_column,
+        actions_column),
         sizing_mode="stretch_width"
     )
     
