@@ -140,6 +140,24 @@ class DatasetManager {
                     console.error('Could not find dataset ID for copy dashboard link button');
                 }
             }
+            
+            if (e.target.closest('[data-action="open-dashboard-link"]')) {
+                e.preventDefault();
+                const button = e.target.closest('[data-action="open-dashboard-link"]');
+                const datasetId = button.dataset.datasetId || button.getAttribute('data-dataset-id');
+                const datasetUuid = button.dataset.datasetUuid || button.getAttribute('data-dataset-uuid');
+                const datasetName = button.dataset.datasetName || button.getAttribute('data-dataset-name');
+                const datasetServer = button.dataset.datasetServer || button.getAttribute('data-dataset-server');
+                if (datasetId) {
+                    this.openDashboardLink(datasetId, {
+                        uuid: datasetUuid,
+                        name: datasetName,
+                        server: datasetServer
+                    });
+                } else {
+                    console.error('Could not find dataset ID for open dashboard link button');
+                }
+            }
         });
 
         // Search functionality
@@ -1637,14 +1655,22 @@ class DatasetManager {
                             <i class="fas fa-redo"></i> Retry
                         </button>
                     </div>
-                    <div class="mt-2">
-                        <button type="button" class="btn btn-sm btn-outline-primary w-100" data-action="copy-dashboard-link" 
+                    <div class="mt-2 d-flex gap-2">
+                        <button type="button" class="btn btn-sm btn-outline-primary flex-grow-1" data-action="copy-dashboard-link" 
                                 data-dataset-id="${dataset.id || dataset.uuid}"
                                 data-dataset-uuid="${dataset.uuid || dataset.id}"
                                 data-dataset-name="${this.escapeHtml(dataset.name || '')}"
                                 data-dataset-server="${this.escapeHtml(dataset.server || '')}"
                                 title="Copy direct link to open this dataset's dashboard in a new window">
                             <i class="fas fa-link"></i> Copy Dashboard Link
+                        </button>
+                        <button type="button" class="btn btn-sm btn-outline-primary" data-action="open-dashboard-link" 
+                                data-dataset-id="${dataset.id || dataset.uuid}"
+                                data-dataset-uuid="${dataset.uuid || dataset.id}"
+                                data-dataset-name="${this.escapeHtml(dataset.name || '')}"
+                                data-dataset-server="${this.escapeHtml(dataset.server || '')}"
+                                title="Open this dataset's dashboard in a new tab">
+                            <i class="fas fa-external-link-alt"></i>
                         </button>
                     </div>
                 </div>
@@ -2748,6 +2774,130 @@ class DatasetManager {
         } catch (error) {
             console.error('Error copying dashboard link:', error);
             alert('Failed to copy dashboard link. Please try again.');
+        }
+    }
+    
+    /**
+     * Open dashboard link in a new tab
+     */
+    async openDashboardLink(datasetId, buttonData = {}) {
+        try {
+            // Get dataset details
+            let dataset = this.currentDataset?.details || this.currentDataset;
+            
+            // If we don't have full details, fetch them
+            if (!dataset || !dataset.uuid) {
+                // Use button data if available
+                if (buttonData.uuid) {
+                    dataset = {
+                        uuid: buttonData.uuid,
+                        name: buttonData.name || 'Dataset',
+                        server: buttonData.server || '',
+                        preferred_dashboard: this.currentDataset?.details?.preferred_dashboard
+                    };
+                } else {
+                    const response = await fetch(`${getApiBasePath()}/dataset-details.php?dataset_id=${datasetId}`);
+                    const data = await response.json();
+                    if (data.success && data.dataset) {
+                        dataset = data.dataset;
+                    } else {
+                        throw new Error('Failed to fetch dataset details');
+                    }
+                }
+            }
+            
+            const datasetUuid = dataset.uuid || buttonData.uuid || datasetId;
+            const datasetName = dataset.name || buttonData.name || 'Dataset';
+            const datasetServer = dataset.server || buttonData.server || '';
+            
+            // Determine the default dashboard (same logic as copyDashboardLink)
+            let dashboardType = null;
+            
+            // First, try to get the currently loaded dashboard from viewerManager
+            if (window.viewerManager && window.viewerManager.currentDashboard) {
+                dashboardType = window.viewerManager.currentDashboard;
+            }
+            
+            // If not available, try the toolbar selector
+            if (!dashboardType) {
+                const viewerTypeSelect = document.getElementById('viewerType');
+                if (viewerTypeSelect && viewerTypeSelect.value) {
+                    dashboardType = viewerTypeSelect.value;
+                }
+            }
+            
+            // If not available, try preferred_dashboard
+            if (!dashboardType && dataset.preferred_dashboard && dataset.preferred_dashboard.trim() !== '') {
+                const preferredValue = dataset.preferred_dashboard.trim();
+                
+                // Normalize preferred_dashboard display name to dashboard ID
+                const dashboardNameToId = {
+                    '3D Plotly Explorer': '3DPlotly',
+                    '3D Plotly Dashboard': '3DPlotly',
+                    '3d plotly explorer': '3DPlotly',
+                    '3d plotly dashboard': '3DPlotly',
+                    '3D Plotly': '3DPlotly',
+                    '3d plotly': '3DPlotly',
+                    'plotly': '3DPlotly',
+                    '3D VTK Dashboard': '3DVTK',
+                    '3d vtk dashboard': '3DVTK',
+                    '3D VTK': '3DVTK',
+                    '3d vtk': '3DVTK',
+                    '4D Dashboard (New)': '4d_dashboardLite',
+                    '4D Dashboard': '4d_dashboardLite',
+                    '4d dashboard (new)': '4d_dashboardLite',
+                    '4d dashboard': '4d_dashboardLite',
+                    '4D Dashboard': '4d_dashboardLite',
+                    '4d_dashboardLite': '4d_dashboardLite',
+                    '4D_dashboardLite': '4d_dashboardLite',
+                    'OpenVisus Slice Dashboard': 'OpenVisusSlice',
+                    'openvisus slice dashboard': 'OpenVisusSlice',
+                    'OpenVisus Slice': 'OpenVisusSlice',
+                    'openvisus slice': 'OpenVisusSlice',
+                    'OpenVisusSlice': 'OpenVisusSlice',
+                };
+                
+                dashboardType = dashboardNameToId[preferredValue] || dashboardNameToId[preferredValue.toLowerCase()];
+                
+                // If still not found, try to match with viewerManager viewers
+                if (!dashboardType && window.viewerManager && window.viewerManager.viewers) {
+                    const matchingViewer = Object.values(window.viewerManager.viewers).find(v => {
+                        const vName = (v.name || '').toLowerCase();
+                        const vId = (v.id || '').toLowerCase();
+                        return vName === preferredValue.toLowerCase() || vId === preferredValue.toLowerCase();
+                    });
+                    
+                    if (matchingViewer) {
+                        dashboardType = matchingViewer.id;
+                    }
+                }
+            }
+            
+            // If still no dashboard, use smart selection
+            if (!dashboardType) {
+                try {
+                    dashboardType = await this.selectDashboardForDataset(datasetId, datasetUuid, null);
+                } catch (error) {
+                    console.warn('Smart selection failed, using default:', error);
+                    dashboardType = 'OpenVisusSlice';
+                }
+            }
+            
+            // Final fallback
+            if (!dashboardType) {
+                dashboardType = 'OpenVisusSlice';
+            }
+            
+            // Generate the dashboard URL using the same logic as viewer-manager
+            const dashboardUrl = await this.generateDashboardUrl(datasetUuid, datasetServer, datasetName, dashboardType);
+            
+            // Open in new tab
+            window.open(dashboardUrl, '_blank');
+            
+            console.log('Dashboard link opened in new tab:', dashboardUrl);
+        } catch (error) {
+            console.error('Error opening dashboard link:', error);
+            alert('Failed to open dashboard link. Please try again.');
         }
     }
     

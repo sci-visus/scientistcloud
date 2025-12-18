@@ -353,6 +353,22 @@ def create_tmp_dashboard(process_4dnexus):
     css_style = create_div(
         text="""
         <style>
+        :host {
+            background-color: #f8f9fa;
+            border-radius: 15px;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
+            padding: 25px;
+            margin: 20px auto;
+            max-width: 1200px;
+        }
+        
+        /* Style the internal buttons to match ScientistCloud colors */
+        .bk-btn-primary {
+            background-color: #87CEEB !important;
+            border-color: #76bedb !important;
+            font-weight: bold !important;
+        }
+        
         border: 2px solid #5716e5 !important;
         h3 {
             color: #5716e5 !important;
@@ -1610,10 +1626,21 @@ def create_tmp_dashboard(process_4dnexus):
     
     status_display = create_status_display_widget()
     
+    # Create header with logo
+    header_logo = Div(text="""
+        <div style="display: flex; align-items: center; gap: 15px;">
+            <img src="https://scientistcloud.com/portal/assets/images/scientistcloud-logo.png" 
+                 style="height: 60px; width: auto;">
+            <h1 style="font-family: 'Helvetica', sans-serif; color: #444; margin: 0;">
+                4D Dashboard Optimization
+            </h1>
+        </div>
+    """, styles={"margin-bottom": "20px", "padding": "10px"})
+    
     # Create main row: title, configs_column (with outline), actions_column
     # Structure: row(title, column(plot1_section, plot2_section), column(load_session, initialize))
     main_content = column(
-        create_div(text="<h2>4D Dashboard - Dataset Selection</h2>"),
+        header_logo,
         row(configs_column,
         actions_column),
         sizing_mode="stretch_width"
