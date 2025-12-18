@@ -362,11 +362,116 @@ def create_tmp_dashboard(process_4dnexus):
             max-width: 1200px;
         }
         
-        /* Style the internal buttons to match ScientistCloud colors */
-        .bk-btn-primary {
-            background-color: #87CEEB !important;
-            border-color: #76bedb !important;
+        /* Style the internal buttons to match ScientistCloud colors from main.css */
+        /* Bokeh buttons use .bk-btn class and button_type is stored as a data attribute */
+        
+        /* Primary button - matches main.css primary color (light theme: #4E477F, dark theme: #6f66a9) */
+        .bk-btn-primary,
+        .bk-btn[data-button-type="primary"],
+        button.bk-btn[data-button-type="primary"] {
+            background-color: #4E477F !important;
+            border-color: #4E477F !important;
+            color: white !important;
             font-weight: bold !important;
+        }
+        
+        .bk-btn-primary:hover,
+        .bk-btn[data-button-type="primary"]:hover,
+        button.bk-btn[data-button-type="primary"]:hover {
+            background-color: #6f66a9 !important;
+            border-color: #6f66a9 !important;
+            color: white !important;
+        }
+        
+        /* Info button - matches main.css info color (light theme: #1a4d73, dark theme: #B5AEDF) */
+        .bk-btn-info,
+        .bk-btn[data-button-type="info"],
+        button.bk-btn[data-button-type="info"] {
+            background-color: #1a4d73 !important;
+            border-color: #1a4d73 !important;
+            color: white !important;
+        }
+        
+        .bk-btn-info:hover,
+        .bk-btn[data-button-type="info"]:hover,
+        button.bk-btn[data-button-type="info"]:hover {
+            background-color: #B5AEDF !important;
+            border-color: #B5AEDF !important;
+            color: white !important;
+            opacity: 0.9;
+        }
+        
+        /* Danger button - matches main.css danger color (#6BB6E9) */
+        .bk-btn-danger,
+        .bk-btn[data-button-type="danger"],
+        button.bk-btn[data-button-type="danger"] {
+            background-color: #6BB6E9 !important;
+            border-color: #6BB6E9 !important;
+            color: white !important;
+        }
+        
+        .bk-btn-danger:hover,
+        .bk-btn[data-button-type="danger"]:hover,
+        button.bk-btn[data-button-type="danger"]:hover {
+            background-color: #6BB6E9 !important;
+            border-color: #6BB6E9 !important;
+            color: white !important;
+            opacity: 0.9;
+        }
+        
+        /* Success button - matches main.css success color (#76a38e) */
+        .bk-btn-success,
+        .bk-btn[data-button-type="success"],
+        button.bk-btn[data-button-type="success"] {
+            background-color: #76a38e !important;
+            border-color: #76a38e !important;
+            color: white !important;
+        }
+        
+        .bk-btn-success:hover,
+        .bk-btn[data-button-type="success"]:hover,
+        button.bk-btn[data-button-type="success"]:hover {
+            background-color: #76a38e !important;
+            border-color: #76a38e !important;
+            color: white !important;
+            opacity: 0.9;
+        }
+        
+        /* Warning button - matches main.css warning color (#E3A54F) */
+        .bk-btn-warning,
+        .bk-btn[data-button-type="warning"],
+        button.bk-btn[data-button-type="warning"] {
+            background-color: #E3A54F !important;
+            border-color: #E3A54F !important;
+            color: white !important;
+        }
+        
+        .bk-btn-warning:hover,
+        .bk-btn[data-button-type="warning"]:hover,
+        button.bk-btn[data-button-type="warning"]:hover {
+            background-color: #E3A54F !important;
+            border-color: #E3A54F !important;
+            color: white !important;
+            opacity: 0.9;
+        }
+        
+        /* Default button - matches main.css outline styles */
+        .bk-btn-default,
+        .bk-btn[data-button-type="default"],
+        button.bk-btn[data-button-type="default"],
+        .bk-btn:not([data-button-type]):not(.bk-btn-primary):not(.bk-btn-success):not(.bk-btn-warning):not(.bk-btn-danger):not(.bk-btn-info) {
+            color: #4E477F !important;
+            border-color: #4E477F !important;
+            background-color: transparent !important;
+        }
+        
+        .bk-btn-default:hover,
+        .bk-btn[data-button-type="default"]:hover,
+        button.bk-btn[data-button-type="default"]:hover,
+        .bk-btn:not([data-button-type]):not(.bk-btn-primary):not(.bk-btn-success):not(.bk-btn-warning):not(.bk-btn-danger):not(.bk-btn-info):hover {
+            background-color: #4E477F !important;
+            border-color: #4E477F !important;
+            color: white !important;
         }
         
         border: 2px solid #5716e5 !important;
