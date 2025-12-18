@@ -474,6 +474,42 @@ def create_tmp_dashboard(process_4dnexus):
             color: white !important;
         }
         
+        /* Make header banner span full width of viewport */
+        .bk-root {
+            overflow-x: visible !important;
+        }
+        
+        /* Force the Bokeh Div containing header to break out using absolute positioning */
+        .bk-Div:has(.dashboard-header-banner) {
+            position: absolute !important;
+            top: 0 !important;
+            left: 0 !important;
+            width: 100vw !important;
+            max-width: 100vw !important;
+            min-width: 100vw !important;
+            margin: 0 !important;
+            padding: 0 !important;
+            z-index: 1000 !important;
+            box-sizing: border-box !important;
+        }
+        
+        /* Make the inner header div also span full width */
+        .dashboard-header-banner {
+            width: 100% !important;
+            max-width: 100% !important;
+            min-width: 100% !important;
+            margin-left: 0 !important;
+            margin-right: 0 !important;
+            box-sizing: border-box !important;
+        }
+        
+        /* Ensure body and html allow full width */
+        html, body {
+            overflow-x: visible !important;
+            width: 100% !important;
+            max-width: 100% !important;
+        }
+        
         border: 2px solid #5716e5 !important;
         h3 {
             color: #5716e5 !important;
@@ -493,6 +529,7 @@ def create_tmp_dashboard(process_4dnexus):
             border-radius: 8px !important;
             padding: 15px !important;
             margin: 10px 0 !important;
+            margin-top: 20px !important;
             background-color: #f9f9f9 !important;
             box-sizing: border-box !important;
         }
@@ -505,10 +542,87 @@ def create_tmp_dashboard(process_4dnexus):
             border-radius: 8px !important;
             padding: 15px !important;
             margin: 10px 0 !important;
+            margin-top: 20px !important;
             background-color: #f9f9f9 !important;
             box-sizing: border-box !important;
         }
         </style>
+        <script>
+            // Force header banner to span full width - aggressive approach
+            function makeHeaderFullWidth() {
+                const headerBanners = document.querySelectorAll('.dashboard-header-banner');
+                headerBanners.forEach(function(header) {
+                    // Find the parent Bokeh Div
+                    let parentDiv = header.closest('.bk-Div');
+                    if (parentDiv) {
+                        // Break out of all containers using viewport width
+                        parentDiv.style.setProperty('position', 'absolute', 'important');
+                        parentDiv.style.setProperty('top', '0', 'important');
+                        parentDiv.style.setProperty('left', '0', 'important');
+                        parentDiv.style.setProperty('width', '100vw', 'important');
+                        parentDiv.style.setProperty('max-width', '100vw', 'important');
+                        parentDiv.style.setProperty('min-width', '100vw', 'important');
+                        parentDiv.style.setProperty('margin', '0', 'important');
+                        parentDiv.style.setProperty('padding', '0', 'important');
+                        parentDiv.style.setProperty('z-index', '1000', 'important');
+                        parentDiv.style.setProperty('box-sizing', 'border-box', 'important');
+                        
+                        
+                        // Find all parent containers and remove width constraints
+                        let current = parentDiv.parentElement;
+                        while (current && current !== document.body) {
+                            if (current.style) {
+                                current.style.setProperty('overflow-x', 'visible', 'important');
+                                current.style.setProperty('max-width', 'none', 'important');
+                                if (current.classList.contains('bk-root') || current.classList.contains('bk-column')) {
+                                    current.style.setProperty('position', 'relative', 'important');
+                                }
+                            }
+                            current = current.parentElement;
+                        }
+                    }
+                    // Make the inner div span full width
+                    header.style.setProperty('width', '100%', 'important');
+                    header.style.setProperty('max-width', '100%', 'important');
+                    header.style.setProperty('min-width', '100%', 'important');
+                    header.style.setProperty('margin-left', '0', 'important');
+                    header.style.setProperty('margin-right', '0', 'important');
+                    header.style.setProperty('margin-bottom', '20px', 'important');
+                });
+                
+                // Add padding to the main dashboard content to account for header
+                const dashboardContent = document.querySelector('.bk-root > .bk-column');
+                if (dashboardContent && dashboardContent.children.length > 1) {
+                    // The second child should be the main dashboard (after header)
+                    const mainContent = dashboardContent.children[1];
+                    if (mainContent) {
+                        const headerHeight = 70; // Approximate header height
+                        mainContent.style.setProperty('margin-top', headerHeight + 'px', 'important');
+                    }
+                }
+            }
+            
+            // Apply header width on load and after Bokeh renders
+            if (document.readyState === 'loading') {
+                document.addEventListener('DOMContentLoaded', function() {
+                    setTimeout(makeHeaderFullWidth, 100);
+                    setTimeout(makeHeaderFullWidth, 500);
+                    setTimeout(makeHeaderFullWidth, 1000);
+                });
+            } else {
+                setTimeout(makeHeaderFullWidth, 100);
+                setTimeout(makeHeaderFullWidth, 500);
+                setTimeout(makeHeaderFullWidth, 1000);
+            }
+            
+            // Observe for header changes
+            if (typeof MutationObserver !== 'undefined') {
+                const headerObserver = new MutationObserver(function(mutations) {
+                    setTimeout(makeHeaderFullWidth, 50);
+                });
+                headerObserver.observe(document.body, { childList: true, subtree: true });
+            }
+        </script>
         """,
         width=1,
         height=1,
@@ -1731,21 +1845,47 @@ def create_tmp_dashboard(process_4dnexus):
     
     status_display = create_status_display_widget()
     
-    # Create header with logo
-    header_logo = Div(text="""
-        <div style="display: flex; align-items: center; gap: 15px;">
-            <img src="https://scientistcloud.com/portal/assets/images/scientistcloud-logo.png" 
-                 style="height: 60px; width: auto;">
-            <h1 style="font-family: 'Helvetica', sans-serif; color: #444; margin: 0;">
-                4D Dashboard Optimization
-            </h1>
+    # Create header banner - same as main dashboard
+    sc_blue = "#4E477F"  # ScientistCloud primary color (light theme)
+    header_banner = Div(
+        text=f"""
+        <div class="dashboard-header-banner" style="
+            background-color: {sc_blue}; 
+            padding: 10px 20px; 
+            display: flex; 
+            align-items: center;  
+            border-radius: 0;
+        ">
+            <img src="https://scientistcloud.com/portal/assets/images/scientistCloudLogo_noText.png" 
+                 style="height: 40px; margin-right: 15px;">
+            <span style="
+                color: white; 
+                font-family: sans-serif; 
+                font-size: 1.5em; 
+                font-weight: bold;
+                text-shadow: 1px 1px 2px rgba(0,0,0,0.1);
+            ">ScientistCloud | 4D Dashboard</span>
         </div>
-    """, styles={"margin-bottom": "20px", "padding": "10px"})
+        """,
+        sizing_mode="stretch_width",
+        styles={
+            "width": "100vw",
+            "max-width": "100vw",
+            "margin": "0",
+            "padding": "0",
+            # "margin-left": "calc(-50vw + 50%)",
+            # "margin-right": "calc(-50vw + 50%)",
+            "position": "relative",
+            "background-color": "#4E477F",
+            "border-bottom": "3px solid #75c0de",
+            "margin-bottom": "20px"
+        }
+    )
     
-    # Create main row: title, configs_column (with outline), actions_column
-    # Structure: row(title, column(plot1_section, plot2_section), column(load_session, initialize))
+    # Create main row: header banner, configs_column (with outline), actions_column
+    # Structure: header banner, row(configs_column, actions_column)
     main_content = column(
-        header_logo,
+        header_banner,
         row(configs_column,
         actions_column),
         sizing_mode="stretch_width"
