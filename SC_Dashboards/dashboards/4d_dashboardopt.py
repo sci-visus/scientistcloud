@@ -350,30 +350,53 @@ def create_tmp_dashboard(process_4dnexus):
         raise
     
     # Create CSS style using a Div with style tags (works across Bokeh versions)
-    # Load main.css for consistent styling
     css_style = create_div(
         text="""
         <style>
-        :host {
-            background-color: #f8f9fa;
-            border-radius: 15px;
-            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
-            padding: 25px;
-            margin: 20px auto;
-            max-width: 1200px;
+        /* Hard-coded button colors matching main.css */
+        /* Success button - green */
+        .bk-btn-success,
+        .bk-btn[data-button-type="success"],
+        button.bk-btn[data-button-type="success"] {
+            background-color: #76a38e !important;
+            border-color: #76a38e !important;
+            color: white !important;
         }
         
-        /* Map Bokeh buttons to main.css button styles */
-        /* Bokeh buttons use .bk-btn class, main.css uses .btn class */
-        /* Map button_type to main.css button classes */
+        .bk-btn-success:hover,
+        .bk-btn[data-button-type="success"]:hover,
+        button.bk-btn[data-button-type="success"]:hover {
+            background-color: #76a38e !important;
+            border-color: #76a38e !important;
+            color: white !important;
+            opacity: 0.9;
+        }
         
-        /* Primary button - use main.css .btn-primary styles */
+        /* Warning button - orange */
+        .bk-btn-warning,
+        .bk-btn[data-button-type="warning"],
+        button.bk-btn[data-button-type="warning"] {
+            background-color: #E3A54F !important;
+            border-color: #E3A54F !important;
+            color: white !important;
+        }
+        
+        .bk-btn-warning:hover,
+        .bk-btn[data-button-type="warning"]:hover,
+        button.bk-btn[data-button-type="warning"]:hover {
+            background-color: #E3A54F !important;
+            border-color: #E3A54F !important;
+            color: white !important;
+            opacity: 0.9;
+        }
+        
+        /* Primary button - purple */
         .bk-btn-primary,
         .bk-btn[data-button-type="primary"],
         button.bk-btn[data-button-type="primary"],
         button.bk-btn.bk-btn-primary {
-            background-color: var(--primary-color, #4E477F) !important;
-            border-color: var(--primary-color, #4E477F) !important;
+            background-color: #6f66a9 !important;
+            border-color: #6f66a9 !important;
             color: white !important;
             font-weight: bold !important;
         }
@@ -386,98 +409,7 @@ def create_tmp_dashboard(process_4dnexus):
             color: white !important;
         }
         
-        /* Info button - use main.css .btn-info styles */
-        .bk-btn-info,
-        .bk-btn[data-button-type="info"],
-        button.bk-btn[data-button-type="info"] {
-            background-color: var(--info-color, #1a4d73) !important;
-            border-color: var(--info-color, #1a4d73) !important;
-            color: white !important;
-        }
-        
-        .bk-btn-info:hover,
-        .bk-btn[data-button-type="info"]:hover,
-        button.bk-btn[data-button-type="info"]:hover {
-            background-color: var(--info-color, #B5AEDF) !important;
-            border-color: var(--info-color, #B5AEDF) !important;
-            color: white !important;
-            opacity: 0.9;
-        }
-        
-        /* Danger button - use main.css .btn-danger styles */
-        .bk-btn-danger,
-        .bk-btn[data-button-type="danger"],
-        button.bk-btn[data-button-type="danger"] {
-            background-color: var(--danger-color, #6BB6E9) !important;
-            border-color: var(--danger-color, #6BB6E9) !important;
-            color: white !important;
-        }
-        
-        .bk-btn-danger:hover,
-        .bk-btn[data-button-type="danger"]:hover,
-        button.bk-btn[data-button-type="danger"]:hover {
-            background-color: var(--danger-color, #6BB6E9) !important;
-            border-color: var(--danger-color, #6BB6E9) !important;
-            color: white !important;
-            opacity: 0.9;
-        }
-        
-        /* Success button - use main.css .btn-success styles */
-        .bk-btn-success,
-        .bk-btn[data-button-type="success"],
-        button.bk-btn[data-button-type="success"] {
-            background-color: var(--success-color, #76a38e) !important;
-            border-color: var(--success-color, #76a38e) !important;
-            color: white !important;
-        }
-        
-        .bk-btn-success:hover,
-        .bk-btn[data-button-type="success"]:hover,
-        button.bk-btn[data-button-type="success"]:hover {
-            background-color: var(--success-color, #76a38e) !important;
-            border-color: var(--success-color, #76a38e) !important;
-            color: white !important;
-            opacity: 0.9;
-        }
-        
-        /* Warning button - use main.css .btn-warning styles */
-        .bk-btn-warning,
-        .bk-btn[data-button-type="warning"],
-        button.bk-btn[data-button-type="warning"] {
-            background-color: var(--warning-color, #E3A54F) !important;
-            border-color: var(--warning-color, #E3A54F) !important;
-            color: white !important;
-        }
-        
-        .bk-btn-warning:hover,
-        .bk-btn[data-button-type="warning"]:hover,
-        button.bk-btn[data-button-type="warning"]:hover {
-            background-color: var(--warning-color, #E3A54F) !important;
-            border-color: var(--warning-color, #E3A54F) !important;
-            color: white !important;
-            opacity: 0.9;
-        }
-        
-        /* Default button - use main.css .btn-outline-primary styles */
-        .bk-btn-default,
-        .bk-btn[data-button-type="default"],
-        button.bk-btn[data-button-type="default"],
-        .bk-btn:not([data-button-type]):not(.bk-btn-primary):not(.bk-btn-success):not(.bk-btn-warning):not(.bk-btn-danger):not(.bk-btn-info) {
-            color: var(--primary-color, #4E477F) !important;
-            border-color: var(--primary-color, #4E477F) !important;
-            background-color: transparent !important;
-        }
-        
-        .bk-btn-default:hover,
-        .bk-btn[data-button-type="default"]:hover,
-        button.bk-btn[data-button-type="default"]:hover,
-        .bk-btn:not([data-button-type]):not(.bk-btn-primary):not(.bk-btn-success):not(.bk-btn-warning):not(.bk-btn-danger):not(.bk-btn-info):hover {
-            background-color: var(--primary-color, #4E477F) !important;
-            border-color: var(--primary-color, #4E477F) !important;
-            color: white !important;
-        }
-        
-        /* Also apply main.css button styles to Bokeh buttons */
+        /* Button base styles */
         .bk-btn {
             border-radius: 0.375rem !important;
             transition: all 0.2s !important;
@@ -558,21 +490,79 @@ def create_tmp_dashboard(process_4dnexus):
         }
         </style>
         <script>
-            // Load main.css into document head
-            function loadMainCSS() {
-                const link = document.createElement('link');
-                link.rel = 'stylesheet';
-                link.type = 'text/css';
-                link.href = 'https://scientistcloud.com/portal/assets/css/main.css';
-                document.head.appendChild(link);
+            // Apply hard-coded colors to specific buttons by label text
+            function applyButtonColors() {
+                // Color definitions from main.css
+                const successColor = '#76a38e';  // Green
+                const warningColor = '#E3A54F';   // Orange
+                
+                // Find buttons by their label text and apply colors
+                const buttons = document.querySelectorAll('.bk-btn, button.bk-btn');
+                
+                buttons.forEach(function(button) {
+                    const buttonText = button.textContent.trim();
+                    
+                    // Clear Cache & Reload - Warning (orange)
+                    if (buttonText === 'Clear Cache & Reload') {
+                        button.style.setProperty('background-color', warningColor, 'important');
+                        button.style.setProperty('border-color', warningColor, 'important');
+                        button.style.setProperty('color', 'white', 'important');
+                    }
+                    
+                    // Save Session - Success (green)
+                    if (buttonText === 'Save Session') {
+                        button.style.setProperty('background-color', successColor, 'important');
+                        button.style.setProperty('border-color', successColor, 'important');
+                        button.style.setProperty('color', 'white', 'important');
+                    }
+                    
+                    // Recompute Probe1 - Success (green)
+                    if (buttonText === 'Recompute Probe1') {
+                        button.style.setProperty('background-color', successColor, 'important');
+                        button.style.setProperty('border-color', successColor, 'important');
+                        button.style.setProperty('color', 'white', 'important');
+                    }
+                    
+                    // Recompute Probe2 - Success (green)
+                    if (buttonText === 'Recompute Probe2') {
+                        button.style.setProperty('background-color', successColor, 'important');
+                        button.style.setProperty('border-color', successColor, 'important');
+                        button.style.setProperty('color', 'white', 'important');
+                    }
+                    
+                    // Generate Projection - Success (green) - appears twice
+                    if (buttonText === 'Generate Projection') {
+                        button.style.setProperty('background-color', successColor, 'important');
+                        button.style.setProperty('border-color', successColor, 'important');
+                        button.style.setProperty('color', 'white', 'important');
+                    }
+                });
             }
             
-            // Load CSS immediately
-            if (document.readyState === 'loading') {
-                document.addEventListener('DOMContentLoaded', loadMainCSS);
-            } else {
-                loadMainCSS();
+            // Apply colors on load and when content changes
+            function initButtonColors() {
+                applyButtonColors();
+                
+                // Re-apply when Bokeh content changes
+                if (typeof MutationObserver !== 'undefined') {
+                    const buttonObserver = new MutationObserver(function(mutations) {
+                        setTimeout(applyButtonColors, 50);
+                    });
+                    buttonObserver.observe(document.body, { childList: true, subtree: true });
+                }
             }
+            
+            // Initialize on load
+            if (document.readyState === 'loading') {
+                document.addEventListener('DOMContentLoaded', initButtonColors);
+            } else {
+                initButtonColors();
+            }
+            
+            // Also apply after a short delay to catch dynamically loaded buttons
+            setTimeout(applyButtonColors, 500);
+            setTimeout(applyButtonColors, 1000);
+            setTimeout(applyButtonColors, 2000);
             
             // Force header banner to span full width - aggressive approach
             function makeHeaderFullWidth() {
