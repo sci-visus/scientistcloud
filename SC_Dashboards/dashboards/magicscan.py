@@ -26,6 +26,26 @@ from utils_bokeh_param import parse_url_parameters, setup_directory_paths
 
 import panel as pn
 
+# Import header banner from SCLib_Dashboards
+try:
+    from SCLib_Dashboards import create_header_banner
+    def create_panel_header_banner(dataset_name="", dashboard_type="Dashboard"):
+        """Convert Bokeh header banner to Panel component"""
+        bokeh_banner = create_header_banner(dataset_name=dataset_name, dashboard_type=dashboard_type)
+        return pn.pane.Bokeh(bokeh_banner)
+except ImportError:
+    # Fallback if SCLib_Dashboards not available
+    def create_panel_header_banner(dataset_name="", dashboard_type="Dashboard"):
+        sc_blue = "#4E477F"
+        title_text = f"ScientistCloud | {dashboard_type}: {dataset_name}" if dataset_name else f"ScientistCloud | {dashboard_type}"
+        header_html = f'''
+        <div class="dashboard-header-banner" style="background-color: {sc_blue}; padding: 10px 20px; display: flex; align-items: center; border-radius: 0; width: 100vw; max-width: 100vw; margin: 0; padding: 0; position: relative; border-bottom: 3px solid #75c0de; margin-bottom: 20px;">
+            <img src="https://scientistcloud.com/portal/assets/images/scientistCloudLogo_noText.png" style="height: 40px; margin-right: 15px;">
+            <span style="color: white; font-family: sans-serif; font-size: 1.5em; font-weight: bold; text-shadow: 1px 1px 2px rgba(0,0,0,0.1);">{title_text}</span>
+        </div>
+        '''
+        return pn.pane.HTML(header_html, sizing_mode="stretch_width")
+
 # How to run as local CLI
 #   python -m bokeh serve magicscan/magicscan.py --port 5033 --allow-websocket-origin=localhost:5033
 
@@ -53,7 +73,6 @@ client, mymongodb, collection, collection1, team_collection, shared_team_collect
 # In Bokeh, we can access URL parameters through curdoc().session_context.request
 has_args = False
 request_args = {}
-init_failed = False
 
 # Try to get URL parameters from Bokeh's request
 try:
@@ -295,7 +314,11 @@ if __name__.startswith('bokeh'):
             
             view.load(dataset_url)
             main_layout = view.getMainLayout()
-            main_layout.servable()
+            # Create header banner
+            header_banner = create_panel_header_banner(dataset_name=name if name else "", dashboard_type="Magicscan")
+            # Wrap main layout with header banner
+            final_layout = pn.Column(header_banner, main_layout, sizing_mode="stretch_width")
+            final_layout.servable()
             print("Dashboard created and served successfully")
         except Exception as e:
             print(f"Error creating dashboard: {e}")
