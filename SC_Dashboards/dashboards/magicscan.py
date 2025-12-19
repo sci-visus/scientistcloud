@@ -109,6 +109,7 @@ collection1 = None
 team_collection = None
 selected_values = None
 dataset_url = None
+init_failed = False  # Initialize init_failed flag
  
 
 

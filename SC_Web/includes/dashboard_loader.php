@@ -69,9 +69,6 @@ if ($datasetId) {
 function displayReadyDashboard($dataset, $viewerUrl, $dashboardType) {
     ?>
     <div class="dashboard-container">
-        <div class="dashboard-header">
-            <h4><?php echo htmlspecialchars($dataset['name']); ?></h4>
-        </div>
         <div class="dashboard-content">
             <iframe id="dashboardFrame" 
                     src="<?php echo htmlspecialchars($viewerUrl); ?>" 
@@ -92,10 +89,6 @@ function displayReadyDashboard($dataset, $viewerUrl, $dashboardType) {
 function displayProcessingDashboard($dataset) {
     ?>
     <div class="dashboard-container">
-        <div class="dashboard-header">
-            <h4><?php echo htmlspecialchars($dataset['name']); ?></h4>
-            <span class="badge bg-warning">Processing</span>
-        </div>
         <div class="dashboard-content processing-content">
             <div class="text-center">
                 <div class="spinner-border text-primary" role="status">
@@ -122,10 +115,6 @@ function displayProcessingDashboard($dataset) {
 function displayUnsupportedDashboard($dataset) {
     ?>
     <div class="dashboard-container">
-        <div class="dashboard-header">
-            <h4><?php echo htmlspecialchars($dataset['name']); ?></h4>
-            <span class="badge bg-secondary">Unsupported</span>
-        </div>
         <div class="dashboard-content unsupported-content">
             <div class="text-center">
                 <i class="fas fa-exclamation-triangle fa-3x text-warning mb-3"></i>
@@ -161,10 +150,6 @@ function displayUnsupportedDashboard($dataset) {
 function displayErrorDashboard($dataset, $errorMessage) {
     ?>
     <div class="dashboard-container">
-        <div class="dashboard-header">
-            <h4><?php echo $dataset ? htmlspecialchars($dataset['name']) : 'Error'; ?></h4>
-            <span class="badge bg-danger">Error</span>
-        </div>
         <div class="dashboard-content error-content">
             <div class="text-center">
                 <i class="fas fa-exclamation-circle fa-3x text-danger mb-3"></i>
@@ -186,9 +171,6 @@ function displayWelcomeScreen($user) {
     $stats = getDatasetStats($user['id']);
     ?>
     <div class="dashboard-container">
-        <div class="dashboard-header">
-            <h4>Welcome, <?php echo htmlspecialchars($user['name']); ?>!</h4>
-        </div>
         <div class="dashboard-content welcome-content">
             <div class="row">
                 <div class="col-md-6">

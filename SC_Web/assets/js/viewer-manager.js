@@ -658,15 +658,10 @@ class ViewerManager {
         const dashboardContainer = document.createElement('div');
         dashboardContainer.className = 'dashboard-container';
         
-        const dashboardHeader = document.createElement('div');
-        dashboardHeader.className = 'dashboard-header';
-        dashboardHeader.innerHTML = `<h4>${datasetName}</h4>`;
-        
         const dashboardContent = document.createElement('div');
         dashboardContent.className = 'dashboard-content';
         dashboardContent.appendChild(iframe);
         
-        dashboardContainer.appendChild(dashboardHeader);
         dashboardContainer.appendChild(dashboardContent);
         
         viewerContainer.innerHTML = '';
@@ -762,10 +757,6 @@ class ViewerManager {
 
         viewerContainer.innerHTML = `
             <div class="dashboard-container">
-                <div class="dashboard-header">
-                    <h4>${datasetName}</h4>
-                    <span class="badge bg-warning">Processing</span>
-                </div>
                 <div class="dashboard-content processing-content">
                     <div class="text-center">
                         <div class="spinner-border text-primary" role="status">
@@ -795,10 +786,6 @@ class ViewerManager {
 
         viewerContainer.innerHTML = `
             <div class="dashboard-container">
-                <div class="dashboard-header">
-                    <h4>${datasetName}</h4>
-                    <span class="badge bg-secondary">Unsupported</span>
-                </div>
                 <div class="dashboard-content unsupported-content">
                     <div class="text-center">
                         <i class="fas fa-exclamation-triangle fa-3x text-warning mb-3"></i>
@@ -843,10 +830,6 @@ class ViewerManager {
 
         viewerContainer.innerHTML = `
             <div class="dashboard-container">
-                <div class="dashboard-header">
-                    <h4>Error</h4>
-                    <span class="badge bg-danger">Error</span>
-                </div>
                 <div class="dashboard-content error-content">
                     <div class="text-center">
                         <i class="fas fa-exclamation-circle fa-3x text-danger mb-3"></i>
