@@ -240,6 +240,41 @@ def check_auth():
 dataset_url = None
 timesteps = None
 
+# Helper function to create header banner
+def create_header_banner(dataset_name=None):
+    sc_blue = "#4E477F"
+    title_text = f"ScientistCloud | 3D Plotly Dashboard: {dataset_name}" if dataset_name else "ScientistCloud | 3D Plotly Dashboard"
+    header_banner = html.Div(
+        style={
+            'background-color': sc_blue,
+            'padding': '10px 20px',
+            'display': 'flex',
+            'align-items': 'center',
+            'width': '100vw',
+            'max-width': '100vw',
+            'margin': '0',
+            'border-bottom': '3px solid #75c0de',
+            'margin-bottom': '20px',
+        },
+        children=[
+            html.Img(
+                src='https://scientistcloud.com/portal/assets/images/scientistCloudLogo_noText.png',
+                style={'height': '40px', 'margin-right': '15px'}
+            ),
+            html.Span(
+                title_text,
+                style={
+                    'color': 'white',
+                    'font-family': 'sans-serif',
+                    'font-size': '1.5em',
+                    'font-weight': 'bold',
+                    'text-shadow': '1px 1px 2px rgba(0,0,0,0.1)'
+                }
+            )
+        ]
+    )
+    return header_banner
+
 # Initialize layout dynamically
 def serve_layout():
     global dataset_url, timesteps, stored_name
@@ -249,37 +284,7 @@ def serve_layout():
         initial_volume_state = to_volume_state(numpy_to_vtk_image_data(dataset))
 
         # Create header banner
-        sc_blue = "#4E477F"
-        title_text = f"ScientistCloud | 3D Plotly Dashboard: {stored_name}" if stored_name else "ScientistCloud | 3D Plotly Dashboard"
-        header_banner = html.Div(
-            style={
-                'background-color': sc_blue,
-                'padding': '10px 20px',
-                'display': 'flex',
-                'align-items': 'center',
-                'width': '100vw',
-                'max-width': '100vw',
-                'margin': '0',
-                'border-bottom': '3px solid #75c0de',
-                'margin-bottom': '20px',
-            },
-            children=[
-                html.Img(
-                    src='https://scientistcloud.com/portal/assets/images/scientistCloudLogo_noText.png',
-                    style={'height': '40px', 'margin-right': '15px'}
-                ),
-                html.Span(
-                    title_text,
-                    style={
-                        'color': 'white',
-                        'font-family': 'sans-serif',
-                        'font-size': '1.5em',
-                        'font-weight': 'bold',
-                        'text-shadow': '1px 1px 2px rgba(0,0,0,0.1)'
-                    }
-                )
-            ]
-        )
+        header_banner = create_header_banner(stored_name)
         
         return html.Div([
             header_banner,
@@ -316,11 +321,15 @@ def serve_layout():
             html.Div(id='info-output', style={'display': 'none'}),
         ])
     else:
-        return html.Div("Loading...")
+        return html.Div([
+            create_header_banner(stored_name),
+            html.Div("Loading...", style={'textAlign': 'center', 'margin': '24px'})
+        ])
 
 # Set the layout function
 app.layout = html.Div("Initializing...")
 app.layout = html.Div([
+    create_header_banner(),
     dcc.Location(id='url', refresh=False),
     dcc.Interval(id='interval-component', interval=5*1000000, n_intervals=0),
 
@@ -452,44 +461,50 @@ def initialize_dataset(n_intervals,search):
         return serve_layout()
     elif error_message:
         # Show error message if dataset failed to load
-        return html.Div(
-            style={'textAlign': 'center', 'margin': '24px', 'padding': '20px'}, 
-            children=[
-                html.H3('⚠️ Dataset Not Available', style={'color': '#dc3545', 'marginBottom': '15px'}),
-                html.Div(error_message, style={'color': '#666', 'marginBottom': '15px'}),
-                html.Div([
-                    html.P('Possible reasons:', style={'fontWeight': 'bold', 'marginTop': '15px'}),
-                    html.Ul([
-                        html.Li('The dataset upload may have failed'),
-                        html.Li('The dataset conversion may not have completed'),
-                        html.Li('The dataset file may be missing or corrupted'),
-                        html.Li(f'Dataset status: {dataset_status}' if dataset_status else '')
-                    ], style={'textAlign': 'left', 'display': 'inline-block'})
-                ]),
-                html.Div([
-                    html.A('Go Back', href=deploy_server if deploy_server else '/',
-                           style={'marginTop': '20px', 'padding': '10px 20px', 
-                                 'backgroundColor': '#007bff', 'color': 'white', 
-                                 'border': 'none', 'borderRadius': '5px', 'cursor': 'pointer',
-                                 'textDecoration': 'none', 'display': 'inline-block'})
-                ])
-            ]
-        )
+        return html.Div([
+            create_header_banner(name),
+            html.Div(
+                style={'textAlign': 'center', 'margin': '24px', 'padding': '20px'}, 
+                children=[
+                    html.H3('⚠️ Dataset Not Available', style={'color': '#dc3545', 'marginBottom': '15px'}),
+                    html.Div(error_message, style={'color': '#666', 'marginBottom': '15px'}),
+                    html.Div([
+                        html.P('Possible reasons:', style={'fontWeight': 'bold', 'marginTop': '15px'}),
+                        html.Ul([
+                            html.Li('The dataset upload may have failed'),
+                            html.Li('The dataset conversion may not have completed'),
+                            html.Li('The dataset file may be missing or corrupted'),
+                            html.Li(f'Dataset status: {dataset_status}' if dataset_status else '')
+                        ], style={'textAlign': 'left', 'display': 'inline-block'})
+                    ]),
+                    html.Div([
+                        html.A('Go Back', href=deploy_server if deploy_server else '/',
+                               style={'marginTop': '20px', 'padding': '10px 20px', 
+                                     'backgroundColor': '#007bff', 'color': 'white', 
+                                     'border': 'none', 'borderRadius': '5px', 'cursor': 'pointer',
+                                     'textDecoration': 'none', 'display': 'inline-block'})
+                    ])
+                ]
+            )
+        ])
     else:
-        return html.Div(
-            style={'textAlign': 'center', 'margin': '24px'}, 
-            children=[
-                html.Div(style={
-                    'border': '4px solid rgba(0, 0, 0, .1)',
-                    'border-radius': '50%',
-                    'border-top': '4px solid #007bff',
-                    'width': '40px',
-                    'height': '40px',
-                    'animation': 'spin 2s linear infinite'
-                }),
-                html.Div('Loading...', style={'marginTop': '10px'})
-            ]
-        )
+        return html.Div([
+            create_header_banner(name),
+            html.Div(
+                style={'textAlign': 'center', 'margin': '24px'}, 
+                children=[
+                    html.Div(style={
+                        'border': '4px solid rgba(0, 0, 0, .1)',
+                        'border-radius': '50%',
+                        'border-top': '4px solid #007bff',
+                        'width': '40px',
+                        'height': '40px',
+                        'animation': 'spin 2s linear infinite'
+                    }),
+                    html.Div('Loading...', style={'marginTop': '10px'})
+                ]
+            )
+        ])
 
 @app.callback(
     [Output('info-dialog', 'displayed'), Output('info-dialog', 'message')],
