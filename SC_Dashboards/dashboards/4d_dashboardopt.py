@@ -155,6 +155,7 @@ try:
     create_dashboard_layout,
     create_status_display,
     create_initialization_layout,
+    create_header_banner,
     # State synchronization
     sync_all_plot_ui,
     sync_plot_to_range_inputs,
@@ -2008,42 +2009,11 @@ def create_tmp_dashboard(process_4dnexus):
     
     status_display = create_status_display_widget()
     
-    # Create header banner - same as main dashboard
-    sc_blue = "#4E477F"  # ScientistCloud primary color (light theme)
-    header_banner = Div(
-        text=f"""
-        <div class="dashboard-header-banner" style="
-            background-color: {sc_blue}; 
-            padding: 10px 20px; 
-            display: flex; 
-            align-items: center;  
-            border-radius: 0;
-        ">
-            <img src="https://scientistcloud.com/portal/assets/images/scientistCloudLogo_noText.png" 
-                 style="height: 40px; margin-right: 15px;">
-            <span style="
-                color: white; 
-                font-family: sans-serif; 
-                font-size: 1.5em; 
-                font-weight: bold;
-                text-shadow: 1px 1px 2px rgba(0,0,0,0.1);
-            ">ScientistCloud | 4D Dashboard</span>
-        </div>
-        """,
-        sizing_mode="stretch_width",
-        styles={
-            "width": "100vw",
-            "max-width": "100vw",
-            "margin": "0",
-            "padding": "0",
-            # "margin-left": "calc(-50vw + 50%)",
-            # "margin-right": "calc(-50vw + 50%)",
-            "position": "relative",
-            "background-color": "#4E477F",
-            "border-bottom": "3px solid #75c0de",
-            "margin-bottom": "20px",
-        }
-    )
+    # Create header banner using library function
+    # Get dataset name from global variable if available, otherwise use empty string
+    global name
+    dataset_name = name if 'name' in globals() and name else ""
+    header_banner = create_header_banner(dataset_name=dataset_name, dashboard_type="4D Dashboard")
     
     # Create main row: header banner, configs_column (with outline), actions_column
     # Structure: header banner, row(configs_column, actions_column)

@@ -14,6 +14,21 @@ from utils_bokeh_mongodb import cleanup_mongodb
 from utils_bokeh_auth import authenticate_user
 from utils_bokeh_param import parse_url_parameters, setup_directory_paths
 
+# Import header banner from SCLib_Dashboards
+try:
+    from SCLib_Dashboards import create_header_banner
+except ImportError:
+    # Fallback if SCLib_Dashboards not available
+    def create_header_banner(dataset_name="", dashboard_type="Dashboard"):
+        from bokeh.models import Div
+        sc_blue = "#4E477F"
+        title_text = f"ScientistCloud | {dashboard_type}: {dataset_name}" if dataset_name else f"ScientistCloud | {dashboard_type}"
+        return Div(
+            text=f'<div class="dashboard-header-banner" style="background-color: {sc_blue}; padding: 10px 20px; display: flex; align-items: center; border-radius: 0;"><img src="https://scientistcloud.com/portal/assets/images/scientistCloudLogo_noText.png" style="height: 40px; margin-right: 15px;"><span style="color: white; font-family: sans-serif; font-size: 1.5em; font-weight: bold; text-shadow: 1px 1px 2px rgba(0,0,0,0.1);">{title_text}</span></div>',
+            sizing_mode="stretch_width",
+            styles={"width": "100vw", "max-width": "100vw", "margin": "0", "padding": "0", "position": "relative", "background-color": sc_blue, "border-bottom": "3px solid #75c0de", "margin-bottom": "20px"}
+        )
+
 
 # Run it via: 
 #    bokeh serve Docker/bokeh/dataExplorer.py --port 5032 --allow-websocket-origin=localhost:5032
@@ -300,7 +315,9 @@ def show_instructions(event):
     instructions_div.visible = not instructions_div.visible
 
 info_button.on_click(show_instructions)
-curdoc().add_root(column(row(home_button, info_button), instructions_div))
+# Create header banner
+header_banner = create_header_banner(dataset_name=name if 'name' in globals() else "", dashboard_type="OpenVisusSlice")
+curdoc().add_root(column(header_banner, row(home_button, info_button), instructions_div))
 
 # Getting the current document
 if __name__.startswith('bokeh'):

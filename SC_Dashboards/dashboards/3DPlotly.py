@@ -248,10 +248,43 @@ def serve_layout():
         dataset = db.read(time=timesteps[0], quality=-6)
         initial_volume_state = to_volume_state(numpy_to_vtk_image_data(dataset))
 
+        # Create header banner
+        sc_blue = "#4E477F"
+        title_text = f"ScientistCloud | 3D Plotly Dashboard: {stored_name}" if stored_name else "ScientistCloud | 3D Plotly Dashboard"
+        header_banner = html.Div(
+            style={
+                'background-color': sc_blue,
+                'padding': '10px 20px',
+                'display': 'flex',
+                'align-items': 'center',
+                'width': '100vw',
+                'max-width': '100vw',
+                'margin': '0',
+                'border-bottom': '3px solid #75c0de',
+                'margin-bottom': '20px',
+            },
+            children=[
+                html.Img(
+                    src='https://scientistcloud.com/portal/assets/images/scientistCloudLogo_noText.png',
+                    style={'height': '40px', 'margin-right': '15px'}
+                ),
+                html.Span(
+                    title_text,
+                    style={
+                        'color': 'white',
+                        'font-family': 'sans-serif',
+                        'font-size': '1.5em',
+                        'font-weight': 'bold',
+                        'text-shadow': '1px 1px 2px rgba(0,0,0,0.1)'
+                    }
+                )
+            ]
+        )
+        
         return html.Div([
-            html.H1(f'ScientistCloud Volume Rendering with Plotly: {stored_name} ', style={'textAlign': 'center', 'margin': '24px'}),
+            header_banner,
             dcc.Location(id='url', refresh=False),
-            html.Div(style={"width": "100%", "height": "600px"}, children=[
+            html.Div(style={"width": "100%", "height": "600px", "margin-top": "20px"}, children=[
                 dash_vtk.View([
                     dash_vtk.VolumeRepresentation([
                         dash_vtk.VolumeController(),
