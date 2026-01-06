@@ -96,6 +96,9 @@ $preferredDashboard = getUserPreferredDashboard($user['id']);
           </button>
         </div>
         <div class="btn-group ms-auto" role="group" aria-label="User actions">
+          <a href="docs.php" class="btn btn-outline-light" title="Documentation" target="_blank">
+            <i class="fas fa-book"></i> Docs
+          </a>
           <button type="button" class="btn btn-outline-light" id="logoutBtn" title="Logout">
             <i class="fas fa-sign-out-alt"></i> Logout
           </button>

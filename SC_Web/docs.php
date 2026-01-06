@@ -44,25 +44,122 @@ if (!file_exists($docFile)) {
 // Read markdown content
 $markdown = file_exists($docFile) ? file_get_contents($docFile) : '# Documentation Not Found';
 
-// Simple markdown to HTML converter (basic implementation)
+// Simple markdown to HTML converter (improved implementation)
 function markdownToHtml($markdown) {
-    $html = htmlspecialchars($markdown);
+    // First, protect code blocks from processing
+    $codeBlocks = [];
+    $codeBlockIndex = 0;
+    
+    // Extract code blocks
+    $markdown = preg_replace_callback('/```(\w+)?\n(.*?)```/s', function($matches) use (&$codeBlocks, &$codeBlockIndex) {
+        $placeholder = "___CODE_BLOCK_{$codeBlockIndex}___";
+        $codeBlocks[$codeBlockIndex] = [
+            'lang' => $matches[1] ?? '',
+            'code' => $matches[2]
+        ];
+        $codeBlockIndex++;
+        return $placeholder;
+    }, $markdown);
+    
+    // Extract inline code
+    $inlineCode = [];
+    $inlineIndex = 0;
+    $markdown = preg_replace_callback('/`([^`]+)`/', function($matches) use (&$inlineCode, &$inlineIndex) {
+        $placeholder = "___INLINE_CODE_{$inlineIndex}___";
+        $inlineCode[$inlineIndex] = $matches[1];
+        $inlineIndex++;
+        return $placeholder;
+    }, $markdown);
+    
+    // Process tables BEFORE escaping HTML
+    $tables = [];
+    $tableIndex = 0;
+    $lines = explode("\n", $markdown);
+    $processedLines = [];
+    $tableRows = [];
+    $inTable = false;
+    
+    foreach ($lines as $line) {
+        $trimmedLine = trim($line);
+        
+        // Check if this is a table row
+        if (preg_match('/^\|(.+)\|$/', $trimmedLine)) {
+            if (!$inTable) {
+                $inTable = true;
+                $tableRows = [];
+            }
+            
+            // Check if this is a separator row (|---|---|)
+            if (preg_match('/^[\|\s\-:]+$/', $trimmedLine)) {
+                // Skip separator row, it just indicates header/data boundary
+                continue;
+            }
+            
+            // Parse table cells
+            $cells = array_map('trim', explode('|', trim($trimmedLine, '|')));
+            $tableRows[] = $cells;
+        } else {
+            // End of table
+            if ($inTable && count($tableRows) > 0) {
+                $placeholder = "___TABLE_{$tableIndex}___";
+                $tables[$tableIndex] = $tableRows;
+                $tableIndex++;
+                $processedLines[] = $placeholder;
+                $tableRows = [];
+                $inTable = false;
+            }
+            
+            if (!$inTable) {
+                $processedLines[] = $line;
+            }
+        }
+    }
+    
+    // Handle table at end of document
+    if ($inTable && count($tableRows) > 0) {
+        $placeholder = "___TABLE_{$tableIndex}___";
+        $tables[$tableIndex] = $tableRows;
+        $tableIndex++;
+        $processedLines[] = $placeholder;
+    }
+    
+    $markdown = implode("\n", $processedLines);
+    
+    // Now escape HTML
+    $html = htmlspecialchars($markdown, ENT_QUOTES, 'UTF-8');
+    
+    // Restore tables as HTML
+    foreach ($tables as $index => $rows) {
+        $tableHtml = '<table class="table table-bordered table-striped">';
+        
+        foreach ($rows as $rowIndex => $row) {
+            $tableHtml .= '<tr>';
+            foreach ($row as $cell) {
+                $tag = ($rowIndex === 0) ? 'th' : 'td';
+                // Process inline formatting in cells
+                $cellHtml = $cell;
+                $cellHtml = preg_replace('/\*\*(.*?)\*\*/', '<strong>$1</strong>', $cellHtml);
+                $cellHtml = preg_replace('/\*(.*?)\*/', '<em>$1</em>', $cellHtml);
+                // Restore inline code in cells
+                foreach ($inlineCode as $icIndex => $icCode) {
+                    $cellHtml = str_replace("___INLINE_CODE_{$icIndex}___", "<code>" . htmlspecialchars($icCode) . "</code>", $cellHtml);
+                }
+                $tableHtml .= "<$tag>" . $cellHtml . "</$tag>";
+            }
+            $tableHtml .= '</tr>';
+        }
+        
+        $tableHtml .= '</table>';
+        $html = str_replace("___TABLE_{$index}___", $tableHtml, $html);
+    }
     
     // Headers
     $html = preg_replace('/^### (.*?)$/m', '<h3>$1</h3>', $html);
     $html = preg_replace('/^## (.*?)$/m', '<h2>$1</h2>', $html);
     $html = preg_replace('/^# (.*?)$/m', '<h1>$1</h1>', $html);
     
-    // Code blocks
-    $html = preg_replace('/```(\w+)?\n(.*?)```/s', '<pre><code class="language-$1">$2</code></pre>', $html);
-    
-    // Inline code
-    $html = preg_replace('/`([^`]+)`/', '<code>$1</code>', $html);
-    
-    // Bold
+    // Bold and italic (bold first to avoid conflicts)
     $html = preg_replace('/\*\*(.*?)\*\*/', '<strong>$1</strong>', $html);
-    
-    // Italic
     $html = preg_replace('/\*(.*?)\*/', '<em>$1</em>', $html);
     
     // Links
@@ -74,50 +171,37 @@ function markdownToHtml($markdown) {
     $html = preg_replace('/^(\d+)\. (.*?)$/m', '<li>$2</li>', $html);
     
     // Wrap consecutive list items in ul tags
-    $html = preg_replace('/(<li>.*<\/li>\n?)+/s', '<ul>$0</ul>', $html);
+    $html = preg_replace('/(<li>.*?<\/li>\s*)+/s', '<ul>$0</ul>', $html);
     
-    // Tables (basic)
-    $lines = explode("\n", $html);
-    $inTable = false;
-    $tableHtml = '';
-    foreach ($lines as $line) {
-        if (preg_match('/^\|(.+)\|$/', $line)) {
-            if (!$inTable) {
-                $tableHtml .= '<table class="table table-bordered table-striped">';
-                $inTable = true;
-            }
-            $cells = explode('|', trim($line, '|'));
-            $tableHtml .= '<tr>';
-            foreach ($cells as $cell) {
-                $tag = (strpos($line, '---') !== false) ? 'th' : 'td';
-                $tableHtml .= "<$tag>" . trim($cell) . "</$tag>";
-            }
-            $tableHtml .= '</tr>';
+    // Restore code blocks
+    foreach ($codeBlocks as $index => $block) {
+        $lang = $block['lang'] ? ' class="language-' . htmlspecialchars($block['lang']) . '"' : '';
+        $code = htmlspecialchars($block['code']);
+        $html = str_replace("___CODE_BLOCK_{$index}___", "<pre><code{$lang}>{$code}</code></pre>", $html);
+    }
+    
+    // Restore inline code
+    foreach ($inlineCode as $index => $code) {
+        $html = str_replace("___INLINE_CODE_{$index}___", "<code>" . htmlspecialchars($code) . "</code>", $html);
+    }
+    
+    // Paragraphs - split by double newlines, but preserve block elements
+    $paragraphs = preg_split('/\n\s*\n/', $html);
+    $processedParagraphs = [];
+    
+    foreach ($paragraphs as $para) {
+        $para = trim($para);
+        if (empty($para)) continue;
+        
+        // Don't wrap if it's already a block element
+        if (preg_match('/^<(h[1-6]|pre|ul|ol|table|div)/', $para)) {
+            $processedParagraphs[] = $para;
         } else {
-            if ($inTable) {
-                $tableHtml .= '</table>';
-                $inTable = false;
-            }
+            $processedParagraphs[] = '<p>' . $para . '</p>';
         }
     }
-    if ($inTable) {
-        $tableHtml .= '</table>';
-    }
     
-    // Paragraphs
-    $html = preg_replace('/\n\n/', '</p><p>', $html);
-    $html = '<p>' . $html . '</p>';
-    
-    // Clean up empty paragraphs
-    $html = preg_replace('/<p><\/p>/', '', $html);
-    $html = preg_replace('/<p>(<h[1-6]>)/', '$1', $html);
-    $html = preg_replace('/(<\/h[1-6]>)<\/p>/', '$1', $html);
-    $html = preg_replace('/<p>(<pre>)/', '$1', $html);
-    $html = preg_replace('/(<\/pre>)<\/p>/', '$1', $html);
-    $html = preg_replace('/<p>(<ul>)/', '$1', $html);
-    $html = preg_replace('/(<\/ul>)<\/p>/', '$1', $html);
-    $html = preg_replace('/<p>(<table)/', '$1', $html);
-    $html = preg_replace('/(<\/table>)<\/p>/', '$1', $html);
+    $html = implode("\n\n", $processedParagraphs);
     
     return $html;
 }
@@ -144,9 +228,18 @@ $htmlContent = markdownToHtml($markdown);
       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
     }
     .docs-container {
-      max-width: 1200px;
-      margin: 0 auto;
+      width: 100%;
+      max-width: 100%;
+      margin: 0;
       padding: 20px;
+      display: flex;
+      flex-direction: column;
+    }
+    .docs-row {
+      display: flex;
+      flex-direction: row;
+      gap: 20px;
+      width: 100%;
     }
     .docs-sidebar {
       background: white;
@@ -154,6 +247,9 @@ $htmlContent = markdownToHtml($markdown);
       padding: 20px;
       box-shadow: 0 2px 4px rgba(0,0,0,0.1);
       margin-bottom: 20px;
+      flex: 0 0 250px;
+      min-width: 200px;
+      max-width: 300px;
     }
     .docs-content {
       background: white;
@@ -161,6 +257,8 @@ $htmlContent = markdownToHtml($markdown);
       padding: 40px;
       box-shadow: 0 2px 4px rgba(0,0,0,0.1);
       min-height: 600px;
+      flex: 1 1 auto;
+      min-width: 0;
     }
     .docs-sidebar h5 {
       color: #333;
@@ -235,6 +333,15 @@ $htmlContent = markdownToHtml($markdown);
     .back-link a:hover {
       text-decoration: underline;
     }
+    @media (max-width: 768px) {
+      .docs-row {
+        flex-direction: column;
+      }
+      .docs-sidebar {
+        flex: 0 0 auto;
+        max-width: 100%;
+      }
+    }
   </style>
 </head>
 <body>
@@ -243,27 +350,23 @@ $htmlContent = markdownToHtml($markdown);
       <a href="index.php"><i class="fas fa-arrow-left"></i> Back to Portal</a>
     </div>
     
-    <div class="row">
-      <div class="col-md-3">
-        <div class="docs-sidebar">
-          <h5><i class="fas fa-book"></i> Documentation</h5>
-          <nav class="nav flex-column">
-            <a class="nav-link <?php echo $page === 'index' ? 'active' : ''; ?>" href="?page=index">Overview</a>
-            <a class="nav-link <?php echo $page === 'getting-started' ? 'active' : ''; ?>" href="?page=getting-started">Getting Started</a>
-            <a class="nav-link <?php echo $page === 'api' ? 'active' : ''; ?>" href="?page=api">API Overview</a>
-            <a class="nav-link <?php echo $page === 'api-authentication' ? 'active' : ''; ?>" href="?page=api-authentication">Authentication API</a>
-            <a class="nav-link <?php echo $page === 'api-upload' ? 'active' : ''; ?>" href="?page=api-upload">Upload API</a>
-            <a class="nav-link <?php echo $page === 'api-datasets' ? 'active' : ''; ?>" href="?page=api-datasets">Datasets API</a>
-            <a class="nav-link <?php echo $page === 'curl-scripts' ? 'active' : ''; ?>" href="?page=curl-scripts">Curl Scripts</a>
-            <a class="nav-link <?php echo $page === 'python-examples' ? 'active' : ''; ?>" href="?page=python-examples">Python Examples</a>
-          </nav>
-        </div>
+    <div class="docs-row">
+      <div class="docs-sidebar">
+        <h5><i class="fas fa-book"></i> Documentation</h5>
+        <nav class="nav flex-column">
+          <a class="nav-link <?php echo $page === 'index' ? 'active' : ''; ?>" href="?page=index">Overview</a>
+          <a class="nav-link <?php echo $page === 'getting-started' ? 'active' : ''; ?>" href="?page=getting-started">Getting Started</a>
+          <a class="nav-link <?php echo $page === 'api' ? 'active' : ''; ?>" href="?page=api">API Overview</a>
+          <a class="nav-link <?php echo $page === 'api-authentication' ? 'active' : ''; ?>" href="?page=api-authentication">Authentication API</a>
+          <a class="nav-link <?php echo $page === 'api-upload' ? 'active' : ''; ?>" href="?page=api-upload">Upload API</a>
+          <a class="nav-link <?php echo $page === 'api-datasets' ? 'active' : ''; ?>" href="?page=api-datasets">Datasets API</a>
+          <a class="nav-link <?php echo $page === 'curl-scripts' ? 'active' : ''; ?>" href="?page=curl-scripts">Curl Scripts</a>
+          <a class="nav-link <?php echo $page === 'python-examples' ? 'active' : ''; ?>" href="?page=python-examples">Python Examples</a>
+        </nav>
       </div>
       
-      <div class="col-md-9">
-        <div class="docs-content">
-          <?php echo $htmlContent; ?>
-        </div>
+      <div class="docs-content">
+        <?php echo $htmlContent; ?>
       </div>
     </div>
   </div>
