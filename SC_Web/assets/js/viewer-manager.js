@@ -83,8 +83,26 @@ class ViewerManager {
                 return;
             }
             
-            const data = await response.json();
-            console.log('Dashboards API response:', data);
+            let data;
+            let responseText;
+            try {
+                responseText = await response.text();
+                console.log('📡 Raw response text (first 500 chars):', responseText.substring(0, 500));
+                data = JSON.parse(responseText);
+                console.log('✅ Parsed JSON successfully');
+            } catch (parseError) {
+                console.error('❌ Failed to parse JSON response:', parseError);
+                console.error('❌ Response text:', responseText || 'Could not read response');
+                this.viewers = {};
+                this.populateViewerSelector();
+                return;
+            }
+            
+            console.log('📊 Dashboards API response:', data);
+            console.log('📊 Response keys:', Object.keys(data));
+            console.log('📊 data.success:', data.success);
+            console.log('📊 data.dashboards type:', typeof data.dashboards, Array.isArray(data.dashboards));
+            console.log('📊 data.dashboards length:', data.dashboards?.length);
             
             if (data.success && data.dashboards && Array.isArray(data.dashboards) && data.dashboards.length > 0) {
                 // Convert API response to viewer format
@@ -115,20 +133,25 @@ class ViewerManager {
                 // No need to merge defaults - all dashboards should come from API
                 // This prevents duplicates
                 
-                console.log('Loaded dashboards from API:', Object.keys(this.viewers).length, 'dashboards:', Object.keys(this.viewers));
+                console.log('✅ Loaded dashboards from API:', Object.keys(this.viewers).length, 'dashboards:', Object.keys(this.viewers));
+                console.log('✅ Dashboard IDs:', Object.keys(this.viewers));
             } else {
-                console.warn('Invalid dashboard API response:', data);
+                console.warn('⚠️ Invalid dashboard API response:', data);
                 if (!data.success) {
-                    console.error('API returned success=false:', data.error || 'Unknown error');
+                    console.error('❌ API returned success=false:', data.error || 'Unknown error');
                 }
-                if (!data.dashboards || !Array.isArray(data.dashboards) || data.dashboards.length === 0) {
-                    console.error('No dashboards in response or dashboards array is empty');
+                if (!data.dashboards) {
+                    console.error('❌ data.dashboards is missing');
+                } else if (!Array.isArray(data.dashboards)) {
+                    console.error('❌ data.dashboards is not an array, type:', typeof data.dashboards);
+                } else if (data.dashboards.length === 0) {
+                    console.error('❌ data.dashboards array is empty');
                 }
                 this.viewers = {};
             }
             
             // Always populate the selector, even if empty
-            console.log('📋 Calling populateViewerSelector()...');
+            console.log('📋 Calling populateViewerSelector() with', Object.keys(this.viewers).length, 'viewers...');
             this.populateViewerSelector();
             console.log('✅ populateViewerSelector() completed');
             
