@@ -30,7 +30,8 @@ RUN composer global require guzzlehttp/guzzle:^7.0 guzzlehttp/psr7:^2.0 php-http
 
 # Create a minimal composer.json for build-time dependency installation
 # Note: SC_Web directory (with full composer.json) will be mounted as volume at runtime
-RUN echo '{"require":{"php":">=8.0","auth0/auth0-php":"^8.17","guzzlehttp/guzzle":"^7.0","guzzlehttp/psr7":"^2.0","guzzlehttp/promises":"^2.0","php-http/discovery":"^1.19"},"config":{"optimize-autoloader":true,"sort-packages":true,"allow-plugins":{"php-http/discovery":true}},"minimum-stability":"stable","prefer-stable":true}' > /var/www/html/composer.json
+# Updated to include psr/http-factory and psr/http-client interfaces
+RUN echo '{"require":{"php":">=8.0","auth0/auth0-php":"^8.17","guzzlehttp/guzzle":"^7.0","guzzlehttp/psr7":"^2.0","guzzlehttp/promises":"^2.0","php-http/discovery":"^1.19","psr/http-factory":"^1.0","psr/http-client":"^1.0"},"config":{"optimize-autoloader":true,"sort-packages":true,"allow-plugins":{"php-http/discovery":true}},"minimum-stability":"stable","prefer-stable":true}' > /var/www/html/composer.json
 
 # Install dependencies during build (these will be available even if volume overwrites vendor)
 # The vendor directory in the volume will be used at runtime if it exists
@@ -215,14 +216,14 @@ PYEOF\n\
     fi\n\
 else\n\
     echo "⚠️ composer.json not found, creating minimal one..."\n\
-    echo '"'"'{"require":{"php":">=8.0","auth0/auth0-php":"^8.17","guzzlehttp/guzzle":"^7.0","guzzlehttp/psr7":"^2.0","guzzlehttp/promises":"^2.0","php-http/discovery":"^1.19"},"config":{"optimize-autoloader":true,"sort-packages":true,"allow-plugins":{"php-http/discovery":true}},"minimum-stability":"stable","prefer-stable":true}'"'"' > composer.json\n\
+    echo '"'"'{"require":{"php":">=8.0","auth0/auth0-php":"^8.17","guzzlehttp/guzzle":"^7.0","guzzlehttp/psr7":"^2.0","guzzlehttp/promises":"^2.0","php-http/discovery":"^1.19","psr/http-factory":"^1.0","psr/http-client":"^1.0"},"config":{"optimize-autoloader":true,"sort-packages":true,"allow-plugins":{"php-http/discovery":true}},"minimum-stability":"stable","prefer-stable":true}'"'"' > composer.json\n\
     composer update --no-dev --optimize-autoloader --no-interaction --prefer-dist\n\
     echo "✅ Minimal dependencies installed"\n\
 fi\n\
 \n\
 # Verify PSR-17 factory discovery works\n\
 echo "🔍 Verifying PSR-17 factory..."\n\
-cd /var/www/html && php -r "require '"'"'vendor/autoload.php'"'"'; try { \$discovery = new \\Psr\\Discovery\\HttpFactoryDiscovery(); \$factory = \$discovery->findRequestFactory(); echo \"✅ PSR-17 factory found: \" . get_class(\$factory) . \"\\n\"; } catch (Exception \$e) { echo \"❌ PSR-17 factory error: \" . \$e->getMessage() . \"\\n\"; exit(1); }" || {\n\
+cd /var/www/html && php -r "require '"'"'vendor/autoload.php'"'"'; try { if (class_exists('"'"'GuzzleHttp\\\\Psr7\\\\HttpFactory'"'"')) { \$factory = new \\GuzzleHttp\\Psr7\\HttpFactory(); echo \"✅ PSR-17 factory found: \" . get_class(\$factory) . \"\\n\"; } else { echo \"⚠️ GuzzleHttp\\\\Psr7\\\\HttpFactory not found, checking alternatives...\\n\"; if (class_exists('"'"'Http\\\\Discovery\\\\Psr17Factory'"'"')) { \$factory = new \\Http\\Discovery\\Psr17Factory(); echo \"✅ Using Http\\\\Discovery\\\\Psr17Factory\\n\"; } else { echo \"❌ No PSR-17 factory found\\n\"; exit(1); } } } catch (Exception \$e) { echo \"❌ PSR-17 factory error: \" . \$e->getMessage() . \"\\n\"; exit(1); }" || {\n\
     echo "⚠️ PSR-17 factory verification failed, but continuing..."\n\
     echo "   This might cause Auth0 SDK issues. Check that guzzlehttp/guzzle and php-http/discovery are installed."\n\
 }\n\
