@@ -42,8 +42,16 @@ class ViewerManager {
             });
             
             if (!response.ok) {
-                console.warn(`Failed to load dashboards from API (${response.status} ${response.statusText}), using defaults`);
-                this.viewers = this.defaultViewers;
+                console.warn(`Failed to load dashboards from API (${response.status} ${response.statusText})`);
+                // Try to parse error response
+                try {
+                    const errorData = await response.json();
+                    console.error('API error response:', errorData);
+                } catch (e) {
+                    console.error('Could not parse error response');
+                }
+                // Don't use defaults - show error in selector
+                this.viewers = {};
                 this.populateViewerSelector();
                 return;
             }
@@ -51,7 +59,7 @@ class ViewerManager {
             const data = await response.json();
             console.log('Dashboards API response:', data);
             
-            if (data.success && data.dashboards) {
+            if (data.success && data.dashboards && Array.isArray(data.dashboards) && data.dashboards.length > 0) {
                 // Convert API response to viewer format
                 this.viewers = {};
                 data.dashboards.forEach(dashboard => {
@@ -82,8 +90,14 @@ class ViewerManager {
                 
                 console.log('Loaded dashboards from API:', Object.keys(this.viewers).length, 'dashboards:', Object.keys(this.viewers));
             } else {
-                console.warn('Invalid dashboard API response:', data, 'using defaults');
-                this.viewers = this.defaultViewers;
+                console.warn('Invalid dashboard API response:', data);
+                if (!data.success) {
+                    console.error('API returned success=false:', data.error || 'Unknown error');
+                }
+                if (!data.dashboards || !Array.isArray(data.dashboards) || data.dashboards.length === 0) {
+                    console.error('No dashboards in response or dashboards array is empty');
+                }
+                this.viewers = {};
             }
             
             // Always populate the selector, even if empty
