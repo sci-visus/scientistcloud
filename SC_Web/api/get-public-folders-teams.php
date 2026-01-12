@@ -1,7 +1,7 @@
 <?php
 /**
  * Get Public Folders and Teams API Endpoint
- * Returns folders and teams that have public datasets for the current user
+ * Returns folders and teams that have public datasets (from any user)
  */
 
 if (ob_get_level() > 0) {
@@ -50,21 +50,16 @@ try {
         exit;
     }
 
-    // Get user's datasets to extract folders and teams with public datasets
+    // Get ALL public datasets (from any user) to extract folders and teams
     $sclib = getSCLibClient();
     
-    // Get all user's datasets
+    // Query for all public datasets (not just current user's)
     $response = null;
     try {
-        $response = $sclib->makeRequest('/api/v1/datasets/by-user', 'GET', null, ['user_email' => $user['email']]);
+        $response = $sclib->makeRequest('/api/v1/datasets', 'GET', null, ['public_only' => 'true']);
     } catch (Exception $e) {
-        logMessage('WARNING', 'by-user endpoint failed, trying regular endpoint', ['error' => $e->getMessage()]);
-        try {
-            $response = $sclib->makeRequest('/api/v1/datasets', 'GET', null, ['user_email' => $user['email']]);
-        } catch (Exception $e2) {
-            logMessage('ERROR', 'Failed to get datasets', ['error' => $e2->getMessage()]);
-            throw $e2;
-        }
+        logMessage('ERROR', 'Failed to get public datasets', ['error' => $e->getMessage()]);
+        throw $e;
     }
     
     $folders = [];
@@ -73,16 +68,9 @@ try {
     $teamSet = [];
     $datasets = [];
     
-    // Handle different response formats
+    // Handle response format
     if (isset($response['success']) && $response['success']) {
-        if (isset($response['datasets']['my'])) {
-            // Format from by-user endpoint - check all categories
-            $datasets = array_merge(
-                $response['datasets']['my'] ?? [],
-                $response['datasets']['shared'] ?? [],
-                $response['datasets']['team'] ?? []
-            );
-        } elseif (isset($response['datasets']) && is_array($response['datasets'])) {
+        if (isset($response['datasets']) && is_array($response['datasets'])) {
             // Format from regular endpoint (array of datasets)
             $datasets = $response['datasets'];
         }
@@ -91,14 +79,25 @@ try {
         $datasets = $response['datasets'];
     }
     
-    // Extract folders and teams that have public datasets
+    // Extract folders and teams from all public datasets
     foreach ($datasets as $dataset) {
+        // All datasets returned should be public since we filtered with public_only=true
+        // But double-check just in case
         $isPublic = $dataset['is_public'] ?? false;
-        if (!$isPublic) continue; // Only include public datasets
+        if (!$isPublic) continue;
         
-        // Extract folder
-        $folderUuid = $dataset['folder_uuid'] ?? $dataset['metadata']['folder_uuid'] ?? $dataset['folder'] ?? '';
-        if ($folderUuid && $folderUuid !== '' && $folderUuid !== 'No_Folder_Selected' && !in_array($folderUuid, $folderSet)) {
+        // Extract folder - check multiple possible locations
+        $folderUuid = $dataset['folder_uuid'] 
+                   ?? $dataset['metadata']['folder_uuid'] 
+                   ?? $dataset['folder'] 
+                   ?? $dataset['metadata']['folder']
+                   ?? '';
+        
+        if ($folderUuid && 
+            $folderUuid !== '' && 
+            $folderUuid !== 'No_Folder_Selected' && 
+            $folderUuid !== 'root' &&
+            !in_array($folderUuid, $folderSet)) {
             $folderSet[] = $folderUuid;
             $folders[] = [
                 'uuid' => $folderUuid,
@@ -106,9 +105,16 @@ try {
             ];
         }
         
-        // Extract team
-        $teamUuid = $dataset['team_uuid'] ?? '';
-        if ($teamUuid && $teamUuid !== '' && !in_array($teamUuid, $teamSet)) {
+        // Extract team - check multiple possible locations
+        $teamUuid = $dataset['team_uuid'] 
+                 ?? $dataset['metadata']['team_uuid']
+                 ?? $dataset['team']
+                 ?? $dataset['metadata']['team']
+                 ?? '';
+        
+        if ($teamUuid && 
+            $teamUuid !== '' && 
+            !in_array($teamUuid, $teamSet)) {
             $teamSet[] = $teamUuid;
             $teams[] = [
                 'uuid' => $teamUuid,
