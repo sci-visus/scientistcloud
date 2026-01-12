@@ -8,6 +8,24 @@
 require_once(__DIR__ . '/config.php');
 require_once(__DIR__ . '/includes/auth.php');
 require_once(__DIR__ . '/includes/dataset_manager.php');
+
+// Helper function for admin emails (also used in admin.php)
+if (!function_exists('getAdminEmails')) {
+    function getAdminEmails() {
+        // For now, use environment variable or hardcoded list
+        // In production, this should be in a database or config file
+        $adminList = getenv('ADMIN_EMAILS');
+        if ($adminList) {
+            return array_map('trim', explode(',', $adminList));
+        }
+        
+        // Default admin emails (can be overridden by environment variable)
+        return [
+            'admin@scientistcloud.com',
+            'amy@visus.net'
+        ];
+    }
+}
 require_once(__DIR__ . '/includes/dashboard_manager.php');
 
 // Start session if not already started
@@ -102,6 +120,16 @@ $preferredDashboard = getUserPreferredDashboard($user['id']);
           <a href="docs.php" class="btn btn-outline-light" title="Documentation" target="_blank">
             <i class="fas fa-book"></i> Docs
           </a>
+          <?php
+          // Show Admin link if user has admin permissions
+          $user = getCurrentUser();
+          if ($user) {
+              $adminEmails = getAdminEmails();
+              if (in_array($user['email'], $adminEmails)): ?>
+          <a href="admin.php" class="btn btn-outline-light" title="Admin Portal">
+            <i class="fas fa-cog"></i> Admin
+          </a>
+          <?php endif; } ?>
           <button type="button" class="btn btn-outline-light" id="logoutBtn" title="Logout">
             <i class="fas fa-sign-out-alt"></i> Logout
           </button>

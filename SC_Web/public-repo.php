@@ -15,21 +15,13 @@ if (session_status() == PHP_SESSION_NONE) {
     session_start();
 }
 
-// Check if user is authenticated (required for public repo access)
-$user = getCurrentUser();
-if (!$user) {
-    // Redirect to login
-    $isLocal = (strpos(SC_SERVER_URL, 'localhost') !== false || strpos(SC_SERVER_URL, '127.0.0.1') !== false);
-    $loginPath = $isLocal ? '/login.php?public_repo=1' : '/portal/login.php?public_repo=1';
-    header('Location: ' . $loginPath);
-    exit;
-}
+// Public repository - no authentication required
+// Set user type to public_repo for UI behavior
+$_SESSION['user_type'] = 'public_repo';
+$_SESSION['public_repo_access'] = true;
 
-// Set user type to public_repo if coming from public login
-if (isset($_GET['public_repo']) || isset($_SESSION['public_repo_access'])) {
-    $_SESSION['user_type'] = 'public_repo';
-    $_SESSION['public_repo_access'] = true;
-}
+// Try to get user if logged in (optional - for share functionality)
+$user = getCurrentUser();
 
 // Get filter parameters from URL
 $folderFilter = isset($_GET['folder']) ? trim($_GET['folder']) : null;
@@ -66,6 +58,28 @@ foreach ($publicDatasets as $dataset) {
   <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
   <!-- Custom CSS -->
   <link href="assets/css/main.css" rel="stylesheet">
+  <?php
+  // Load Google Analytics tracking ID from settings
+  $settingsFile = __DIR__ . '/config/settings.json';
+  $gaTrackingId = '';
+  if (file_exists($settingsFile)) {
+      $settings = json_decode(file_get_contents($settingsFile), true);
+      $gaTrackingId = $settings['ga_tracking_id'] ?? '';
+  }
+  
+  // Add Google Analytics if tracking ID is configured
+  if ($gaTrackingId): ?>
+  <!-- Google Analytics -->
+  <script async src="https://www.googletagmanager.com/gtag/js?id=<?php echo htmlspecialchars($gaTrackingId); ?>"></script>
+  <script>
+    window.dataLayer = window.dataLayer || [];
+    function gtag(){dataLayer.push(arguments);}
+    gtag('js', new Date());
+    gtag('config', '<?php echo htmlspecialchars($gaTrackingId); ?>', {
+      'page_path': window.location.pathname + window.location.search
+    });
+  </script>
+  <?php endif; ?>
 </head>
 <body class="public-repo">
   <!-- Left Sidebar -->
@@ -203,15 +217,21 @@ foreach ($publicDatasets as $dataset) {
           <option value="">Loading dashboards...</option>
         </select>
         <div class="btn-group ms-auto" role="group" aria-label="User actions">
-          <button type="button" class="btn btn-outline-light" id="shareBtn" title="Share Folder or Team">
-            <i class="fas fa-share-alt"></i> Share
+          <button type="button" class="btn btn-outline-light" id="shareBtn" title="Share Repository Link">
+            <i class="fas fa-share-alt"></i> Share Link
           </button>
+          <?php if ($user): ?>
           <a href="index.php" class="btn btn-outline-light" title="Back to Portal">
             <i class="fas fa-arrow-left"></i> Back to Portal
           </a>
           <button type="button" class="btn btn-outline-light" id="logoutBtn" title="Logout">
             <i class="fas fa-sign-out-alt"></i> Logout
           </button>
+          <?php else: ?>
+          <a href="login.php" class="btn btn-outline-light" title="Login">
+            <i class="fas fa-sign-in-alt"></i> Login
+          </a>
+          <?php endif; ?>
         </div>
       </div>
     </div>
@@ -315,10 +335,20 @@ foreach ($publicDatasets as $dataset) {
       shareModal = new bootstrap.Modal(document.getElementById('shareModal'));
       
       // Share button handler
-      document.getElementById('shareBtn')?.addEventListener('click', () => {
-        loadShareOptions();
-        shareModal.show();
-      });
+      const shareBtn = document.getElementById('shareBtn');
+      if (shareBtn) {
+        shareBtn.addEventListener('click', () => {
+          <?php if ($user): ?>
+          // User is logged in - show folder/team selection modal
+          loadShareOptions();
+          shareModal.show();
+          <?php else: ?>
+          // No login - just copy current page URL
+          const currentUrl = window.location.href;
+          copyUrlToClipboard(currentUrl);
+          <?php endif; ?>
+        });
+      }
       
       // Share type change handler
       document.getElementById('shareType')?.addEventListener('change', (e) => {
@@ -365,6 +395,29 @@ foreach ($publicDatasets as $dataset) {
       document.getElementById('logoutBtn')?.addEventListener('click', () => {
         window.location.href = 'logout.php';
       });
+      
+      // Copy URL to clipboard helper (for non-logged-in users)
+      async function copyUrlToClipboard(url) {
+        try {
+          await navigator.clipboard.writeText(url);
+          const shareBtn = document.getElementById('shareBtn');
+          if (shareBtn) {
+            const originalHTML = shareBtn.innerHTML;
+            shareBtn.innerHTML = '<i class="fas fa-check"></i> Copied!';
+            shareBtn.classList.add('btn-success');
+            shareBtn.classList.remove('btn-outline-light');
+            
+            setTimeout(() => {
+              shareBtn.innerHTML = originalHTML;
+              shareBtn.classList.remove('btn-success');
+              shareBtn.classList.add('btn-outline-light');
+            }, 2000);
+          }
+        } catch (error) {
+          console.error('Failed to copy URL:', error);
+          alert('Failed to copy link. Please copy manually: ' + url);
+        }
+      }
     });
     
     // Load folders and teams for sharing
