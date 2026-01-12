@@ -14,9 +14,11 @@ if (ob_get_level() > 0) {
 }
 ob_start();
 
-// Disable error display to prevent output
+// Enable error logging but don't display (to catch issues)
 ini_set('display_errors', 0);
 ini_set('display_startup_errors', 0);
+ini_set('log_errors', 1);
+error_reporting(E_ALL);
 
 // Start session BEFORE including config.php to ensure session is available
 if (session_status() == PHP_SESSION_NONE) {
@@ -67,6 +69,18 @@ if (!$dashboardsListPath || !file_exists($dashboardsListPath)) {
 
 // Read and parse JSON
 $jsonContent = file_get_contents($dashboardsListPath);
+if ($jsonContent === false) {
+    ob_end_clean();
+    http_response_code(500);
+    echo json_encode([
+        'success' => false,
+        'error' => 'Failed to read dashboards list file',
+        'file_path' => $dashboardsListPath,
+        'dashboards' => []
+    ]);
+    exit;
+}
+
 $dashboardsData = json_decode($jsonContent, true);
 
 if (json_last_error() !== JSON_ERROR_NONE) {
@@ -75,6 +89,23 @@ if (json_last_error() !== JSON_ERROR_NONE) {
     echo json_encode([
         'success' => false,
         'error' => 'Failed to parse dashboards list: ' . json_last_error_msg(),
+        'json_error_code' => json_last_error(),
+        'file_path' => $dashboardsListPath,
+        'file_size' => filesize($dashboardsListPath),
+        'dashboards' => []
+    ]);
+    exit;
+}
+
+// Check if dashboards key exists
+if (!isset($dashboardsData['dashboards']) || !is_array($dashboardsData['dashboards'])) {
+    ob_end_clean();
+    http_response_code(500);
+    echo json_encode([
+        'success' => false,
+        'error' => 'Invalid dashboards list format: missing or invalid "dashboards" array',
+        'file_path' => $dashboardsListPath,
+        'data_keys' => array_keys($dashboardsData),
         'dashboards' => []
     ]);
     exit;
@@ -84,17 +115,25 @@ if (json_last_error() !== JSON_ERROR_NONE) {
 ob_end_clean();
 
 // Return only enabled dashboards
-$enabledDashboards = array_filter($dashboardsData['dashboards'] ?? [], function($dashboard) {
+$allDashboards = $dashboardsData['dashboards'] ?? [];
+$enabledDashboards = array_filter($allDashboards, function($dashboard) {
     return ($dashboard['enabled'] ?? false) === true;
 });
 
 // Re-index array
 $enabledDashboards = array_values($enabledDashboards);
 
-echo json_encode([
+// Log for debugging
+error_log("Dashboards API: Found " . count($allDashboards) . " total dashboards, " . count($enabledDashboards) . " enabled");
+
+$response = [
     'success' => true,
     'dashboards' => $enabledDashboards,
     'total' => count($enabledDashboards),
+    'total_all' => count($allDashboards),
     'version' => $dashboardsData['version'] ?? '1.0.0',
-    'last_updated' => $dashboardsData['last_updated'] ?? null
-]);
+    'last_updated' => $dashboardsData['last_updated'] ?? null,
+    'file_path' => $dashboardsListPath
+];
+
+echo json_encode($response, JSON_PRETTY_PRINT);

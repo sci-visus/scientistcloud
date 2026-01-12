@@ -315,8 +315,50 @@ foreach ($publicDatasets as $dataset) {
   <script src="assets/js/dataset-manager.js"></script>
   <script src="assets/js/viewer-manager.js"></script>
   <script>
+    // Debug: Verify scripts loaded - this should ALWAYS show up
+    console.log('🔍 PUBLIC-REPO.PHP SCRIPT LOADED');
+    console.log('🔍 Script loading check:');
+    console.log('  - window.viewerManager:', typeof window.viewerManager);
+    console.log('  - window.datasetManager:', typeof window.datasetManager);
+    console.log('  - viewerType element:', !!document.getElementById('viewerType'));
+    
     // Set global flag for public repo user
     window.isPublicRepoUser = true;
+    
+    // Test if we can manually call the API
+    setTimeout(() => {
+      console.log('🧪 Testing manual API call...');
+      const apiUrl = '/portal/api/dashboards.php';
+      fetch(apiUrl, { credentials: 'include' })
+        .then(r => {
+          console.log('🧪 Manual fetch response:', r.status, r.statusText);
+          return r.json();
+        })
+        .then(data => {
+          console.log('🧪 Manual fetch data:', data);
+        })
+        .catch(err => {
+          console.error('🧪 Manual fetch error:', err);
+        });
+    }, 1000);
+    
+    // Force dashboard load after a short delay if not already loaded
+    setTimeout(() => {
+      const viewerType = document.getElementById('viewerType');
+      if (viewerType && viewerType.options.length === 1 && viewerType.options[0].textContent.includes('Loading')) {
+        console.log('⚠️ Dashboards still loading after 2 seconds, forcing reload...');
+        if (window.viewerManager && typeof window.viewerManager.loadDashboards === 'function') {
+          console.log('🔄 Manually calling loadDashboards()...');
+          window.viewerManager.loadDashboards().then(() => {
+            console.log('✅ Manual loadDashboards() completed');
+          }).catch(err => {
+            console.error('❌ Manual loadDashboards() failed:', err);
+          });
+        } else {
+          console.error('❌ viewerManager not available for manual load');
+        }
+      }
+    }, 2000);
     
     // Helper function to get API base path
     function getApiBasePath() {
