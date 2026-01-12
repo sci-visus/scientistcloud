@@ -26,17 +26,8 @@ if (session_status() == PHP_SESSION_NONE) {
 require_once(__DIR__ . '/../config.php');
 require_once(__DIR__ . '/../includes/auth.php');
 
-// Check authentication
-$user = getCurrentUser();
-if (!$user) {
-    ob_end_clean();
-    http_response_code(401);
-    echo json_encode([
-        'success' => false,
-        'error' => 'Unauthorized'
-    ]);
-    exit;
-}
+// Dashboards list is public - no authentication required
+// Anyone can see what dashboards are available
 
 // Path to dashboards-list.json
 // Try multiple possible paths (container paths and host paths)
