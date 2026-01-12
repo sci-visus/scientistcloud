@@ -33,7 +33,7 @@
 #      ./allServicesStart.sh -sw                # Rebuild both (both Dockerfiles changed)
 
 # Parse command line arguments
-SKIP_MAIN_SERVICES=true
+SKIP_MAIN_SERVICES=false
 DASHBOARDS_ONLY=false
 REBUILD_WEB=false
 REBUILD_SCLIB=false

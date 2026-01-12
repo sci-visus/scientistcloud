@@ -92,6 +92,12 @@ $preferredDashboard = getUserPreferredDashboard($user['id']);
 
   <!-- Main Content -->
   <section class="main">
+    <!-- Error Display Banner -->
+    <div id="errorBanner" role="alert" style="display: none; margin: 10px; padding: 15px; background-color: #dc3545; color: white; border: 2px solid #c82333; border-radius: 5px; position: sticky; top: 0; z-index: 10000; font-weight: bold; box-shadow: 0 4px 6px rgba(0,0,0,0.3);">
+      <strong>⚠️ ERROR:</strong> <span id="errorMessage"></span>
+      <button type="button" onclick="document.getElementById('errorBanner').style.display='none'" style="float: right; background: none; border: none; color: white; font-size: 20px; cursor: pointer; padding: 0 10px;">&times;</button>
+    </div>
+    
     <div class="toolbar-wrapper">
       <div class="viewer-toolbar">
         <label for="viewerType">Dashboard:</label>
@@ -154,6 +160,48 @@ $preferredDashboard = getUserPreferredDashboard($user['id']);
   </aside>
 
   <!-- Scripts -->
+  <script>
+    // Define showError IMMEDIATELY - before any other scripts
+    window.showError = function(message) {
+      console.error('🚨 ERROR:', message);
+      const banner = document.getElementById('errorBanner');
+      const messageEl = document.getElementById('errorMessage');
+      console.log('🔍 showError called:', message);
+      console.log('🔍 Banner element:', banner);
+      console.log('🔍 Message element:', messageEl);
+      if (banner && messageEl) {
+        messageEl.textContent = message;
+        banner.style.display = 'block';
+        banner.style.visibility = 'visible';
+        banner.style.opacity = '1';
+        console.log('✅ Error banner displayed');
+        // Scroll to top to show the error
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+        // Auto-hide after 15 seconds
+        setTimeout(() => {
+          if (banner) {
+            banner.style.display = 'none';
+          }
+        }, 15000);
+      } else {
+        console.error('❌ Error banner elements not found!');
+        console.error('  - Banner:', banner);
+        console.error('  - Message:', messageEl);
+        // Fallback: alert if banner doesn't exist
+        alert('ERROR: ' + message);
+      }
+    };
+    
+    // Catch all unhandled errors
+    window.addEventListener('error', function(event) {
+      showError('JavaScript Error: ' + (event.message || 'Unknown error') + ' at ' + (event.filename || 'unknown') + ':' + (event.lineno || '?'));
+    });
+    
+    // Catch unhandled promise rejections
+    window.addEventListener('unhandledrejection', function(event) {
+      showError('Unhandled Promise Rejection: ' + (event.reason?.message || event.reason || 'Unknown error'));
+    });
+  </script>
   <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
   <script src="assets/js/main.js"></script>
   <script src="assets/js/dataset-manager.js"></script>

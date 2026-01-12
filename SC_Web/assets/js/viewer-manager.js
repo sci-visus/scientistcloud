@@ -177,12 +177,24 @@ class ViewerManager {
             const errorMsg = 'Error loading dashboards: ' + (error.message || error);
             console.error('❌', errorMsg, error);
             console.error('Error details:', error.message, error.stack);
-            if (window.showError) {
-                window.showError(errorMsg);
-            }
-            // Fallback to default viewers
-            this.viewers = this.defaultViewers;
-            console.log('📋 Calling populateViewerSelector() after error...');
+            
+            // Try to load dashboards one more time after a short delay
+            console.log('🔄 Retrying dashboard load in 2 seconds...');
+            setTimeout(() => {
+                console.log('🔄 Retry: Loading dashboards again...');
+                this.loadDashboards().catch(retryError => {
+                    console.error('❌ Retry also failed:', retryError);
+                    if (window.showError) {
+                        window.showError('Failed to load dashboards. Please refresh the page.');
+                    }
+                    // Set empty viewers so selector shows "No dashboards available"
+                    this.viewers = {};
+                    this.populateViewerSelector();
+                });
+            }, 2000);
+            
+            // For now, set empty so we don't show stale data
+            this.viewers = {};
             this.populateViewerSelector();
         }
     }
