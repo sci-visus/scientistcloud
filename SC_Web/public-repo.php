@@ -235,6 +235,12 @@ foreach ($publicDatasets as $dataset) {
         </div>
       </div>
     </div>
+    <!-- Error Display Banner -->
+    <div id="errorBanner" class="alert alert-danger alert-dismissible fade show" role="alert" style="display: none; margin: 10px; position: sticky; top: 0; z-index: 1000;">
+      <strong>Error:</strong> <span id="errorMessage"></span>
+      <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+    </div>
+    
     <div class="viewer-container" id="viewerContainer">
       <?php include 'includes/dashboard_loader.php'; ?>
     </div>
@@ -315,6 +321,31 @@ foreach ($publicDatasets as $dataset) {
   <script src="assets/js/dataset-manager.js"></script>
   <script src="assets/js/viewer-manager.js"></script>
   <script>
+    // Global error handler to display errors visibly
+    window.showError = function(message) {
+      console.error('🚨 ERROR:', message);
+      const banner = document.getElementById('errorBanner');
+      const messageEl = document.getElementById('errorMessage');
+      if (banner && messageEl) {
+        messageEl.textContent = message;
+        banner.style.display = 'block';
+        // Auto-hide after 10 seconds
+        setTimeout(() => {
+          if (banner) banner.style.display = 'none';
+        }, 10000);
+      }
+    };
+    
+    // Catch all unhandled errors
+    window.addEventListener('error', function(event) {
+      showError('JavaScript Error: ' + (event.message || 'Unknown error') + ' at ' + (event.filename || 'unknown') + ':' + (event.lineno || '?'));
+    });
+    
+    // Catch unhandled promise rejections
+    window.addEventListener('unhandledrejection', function(event) {
+      showError('Unhandled Promise Rejection: ' + (event.reason?.message || event.reason || 'Unknown error'));
+    });
+    
     // Debug: Verify scripts loaded - this should ALWAYS show up
     console.log('🔍 PUBLIC-REPO.PHP SCRIPT LOADED');
     console.log('🔍 Script loading check:');
@@ -372,7 +403,11 @@ foreach ($publicDatasets as $dataset) {
           console.log('✅ Dashboards found:', data.dashboards?.length || 0);
         })
         .catch(err => {
-          console.error('❌ Path 1 failed:', err);
+          const errorMsg = 'API Path 1 failed: ' + (err.message || err);
+          console.error('❌', errorMsg, err);
+          if (window.showError) {
+            window.showError(errorMsg);
+          }
           
           // Try /api as fallback
           const apiUrl2 = '/api/dashboards.php';
@@ -387,7 +422,11 @@ foreach ($publicDatasets as $dataset) {
               console.log('✅ Dashboards found:', data.dashboards?.length || 0);
             })
             .catch(err2 => {
-              console.error('❌ Path 2 also failed:', err2);
+              const errorMsg2 = 'API Path 2 also failed: ' + (err2.message || err2);
+              console.error('❌', errorMsg2, err2);
+              if (window.showError) {
+                window.showError(errorMsg2);
+              }
             });
         });
     }, 1000);
@@ -402,10 +441,18 @@ foreach ($publicDatasets as $dataset) {
           window.viewerManager.loadDashboards().then(() => {
             console.log('✅ Manual loadDashboards() completed');
           }).catch(err => {
-            console.error('❌ Manual loadDashboards() failed:', err);
+            const errorMsg = 'Manual loadDashboards() failed: ' + (err.message || err);
+            console.error('❌', errorMsg, err);
+            if (window.showError) {
+              window.showError(errorMsg);
+            }
           });
         } else {
-          console.error('❌ viewerManager not available for manual load');
+          const errorMsg = 'viewerManager not available for manual load';
+          console.error('❌', errorMsg);
+          if (window.showError) {
+            window.showError(errorMsg);
+          }
         }
       }
     }, 2000);

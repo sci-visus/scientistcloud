@@ -69,13 +69,20 @@ class ViewerManager {
             console.log('📡 Response headers:', Object.fromEntries(response.headers.entries()));
             
             if (!response.ok) {
-                console.warn(`Failed to load dashboards from API (${response.status} ${response.statusText})`);
+                const errorMsg = `Failed to load dashboards: ${response.status} ${response.statusText}`;
+                console.warn(errorMsg);
                 // Try to parse error response
                 try {
                     const errorData = await response.json();
                     console.error('API error response:', errorData);
+                    if (window.showError) {
+                        window.showError(errorMsg + ' - ' + (errorData.error || JSON.stringify(errorData)));
+                    }
                 } catch (e) {
                     console.error('Could not parse error response');
+                    if (window.showError) {
+                        window.showError(errorMsg);
+                    }
                 }
                 // Don't use defaults - show error in selector
                 this.viewers = {};
@@ -91,8 +98,12 @@ class ViewerManager {
                 data = JSON.parse(responseText);
                 console.log('✅ Parsed JSON successfully');
             } catch (parseError) {
-                console.error('❌ Failed to parse JSON response:', parseError);
+                const errorMsg = 'Failed to parse dashboard API response: ' + parseError.message;
+                console.error('❌', errorMsg);
                 console.error('❌ Response text:', responseText || 'Could not read response');
+                if (window.showError) {
+                    window.showError(errorMsg + ' (Check console for details)');
+                }
                 this.viewers = {};
                 this.populateViewerSelector();
                 return;
@@ -156,8 +167,12 @@ class ViewerManager {
             console.log('✅ populateViewerSelector() completed');
             
         } catch (error) {
-            console.error('❌ Error loading dashboards:', error);
+            const errorMsg = 'Error loading dashboards: ' + (error.message || error);
+            console.error('❌', errorMsg, error);
             console.error('Error details:', error.message, error.stack);
+            if (window.showError) {
+                window.showError(errorMsg);
+            }
             // Fallback to default viewers
             this.viewers = this.defaultViewers;
             console.log('📋 Calling populateViewerSelector() after error...');
