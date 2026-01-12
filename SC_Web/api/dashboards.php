@@ -32,8 +32,22 @@ if (session_status() == PHP_SESSION_NONE) {
     session_start();
 }
 
-require_once(__DIR__ . '/../config.php');
-require_once(__DIR__ . '/../includes/auth.php');
+// Try to include config and auth, but don't fail if there are errors
+// We'll catch them and return a proper error response
+try {
+    require_once(__DIR__ . '/../config.php');
+    require_once(__DIR__ . '/../includes/auth.php');
+} catch (Throwable $e) {
+    ob_end_clean();
+    error_log("Error including config/auth in dashboards.php: " . $e->getMessage());
+    http_response_code(500);
+    echo json_encode([
+        'success' => false,
+        'error' => 'Configuration error: ' . $e->getMessage(),
+        'dashboards' => []
+    ]);
+    exit;
+}
 
 // Dashboards list is public - no authentication required
 // Anyone can see what dashboards are available
