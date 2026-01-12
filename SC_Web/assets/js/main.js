@@ -49,11 +49,24 @@ const AppState = {
     detailsCollapsed: false
 };
 
-// Initialize application
+// Initialize application with error handling
 document.addEventListener('DOMContentLoaded', function() {
-    initializeApp();
-    setupEventListeners();
-    loadTheme();
+    try {
+        console.log('🚀 DOMContentLoaded - Starting initialization...');
+        initializeApp();
+        setupEventListeners();
+        loadTheme();
+        console.log('✅ Initialization complete');
+    } catch (error) {
+        console.error('❌ Fatal error during initialization:', error);
+        console.error('Stack trace:', error.stack);
+        // Show error to user
+        if (window.showError) {
+            window.showError('Failed to initialize portal: ' + error.message);
+        } else {
+            alert('Failed to initialize portal: ' + error.message);
+        }
+    }
 });
 
 /**
@@ -94,51 +107,71 @@ function initializeApp() {
  * Setup event listeners
  */
 function setupEventListeners() {
-    // Sidebar toggle
-    const toggleFolder = document.getElementById('toggleFolder');
-    if (toggleFolder) {
-        toggleFolder.addEventListener('click', toggleSidebar);
-    }
-    
-    // Details sidebar toggle
-    const toggleDetail = document.getElementById('toggleDetail');
-    if (toggleDetail) {
-        toggleDetail.addEventListener('click', toggleDetails);
-    }
-    
-    // Theme toggle
-    const themeToggle = document.getElementById('themeToggle');
-    if (themeToggle) {
-        themeToggle.addEventListener('click', toggleTheme);
-        console.log('Theme toggle button event listener attached');
-        
-        // Set initial icon based on current theme
-        if (AppState.theme === 'light') {
-            themeToggle.innerHTML = '<i class="fas fa-moon"></i>'; // Moon icon for light mode
+    try {
+        // Sidebar toggle
+        const toggleFolder = document.getElementById('toggleFolder');
+        if (toggleFolder) {
+            toggleFolder.addEventListener('click', toggleSidebar);
+            console.log('✅ Sidebar toggle listener attached');
         } else {
-            themeToggle.innerHTML = '<i class="fas fa-sun"></i>'; // Sun icon for dark mode
+            console.warn('⚠️ toggleFolder button not found');
         }
-    }
+        
+        // Details sidebar toggle
+        const toggleDetail = document.getElementById('toggleDetail');
+        if (toggleDetail) {
+            toggleDetail.addEventListener('click', toggleDetails);
+            console.log('✅ Details toggle listener attached');
+        } else {
+            console.warn('⚠️ toggleDetail button not found');
+        }
+        
+        // Theme toggle
+        const themeToggle = document.getElementById('themeToggle');
+        if (themeToggle) {
+            themeToggle.addEventListener('click', function(e) {
+                e.preventDefault();
+                e.stopPropagation();
+                try {
+                    toggleTheme();
+                } catch (error) {
+                    console.error('❌ Error in theme toggle:', error);
+                    if (window.showError) {
+                        window.showError('Failed to toggle theme: ' + error.message);
+                    }
+                }
+            });
+            console.log('✅ Theme toggle button event listener attached');
+            
+            // Set initial icon based on current theme
+            if (AppState.theme === 'light') {
+                themeToggle.innerHTML = '<i class="fas fa-moon"></i>'; // Moon icon for light mode
+            } else {
+                themeToggle.innerHTML = '<i class="fas fa-sun"></i>'; // Sun icon for dark mode
+            }
+        } else {
+            console.warn('⚠️ themeToggle button not found');
+        }
     
-    // Initialize resize handles
-    initializeResizeHandles();
-    
-    // Logout button
-    const logoutBtn = document.getElementById('logoutBtn');
-    if (logoutBtn) {
-        logoutBtn.addEventListener('click', function() {
-            // Determine logout path based on current URL path
-            // If we're at /portal/index.php, use /portal/logout.php
-            // Otherwise use /logout.php
-            const currentPath = window.location.pathname;
-            const logoutPath = currentPath.includes('/portal/') ? '/portal/logout.php' : '/logout.php';
-            window.location.href = logoutPath;
-        });
-    }
-    
-    // Dataset selection - ONLY handle if datasetManager is not available
-    // dataset-manager.js already has its own handler, so we avoid duplicate processing
-    document.addEventListener('click', function(e) {
+        // Initialize resize handles
+        initializeResizeHandles();
+        
+        // Logout button
+        const logoutBtn = document.getElementById('logoutBtn');
+        if (logoutBtn) {
+            logoutBtn.addEventListener('click', function() {
+                // Determine logout path based on current URL path
+                // If we're at /portal/index.php, use /portal/logout.php
+                // Otherwise use /logout.php
+                const currentPath = window.location.pathname;
+                const logoutPath = currentPath.includes('/portal/') ? '/portal/logout.php' : '/logout.php';
+                window.location.href = logoutPath;
+            });
+        }
+        
+        // Dataset selection - ONLY handle if datasetManager is not available
+        // dataset-manager.js already has its own handler, so we avoid duplicate processing
+        document.addEventListener('click', function(e) {
         if (e.target.closest('.dataset-link')) {
             // If datasetManager exists and has handleDatasetClick, let it handle everything
             // Only use main.js handler as absolute fallback
@@ -240,6 +273,12 @@ function setupEventListeners() {
             }
         }
     });
+    } catch (error) {
+        console.error('❌ Error setting up event listeners:', error);
+        if (window.showError) {
+            window.showError('Failed to set up event listeners: ' + error.message);
+        }
+    }
 }
 
 /**
@@ -296,23 +335,37 @@ function toggleDetails() {
  * Toggle theme
  */
 function toggleTheme() {
-    console.log('toggleTheme called, current theme:', AppState.theme);
-    
-    AppState.theme = AppState.theme === 'dark' ? 'light' : 'dark';
-    document.body.classList.toggle('light-theme');
-    localStorage.setItem('theme', AppState.theme);
-    
-    // Update button icon/state if needed
-    const themeToggle = document.getElementById('themeToggle');
-    if (themeToggle) {
-        if (AppState.theme === 'light') {
-            themeToggle.innerHTML = '<i class="fas fa-moon"></i>'; // Moon icon for light mode (switch to dark)
+    try {
+        console.log('🎨 toggleTheme called, current theme:', AppState.theme);
+        
+        // Toggle theme state
+        const oldTheme = AppState.theme;
+        AppState.theme = AppState.theme === 'dark' ? 'light' : 'dark';
+        
+        // Toggle the light-theme class (light-theme = light mode, no class = dark mode)
+        document.body.classList.toggle('light-theme');
+        
+        // Save to localStorage
+        localStorage.setItem('theme', AppState.theme);
+        
+        // Update button icon/state
+        const themeToggle = document.getElementById('themeToggle');
+        if (themeToggle) {
+            if (AppState.theme === 'light') {
+                themeToggle.innerHTML = '<i class="fas fa-moon"></i>'; // Moon icon for light mode (switch to dark)
+            } else {
+                themeToggle.innerHTML = '<i class="fas fa-sun"></i>'; // Sun icon for dark mode (switch to light)
+            }
+            console.log('✅ Theme toggle button updated');
         } else {
-            themeToggle.innerHTML = '<i class="fas fa-sun"></i>'; // Sun icon for dark mode (switch to light)
+            console.warn('⚠️ themeToggle button not found when toggling');
         }
+        
+        console.log('✅ Theme changed from', oldTheme, 'to', AppState.theme);
+    } catch (error) {
+        console.error('❌ Error in toggleTheme:', error);
+        throw error; // Re-throw so caller can handle it
     }
-    
-    console.log('Theme changed to:', AppState.theme);
 }
 
 /**
