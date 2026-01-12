@@ -1432,15 +1432,17 @@ class DatasetManager {
             console.warn('Could not fetch dataset details:', error);
         }
 
-        // Load dataset details for display
-        if (datasetDetails) {
-            this.displayDatasetDetails(datasetDetails);
-        } else {
-            this.loadDatasetDetails(datasetId);
-        }
-
         // For public repo users, show dataset info instead of loading dashboard
+        // Check this BEFORE calling displayDatasetDetails to avoid errors
         if (this.isPublicRepoUser()) {
+            // Load dataset details for display in details panel
+            if (datasetDetails) {
+                this.displayDatasetDetails(datasetDetails);
+            } else {
+                this.loadDatasetDetails(datasetId);
+            }
+            
+            // Show dataset info in main content area
             const viewerContainer = document.getElementById('viewerContainer');
             const publicRepoContent = document.getElementById('publicRepoContent');
             const contentTarget = publicRepoContent || (viewerContainer?.querySelector('.container-fluid') || viewerContainer);
@@ -1500,6 +1502,13 @@ class DatasetManager {
             // Don't load dashboard for public repo users
             this.isSelectingDataset = false;
             return;
+        }
+        
+        // Load dataset details for display (for regular users)
+        if (datasetDetails) {
+            this.displayDatasetDetails(datasetDetails);
+        } else {
+            this.loadDatasetDetails(datasetId);
         }
         
         // Use smart dashboard selection FIRST, before loading
@@ -3796,6 +3805,15 @@ class DatasetManager {
             buttonElement.disabled = false;
             buttonElement.innerHTML = originalHTML;
         }
+    }
+
+    /**
+     * Check if current user is a public repository user
+     */
+    isPublicRepoUser() {
+        // Check if we're on the public repo page or have the session flag
+        return window.location.pathname.includes('public-repo.php') || 
+               (typeof window.isPublicRepoUser !== 'undefined' && window.isPublicRepoUser);
     }
 
     /**
