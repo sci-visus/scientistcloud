@@ -4,6 +4,9 @@
  */
 
 console.log('📦 viewer-manager.js loaded');
+console.log('📦 Script location:', document.currentScript?.src || 'inline');
+console.log('📦 Document ready state:', document.readyState);
+console.log('📦 Current URL:', window.location.href);
 
 class ViewerManager {
     constructor() {
@@ -27,19 +30,43 @@ class ViewerManager {
      */
     async loadDashboards() {
         console.log('📡 loadDashboards() called');
+        console.log('📡 Current URL:', window.location.href);
+        console.log('📡 Hostname:', window.location.hostname);
         try {
             // Helper function to get API base path (detects local vs server)
             const getApiBasePath = () => {
                 const isLocal = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
-                return isLocal ? '/api' : '/portal/api';
+                const basePath = isLocal ? '/api' : '/portal/api';
+                console.log('📡 API base path:', basePath, '(isLocal:', isLocal, ')');
+                return basePath;
             };
             
             const apiUrl = `${getApiBasePath()}/dashboards.php`;
             console.log('🌐 Loading dashboards from:', apiUrl);
+            console.log('🌐 Full URL will be:', window.location.origin + apiUrl);
             
-            const response = await fetch(apiUrl, {
-                credentials: 'include'  // Include cookies for authentication
+            const fetchStartTime = Date.now();
+            console.log('⏱️ Starting fetch at:', new Date().toISOString());
+            
+            // Add timeout to prevent hanging
+            const timeoutPromise = new Promise((_, reject) => {
+                setTimeout(() => reject(new Error('Fetch timeout after 10 seconds')), 10000);
             });
+            
+            const fetchPromise = fetch(apiUrl, {
+                credentials: 'include',  // Include cookies for authentication
+                method: 'GET',
+                headers: {
+                    'Accept': 'application/json'
+                }
+            });
+            
+            const response = await Promise.race([fetchPromise, timeoutPromise]);
+            
+            const fetchDuration = Date.now() - fetchStartTime;
+            console.log('⏱️ Fetch completed in', fetchDuration, 'ms');
+            console.log('📡 Response status:', response.status, response.statusText);
+            console.log('📡 Response headers:', Object.fromEntries(response.headers.entries()));
             
             if (!response.ok) {
                 console.warn(`Failed to load dashboards from API (${response.status} ${response.statusText})`);
@@ -931,18 +958,24 @@ class ViewerManager {
 // Initialize viewer manager when DOM is loaded
 document.addEventListener('DOMContentLoaded', function() {
     console.log('🚀 DOMContentLoaded: Initializing ViewerManager...');
+    console.log('🚀 Document ready state:', document.readyState);
+    console.log('🚀 Current URL:', window.location.href);
     
     // Check if viewerType element exists
     const viewerType = document.getElementById('viewerType');
     if (!viewerType) {
         console.error('❌ viewerType element not found in DOM!');
+        console.error('❌ Available elements with id:', Array.from(document.querySelectorAll('[id]')).map(el => el.id));
         return;
     }
-    console.log('✅ viewerType element found');
+    console.log('✅ viewerType element found:', viewerType);
+    console.log('✅ viewerType current value:', viewerType.value);
+    console.log('✅ viewerType current options:', viewerType.options.length);
     
     try {
+        console.log('🔧 Creating ViewerManager instance...');
         window.viewerManager = new ViewerManager();
-        console.log('✅ ViewerManager instance created');
+        console.log('✅ ViewerManager instance created:', window.viewerManager);
         
         // Fallback: If dashboards aren't loaded after 5 seconds, try again and show error
         setTimeout(() => {
