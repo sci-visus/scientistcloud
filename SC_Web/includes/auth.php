@@ -289,6 +289,39 @@ function requirePermission($permission) {
 }
 
 /**
+ * Check if user is a public repository user (read-only access)
+ */
+function isPublicRepoUser() {
+    return isset($_SESSION['user_type']) && $_SESSION['user_type'] === 'public_repo';
+}
+
+/**
+ * Get user permissions
+ */
+function getUserPermissions() {
+    $user = getCurrentUser();
+    if (!$user) {
+        return [];
+    }
+    
+    // If public repo user, return limited permissions
+    if (isPublicRepoUser()) {
+        return ['read', 'download'];
+    }
+    
+    // Regular users get permissions from user profile
+    return $user['permissions'] ?? ['read', 'upload', 'edit', 'delete'];
+}
+
+/**
+ * Check if user has a specific permission
+ */
+function hasPermission($permission) {
+    $permissions = getUserPermissions();
+    return in_array($permission, $permissions);
+}
+
+/**
  * Get user's team information
  */
 function getUserTeam($userId = null) {

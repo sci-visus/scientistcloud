@@ -1024,7 +1024,7 @@ class DatasetManager {
             html += `<div class="collapse" id="${uploadId}">`;
             html += '<ul class="dataset-files-list" style="list-style: none; padding-left: 0;">';
             if (data.directories.upload.files.length > 0) {
-                html += this.renderFileTreeInline(data.directories.upload.files, 'upload', 0, 'upload');
+                html += this.renderFileTreeInline(data.directories.upload.files, 'upload', 0, 'upload', datasetUuid || '');
             } else {
                 html += '<li class="text-muted small">No files in upload directory</li>';
             }
@@ -1047,7 +1047,7 @@ class DatasetManager {
             html += `<div class="collapse" id="${convertedId}">`;
             html += '<ul class="dataset-files-list" style="list-style: none; padding-left: 0;">';
             if (data.directories.converted.files.length > 0) {
-                html += this.renderFileTreeInline(data.directories.converted.files, 'converted', 0, 'converted');
+                html += this.renderFileTreeInline(data.directories.converted.files, 'converted', 0, 'converted', datasetUuid || '');
             } else {
                 html += '<li class="text-muted small">No files in converted directory</li>';
             }
@@ -1082,7 +1082,7 @@ class DatasetManager {
     /**
      * Render file tree inline with collapsible folders
      */
-    renderFileTreeInline(items, basePath = '', level = 0, directory = 'upload') {
+    renderFileTreeInline(items, basePath = '', level = 0, directory = 'upload', datasetUuid = '') {
         let html = '';
         const uniqueId = 'files-' + basePath.replace(/[^a-zA-Z0-9]/g, '-') + '-' + Date.now() + '-' + Math.random().toString(36).substr(2, 9);
         
@@ -1109,7 +1109,7 @@ class DatasetManager {
                 html += `<div class="collapse" id="${dirId}">`;
                 if (hasChildren) {
                     html += '<ul class="dataset-files-list" style="list-style: none; padding-left: 0;">';
-                    html += this.renderFileTreeInline(item.children, basePath, level + 1, directory);
+                    html += this.renderFileTreeInline(item.children, basePath, level + 1, directory, datasetUuid);
                     html += '</ul>';
                 } else if (hasExcludedFiles) {
                     // Show message if directory only has excluded files
@@ -1135,11 +1135,22 @@ class DatasetManager {
                 html += `<li class="dataset-file-item dataset-file-file ${isClickable ? 'clickable-file' : ''}" 
                              style="padding-left: ${(level + 1) * 1.5}rem; ${isClickable ? 'cursor: pointer;' : ''}"
                              ${isClickable ? `data-file-path="${this.escapeHtml(filePath)}" data-file-name="${this.escapeHtml(item.name)}" data-file-type="${isTextFile ? 'text' : 'image'}" data-directory="${directory}"` : ''}>`;
+                html += `<div class="d-flex justify-content-between align-items-center">`;
+                html += `<div class="d-flex align-items-center">`;
                 html += `<i class="fas ${isTextFile ? 'fa-file-alt' : isImageFile ? 'fa-image' : 'fa-file'} me-2"></i>`;
                 html += `<span>${this.escapeHtml(item.name)}</span>`;
                 if (item.size) {
                     html += `<span class="text-muted small ms-2">(${this.formatFileSize(item.size)})</span>`;
                 }
+                html += `</div>`;
+                // Add download button
+                if (datasetUuid) {
+                    const downloadUrl = `${getApiBasePath()}/dataset-file-serve.php?dataset_uuid=${encodeURIComponent(datasetUuid)}&file_path=${encodeURIComponent(filePath)}&directory=${encodeURIComponent(directory)}&download=true`;
+                    html += `<a href="${downloadUrl}" class="btn btn-sm btn-outline-primary ms-2" title="Download file" download="${this.escapeHtml(item.name)}" onclick="event.stopPropagation();">`;
+                    html += `<i class="fas fa-download"></i>`;
+                    html += `</a>`;
+                }
+                html += `</div>`;
                 html += '</li>';
             }
         }
@@ -1154,6 +1165,9 @@ class DatasetManager {
         const filesContainer = document.getElementById('datasetFiles');
         if (!filesContainer) return;
 
+        // Get dataset UUID from current dataset or data
+        const datasetUuid = this.currentDataset?.uuid || this.currentDataset?.id || data.dataset_uuid || '';
+
         let html = '';
 
         // Upload directory
@@ -1164,7 +1178,7 @@ class DatasetManager {
             html += `<span class="badge bg-secondary ms-2">${this.countFiles(data.directories.upload.files)}</span>`;
             html += `</div>`;
             html += `<div class="collapse" id="uploadFiles">`;
-            html += this.renderFileTree(data.directories.upload.files, 'upload');
+            html += this.renderFileTree(data.directories.upload.files, 'upload', 0, datasetUuid);
             html += `</div>`;
             html += `</div>`;
         }
@@ -1177,7 +1191,7 @@ class DatasetManager {
             html += `<span class="badge bg-secondary ms-2">${this.countFiles(data.directories.converted.files)}</span>`;
             html += `</div>`;
             html += `<div class="collapse" id="convertedFiles">`;
-            html += this.renderFileTree(data.directories.converted.files, 'converted');
+            html += this.renderFileTree(data.directories.converted.files, 'converted', 0, datasetUuid);
             html += `</div>`;
             html += `</div>`;
         }
@@ -1207,12 +1221,12 @@ class DatasetManager {
     /**
      * Render file tree recursively
      */
-    renderFileTree(items, basePath = '', level = 0) {
+    renderFileTree(items, directory = 'upload', level = 0, datasetUuid = '') {
         let html = '<ul class="file-tree" style="list-style: none; padding-left: ' + (level * 1.5) + 'rem;">';
         
         for (const item of items) {
             if (item.type === 'directory') {
-                const uniqueId = 'dir-' + basePath + '-' + item.path.replace(/[^a-zA-Z0-9]/g, '-');
+                const uniqueId = 'dir-' + directory + '-' + (item.path || item.name).replace(/[^a-zA-Z0-9]/g, '-');
                 html += `<li class="file-tree-item">`;
                 html += `<div class="file-tree-dir" data-bs-toggle="collapse" data-bs-target="#${uniqueId}">`;
                 html += `<i class="fas fa-folder me-1"></i>`;
@@ -1223,17 +1237,28 @@ class DatasetManager {
                 html += `</div>`;
                 html += `<div class="collapse" id="${uniqueId}">`;
                 if (item.children && item.children.length > 0) {
-                    html += this.renderFileTree(item.children, basePath, level + 1);
+                    html += this.renderFileTree(item.children, directory, level + 1, datasetUuid);
                 }
                 html += `</div>`;
                 html += `</li>`;
             } else {
+                // Build file path
+                const filePath = item.path || item.name;
                 html += `<li class="file-tree-item">`;
-                html += `<div class="file-tree-file">`;
+                html += `<div class="file-tree-file d-flex justify-content-between align-items-center">`;
+                html += `<div class="d-flex align-items-center">`;
                 html += `<i class="fas fa-file me-1"></i>`;
                 html += `<span>${this.escapeHtml(item.name)}</span>`;
                 if (item.size) {
                     html += `<span class="text-muted small ms-2">(${this.formatFileSize(item.size)})</span>`;
+                }
+                html += `</div>`;
+                // Add download button
+                if (datasetUuid) {
+                    const downloadUrl = `${getApiBasePath()}/dataset-file-serve.php?dataset_uuid=${encodeURIComponent(datasetUuid)}&file_path=${encodeURIComponent(filePath)}&directory=${encodeURIComponent(directory)}&download=true`;
+                    html += `<a href="${downloadUrl}" class="btn btn-sm btn-outline-primary ms-2" title="Download file" download="${this.escapeHtml(item.name)}">`;
+                    html += `<i class="fas fa-download"></i>`;
+                    html += `</a>`;
                 }
                 html += `</div>`;
                 html += `</li>`;
@@ -1643,12 +1668,14 @@ class DatasetManager {
                         <button type="button" class="btn btn-sm btn-outline-primary" data-action="share" data-dataset-id="${dataset.id || dataset.uuid}">
                             <i class="fas fa-share"></i> Share
                         </button>
+                        ${this.isPublicRepoUser() ? '' : `
                         <button type="button" class="btn btn-sm btn-outline-primary" data-action="delete" data-dataset-id="${dataset.id || dataset.uuid}">
                             <i class="fas fa-trash"></i> Delete
                         </button>
                         <button type="button" class="btn btn-sm btn-outline-primary" id="editDatasetBtn" data-dataset-id="${dataset.id || dataset.uuid}">
                             <i class="fas fa-edit"></i> Edit
                         </button>
+                        `}
                         <button type="button" class="btn btn-sm btn-outline-primary retry-conversion-details-btn" 
                                 data-dataset-uuid="${dataset.uuid || dataset.id}"
                                 data-dataset-name="${this.escapeHtml(dataset.name || 'Dataset')}">
@@ -1671,6 +1698,27 @@ class DatasetManager {
                                 data-dataset-server="${this.escapeHtml(dataset.server || '')}"
                                 title="Open this dataset's dashboard in a new tab">
                             <i class="fas fa-external-link-alt"></i>
+                        </button>
+                    </div>
+                </div>
+                
+                <!-- Download Buttons -->
+                <div class="dataset-downloads mb-3 pb-2 border-bottom">
+                    <h6 class="mb-2"><i class="fas fa-download"></i> Downloads</h6>
+                    <div class="btn-group-vertical w-100 gap-2" role="group">
+                        <button type="button" class="btn btn-sm btn-success download-folder-btn" 
+                                data-dataset-uuid="${dataset.uuid || dataset.id}"
+                                data-directory="upload"
+                                data-dataset-name="${this.escapeHtml(dataset.name || 'Dataset')}"
+                                ${this.isPublicRepoUser() && !(dataset.is_public_downloadable || false) ? 'style="display:none;"' : ''}>
+                            <i class="fas fa-file-archive"></i> Download Upload Folder (ZIP)
+                        </button>
+                        <button type="button" class="btn btn-sm btn-success download-folder-btn" 
+                                data-dataset-uuid="${dataset.uuid || dataset.id}"
+                                data-directory="converted"
+                                data-dataset-name="${this.escapeHtml(dataset.name || 'Dataset')}"
+                                ${this.isPublicRepoUser() && !(dataset.is_public_downloadable || false) ? 'style="display:none;"' : ''}>
+                            <i class="fas fa-file-archive"></i> Download Converted Folder (ZIP)
                         </button>
                     </div>
                 </div>
@@ -1907,6 +1955,18 @@ class DatasetManager {
                 this.saveDatasetChanges(form, dataset.id || dataset.uuid);
             });
         }
+        
+        // Attach download button handlers
+        const downloadButtons = detailsContainer.querySelectorAll('.download-folder-btn');
+        downloadButtons.forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                e.preventDefault();
+                const datasetUuid = btn.getAttribute('data-dataset-uuid');
+                const directory = btn.getAttribute('data-directory');
+                const datasetName = btn.getAttribute('data-dataset-name');
+                this.downloadDatasetFolder(datasetUuid, directory, datasetName, btn);
+            });
+        });
         
         // Attach retry button handler
         const retryBtn = detailsContainer.querySelector('.retry-conversion-details-btn');
@@ -3626,6 +3686,53 @@ class DatasetManager {
         else if (pow >= 2) decimals = 2; // MB, GB, TB - 2 decimals
         
         return value.toFixed(decimals) + ' ' + units[pow];
+    }
+
+    /**
+     * Download dataset folder as zip
+     */
+    async downloadDatasetFolder(datasetUuid, directory, datasetName, buttonElement) {
+        if (!datasetUuid || !directory) {
+            this.showError('Missing dataset UUID or directory');
+            return;
+        }
+        
+        // Validate directory
+        if (directory !== 'upload' && directory !== 'converted') {
+            this.showError('Invalid directory. Must be "upload" or "converted"');
+            return;
+        }
+        
+        // Disable button and show loading state
+        const originalHTML = buttonElement.innerHTML;
+        buttonElement.disabled = true;
+        buttonElement.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Creating ZIP...';
+        
+        try {
+            // Build download URL
+            const downloadUrl = `${getApiBasePath()}/download-dataset-zip.php?dataset_uuid=${encodeURIComponent(datasetUuid)}&directory=${encodeURIComponent(directory)}`;
+            
+            // Create a temporary link and trigger download
+            const link = document.createElement('a');
+            link.href = downloadUrl;
+            link.download = `${datasetName}_${directory}.zip`;
+            link.style.display = 'none';
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            
+            // Reset button after a delay (give time for download to start)
+            setTimeout(() => {
+                buttonElement.disabled = false;
+                buttonElement.innerHTML = originalHTML;
+            }, 2000);
+            
+        } catch (error) {
+            console.error('Error downloading dataset folder:', error);
+            this.showError('Failed to download folder: ' + error.message);
+            buttonElement.disabled = false;
+            buttonElement.innerHTML = originalHTML;
+        }
     }
 
     /**

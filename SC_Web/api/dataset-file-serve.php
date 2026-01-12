@@ -125,12 +125,21 @@ try {
         exit;
     }
 
+    // Check if download is requested
+    $download = isset($_GET['download']) ? filter_var($_GET['download'], FILTER_VALIDATE_BOOLEAN) : false;
+    
     // Set appropriate headers
     if ($contentType) {
         header('Content-Type: ' . $contentType);
     }
     header('Content-Length: ' . strlen($response));
     header('Cache-Control: private, max-age=3600');
+    
+    // If download requested, add Content-Disposition header
+    if ($download) {
+        $filename = basename($filePath);
+        header('Content-Disposition: attachment; filename="' . $filename . '"');
+    }
     
     // Output file content
     echo $response;

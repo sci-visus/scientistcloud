@@ -75,6 +75,14 @@ try {
         exit;
     }
     
+    // Block public repository users from deleting
+    if (isPublicRepoUser()) {
+        ob_end_clean();
+        http_response_code(403);
+        echo json_encode(['success' => false, 'error' => 'Public repository users cannot delete datasets']);
+        exit;
+    }
+    
     // Check ownership (use email as primary identifier)
     if ($dataset['user_id'] !== $user['email'] && $dataset['user_id'] !== $user['id']) {
         ob_end_clean();

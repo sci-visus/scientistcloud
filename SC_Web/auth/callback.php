@@ -98,6 +98,13 @@ try {
     $_SESSION['user_id'] = $userId;
     $_SESSION['user_email'] = $user_email;
     $_SESSION['user_name'] = $user_name;
+    
+    // Check if this was a public repository login request
+    if (isset($_SESSION['public_repo_requested'])) {
+        $_SESSION['user_type'] = 'public_repo';
+        $_SESSION['public_repo_access'] = true;
+        unset($_SESSION['public_repo_requested']);
+    }
     $_SESSION['auth0_id'] = $auth0_sub;
     $_SESSION['auth0_user_info'] = $userInfo; // Store full Auth0 user info
     
@@ -113,10 +120,17 @@ try {
         'name' => $user_name
     ]);
 
-    // Redirect to main application (portal)
-    // For local development, use /index.php (no /portal/ prefix)
-    // For server, use /portal/index.php
+    // Redirect based on login type
     $isLocal = (strpos(SC_SERVER_URL, 'localhost') !== false || strpos(SC_SERVER_URL, '127.0.0.1') !== false);
+    
+    // If public repo login, redirect to public repository
+    if (isset($_SESSION['public_repo_access']) && $_SESSION['public_repo_access']) {
+        $publicRepoPath = $isLocal ? '/public-repo.php' : '/portal/public-repo.php';
+        header('Location: ' . $publicRepoPath);
+        exit;
+    }
+    
+    // Otherwise redirect to main application (portal)
     $indexPath = $isLocal ? '/index.php' : '/portal/index.php';
     header('Location: ' . $indexPath);
     exit;

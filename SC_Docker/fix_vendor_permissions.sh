@@ -16,9 +16,14 @@ if [ ! -d "$VENDOR_DIR" ]; then
     exit 1
 fi
 
-# Get current user
-CURRENT_USER=$(whoami)
-CURRENT_GROUP=$(id -gn)
+# Get current user - detect original user if running with sudo
+if [ -n "$SUDO_USER" ]; then
+    CURRENT_USER="$SUDO_USER"
+    CURRENT_GROUP=$(id -gn "$SUDO_USER")
+else
+    CURRENT_USER=$(whoami)
+    CURRENT_GROUP=$(id -gn)
+fi
 
 echo "   Current user: $CURRENT_USER"
 echo "   Current group: $CURRENT_GROUP"

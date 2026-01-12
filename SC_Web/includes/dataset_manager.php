@@ -33,6 +33,39 @@ function getUserDatasets($userId) {
 }
 
 /**
+ * Get public datasets
+ */
+function getPublicDatasets() {
+    try {
+        $sclib = getSCLibClient();
+        // Query for public datasets using the datasets API
+        $response = $sclib->makeRequest('/api/v1/datasets', 'GET', null, ['public_only' => 'true']);
+        
+        if (isset($response['success']) && $response['success']) {
+            $datasets = $response['datasets'] ?? [];
+            
+            // Format datasets for portal
+            $formattedDatasets = [];
+            foreach ($datasets as $dataset) {
+                $formatted = formatDataset($dataset);
+                // Only include if actually public
+                if ($formatted['is_public'] ?? false) {
+                    $formattedDatasets[] = $formatted;
+                }
+            }
+            
+            return $formattedDatasets;
+        }
+        
+        return [];
+        
+    } catch (Exception $e) {
+        logMessage('ERROR', 'Failed to get public datasets', ['error' => $e->getMessage()]);
+        return [];
+    }
+}
+
+/**
  * Get dataset by ID
  */
 function getDatasetById($datasetId) {

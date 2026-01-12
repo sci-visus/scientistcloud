@@ -23,15 +23,33 @@ if (!isset($_SESSION['CREATED'])) {
     $_SESSION['CREATED'] = time();
 }
 
+// Check if this is a public repository login request
+$isPublicRepo = isset($_GET['public_repo']) || isset($_SESSION['public_repo_requested']);
+
 // Check if user is already authenticated
 // isAuthenticated() now verifies getCurrentUser(), so this should be safe
 if (isAuthenticated()) {
+    // If public repo requested, set session flag
+    if ($isPublicRepo) {
+        $_SESSION['user_type'] = 'public_repo';
+        $_SESSION['public_repo_access'] = true;
+        $isLocal = (strpos(SC_SERVER_URL, 'localhost') !== false || strpos(SC_SERVER_URL, '127.0.0.1') !== false);
+        $publicRepoPath = $isLocal ? '/public-repo.php' : '/portal/public-repo.php';
+        header('Location: ' . $publicRepoPath);
+        exit;
+    }
+    
     // User is authenticated, redirect to index
     // For local development, use /index.php (no /portal/ prefix)
     $isLocal = (strpos(SC_SERVER_URL, 'localhost') !== false || strpos(SC_SERVER_URL, '127.0.0.1') !== false);
     $indexPath = $isLocal ? '/index.php' : '/portal/index.php';
     header('Location: ' . $indexPath);
     exit;
+}
+
+// Store public repo request in session for callback
+if ($isPublicRepo) {
+    $_SESSION['public_repo_requested'] = true;
 }
 
 // Always redirect to Auth0 login (don't check getUser first, as it might be empty after callback)

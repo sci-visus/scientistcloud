@@ -96,6 +96,9 @@ $preferredDashboard = getUserPreferredDashboard($user['id']);
           </button>
         </div>
         <div class="btn-group ms-auto" role="group" aria-label="User actions">
+          <a href="public-repo.php" class="btn btn-outline-light" title="Public Data Repository">
+            <i class="fas fa-globe"></i> Public Repo
+          </a>
           <a href="docs.php" class="btn btn-outline-light" title="Documentation" target="_blank">
             <i class="fas fa-book"></i> Docs
           </a>
