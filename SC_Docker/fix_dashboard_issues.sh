@@ -8,6 +8,19 @@ echo "🔧 Fixing Dashboard and Composer Issues"
 echo "========================================"
 echo ""
 
+# Check if we're in the right directory
+if [ ! -f "docker-compose.yml" ] && [ ! -f "../docker-compose.yml" ]; then
+    echo "⚠️  docker-compose.yml not found. Looking for it..."
+    if [ -f "~/ScientistCloud2.0/scientistcloud/SC_Docker/docker-compose.yml" ]; then
+        cd ~/ScientistCloud2.0/scientistcloud/SC_Docker
+    elif [ -f "../SC_Docker/docker-compose.yml" ]; then
+        cd ../SC_Docker
+    else
+        echo "❌ Could not find docker-compose.yml. Please run this script from SC_Docker directory."
+        exit 1
+    fi
+fi
+
 # 1. Check PHP error logs
 echo "1️⃣ Checking PHP error logs..."
 docker logs scientistcloud-portal 2>&1 | grep -i error | tail -20
