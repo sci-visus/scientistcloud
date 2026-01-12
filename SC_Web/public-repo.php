@@ -60,7 +60,7 @@ foreach ($publicDatasets as $dataset) {
   <link href="assets/css/main.css" rel="stylesheet">
   <?php
   // Load Google Analytics tracking ID from settings
-  $settingsFile = __DIR__ . '/config/settings.json';
+  $settingsFile = __DIR__ . '/logs/settings.json';
   $gaTrackingId = '';
   if (file_exists($settingsFile)) {
       $settings = json_decode(file_get_contents($settingsFile), true);

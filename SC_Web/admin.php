@@ -217,7 +217,7 @@ $gaTrackingId = getSetting('ga_tracking_id', '');
  * Get a setting value
  */
 function getSetting($key, $default = '') {
-    $settingsFile = __DIR__ . '/config/settings.json';
+    $settingsFile = __DIR__ . '/logs/settings.json';
     
     if (file_exists($settingsFile)) {
         $settings = json_decode(file_get_contents($settingsFile), true);
@@ -231,12 +231,25 @@ function getSetting($key, $default = '') {
  * Update a setting value
  */
 function updateSetting($key, $value) {
-    $settingsDir = __DIR__ . '/config';
+    $settingsDir = __DIR__ . '/logs';
     $settingsFile = $settingsDir . '/settings.json';
     
-    // Create config directory if it doesn't exist
+    // Create logs directory if it doesn't exist
     if (!is_dir($settingsDir)) {
-        mkdir($settingsDir, 0755, true);
+        if (!mkdir($settingsDir, 0755, true)) {
+            error_log("Failed to create settings directory: $settingsDir");
+            return false;
+        }
+    }
+    
+    // Ensure directory is writable
+    if (!is_writable($settingsDir)) {
+        // Try to make it writable
+        @chmod($settingsDir, 0755);
+        if (!is_writable($settingsDir)) {
+            error_log("Settings directory is not writable: $settingsDir");
+            return false;
+        }
     }
     
     // Load existing settings
@@ -249,7 +262,16 @@ function updateSetting($key, $value) {
     $settings[$key] = $value;
     
     // Save settings
-    return file_put_contents($settingsFile, json_encode($settings, JSON_PRETTY_PRINT)) !== false;
+    $result = file_put_contents($settingsFile, json_encode($settings, JSON_PRETTY_PRINT));
+    if ($result === false) {
+        error_log("Failed to write settings file: $settingsFile");
+        return false;
+    }
+    
+    // Ensure file is readable
+    @chmod($settingsFile, 0644);
+    
+    return true;
 }
 ?>
 
