@@ -35,11 +35,23 @@ function getUserDatasets($userId) {
 /**
  * Get public datasets
  */
-function getPublicDatasets() {
+function getPublicDatasets($folder = null, $team = null) {
     try {
         $sclib = getSCLibClient();
         // Query for public datasets using the datasets API
-        $response = $sclib->makeRequest('/api/v1/datasets', 'GET', null, ['public_only' => 'true']);
+        $params = ['public_only' => 'true'];
+        
+        // Add folder filter if provided
+        if ($folder !== null && $folder !== '') {
+            $params['folder'] = $folder;
+        }
+        
+        // Add team filter if provided
+        if ($team !== null && $team !== '') {
+            $params['team'] = $team;
+        }
+        
+        $response = $sclib->makeRequest('/api/v1/datasets', 'GET', null, $params);
         
         if (isset($response['success']) && $response['success']) {
             $datasets = $response['datasets'] ?? [];

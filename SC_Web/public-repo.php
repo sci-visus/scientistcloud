@@ -31,8 +31,12 @@ if (isset($_GET['public_repo']) || isset($_SESSION['public_repo_access'])) {
     $_SESSION['public_repo_access'] = true;
 }
 
-// Get public datasets
-$publicDatasets = getPublicDatasets();
+// Get filter parameters from URL
+$folderFilter = isset($_GET['folder']) ? trim($_GET['folder']) : null;
+$teamFilter = isset($_GET['team']) ? trim($_GET['team']) : null;
+
+// Get public datasets with optional filters
+$publicDatasets = getPublicDatasets($folderFilter, $teamFilter);
 
 // Group datasets by folder (similar to main portal)
 $groupedDatasets = [];
@@ -73,11 +77,36 @@ foreach ($publicDatasets as $dataset) {
         <i class="fas fa-sync-alt"></i>
       </button>
     </div>
+    <?php if ($folderFilter || $teamFilter): ?>
+      <div class="w-100 px-2 mb-2">
+        <div class="alert alert-info mb-2" style="background-color: var(--info-color, rgba(181, 174, 223, 0.2)); border-color: var(--info-color, #B5AEDF); color: var(--fg-color); padding: 0.5rem; font-size: 0.85rem;">
+          <i class="fas fa-filter"></i> <strong>Filtered View:</strong><br>
+          <?php if ($folderFilter): ?>
+            <span class="badge bg-primary me-1">Folder: <?php echo htmlspecialchars($folderFilter); ?></span>
+            <a href="?<?php echo $teamFilter ? 'team=' . urlencode($teamFilter) : ''; ?>" class="text-decoration-none" style="color: var(--fg-color);">
+              <i class="fas fa-times-circle"></i>
+            </a>
+          <?php endif; ?>
+          <?php if ($teamFilter): ?>
+            <span class="badge bg-primary me-1">Team: <?php echo htmlspecialchars($teamFilter); ?></span>
+            <a href="?<?php echo $folderFilter ? 'folder=' . urlencode($folderFilter) : ''; ?>" class="text-decoration-none" style="color: var(--fg-color);">
+              <i class="fas fa-times-circle"></i>
+            </a>
+          <?php endif; ?>
+          <br><a href="public-repo.php" class="text-decoration-none small" style="color: var(--fg-color);">Clear all filters</a>
+        </div>
+      </div>
+    <?php endif; ?>
     <nav class="w-100 panel-content" style="overflow-y: auto; flex: 1;">
       <div class="dataset-list">
         <div class="dataset-section">
           <a class="nav-link" data-bs-toggle="collapse" data-bs-target="#publicDatasets">
-            <span class="arrow-icon" id="arrow-public">&#9656;</span>Public Datasets (<?php echo count($publicDatasets); ?>)
+            <span class="arrow-icon" id="arrow-public">&#9656;</span>
+            <?php if ($folderFilter || $teamFilter): ?>
+              Filtered Datasets (<?php echo count($publicDatasets); ?>)
+            <?php else: ?>
+              Public Datasets (<?php echo count($publicDatasets); ?>)
+            <?php endif; ?>
           </a>
           <div class="collapse ps-4 w-100 show" id="publicDatasets">
             <?php if (empty($publicDatasets)): ?>
@@ -161,6 +190,11 @@ foreach ($publicDatasets as $dataset) {
   <section class="main">
     <div class="toolbar-wrapper">
       <div class="viewer-toolbar">
+        <label for="viewerType">Dashboard:</label>
+        <select id="viewerType" class="form-select form-select-sm">
+          <!-- Options will be populated dynamically by viewer-manager.js -->
+          <option value="">Loading dashboards...</option>
+        </select>
         <div class="btn-group ms-auto" role="group" aria-label="User actions">
           <a href="index.php" class="btn btn-outline-light" title="Back to Portal">
             <i class="fas fa-arrow-left"></i> Back to Portal
@@ -172,15 +206,7 @@ foreach ($publicDatasets as $dataset) {
       </div>
     </div>
     <div class="viewer-container" id="viewerContainer">
-      <div class="container-fluid p-4">
-        <h2 style="color: var(--fg-color);"><i class="fas fa-globe me-2"></i>Public Data Repository</h2>
-        <p style="color: var(--fg-color); opacity: 0.7;">Browse and download publicly shared scientific datasets</p>
-        <div id="publicRepoContent">
-          <div class="alert alert-info" style="background-color: var(--info-color, rgba(181, 174, 223, 0.2)); border-color: var(--info-color, #B5AEDF); color: var(--fg-color);">
-            <i class="fas fa-info-circle"></i> Select a dataset from the sidebar to view details and download options.
-          </div>
-        </div>
-      </div>
+      <?php include 'includes/dashboard_loader.php'; ?>
     </div>
   </section>
 
@@ -200,6 +226,7 @@ foreach ($publicDatasets as $dataset) {
   <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
   <script src="assets/js/main.js"></script>
   <script src="assets/js/dataset-manager.js"></script>
+  <script src="assets/js/viewer-manager.js"></script>
   <script>
     // Set global flag for public repo user
     window.isPublicRepoUser = true;
@@ -212,12 +239,24 @@ foreach ($publicDatasets as $dataset) {
 
     // Initialize when DOM is ready
     document.addEventListener('DOMContentLoaded', function() {
-      // Wait for dataset manager to initialize
+      // Hide upload/team buttons for public repo users
+      const uploadBtn = document.getElementById('uploadDatasetBtn');
+      const createTeamBtn = document.getElementById('createTeamBtn');
+      const viewJobsBtn = document.getElementById('viewJobsBtn');
+      const settingsBtn = document.getElementById('settingsBtn');
+      
+      if (uploadBtn) uploadBtn.style.display = 'none';
+      if (createTeamBtn) createTeamBtn.style.display = 'none';
+      if (viewJobsBtn) viewJobsBtn.style.display = 'none';
+      if (settingsBtn) settingsBtn.style.display = 'none';
+      
+      // Wait for managers to initialize
       setTimeout(() => {
         if (window.datasetManager) {
-          // The dataset manager will handle dataset selection automatically
-          // We just need to ensure download buttons work
           console.log('Dataset manager initialized for public repo');
+        }
+        if (window.viewerManager) {
+          console.log('Viewer manager initialized for public repo');
         }
       }, 500);
       
