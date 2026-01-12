@@ -364,10 +364,23 @@ class UploadManager {
                 </div>
 
                 <div class="mb-3">
+                    <label class="form-label">Visibility:</label>
                     <div class="form-check">
-                        <input class="form-check-input" type="checkbox" name="is_public" id="localIsPublic">
-                        <label class="form-check-label" for="localIsPublic">
-                            Public Data Access Granted
+                        <input class="form-check-input" type="radio" name="visibility" id="localVisibilityPrivate" value="private" checked>
+                        <label class="form-check-label" for="localVisibilityPrivate">
+                            Private
+                        </label>
+                    </div>
+                    <div class="form-check">
+                        <input class="form-check-input" type="radio" name="visibility" id="localVisibilityPublicView" value="public_view">
+                        <label class="form-check-label" for="localVisibilityPublicView">
+                            Public (View Only)
+                        </label>
+                    </div>
+                    <div class="form-check">
+                        <input class="form-check-input" type="radio" name="visibility" id="localVisibilityPublicDownload" value="public_download">
+                        <label class="form-check-label" for="localVisibilityPublicDownload">
+                            Public (Downloadable)
                         </label>
                     </div>
                 </div>
@@ -478,10 +491,23 @@ class UploadManager {
                 </div>
 
                 <div class="mb-3">
+                    <label class="form-label">Visibility:</label>
                     <div class="form-check">
-                        <input class="form-check-input" type="checkbox" name="is_public" id="googleIsPublic">
-                        <label class="form-check-label" for="googleIsPublic">
-                            Public Data Access Granted
+                        <input class="form-check-input" type="radio" name="visibility" id="googleVisibilityPrivate" value="private" checked>
+                        <label class="form-check-label" for="googleVisibilityPrivate">
+                            Private
+                        </label>
+                    </div>
+                    <div class="form-check">
+                        <input class="form-check-input" type="radio" name="visibility" id="googleVisibilityPublicView" value="public_view">
+                        <label class="form-check-label" for="googleVisibilityPublicView">
+                            Public (View Only)
+                        </label>
+                    </div>
+                    <div class="form-check">
+                        <input class="form-check-input" type="radio" name="visibility" id="googleVisibilityPublicDownload" value="public_download">
+                        <label class="form-check-label" for="googleVisibilityPublicDownload">
+                            Public (Downloadable)
                         </label>
                     </div>
                 </div>
@@ -598,10 +624,23 @@ class UploadManager {
                 </div>
 
                 <div class="mb-3">
+                    <label class="form-label">Visibility:</label>
                     <div class="form-check">
-                        <input class="form-check-input" type="checkbox" name="is_public" id="s3IsPublic">
-                        <label class="form-check-label" for="s3IsPublic">
-                            Public Data Access Granted
+                        <input class="form-check-input" type="radio" name="visibility" id="s3VisibilityPrivate" value="private" checked>
+                        <label class="form-check-label" for="s3VisibilityPrivate">
+                            Private
+                        </label>
+                    </div>
+                    <div class="form-check">
+                        <input class="form-check-input" type="radio" name="visibility" id="s3VisibilityPublicView" value="public_view">
+                        <label class="form-check-label" for="s3VisibilityPublicView">
+                            Public (View Only)
+                        </label>
+                    </div>
+                    <div class="form-check">
+                        <input class="form-check-input" type="radio" name="visibility" id="s3VisibilityPublicDownload" value="public_download">
+                        <label class="form-check-label" for="s3VisibilityPublicDownload">
+                            Public (Downloadable)
                         </label>
                     </div>
                 </div>
@@ -691,10 +730,23 @@ class UploadManager {
                 </div>
 
                 <div class="mb-3">
+                    <label class="form-label">Visibility:</label>
                     <div class="form-check">
-                        <input class="form-check-input" type="checkbox" name="is_public" id="remoteIsPublic">
-                        <label class="form-check-label" for="remoteIsPublic">
-                            Is data public
+                        <input class="form-check-input" type="radio" name="visibility" id="remoteVisibilityPrivate" value="private" checked>
+                        <label class="form-check-label" for="remoteVisibilityPrivate">
+                            Private
+                        </label>
+                    </div>
+                    <div class="form-check">
+                        <input class="form-check-input" type="radio" name="visibility" id="remoteVisibilityPublicView" value="public_view">
+                        <label class="form-check-label" for="remoteVisibilityPublicView">
+                            Public (View Only)
+                        </label>
+                    </div>
+                    <div class="form-check">
+                        <input class="form-check-input" type="radio" name="visibility" id="remoteVisibilityPublicDownload" value="public_download">
+                        <label class="form-check-label" for="remoteVisibilityPublicDownload">
+                            Public (Downloadable)
                         </label>
                     </div>
                 </div>
@@ -1342,11 +1394,15 @@ class UploadManager {
         const folderValue = this.getFolderValue(form);
         console.log('Folder value from form:', folderValue);
         
+        const visibility = formData.get('visibility') || 'private';
+        const visibilityFlags = this.mapVisibilityToFlags(visibility);
+        
         const uploadData = {
             dataset_name: formData.get('name'),
             sensor: formData.get('sensor'),
             convert: formData.get('convert') === 'on',
-            is_public: formData.get('is_public') === 'on',
+            is_public: visibilityFlags.is_public,
+            is_public_downloadable: visibilityFlags.is_public_downloadable,
             folder: folderValue,
             team_uuid: formData.get('team_uuid') || null,
             tags: formData.get('tags') || '',
@@ -1439,6 +1495,7 @@ class UploadManager {
                 uploadFormData.append('sensor', uploadData.sensor);
                 uploadFormData.append('convert', uploadData.convert);
                 uploadFormData.append('is_public', uploadData.is_public);
+                uploadFormData.append('is_public_downloadable', uploadData.is_public_downloadable);
                 
                 // Folder is ONLY for UI organization (metadata from dropdown), NOT for file system structure
                 // For directory uploads, directory structure is preserved via the relative path mechanism
@@ -1708,6 +1765,9 @@ class UploadManager {
                 sourceConfig.file_id = driveId;
             }
 
+            const visibility = formData.get('visibility') || 'private';
+            const visibilityFlags = this.mapVisibilityToFlags(visibility);
+            
             // Use SCLib Upload API initiate endpoint for Google Drive (OAuth-based)
             const requestData = {
                 source_type: 'google_drive',
@@ -1716,7 +1776,8 @@ class UploadManager {
                 dataset_name: formData.get('name'),
                 sensor: formData.get('sensor'),
                 convert: formData.get('convert') === 'on',
-                is_public: formData.get('is_public') === 'on',
+                is_public: visibilityFlags.is_public,
+                is_public_downloadable: visibilityFlags.is_public_downloadable,
                 folder: this.getFolderValue(form),
                 team_uuid: formData.get('team_uuid') || null,
                 preferred_dashboard: formData.get('preferred_dashboard') || null,
@@ -1807,6 +1868,9 @@ class UploadManager {
             submitBtn.disabled = true;
             submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Initiating...';
 
+            const visibility = formData.get('visibility') || 'private';
+            const visibilityFlags = this.mapVisibilityToFlags(visibility);
+
             // Use SCLib Upload API initiate endpoint for S3
             const requestData = {
                 source_type: 's3',
@@ -1820,7 +1884,8 @@ class UploadManager {
                 dataset_name: formData.get('name'),
                 sensor: formData.get('sensor'),
                 convert: formData.get('convert') === 'on',
-                is_public: formData.get('is_public') === 'on',
+                is_public: visibilityFlags.is_public,
+                is_public_downloadable: visibilityFlags.is_public_downloadable,
                 folder: this.getFolderValue(form),
                 team_uuid: formData.get('team_uuid') || null
             };
@@ -1880,6 +1945,9 @@ class UploadManager {
             const originalText = submitBtn.innerHTML;
             submitBtn.disabled = true;
             submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Linking...';
+
+            const visibility = formData.get('visibility') || 'private';
+            const visibilityFlags = this.mapVisibilityToFlags(visibility);
 
             // Use SCLib Upload API initiate endpoint for URL/remote server
             const requestData = {
@@ -2565,6 +2633,7 @@ class UploadManager {
                     uploadFormData.append('sensor', uploadData.sensor);
                     uploadFormData.append('convert', uploadData.convert);
                     uploadFormData.append('is_public', uploadData.is_public);
+                uploadFormData.append('is_public_downloadable', uploadData.is_public_downloadable);
                     
                     if (uploadData.folder) {
                         uploadFormData.append('folder', uploadData.folder);

@@ -111,6 +111,11 @@ try {
     $sensor = $_POST['sensor'] ?? 'OTHER';
     $convert = isset($_POST['convert']) ? filter_var($_POST['convert'], FILTER_VALIDATE_BOOLEAN) : true;
     $isPublic = isset($_POST['is_public']) ? filter_var($_POST['is_public'], FILTER_VALIDATE_BOOLEAN) : false;
+    $isPublicDownloadable = isset($_POST['is_public_downloadable']) ? filter_var($_POST['is_public_downloadable'], FILTER_VALIDATE_BOOLEAN) : false;
+    // Ensure downloadable is only true if public is true
+    if (!$isPublic) {
+        $isPublicDownloadable = false;
+    }
     $folder = $_POST['folder'] ?? null;  // UI organization metadata only, NOT for file system structure
     $relativePath = $_POST['relative_path'] ?? null;  // For preserving directory structure in directory uploads
     $teamUuid = $_POST['team_uuid'] ?? null;
@@ -179,7 +184,8 @@ try {
             'dataset_name' => $datasetName,
             'sensor' => $sensor,
             'convert' => $convert ? 'true' : 'false',
-            'is_public' => $isPublic ? 'true' : 'false'
+            'is_public' => $isPublic ? 'true' : 'false',
+            'is_public_downloadable' => $isPublicDownloadable ? 'true' : 'false'
         ];
     } else {
         // Fallback to content-based upload (for large files or if shared temp unavailable)
@@ -195,7 +201,8 @@ try {
             'dataset_name' => $datasetName,
             'sensor' => $sensor,
             'convert' => $convert ? 'true' : 'false',
-            'is_public' => $isPublic ? 'true' : 'false'
+            'is_public' => $isPublic ? 'true' : 'false',
+            'is_public_downloadable' => $isPublicDownloadable ? 'true' : 'false'
         ];
     }
     
