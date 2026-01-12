@@ -7,6 +7,8 @@
 #   -w or --web-only: Rebuild only SC_Web portal container (when SC_Web Dockerfile or dependencies change)
 #   -s or --sclib-only: Rebuild only SCLib services (when SCLib code changes)
 #   -sw or --sclib-web: Rebuild both SCLib and SC_Web (when both change)
+#   --rebuild-dashboards or --build-dashboards: Rebuild dashboard containers (default: skip rebuild)
+#   --skip-dashboards or --no-dashboards: Skip dashboard operations entirely
 #
 # IMPORTANT NOTES - OPTIMIZATION GUIDE:
 #   ✅ ALL CODE IS MOUNTED AS VOLUMES (no rebuild needed for code changes):
@@ -35,6 +37,7 @@ SKIP_MAIN_SERVICES=true
 DASHBOARDS_ONLY=false
 REBUILD_WEB=false
 REBUILD_SCLIB=false
+REBUILD_DASHBOARDS=false  # Default: don't rebuild dashboards
 
 for arg in "$@"; do
     case $arg in
@@ -45,6 +48,7 @@ for arg in "$@"; do
         --dashboards-only|--only-dashboards)
             DASHBOARDS_ONLY=true
             SKIP_MAIN_SERVICES=true
+            REBUILD_DASHBOARDS=true  # If dashboards-only, rebuild them
             echo "📊 Running dashboards only (skipping all other services)"
             ;;
         -w|--web-only)
@@ -59,6 +63,14 @@ for arg in "$@"; do
             REBUILD_WEB=true
             REBUILD_SCLIB=true
             echo "🔄 Will rebuild both SCLib and SC_Web containers"
+            ;;
+        --rebuild-dashboards|--build-dashboards)
+            REBUILD_DASHBOARDS=true
+            echo "📊 Will rebuild dashboard containers"
+            ;;
+        --skip-dashboards|--no-dashboards)
+            REBUILD_DASHBOARDS=false
+            echo "⏭️  Skipping dashboard rebuild (will only start existing containers)"
             ;;
     esac
 done
@@ -308,44 +320,50 @@ fi
 if [ -d "$DASHBOARDS_DIR" ]; then
     pushd "$DASHBOARDS_DIR"
     
-    # Regenerate registry from actual filenames to ensure keys match what user named them
-    # This also updates port-registry.json to remove entries for deleted dashboards
-    echo "   Regenerating dashboard registry from filenames..."
-    if [ -f "./scripts/regenerate_registry.sh" ]; then
-        # Run without grep filter to see all output, including port registry updates
-        ./scripts/regenerate_registry.sh 2>&1 | grep -E "(✅|⚠️|❌|Error|Registering|Port registry)" || true
-        echo "   ✅ Registry and port-registry.json regenerated"
+    # Only rebuild dashboards if explicitly requested
+    if [ "$REBUILD_DASHBOARDS" = true ]; then
+        # Regenerate registry from actual filenames to ensure keys match what user named them
+        # This also updates port-registry.json to remove entries for deleted dashboards
+        echo "   Regenerating dashboard registry from filenames..."
+        if [ -f "./scripts/regenerate_registry.sh" ]; then
+            # Run without grep filter to see all output, including port registry updates
+            ./scripts/regenerate_registry.sh 2>&1 | grep -E "(✅|⚠️|❌|Error|Registering|Port registry)" || true
+            echo "   ✅ Registry and port-registry.json regenerated"
+        else
+            echo "   ⚠️  regenerate_registry.sh not found - using existing registry"
+        fi
+        
+        # Export dashboard list (generates dashboards-list.json from registry)
+        echo "   Exporting dashboard list..."
+        if [ -f "./scripts/export_dashboard_list.sh" ]; then
+            ./scripts/export_dashboard_list.sh 2>&1 | grep -E "(✅|⚠️|❌|Error|Total)" || true
+        else
+            echo "   ⚠️  export_dashboard_list.sh not found"
+        fi
+        
+        # Initialize all enabled dashboards (generate Dockerfiles and nginx configs)
+        # Regenerate to ensure latest fixes are applied (Dockerfiles and nginx configs)
+        echo "   Initializing dashboards..."
+        DASHBOARDS=$(jq -r '.dashboards | to_entries[] | select(.value.enabled == true) | .key' config/dashboard-registry.json 2>/dev/null || echo "")
+        if [ -n "$DASHBOARDS" ]; then
+            while IFS= read -r DASHBOARD_NAME; do
+                echo "   📦 Initializing $DASHBOARD_NAME..."
+                # Force regeneration of Dockerfiles and nginx configs to apply latest fixes
+                ./scripts/init_dashboard.sh "$DASHBOARD_NAME" --overwrite 2>&1 | grep -E "(✅|⚠️|❌|Error|Generated|Exported)" || true
+            done <<< "$DASHBOARDS"
+        fi
+        
+        # Build all enabled dashboards
+        echo "   Building dashboard Docker images..."
+        if [ -n "$DASHBOARDS" ]; then
+            while IFS= read -r DASHBOARD_NAME; do
+                echo "   🐳 Building $DASHBOARD_NAME..."
+                ./scripts/build_dashboard.sh "$DASHBOARD_NAME" 2>&1 | tail -1 || echo "   ⚠️  Build failed for $DASHBOARD_NAME"
+            done <<< "$DASHBOARDS"
+        fi
     else
-        echo "   ⚠️  regenerate_registry.sh not found - using existing registry"
-    fi
-    
-    # Export dashboard list (generates dashboards-list.json from registry)
-    echo "   Exporting dashboard list..."
-    if [ -f "./scripts/export_dashboard_list.sh" ]; then
-        ./scripts/export_dashboard_list.sh 2>&1 | grep -E "(✅|⚠️|❌|Error|Total)" || true
-    else
-        echo "   ⚠️  export_dashboard_list.sh not found"
-    fi
-    
-    # Initialize all enabled dashboards (generate Dockerfiles and nginx configs)
-    # Regenerate to ensure latest fixes are applied (Dockerfiles and nginx configs)
-    echo "   Initializing dashboards..."
-    DASHBOARDS=$(jq -r '.dashboards | to_entries[] | select(.value.enabled == true) | .key' config/dashboard-registry.json 2>/dev/null || echo "")
-    if [ -n "$DASHBOARDS" ]; then
-        while IFS= read -r DASHBOARD_NAME; do
-            echo "   📦 Initializing $DASHBOARD_NAME..."
-            # Force regeneration of Dockerfiles and nginx configs to apply latest fixes
-            ./scripts/init_dashboard.sh "$DASHBOARD_NAME" --overwrite 2>&1 | grep -E "(✅|⚠️|❌|Error|Generated|Exported)" || true
-        done <<< "$DASHBOARDS"
-    fi
-    
-    # Build all enabled dashboards
-    echo "   Building dashboard Docker images..."
-    if [ -n "$DASHBOARDS" ]; then
-        while IFS= read -r DASHBOARD_NAME; do
-            echo "   🐳 Building $DASHBOARD_NAME..."
-            ./scripts/build_dashboard.sh "$DASHBOARD_NAME" 2>&1 | tail -1 || echo "   ⚠️  Build failed for $DASHBOARD_NAME"
-        done <<< "$DASHBOARDS"
+        echo "   ⏭️  Skipping dashboard rebuild (use --rebuild-dashboards to rebuild)"
+        echo "   ℹ️  Will only start existing dashboard containers if docker-compose.yml exists"
     fi
     
     # Generate docker-compose entries

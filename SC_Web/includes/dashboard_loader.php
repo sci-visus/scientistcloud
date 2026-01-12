@@ -9,6 +9,14 @@ require_once(__DIR__ . '/auth.php');
 require_once(__DIR__ . '/dataset_manager.php');
 require_once(__DIR__ . '/dashboard_manager.php');
 
+// Make sure these functions are available
+if (!function_exists('getDashboardConfig')) {
+    require_once(__DIR__ . '/dashboard_manager.php');
+}
+if (!function_exists('generateViewerUrl')) {
+    require_once(__DIR__ . '/dashboard_manager.php');
+}
+
 /**
  * Format file size helper
  * Note: This function may already be defined in dataset_list.php
@@ -28,25 +36,57 @@ if (!function_exists('formatFileSize')) {
     }
 }
 
-// Get current user
-$user = getCurrentUser();
-if (!$user) {
-    echo '<div class="alert alert-warning">Please log in to view dashboards.</div>';
-    exit;
-}
-
 // Get dataset ID from request
 $datasetId = $_GET['dataset_id'] ?? null;
 $dashboardType = $_GET['dashboard'] ?? null;
 
+// Check if dataset is public first (before requiring authentication)
+$isPublicDataset = false;
+if ($datasetId) {
+    $isPublicDataset = isDatasetPublic($datasetId);
+}
+
+// Get current user (optional for public datasets)
+$user = getCurrentUser();
+
+// Only require authentication if dataset is not public
+if (!$isPublicDataset && !$user) {
+    echo '<div class="alert alert-warning">Please log in to view dashboards.</div>';
+    exit;
+}
+
 if ($datasetId) {
     // Load specific dataset dashboard
-    $dashboard = loadDashboard($datasetId, $dashboardType);
+    // For public datasets, use public dataset getter; otherwise use regular getter
+    if ($isPublicDataset) {
+        // Load dashboard for public dataset (no authentication required)
+        $dataset = getDatasetByIdPublic($datasetId);
+        if ($dataset) {
+            // Get dashboard type
+            $dashboardType = $dashboardType ?: ($dataset['preferred_dashboard'] ?? DEFAULT_DASHBOARD);
+            $dashboardConfig = getDashboardConfig($dashboardType);
+            if ($dashboardConfig) {
+                $dashboard = [
+                    'dataset' => $dataset,
+                    'dashboard_type' => $dashboardType,
+                    'config' => $dashboardConfig,
+                    'viewer_url' => generateViewerUrl($dataset, $dashboardType)
+                ];
+            } else {
+                $dashboard = null;
+            }
+        } else {
+            $dashboard = null;
+        }
+    } else {
+        // Load dashboard for authenticated user
+        $dashboard = loadDashboard($datasetId, $dashboardType);
+    }
     
     if ($dashboard) {
         $dataset = $dashboard['dataset'];
         $viewerUrl = $dashboard['viewer_url'];
-        $status = getDashboardStatus($datasetId, $dashboard['dashboard_type']);
+        $status = getDashboardStatus($datasetId, $dashboard['dashboard_type'], $isPublicDataset);
         
         // Display dashboard based on status
         switch ($status) {

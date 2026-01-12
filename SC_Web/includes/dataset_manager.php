@@ -129,6 +129,62 @@ function getDatasetByUuid($datasetUuid) {
 }
 
 /**
+ * Check if a dataset is public (does not require authentication)
+ */
+function isDatasetPublic($datasetId) {
+    try {
+        $sclib = getSCLibClient();
+        // Try to get the dataset directly - FastAPI will return it if public
+        // Don't pass user_email so FastAPI checks for public access
+        $response = $sclib->makeRequest("/api/v1/datasets/$datasetId", 'GET', null, []);
+        
+        if (isset($response['success']) && $response['success']) {
+            $dataset = $response['dataset'] ?? null;
+            if ($dataset) {
+                $isPublic = $dataset['is_public'] ?? false;
+                return $isPublic;
+            }
+        }
+        
+        return false;
+        
+    } catch (Exception $e) {
+        // If we get a 401/403, it might not be public, but also might be an error
+        // Log and return false
+        logMessage('ERROR', 'Failed to check if dataset is public', ['dataset_id' => $datasetId, 'error' => $e->getMessage()]);
+        return false;
+    }
+}
+
+/**
+ * Get dataset by ID without requiring authentication (for public datasets)
+ */
+function getDatasetByIdPublic($datasetId) {
+    try {
+        $sclib = getSCLibClient();
+        // Try to get dataset - API should return it if public
+        $response = $sclib->makeRequest("/api/v1/datasets/$datasetId", 'GET', null, []);
+        
+        if (isset($response['success']) && $response['success']) {
+            $dataset = $response['dataset'] ?? null;
+            if ($dataset) {
+                // Check if dataset is public
+                $isPublic = $dataset['is_public'] ?? false;
+                if ($isPublic) {
+                    return formatDataset($dataset);
+                }
+            }
+        }
+        
+        return null;
+        
+    } catch (Exception $e) {
+        logMessage('ERROR', 'Failed to get public dataset by ID', ['dataset_id' => $datasetId, 'error' => $e->getMessage()]);
+        return null;
+    }
+}
+
+/**
  * Get dataset status
  */
 function getDatasetStatus($datasetId) {

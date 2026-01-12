@@ -426,9 +426,15 @@ function isDatasetSupported($dataset, $config) {
 /**
  * Get dashboard status
  */
-function getDashboardStatus($datasetId, $dashboardType) {
+function getDashboardStatus($datasetId, $dashboardType, $isPublic = false) {
     try {
-        $dataset = getDatasetById($datasetId);
+        // For public datasets, use public getter; otherwise use authenticated getter
+        if ($isPublic) {
+            $dataset = getDatasetByIdPublic($datasetId);
+        } else {
+            $dataset = getDatasetById($datasetId);
+        }
+        
         if (!$dataset) {
             return 'error';
         }
