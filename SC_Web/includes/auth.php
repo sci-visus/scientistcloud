@@ -183,18 +183,6 @@ function createUser($userInfo) {
 }
 
 /**
- * Check if user has permission
- */
-function hasPermission($permission) {
-    $user = getCurrentUser();
-    if (!$user) {
-        return false;
-    }
-    
-    return in_array($permission, $user['permissions'] ?? []);
-}
-
-/**
  * Check if user is authenticated
  */
 function isAuthenticated() {
