@@ -325,20 +325,70 @@ foreach ($publicDatasets as $dataset) {
     // Set global flag for public repo user
     window.isPublicRepoUser = true;
     
-    // Test if we can manually call the API
+    // Force populate dropdown after a delay if viewerManager exists
+    setTimeout(() => {
+      console.log('⏰ 3 second check - viewerManager state:');
+      console.log('  - window.viewerManager exists:', !!window.viewerManager);
+      if (window.viewerManager) {
+        console.log('  - viewers count:', Object.keys(window.viewerManager.viewers || {}).length);
+        console.log('  - viewers:', Object.keys(window.viewerManager.viewers || {}));
+        
+        const viewerType = document.getElementById('viewerType');
+        if (viewerType) {
+          console.log('  - dropdown options:', viewerType.options.length);
+          if (viewerType.options.length <= 1) {
+            console.log('⚠️ Dropdown still empty, forcing populateViewerSelector...');
+            if (window.viewerManager.populateViewerSelector) {
+              window.viewerManager.populateViewerSelector();
+            }
+            // Also try manual load
+            if (window.viewerManager.loadDashboards) {
+              console.log('🔄 Manually calling loadDashboards...');
+              window.viewerManager.loadDashboards();
+            }
+          }
+        }
+      }
+    }, 3000);
+    
+    // Test if we can manually call the API - try both paths
     setTimeout(() => {
       console.log('🧪 Testing manual API call...');
-      const apiUrl = '/portal/api/dashboards.php';
-      fetch(apiUrl, { credentials: 'include' })
+      
+      // Try /portal/api first (what the code uses)
+      const apiUrl1 = '/portal/api/dashboards.php';
+      console.log('🧪 Trying:', apiUrl1);
+      fetch(apiUrl1, { credentials: 'include' })
         .then(r => {
-          console.log('🧪 Manual fetch response:', r.status, r.statusText);
-          return r.json();
+          console.log('🧪 Path 1 response:', r.status, r.statusText, r.url);
+          if (r.ok) {
+            return r.json();
+          } else {
+            throw new Error(`HTTP ${r.status}: ${r.statusText}`);
+          }
         })
         .then(data => {
-          console.log('🧪 Manual fetch data:', data);
+          console.log('✅ Path 1 SUCCESS! Data:', data);
+          console.log('✅ Dashboards found:', data.dashboards?.length || 0);
         })
         .catch(err => {
-          console.error('🧪 Manual fetch error:', err);
+          console.error('❌ Path 1 failed:', err);
+          
+          // Try /api as fallback
+          const apiUrl2 = '/api/dashboards.php';
+          console.log('🧪 Trying fallback:', apiUrl2);
+          fetch(apiUrl2, { credentials: 'include' })
+            .then(r => {
+              console.log('🧪 Path 2 response:', r.status, r.statusText, r.url);
+              return r.json();
+            })
+            .then(data => {
+              console.log('✅ Path 2 SUCCESS! Data:', data);
+              console.log('✅ Dashboards found:', data.dashboards?.length || 0);
+            })
+            .catch(err2 => {
+              console.error('❌ Path 2 also failed:', err2);
+            });
         });
     }, 1000);
     
