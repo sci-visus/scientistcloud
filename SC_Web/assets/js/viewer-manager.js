@@ -148,15 +148,22 @@ class ViewerManager {
                 console.log('✅ Dashboard IDs:', Object.keys(this.viewers));
             } else {
                 console.warn('⚠️ Invalid dashboard API response:', data);
+                let errorMsg = 'Dashboard API error: ';
                 if (!data.success) {
-                    console.error('❌ API returned success=false:', data.error || 'Unknown error');
-                }
-                if (!data.dashboards) {
+                    errorMsg = 'API returned success=false: ' + (data.error || 'Unknown error');
+                    console.error('❌', errorMsg);
+                } else if (!data.dashboards) {
+                    errorMsg = 'Dashboard API returned no dashboards data';
                     console.error('❌ data.dashboards is missing');
                 } else if (!Array.isArray(data.dashboards)) {
+                    errorMsg = 'Dashboard API returned invalid data format';
                     console.error('❌ data.dashboards is not an array, type:', typeof data.dashboards);
                 } else if (data.dashboards.length === 0) {
+                    errorMsg = 'No dashboards are enabled';
                     console.error('❌ data.dashboards array is empty');
+                }
+                if (window.showError) {
+                    window.showError(errorMsg);
                 }
                 this.viewers = {};
             }
