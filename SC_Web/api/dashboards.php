@@ -4,6 +4,13 @@
  * Returns list of available dashboards from dashboards-list.json
  */
 
+// Set error handler to catch any PHP errors/warnings
+set_error_handler(function($errno, $errstr, $errfile, $errline) {
+    error_log("PHP Error in dashboards.php: [$errno] $errstr in $errfile:$errline");
+    // Don't output error to response, just log it
+    return true;
+}, E_ALL);
+
 header('Content-Type: application/json');
 
 // Start output buffering IMMEDIATELY to catch any output from included files
