@@ -39,14 +39,6 @@ require_once(__DIR__ . '/../includes/dataset_manager.php');
 require_once(__DIR__ . '/../includes/dashboard_manager.php');
 
 try {
-    // Check authentication
-    if (!isAuthenticated()) {
-        ob_end_clean();
-        http_response_code(401);
-        echo json_encode(['success' => false, 'error' => 'Authentication required']);
-        exit;
-    }
-
     // Get dataset ID from request
     $datasetId = $_GET['dataset_id'] ?? null;
     if (!$datasetId) {
@@ -56,8 +48,28 @@ try {
         exit;
     }
 
-    // Get dataset details
-    $dataset = getDatasetById($datasetId);
+    // Check if dataset is public first (before requiring authentication)
+    $isPublicDataset = isDatasetPublic($datasetId);
+    
+    // Get current user (optional for public datasets)
+    $user = getCurrentUser();
+    $isAuthenticated = isAuthenticated();
+
+    // If dataset is not public, require authentication
+    if (!$isPublicDataset && !$isAuthenticated) {
+        ob_end_clean();
+        http_response_code(401);
+        echo json_encode(['success' => false, 'error' => 'Authentication required']);
+        exit;
+    }
+
+    // Get dataset details (use public getter if public, otherwise use authenticated getter)
+    if ($isPublicDataset) {
+        $dataset = getDatasetByIdPublic($datasetId);
+    } else {
+        $dataset = getDatasetById($datasetId);
+    }
+    
     if (!$dataset) {
         ob_end_clean();
         http_response_code(404);
@@ -65,20 +77,21 @@ try {
         exit;
     }
 
-    // Check if user has access to this dataset
-    $user = getCurrentUser();
-    if ($dataset['user_id'] !== $user['id'] && 
-        !in_array($user['id'], $dataset['shared_with'] ?? []) &&
-        $dataset['team_id'] !== $user['team_id']) {
-        ob_end_clean();
-        http_response_code(403);
-        echo json_encode(['success' => false, 'error' => 'Access denied']);
-        exit;
+    // For non-public datasets, check if user has access
+    if (!$isPublicDataset && $user) {
+        if ($dataset['user_id'] !== $user['id'] && 
+            !in_array($user['id'], $dataset['shared_with'] ?? []) &&
+            $dataset['team_id'] !== $user['team_id']) {
+            ob_end_clean();
+            http_response_code(403);
+            echo json_encode(['success' => false, 'error' => 'Access denied']);
+            exit;
+        }
     }
 
-    // Get dashboard status
+    // Get dashboard status (pass isPublic flag)
     $dashboardType = $_GET['dashboard'] ?? 'OpenVisusSlice';
-    $status = getDashboardStatus($datasetId, $dashboardType);
+    $status = getDashboardStatus($datasetId, $dashboardType, $isPublicDataset);
 
     // Format response
     $response = [
