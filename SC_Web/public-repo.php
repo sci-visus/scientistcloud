@@ -236,9 +236,9 @@ foreach ($publicDatasets as $dataset) {
       </div>
     </div>
     <!-- Error Display Banner -->
-    <div id="errorBanner" class="alert alert-danger alert-dismissible fade show" role="alert" style="display: none; margin: 10px; position: sticky; top: 0; z-index: 1000;">
-      <strong>Error:</strong> <span id="errorMessage"></span>
-      <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+    <div id="errorBanner" role="alert" style="display: none; margin: 10px; padding: 15px; background-color: #dc3545; color: white; border: 2px solid #c82333; border-radius: 5px; position: sticky; top: 0; z-index: 10000; font-weight: bold; box-shadow: 0 4px 6px rgba(0,0,0,0.3);">
+      <strong>⚠️ ERROR:</strong> <span id="errorMessage"></span>
+      <button type="button" onclick="document.getElementById('errorBanner').style.display='none'" style="float: right; background: none; border: none; color: white; font-size: 20px; cursor: pointer; padding: 0 10px;">&times;</button>
     </div>
     
     <div class="viewer-container" id="viewerContainer">
@@ -316,25 +316,104 @@ foreach ($publicDatasets as $dataset) {
   </div>
 
   <!-- Scripts -->
+  <script>
+    // Define showError IMMEDIATELY - before any other scripts
+    window.showError = function(message) {
+      console.error('🚨 ERROR:', message);
+      const banner = document.getElementById('errorBanner');
+      const messageEl = document.getElementById('errorMessage');
+      console.log('🔍 showError called:', message);
+      console.log('🔍 Banner element:', banner);
+      console.log('🔍 Message element:', messageEl);
+      if (banner && messageEl) {
+        messageEl.textContent = message;
+        banner.style.display = 'block';
+        banner.style.visibility = 'visible';
+        banner.style.opacity = '1';
+        console.log('✅ Error banner displayed');
+        // Scroll to top to show the error
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+        // Auto-hide after 15 seconds
+        setTimeout(() => {
+          if (banner) {
+            banner.style.display = 'none';
+          }
+        }, 15000);
+      } else {
+        console.error('❌ Error banner elements not found!');
+        console.error('  - Banner:', banner);
+        console.error('  - Message:', messageEl);
+        // Fallback: alert if banner doesn't exist
+        alert('ERROR: ' + message);
+      }
+    };
+    
+    // Test the error banner immediately - run this ASAP
+    (function testErrorBanner() {
+      function doTest() {
+        console.log('🔍 Testing error banner...');
+        const banner = document.getElementById('errorBanner');
+        const messageEl = document.getElementById('errorMessage');
+        
+        console.log('🔍 Banner element:', banner);
+        console.log('🔍 Message element:', messageEl);
+        console.log('🔍 Document ready state:', document.readyState);
+        
+        if (banner && messageEl) {
+          console.log('✅ Error banner elements found');
+          // Directly test the banner
+          messageEl.textContent = 'TEST: Error banner is working! If you see this, errors will be visible.';
+          banner.style.display = 'block';
+          banner.style.visibility = 'visible';
+          banner.style.opacity = '1';
+          banner.style.position = 'sticky';
+          banner.style.top = '0';
+          banner.style.zIndex = '10000';
+          console.log('✅ Test error banner displayed');
+          console.log('✅ Banner computed style:', window.getComputedStyle(banner).display);
+          
+          // Hide after 5 seconds
+          setTimeout(() => {
+            if (banner) {
+              banner.style.display = 'none';
+              console.log('✅ Test error banner hidden');
+            }
+          }, 5000);
+        } else {
+          console.error('❌ Error banner elements NOT FOUND!');
+          console.error('  - Banner:', banner);
+          console.error('  - Message:', messageEl);
+          // Try again after DOM loads
+          if (document.readyState === 'loading') {
+            console.log('⏳ Waiting for DOM to load...');
+            document.addEventListener('DOMContentLoaded', doTest);
+          } else {
+            // DOM already loaded, try one more time after a short delay
+            setTimeout(doTest, 100);
+          }
+        }
+      }
+      
+      // Try immediately
+      doTest();
+    })();
+    
+    // Also test when DOM is ready
+    document.addEventListener('DOMContentLoaded', function() {
+      console.log('🔍 DOM loaded, verifying error banner...');
+      const banner = document.getElementById('errorBanner');
+      if (banner) {
+        console.log('✅ Error banner verified in DOM');
+      } else {
+        console.error('❌ Error banner NOT in DOM after load!');
+      }
+    });
+  </script>
   <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
   <script src="assets/js/main.js"></script>
   <script src="assets/js/dataset-manager.js"></script>
   <script src="assets/js/viewer-manager.js"></script>
   <script>
-    // Global error handler to display errors visibly
-    window.showError = function(message) {
-      console.error('🚨 ERROR:', message);
-      const banner = document.getElementById('errorBanner');
-      const messageEl = document.getElementById('errorMessage');
-      if (banner && messageEl) {
-        messageEl.textContent = message;
-        banner.style.display = 'block';
-        // Auto-hide after 10 seconds
-        setTimeout(() => {
-          if (banner) banner.style.display = 'none';
-        }, 10000);
-      }
-    };
     
     // Catch all unhandled errors
     window.addEventListener('error', function(event) {
