@@ -40,14 +40,20 @@ if (!function_exists('formatFileSize')) {
 $datasetId = $_GET['dataset_id'] ?? null;
 $dashboardType = $_GET['dashboard'] ?? null;
 
-// Check if dataset is public first (before requiring authentication)
+// Get current user (optional for public datasets)
+$user = getCurrentUser();
+
+// If no dataset is selected, just show welcome screen (no authentication required)
+if (!$datasetId) {
+    displayWelcomeScreen($user);
+    exit;
+}
+
+// Dataset is selected - check if it's public first (before requiring authentication)
 $isPublicDataset = false;
 if ($datasetId) {
     $isPublicDataset = isDatasetPublic($datasetId);
 }
-
-// Get current user (optional for public datasets)
-$user = getCurrentUser();
 
 // Only require authentication if dataset is not public
 if (!$isPublicDataset && !$user) {
@@ -227,6 +233,23 @@ function displayErrorDashboard($dataset, $errorMessage) {
  * Display welcome screen
  */
 function displayWelcomeScreen($user) {
+    // For public repo, show a simple welcome message without stats
+    if (!$user || (isset($_SESSION['public_repo_access']) && $_SESSION['public_repo_access'])) {
+        ?>
+        <div class="dashboard-container">
+            <div class="dashboard-content welcome-content">
+                <div class="text-center">
+                    <i class="fas fa-globe fa-3x mb-3" style="color: var(--primary-color);"></i>
+                    <h4>Welcome to the Public Data Repository</h4>
+                    <p class="text-muted">Select a dataset from the sidebar to view it in a dashboard.</p>
+                    <p class="text-muted small">All datasets shown here are publicly accessible.</p>
+                </div>
+            </div>
+        </div>
+        <?php
+        return;
+    }
+    
     $stats = getDatasetStats($user['id']);
     ?>
     <div class="dashboard-container">
