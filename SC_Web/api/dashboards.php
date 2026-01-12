@@ -53,13 +53,14 @@ foreach ($possiblePaths as $path) {
 }
 
 // Check if file exists
-if (!file_exists($dashboardsListPath)) {
+if (!$dashboardsListPath || !file_exists($dashboardsListPath)) {
     ob_end_clean();
     http_response_code(404);
     echo json_encode([
         'success' => false,
         'error' => 'Dashboards list not found',
-        'dashboards' => []
+        'dashboards' => [],
+        'searched_paths' => $possiblePaths
     ]);
     exit;
 }
