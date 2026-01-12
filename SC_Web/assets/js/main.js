@@ -840,6 +840,7 @@ function initializeResizeHandles() {
         document.body.style.cursor = 'col-resize';
         document.body.style.userSelect = 'none';
         e.preventDefault();
+        e.stopPropagation();
     });
     
     // Right sidebar resize
@@ -854,45 +855,74 @@ function initializeResizeHandles() {
         document.body.style.cursor = 'col-resize';
         document.body.style.userSelect = 'none';
         e.preventDefault();
+        e.stopPropagation();
     });
     
-    // Mouse move handler
-    document.addEventListener('mousemove', (e) => {
-        if (!isResizingLeft && !isResizingRight) return;
-        
-        e.preventDefault(); // Prevent text selection and other default behaviors
-        
-        if (isResizingLeft) {
-            // When dragging right (e.clientX > startX), diff is positive, sidebar should grow
-            // When dragging left (e.clientX < startX), diff is negative, sidebar should shrink
-            const diff = e.clientX - startX;
-            const newWidth = Math.max(200, Math.min(startWidth + diff, window.innerWidth * 0.8));
-            // Apply width directly to element during resize for immediate feedback
-            sidebar.style.width = newWidth + 'px';
-            saveSidebarWidth(newWidth);
+    // Mouse move handler - use a single handler for better performance
+    let rafId = null;
+    const handleMouseMove = (e) => {
+        if (!isResizingLeft && !isResizingRight) {
+            if (rafId) {
+                cancelAnimationFrame(rafId);
+                rafId = null;
+            }
+            return;
         }
         
-        if (isResizingRight) {
-            const diff = startX - e.clientX; // Inverted for right sidebar (dragging right = negative diff)
-            const newWidth = Math.max(200, Math.min(startWidth + diff, window.innerWidth * 0.8));
-            // Apply width directly to element during resize for immediate feedback
-            details.style.width = newWidth + 'px';
-            saveDetailsWidth(newWidth);
+        // Cancel any pending animation frame
+        if (rafId) {
+            cancelAnimationFrame(rafId);
         }
-    });
+        
+        // Use requestAnimationFrame for smoother resizing
+        rafId = requestAnimationFrame(() => {
+            if (isResizingLeft) {
+                // When dragging right (e.clientX > startX), diff is positive, sidebar should grow
+                // When dragging left (e.clientX < startX), diff is negative, sidebar should shrink
+                const diff = e.clientX - startX;
+                const newWidth = Math.max(200, Math.min(startWidth + diff, window.innerWidth * 0.8));
+                // Apply width directly to element during resize for immediate feedback
+                sidebar.style.width = newWidth + 'px';
+                // Update CSS variable for persistence
+                document.documentElement.style.setProperty('--sidebar-width', newWidth + 'px');
+                saveSidebarWidth(newWidth);
+            }
+            
+            if (isResizingRight) {
+                const diff = startX - e.clientX; // Inverted for right sidebar (dragging right = negative diff)
+                const newWidth = Math.max(200, Math.min(startWidth + diff, window.innerWidth * 0.8));
+                // Apply width directly to element during resize for immediate feedback
+                details.style.width = newWidth + 'px';
+                // Update CSS variable for persistence
+                document.documentElement.style.setProperty('--details-width', newWidth + 'px');
+                saveDetailsWidth(newWidth);
+            }
+            rafId = null;
+        });
+    };
+    
+    document.addEventListener('mousemove', handleMouseMove);
     
     // Mouse up handler
-    const stopResizing = () => {
+    const stopResizing = (e) => {
+        if (!isResizingLeft && !isResizingRight) return;
+        
         if (isResizingLeft) {
             isResizingLeft = false;
             resizeHandleLeft.classList.remove('resizing');
             sidebar.classList.remove('resizing'); // Remove class to re-enable transition
+            // Keep the width but ensure CSS variable is set
+            const finalWidth = sidebar.offsetWidth;
+            document.documentElement.style.setProperty('--sidebar-width', finalWidth + 'px');
             sidebar.style.width = ''; // Clear inline style to use CSS variable
         }
         if (isResizingRight) {
             isResizingRight = false;
             resizeHandleRight.classList.remove('resizing');
             details.classList.remove('resizing'); // Remove class to re-enable transition
+            // Keep the width but ensure CSS variable is set
+            const finalWidth = details.offsetWidth;
+            document.documentElement.style.setProperty('--details-width', finalWidth + 'px');
             details.style.width = ''; // Clear inline style to use CSS variable
         }
         document.body.style.cursor = '';
@@ -903,6 +933,9 @@ function initializeResizeHandles() {
     
     // Also stop resizing if mouse leaves the window
     document.addEventListener('mouseleave', stopResizing);
+    
+    // Stop resizing on window blur (user switches tabs/windows)
+    window.addEventListener('blur', stopResizing);
 }
 
 // Export functions for global access

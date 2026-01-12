@@ -1439,6 +1439,69 @@ class DatasetManager {
             this.loadDatasetDetails(datasetId);
         }
 
+        // For public repo users, show dataset info instead of loading dashboard
+        if (this.isPublicRepoUser()) {
+            const viewerContainer = document.getElementById('viewerContainer');
+            const publicRepoContent = document.getElementById('publicRepoContent');
+            const contentTarget = publicRepoContent || (viewerContainer?.querySelector('.container-fluid') || viewerContainer);
+            
+            if (contentTarget && datasetDetails) {
+                const isDownloadable = datasetDetails.is_public_downloadable || false;
+                const contentHtml = `
+                    <div class="card" style="background-color: var(--panel-bg); border-color: var(--panel-border); color: var(--fg-color);">
+                        <div class="card-body">
+                            <h4 class="card-title" style="color: var(--fg-color);">
+                                <i class="fas fa-database me-2"></i>${this.escapeHtml(datasetDetails.name || 'Unnamed Dataset')}
+                            </h4>
+                            <div class="mb-3">
+                                ${isDownloadable ? 
+                                    '<span class="badge bg-success"><i class="fas fa-download"></i> Downloadable</span>' : 
+                                    '<span class="badge bg-secondary"><i class="fas fa-eye"></i> View Only</span>'
+                                }
+                            </div>
+                            <div class="row">
+                                <div class="col-md-6">
+                                    <p style="color: var(--fg-color);">
+                                        <strong>Owner:</strong> ${this.escapeHtml(datasetDetails.user_id || 'Unknown')}<br>
+                                        <strong>Sensor Type:</strong> ${this.escapeHtml(datasetDetails.sensor || 'Unknown')}<br>
+                                        ${datasetDetails.data_size ? `<strong>Size:</strong> ${parseFloat(datasetDetails.data_size).toFixed(2)} GB<br>` : ''}
+                                        <strong>Status:</strong> ${this.escapeHtml(datasetDetails.status || 'Unknown')}
+                                    </p>
+                                </div>
+                            </div>
+                            ${isDownloadable ? `
+                            <div class="alert alert-info" style="background-color: var(--info-color, rgba(181, 174, 223, 0.2)); border-color: var(--info-color, #B5AEDF); color: var(--fg-color);">
+                                <i class="fas fa-info-circle"></i> This dataset is available for download. Use the buttons in the details panel to download folders.
+                            </div>
+                            ` : `
+                            <div class="alert alert-warning" style="background-color: var(--warning-color, rgba(227, 165, 79, 0.2)); border-color: var(--warning-color, #E3A54F); color: var(--fg-color);">
+                                <i class="fas fa-exclamation-triangle"></i> This dataset is view-only and cannot be downloaded.
+                            </div>
+                            `}
+                        </div>
+                    </div>
+                `;
+                
+                if (publicRepoContent) {
+                    publicRepoContent.innerHTML = contentHtml;
+                } else if (viewerContainer) {
+                    const container = viewerContainer.querySelector('.container-fluid') || viewerContainer;
+                    if (container.querySelector('#publicRepoContent')) {
+                        container.querySelector('#publicRepoContent').innerHTML = contentHtml;
+                    } else {
+                        container.innerHTML = `
+                            <h2 style="color: var(--fg-color);"><i class="fas fa-globe me-2"></i>Public Data Repository</h2>
+                            <p style="color: var(--fg-color); opacity: 0.7;">Browse and download publicly shared scientific datasets</p>
+                            <div id="publicRepoContent">${contentHtml}</div>
+                        `;
+                    }
+                }
+            }
+            // Don't load dashboard for public repo users
+            this.isSelectingDataset = false;
+            return;
+        }
+        
         // Use smart dashboard selection FIRST, before loading
         // This ensures we get the best dashboard based on dimension, not the toolbar value
         // Use currentDataset.uuid which may have been updated with google_drive_link
@@ -1703,25 +1766,25 @@ class DatasetManager {
                 </div>
                 
                 <!-- Download Buttons -->
+                ${(this.isPublicRepoUser() && !(dataset.is_public_downloadable || false)) ? '' : `
                 <div class="dataset-downloads mb-3 pb-2 border-bottom">
                     <h6 class="mb-2"><i class="fas fa-download"></i> Downloads</h6>
                     <div class="btn-group-vertical w-100 gap-2" role="group">
                         <button type="button" class="btn btn-sm btn-success download-folder-btn" 
                                 data-dataset-uuid="${dataset.uuid || dataset.id}"
                                 data-directory="upload"
-                                data-dataset-name="${this.escapeHtml(dataset.name || 'Dataset')}"
-                                ${this.isPublicRepoUser() && !(dataset.is_public_downloadable || false) ? 'style="display:none;"' : ''}>
+                                data-dataset-name="${this.escapeHtml(dataset.name || 'Dataset')}">
                             <i class="fas fa-file-archive"></i> Download Upload Folder (ZIP)
                         </button>
                         <button type="button" class="btn btn-sm btn-success download-folder-btn" 
                                 data-dataset-uuid="${dataset.uuid || dataset.id}"
                                 data-directory="converted"
-                                data-dataset-name="${this.escapeHtml(dataset.name || 'Dataset')}"
-                                ${this.isPublicRepoUser() && !(dataset.is_public_downloadable || false) ? 'style="display:none;"' : ''}>
+                                data-dataset-name="${this.escapeHtml(dataset.name || 'Dataset')}">
                             <i class="fas fa-file-archive"></i> Download Converted Folder (ZIP)
                         </button>
                     </div>
                 </div>
+                `}
                 
                 <form id="datasetDetailsForm" class="dataset-details-form">
                     <input type="hidden" name="dataset_id" value="${dataset.id || dataset.uuid}">

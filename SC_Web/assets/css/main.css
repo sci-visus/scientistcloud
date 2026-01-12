@@ -197,23 +197,27 @@ body {
 
 /* Resize handles */
 .resize-handle {
-  width: 4px;
+  width: 6px;
   background-color: transparent;
   cursor: col-resize;
   position: relative;
   z-index: 10;
-  transition: background-color 0.2s;
+  transition: background-color 0.2s, width 0.2s;
   user-select: none;
   -webkit-user-select: none;
+  touch-action: none;
+  flex-shrink: 0;
 }
 
 .resize-handle:hover {
   background-color: var(--primary-color, #007bff);
+  width: 8px;
 }
 
 .resize-handle:active,
 .resize-handle.resizing {
   background-color: var(--primary-color, #007bff);
+  width: 8px;
 }
 
 .resize-handle-left {
@@ -344,6 +348,16 @@ body {
   background: var(--viewer-bg);
   transition: background 0.3s;
   overflow: hidden;
+  position: relative;
+}
+
+/* Allow scrolling in viewer container when content overflows */
+.viewer-container > .container-fluid,
+.viewer-container > div:not(.dashboard-container):not(iframe):not(#dashboardFrame) {
+  overflow-y: auto;
+  overflow-x: hidden;
+  height: 100%;
+  width: 100%;
 }
 
 /* Allow scrolling when upload interface is shown */
