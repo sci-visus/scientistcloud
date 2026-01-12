@@ -67,12 +67,14 @@ foreach ($publicDatasets as $dataset) {
   <!-- Custom CSS -->
   <link href="assets/css/main.css" rel="stylesheet">
 </head>
-<body>
+<body class="public-repo">
   <!-- Left Sidebar -->
   <aside class="sidebar d-flex flex-column align-items-center" id="folderSidebar">
     <img src="assets/images/scientistcloud-logo.png" class="logo" alt="ScientistCloud Logo">
     <div class="d-flex align-items-center justify-content-between w-100 px-2 mb-2">
-      <h5 class="mb-0" style="color: var(--fg-color);">Public Datasets</h5>
+      <h5 class="mb-0" style="color: var(--fg-color);">
+        <i class="fas fa-globe me-2" style="color: var(--primary-color);"></i>Public Datasets
+      </h5>
       <button class="btn btn-sm btn-outline-secondary" id="refreshDatasetsBtn" title="Refresh Datasets" style="border-color: var(--panel-border); color: var(--fg-color);">
         <i class="fas fa-sync-alt"></i>
       </button>
@@ -190,12 +192,20 @@ foreach ($publicDatasets as $dataset) {
   <section class="main">
     <div class="toolbar-wrapper">
       <div class="viewer-toolbar">
+        <div class="d-flex align-items-center me-3">
+          <span class="badge bg-primary me-2" style="background-color: var(--primary-color) !important; font-size: 0.75rem; padding: 0.35rem 0.65rem;">
+            <i class="fas fa-globe me-1"></i>PUBLIC REPOSITORY
+          </span>
+        </div>
         <label for="viewerType">Dashboard:</label>
         <select id="viewerType" class="form-select form-select-sm">
           <!-- Options will be populated dynamically by viewer-manager.js -->
           <option value="">Loading dashboards...</option>
         </select>
         <div class="btn-group ms-auto" role="group" aria-label="User actions">
+          <button type="button" class="btn btn-outline-light" id="shareBtn" title="Share Folder or Team">
+            <i class="fas fa-share-alt"></i> Share
+          </button>
           <a href="index.php" class="btn btn-outline-light" title="Back to Portal">
             <i class="fas fa-arrow-left"></i> Back to Portal
           </a>
@@ -222,6 +232,63 @@ foreach ($publicDatasets as $dataset) {
     <button class="collapse-btn right" id="toggleDetail">&#9654;</button>
   </aside>
 
+  <!-- Share Modal -->
+  <div class="modal fade" id="shareModal" tabindex="-1" aria-labelledby="shareModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+      <div class="modal-content" style="background-color: var(--panel-bg); border-color: var(--panel-border); color: var(--fg-color);">
+        <div class="modal-header" style="border-bottom-color: var(--panel-border);">
+          <h5 class="modal-title" id="shareModalLabel" style="color: var(--fg-color);">
+            <i class="fas fa-share-alt me-2"></i>Share Public Repository
+          </h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close" style="filter: invert(1);"></button>
+        </div>
+        <div class="modal-body">
+          <p class="text-muted" style="color: var(--fg-color); opacity: 0.7;">
+            Generate a shareable link to a specific folder or team's public datasets.
+          </p>
+          
+          <div class="mb-3">
+            <label for="shareType" class="form-label" style="color: var(--fg-color);">Share Type:</label>
+            <select class="form-select" id="shareType" style="background-color: var(--bg-color); border-color: var(--panel-border); color: var(--fg-color);">
+              <option value="folder">Folder</option>
+              <option value="team">Team</option>
+            </select>
+          </div>
+          
+          <div class="mb-3" id="folderSelectContainer">
+            <label for="shareFolder" class="form-label" style="color: var(--fg-color);">Select Folder:</label>
+            <select class="form-select" id="shareFolder" style="background-color: var(--bg-color); border-color: var(--panel-border); color: var(--fg-color);">
+              <option value="">Loading folders...</option>
+            </select>
+          </div>
+          
+          <div class="mb-3" id="teamSelectContainer" style="display: none;">
+            <label for="shareTeam" class="form-label" style="color: var(--fg-color);">Select Team:</label>
+            <select class="form-select" id="shareTeam" style="background-color: var(--bg-color); border-color: var(--panel-border); color: var(--fg-color);">
+              <option value="">Loading teams...</option>
+            </select>
+          </div>
+          
+          <div class="mb-3" id="shareLinkContainer" style="display: none;">
+            <label for="shareLink" class="form-label" style="color: var(--fg-color);">Shareable Link:</label>
+            <div class="input-group">
+              <input type="text" class="form-control" id="shareLink" readonly style="background-color: var(--bg-color); border-color: var(--panel-border); color: var(--fg-color);">
+              <button class="btn btn-outline-secondary" type="button" id="copyLinkBtn" style="border-color: var(--panel-border); color: var(--fg-color);">
+                <i class="fas fa-copy"></i> Copy
+              </button>
+            </div>
+            <small class="form-text text-muted" style="color: var(--fg-color); opacity: 0.7;">
+              Share this link to show only datasets from the selected folder or team.
+            </small>
+          </div>
+        </div>
+        <div class="modal-footer" style="border-top-color: var(--panel-border);">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal" style="background-color: var(--panel-bg); border-color: var(--panel-border); color: var(--fg-color);">Close</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <!-- Scripts -->
   <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
   <script src="assets/js/main.js"></script>
@@ -237,8 +304,37 @@ foreach ($publicDatasets as $dataset) {
       return isLocal ? '/api' : '/portal/api';
     }
 
+    // Share functionality
+    let shareModal = null;
+    let folders = [];
+    let teams = [];
+
     // Initialize when DOM is ready
     document.addEventListener('DOMContentLoaded', function() {
+      // Initialize Bootstrap modal
+      shareModal = new bootstrap.Modal(document.getElementById('shareModal'));
+      
+      // Share button handler
+      document.getElementById('shareBtn')?.addEventListener('click', () => {
+        loadShareOptions();
+        shareModal.show();
+      });
+      
+      // Share type change handler
+      document.getElementById('shareType')?.addEventListener('change', (e) => {
+        const shareType = e.target.value;
+        document.getElementById('folderSelectContainer').style.display = shareType === 'folder' ? 'block' : 'none';
+        document.getElementById('teamSelectContainer').style.display = shareType === 'team' ? 'block' : 'none';
+        document.getElementById('shareLinkContainer').style.display = 'none';
+      });
+      
+      // Folder/Team select handlers
+      document.getElementById('shareFolder')?.addEventListener('change', generateShareLink);
+      document.getElementById('shareTeam')?.addEventListener('change', generateShareLink);
+      
+      // Copy link button handler
+      document.getElementById('copyLinkBtn')?.addEventListener('click', copyShareLink);
+      
       // Hide upload/team buttons for public repo users
       const uploadBtn = document.getElementById('uploadDatasetBtn');
       const createTeamBtn = document.getElementById('createTeamBtn');
@@ -270,6 +366,117 @@ foreach ($publicDatasets as $dataset) {
         window.location.href = 'logout.php';
       });
     });
+    
+    // Load folders and teams for sharing
+    async function loadShareOptions() {
+      try {
+        const response = await fetch(`${getApiBasePath()}/get-public-folders-teams.php`, {
+          credentials: 'include'
+        });
+        
+        if (!response.ok) {
+          throw new Error('Failed to load share options');
+        }
+        
+        const data = await response.json();
+        
+        if (data.success) {
+          folders = data.folders || [];
+          teams = data.teams || [];
+          
+          // Populate folder dropdown
+          const folderSelect = document.getElementById('shareFolder');
+          if (folderSelect) {
+            folderSelect.innerHTML = '<option value="">Select a folder...</option>';
+            if (folders.length === 0) {
+              folderSelect.innerHTML += '<option value="" disabled>No folders with public datasets</option>';
+            } else {
+              folders.forEach(folder => {
+                const option = document.createElement('option');
+                option.value = folder.uuid;
+                option.textContent = folder.name;
+                folderSelect.appendChild(option);
+              });
+            }
+          }
+          
+          // Populate team dropdown
+          const teamSelect = document.getElementById('shareTeam');
+          if (teamSelect) {
+            teamSelect.innerHTML = '<option value="">Select a team...</option>';
+            if (teams.length === 0) {
+              teamSelect.innerHTML += '<option value="" disabled>No teams with public datasets</option>';
+            } else {
+              teams.forEach(team => {
+                const option = document.createElement('option');
+                option.value = team.uuid;
+                option.textContent = team.name;
+                teamSelect.appendChild(option);
+              });
+            }
+          }
+        }
+      } catch (error) {
+        console.error('Error loading share options:', error);
+        alert('Failed to load folders and teams. Please try again.');
+      }
+    }
+    
+    // Generate shareable link
+    function generateShareLink() {
+      const shareType = document.getElementById('shareType').value;
+      const shareLinkContainer = document.getElementById('shareLinkContainer');
+      const shareLinkInput = document.getElementById('shareLink');
+      
+      let link = window.location.origin + window.location.pathname;
+      let selectedValue = '';
+      
+      if (shareType === 'folder') {
+        selectedValue = document.getElementById('shareFolder').value;
+        if (selectedValue) {
+          link += `?folder=${encodeURIComponent(selectedValue)}`;
+        }
+      } else if (shareType === 'team') {
+        selectedValue = document.getElementById('shareTeam').value;
+        if (selectedValue) {
+          link += `?team=${encodeURIComponent(selectedValue)}`;
+        }
+      }
+      
+      if (selectedValue) {
+        shareLinkInput.value = link;
+        shareLinkContainer.style.display = 'block';
+      } else {
+        shareLinkContainer.style.display = 'none';
+      }
+    }
+    
+    // Copy share link to clipboard
+    async function copyShareLink() {
+      const shareLinkInput = document.getElementById('shareLink');
+      const copyBtn = document.getElementById('copyLinkBtn');
+      
+      try {
+        await navigator.clipboard.writeText(shareLinkInput.value);
+        const originalHTML = copyBtn.innerHTML;
+        copyBtn.innerHTML = '<i class="fas fa-check"></i> Copied!';
+        copyBtn.classList.add('btn-success');
+        copyBtn.classList.remove('btn-outline-secondary');
+        
+        setTimeout(() => {
+          copyBtn.innerHTML = originalHTML;
+          copyBtn.classList.remove('btn-success');
+          copyBtn.classList.add('btn-outline-secondary');
+        }, 2000);
+      } catch (error) {
+        console.error('Failed to copy link:', error);
+        // Fallback: select text
+        shareLinkInput.select();
+        shareLinkInput.setSelectionRange(0, 99999);
+        document.execCommand('copy');
+        alert('Link copied to clipboard!');
+      }
+    }
   </script>
 </body>
 </html>

@@ -33,6 +33,80 @@
   --warning-color: #E3A54F;
 }
 
+/* Public Repository Color Scheme - Teal/Cyan theme */
+.public-repo {
+  --primary-color: #0D9488;  /* Teal-600 */
+  --info-color: #14B8A6;     /* Teal-500 */
+  --success-color: #10B981;  /* Emerald-500 */
+  --warning-color: #F59E0B;  /* Amber-500 */
+  --danger-color: #06B6D4;   /* Cyan-500 */
+}
+
+.public-repo.light-theme {
+  --primary-color: #0F766E;  /* Teal-700 */
+  --info-color: #0D9488;      /* Teal-600 */
+  --success-color: #059669;  /* Emerald-600 */
+  --warning-color: #D97706;  /* Amber-600 */
+  --danger-color: #0891B2;   /* Cyan-600 */
+}
+
+/* Public Repository Accent Colors */
+.public-repo .sidebar {
+  border-right-color: var(--primary-color);
+  border-right-width: 2px;
+}
+
+.public-repo .details {
+  border-left-color: var(--primary-color);
+  border-left-width: 2px;
+}
+
+.public-repo .viewer-toolbar {
+  border-bottom: 2px solid var(--primary-color);
+  background: linear-gradient(to right, 
+    rgba(13, 148, 136, 0.05) 0%, 
+    var(--toolbar-bg) 20%,
+    var(--toolbar-bg) 100%);
+}
+
+.public-repo .btn-outline-light:hover {
+  background-color: var(--primary-color);
+  border-color: var(--primary-color);
+  color: white;
+}
+
+.public-repo .badge.bg-primary {
+  background-color: var(--primary-color) !important;
+}
+
+.public-repo .badge.bg-success {
+  background-color: var(--success-color) !important;
+}
+
+.public-repo .nav-link:hover,
+.public-repo .dataset-link:hover {
+  color: var(--primary-color);
+}
+
+.public-repo .clickable-file:hover {
+  background-color: rgba(13, 148, 136, 0.1);
+  color: var(--primary-color);
+}
+
+.public-repo.light-theme .clickable-file:hover {
+  background-color: rgba(13, 148, 136, 0.15);
+}
+
+/* Public Repository specific styling */
+.public-repo .alert-info {
+  background-color: rgba(20, 184, 166, 0.15) !important;
+  border-color: var(--info-color) !important;
+}
+
+.public-repo.light-theme .alert-info {
+  background-color: rgba(20, 184, 166, 0.25) !important;
+}
+
 /* Base styles */
 body {
   margin: 0;
