@@ -130,12 +130,14 @@ fi
 # Pull Portal Docker code
 PORTAL_DOCKER_DIR="$HOME/ScientistCloud2.0/scientistcloud/SC_Docker"
 if [ -d "$PORTAL_DOCKER_DIR" ]; then
-    echo "📥 Pulling latest Portal Docker code..."
+    echo "📥 Pulling latest Portal Docker code from dashChange branch..."
     pushd "$PORTAL_DOCKER_DIR"
     git fetch origin
-    git reset --hard origin/main
+    #git reset --hard origin/main
+    git checkout dashChange 2>/dev/null || git checkout -b dashChange origin/dashChange
+    git reset --hard origin/dashChange
     popd
-    echo "✅ Portal Docker code updated"
+    echo "✅ Portal Docker code updated from dashChange branch"
 fi
 
 # Start services only if not in dashboards-only mode
