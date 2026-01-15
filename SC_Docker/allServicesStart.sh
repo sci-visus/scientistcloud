@@ -33,11 +33,10 @@
 #      ./allServicesStart.sh -sw                # Rebuild both (both Dockerfiles changed)
 
 # Parse command line arguments
-SKIP_MAIN_SERVICES=true
+SKIP_MAIN_SERVICES=false
 DASHBOARDS_ONLY=false
 REBUILD_WEB=false
 REBUILD_SCLIB=false
-REBUILD_DASHBOARDS=false  # Default: don't rebuild dashboards
 
 for arg in "$@"; do
     case $arg in
@@ -132,6 +131,26 @@ PORTAL_DOCKER_DIR="$HOME/ScientistCloud2.0/scientistcloud/SC_Docker"
 if [ -d "$PORTAL_DOCKER_DIR" ]; then
     echo "📥 Pulling latest Portal Docker code from dashChange branch..."
     pushd "$PORTAL_DOCKER_DIR"
+    
+    # Fix vendor directory permissions before git operations
+    if [ -d "SC_Web/vendor" ]; then
+        echo "🔧 Fixing vendor directory permissions..."
+        # Remove extended attributes (macOS) if xattr is available
+        if command -v xattr >/dev/null 2>&1; then
+            find SC_Web/vendor -type f -exec xattr -c {} \; 2>/dev/null || true
+            find SC_Web/vendor -type d -exec xattr -c {} \; 2>/dev/null || true
+        fi
+        # Fix ownership and permissions
+        CURRENT_USER=$(whoami)
+        CURRENT_GROUP=$(id -gn)
+        sudo chown -R "$CURRENT_USER:$CURRENT_GROUP" SC_Web/vendor 2>/dev/null || \
+        chown -R "$CURRENT_USER:$CURRENT_GROUP" SC_Web/vendor 2>/dev/null || true
+        find SC_Web/vendor -type f -exec chmod 644 {} \; 2>/dev/null || true
+        find SC_Web/vendor -type d -exec chmod 755 {} \; 2>/dev/null || true
+        chmod -R u+w SC_Web/vendor 2>/dev/null || true
+        echo "✅ Vendor permissions fixed"
+    fi
+    
     git fetch origin
     #git reset --hard origin/main
     git checkout dashChange 2>/dev/null || git checkout -b dashChange origin/dashChange
