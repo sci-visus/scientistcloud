@@ -94,34 +94,60 @@ else
 fi
 
 # Pull latest code from scientistCloudLib repository (parent of Docker directory)
+# Using workingPrivateRepo branch from sci-visus/scientistCloudLib
 SCLIB_CODE_DIR="$HOME/ScientistCloud2.0/scientistCloudLib"
 if [ -d "$SCLIB_CODE_DIR" ]; then
-    echo "📥 Pulling latest SCLib code..."
+    echo "📥 Pulling latest SCLib code from workingPrivateRepo branch..."
     pushd "$SCLIB_CODE_DIR"
+    # Ensure remote is set to sci-visus/scientistCloudLib
+    if ! git remote get-url origin 2>/dev/null | grep -q "sci-visus/scientistCloudLib"; then
+        echo "   Setting remote to sci-visus/scientistCloudLib..."
+        git remote set-url origin https://github.com/sci-visus/scientistCloudLib.git 2>/dev/null || \
+        git remote add origin https://github.com/sci-visus/scientistCloudLib.git 2>/dev/null || true
+    fi
     git fetch origin
-    git reset --hard origin/main
+    # Checkout workingPrivateRepo branch (create local if it doesn't exist)
+    git checkout workingPrivateRepo 2>/dev/null || git checkout -b workingPrivateRepo origin/workingPrivateRepo
+    git reset --hard origin/workingPrivateRepo
     popd
-    echo "✅ SCLib code updated"
+    echo "✅ SCLib code updated from workingPrivateRepo branch"
 fi
 
-# Pull SCLib Docker code
+# Pull SCLib Docker code (same repository, different directory)
 SCLIB_DOCKER_DIR="$HOME/ScientistCloud2.0/scientistCloudLib/Docker"
 if [ -d "$SCLIB_DOCKER_DIR" ]; then
-    echo "📥 Pulling latest SCLib Docker code..."
+    echo "📥 Pulling latest SCLib Docker code from workingPrivateRepo branch..."
     pushd "$SCLIB_DOCKER_DIR"
+    # Ensure remote is set to sci-visus/scientistCloudLib
+    if ! git remote get-url origin 2>/dev/null | grep -q "sci-visus/scientistCloudLib"; then
+        echo "   Setting remote to sci-visus/scientistCloudLib..."
+        git remote set-url origin https://github.com/sci-visus/scientistCloudLib.git 2>/dev/null || \
+        git remote add origin https://github.com/sci-visus/scientistCloudLib.git 2>/dev/null || true
+    fi
     git fetch origin
-    git reset --hard origin/main
+    # Checkout workingPrivateRepo branch (create local if it doesn't exist)
+    git checkout workingPrivateRepo 2>/dev/null || git checkout -b workingPrivateRepo origin/workingPrivateRepo
+    git reset --hard origin/workingPrivateRepo
     popd
-    echo "✅ SCLib Docker code updated"
+    echo "✅ SCLib Docker code updated from workingPrivateRepo branch"
 fi
 
 # Pull Portal Docker code
+# Note: Portal code may be in a different repository - adjust if needed
 PORTAL_DOCKER_DIR="$HOME/ScientistCloud2.0/scientistcloud/SC_Docker"
 if [ -d "$PORTAL_DOCKER_DIR" ]; then
     echo "📥 Pulling latest Portal Docker code..."
     pushd "$PORTAL_DOCKER_DIR"
     git fetch origin
-    git reset --hard origin/main
+    # Check if workingPrivateRepo branch exists for portal, otherwise use main
+    if git ls-remote --heads origin workingPrivateRepo | grep -q workingPrivateRepo; then
+        echo "   Using workingPrivateRepo branch for Portal..."
+        git checkout workingPrivateRepo 2>/dev/null || git checkout -b workingPrivateRepo origin/workingPrivateRepo
+        git reset --hard origin/workingPrivateRepo
+    else
+        echo "   workingPrivateRepo branch not found, using main branch..."
+        git reset --hard origin/main
+    fi
     popd
     echo "✅ Portal Docker code updated"
 fi
