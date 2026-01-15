@@ -135,8 +135,32 @@ fi
 # Pull Portal Docker code
 # Note: Portal code may be in a different repository - adjust if needed
 PORTAL_DOCKER_DIR="$HOME/ScientistCloud2.0/scientistcloud/SC_Docker"
+SCIENTISTCLOUD_DIR="$HOME/ScientistCloud2.0/scientistcloud"
 if [ -d "$PORTAL_DOCKER_DIR" ]; then
     echo "📥 Pulling latest Portal Docker code..."
+    
+    # Fix vendor directory permissions BEFORE git operations to prevent permission errors
+    if [ -d "$SCIENTISTCLOUD_DIR/SC_Web/vendor" ]; then
+        echo "🔧 Fixing vendor directory permissions before git operations..."
+        pushd "$SCIENTISTCLOUD_DIR"
+        # Remove extended attributes (if on macOS)
+        if command -v xattr >/dev/null 2>&1; then
+            find SC_Web/vendor -type f -exec xattr -c {} \; 2>/dev/null || true
+            find SC_Web/vendor -type d -exec xattr -c {} \; 2>/dev/null || true
+        fi
+        # Fix ownership
+        CURRENT_USER=$(whoami)
+        CURRENT_GROUP=$(id -gn)
+        sudo chown -R "$CURRENT_USER:$CURRENT_GROUP" SC_Web/vendor 2>/dev/null || \
+        chown -R "$CURRENT_USER:$CURRENT_GROUP" SC_Web/vendor 2>/dev/null || true
+        # Fix permissions
+        find SC_Web/vendor -type f -exec chmod 644 {} \; 2>/dev/null || true
+        find SC_Web/vendor -type d -exec chmod 755 {} \; 2>/dev/null || true
+        chmod -R u+w SC_Web/vendor 2>/dev/null || true
+        echo "✅ Vendor permissions fixed"
+        popd
+    fi
+    
     pushd "$PORTAL_DOCKER_DIR"
     git fetch origin
     # Check if workingPrivateRepo branch exists for portal, otherwise use main

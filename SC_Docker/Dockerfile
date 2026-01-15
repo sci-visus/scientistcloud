@@ -171,6 +171,24 @@ PYEOF\n\
         fi\n\
     fi\n\
     \n\
+    # Fix vendor directory permissions to prevent git permission errors\n\
+    # This is needed because Docker container may create files with different ownership\n\
+    if [ -d vendor ]; then\n\
+        echo "🔧 Fixing vendor directory permissions..."\n\
+        # Remove extended attributes (if xattr is available, primarily for macOS)\n\
+        if command -v xattr >/dev/null 2>&1; then\n\
+            find vendor -type f -exec xattr -c {} \\; 2>/dev/null || true\n\
+            find vendor -type d -exec xattr -c {} \\; 2>/dev/null || true\n\
+        fi\n\
+        # Fix ownership to www-data (container user)\n\
+        chown -R www-data:www-data vendor 2>/dev/null || true\n\
+        # Fix permissions\n\
+        find vendor -type f -exec chmod 644 {} \\; 2>/dev/null || true\n\
+        find vendor -type d -exec chmod 755 {} \\; 2>/dev/null || true\n\
+        chmod -R u+w vendor 2>/dev/null || true\n\
+        echo "✅ Vendor permissions fixed"\n\
+    fi\n\
+    \n\
     # Check if autoload exists and if key packages are installed\n\
     if [ ! -f vendor/autoload.php ] || [ ! -d vendor/guzzlehttp ] || [ ! -d vendor/php-http ]; then\n\
         echo "📥 Installing/updating dependencies from composer.json..."\n\
