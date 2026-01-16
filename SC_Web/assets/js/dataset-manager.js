@@ -1837,6 +1837,16 @@ class DatasetManager {
                         </div>
                         
                         <div class="mb-2">
+                            <label class="form-label">Download Permission:</label>
+                            <select class="form-select form-select-sm" name="is_downloadable" id="datasetIsDownloadable">
+                                <option value="only owner" ${(dataset.is_downloadable || 'only owner') === 'only owner' ? 'selected' : ''}>Only Owner</option>
+                                <option value="only team" ${dataset.is_downloadable === 'only team' ? 'selected' : ''}>Only Team</option>
+                                <option value="public" ${dataset.is_downloadable === 'public' ? 'selected' : ''}>Public</option>
+                            </select>
+                            <small class="form-text text-muted d-block">Who can download this dataset</small>
+                        </div>
+                        
+                        <div class="mb-2">
                             <div class="form-check">
                                 <input class="form-check-input" type="checkbox" name="convert_to_idx" id="datasetConvertToIdx">
                                 <label class="form-check-label" for="datasetConvertToIdx">
@@ -1943,6 +1953,7 @@ class DatasetManager {
         // Get checkbox values
         const isPublic = formData.get('is_public') === 'on';
         const convertToIdx = formData.get('convert_to_idx') === 'on';
+        const isDownloadable = formData.get('is_downloadable') || 'only owner';
         
         const updateData = {
             dataset_id: datasetId,
@@ -1953,7 +1964,8 @@ class DatasetManager {
             dimensions: formData.get('dimensions'),
             preferred_dashboard: formData.get('preferred_dashboard'),
             google_drive_link: formData.get('google_drive_link') || null,
-            is_public: isPublic
+            is_public: isPublic,
+            is_downloadable: isDownloadable
         };
         
         // If convert_to_idx is checked, set status to "conversion queued"

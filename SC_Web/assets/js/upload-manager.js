@@ -373,6 +373,16 @@ class UploadManager {
                 </div>
 
                 <div class="mb-3">
+                    <label class="form-label">Download Permission:</label>
+                    <select class="form-select" name="is_downloadable" id="localIsDownloadable">
+                        <option value="only owner" selected>Only Owner</option>
+                        <option value="only team">Only Team</option>
+                        <option value="public">Public</option>
+                    </select>
+                    <small class="form-text text-muted">Who can download this dataset</small>
+                </div>
+
+                <div class="mb-3">
                     <div class="form-check">
                         <input class="form-check-input" type="checkbox" name="convert" id="localConvert" checked>
                         <label class="form-check-label" for="localConvert">
@@ -484,6 +494,16 @@ class UploadManager {
                             Public Data Access Granted
                         </label>
                     </div>
+                </div>
+
+                <div class="mb-3">
+                    <label class="form-label">Download Permission:</label>
+                    <select class="form-select" name="is_downloadable" id="googleIsDownloadable">
+                        <option value="only owner" selected>Only Owner</option>
+                        <option value="only team">Only Team</option>
+                        <option value="public">Public</option>
+                    </select>
+                    <small class="form-text text-muted">Who can download this dataset</small>
                 </div>
 
                 <div class="mb-3">
@@ -1347,6 +1367,7 @@ class UploadManager {
             sensor: formData.get('sensor'),
             convert: formData.get('convert') === 'on',
             is_public: formData.get('is_public') === 'on',
+            is_downloadable: formData.get('is_downloadable') || 'only owner',
             folder: folderValue,
             team_uuid: formData.get('team_uuid') || null,
             tags: formData.get('tags') || '',
