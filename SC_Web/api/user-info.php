@@ -52,9 +52,16 @@ try {
     ob_end_clean();
     echo json_encode([
         'success' => true,
-        'email' => $user['email'] ?? '',
-        'id' => $user['id'] ?? '',
-        'name' => $user['name'] ?? ''
+        'user' => [
+            'email' => $user['email'] ?? '',
+            'id' => $user['id'] ?? '',
+            'name' => $user['name'] ?? '',
+            'team_id' => $user['team_id'] ?? null
+        ],
+        'email' => $user['email'] ?? '',  // Keep for backward compatibility
+        'id' => $user['id'] ?? '',  // Keep for backward compatibility
+        'name' => $user['name'] ?? '',  // Keep for backward compatibility
+        'team_id' => $user['team_id'] ?? null  // Keep for backward compatibility
     ]);
 
 } catch (Exception $e) {

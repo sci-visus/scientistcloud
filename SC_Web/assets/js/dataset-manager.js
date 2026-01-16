@@ -491,7 +491,33 @@ class DatasetManager {
                     // Load files if not already loaded
                     const content = filesContainer.querySelector('.dataset-files-content');
                     if (content && (content.innerHTML.includes('Loading files') || content.innerHTML.trim() === '')) {
-                        this.loadDatasetFilesIntoContainer(datasetUuid, content);
+                        // Try to get dataset details from the dataset item element
+                        const datasetItem = toggleButton.closest('.dataset-item');
+                        let dataset = null;
+                        
+                        // Get dataset details from currentDataset if available
+                        if (this.currentDataset?.details && 
+                            (this.currentDataset.uuid === datasetUuid || this.currentDataset.id === datasetUuid)) {
+                            dataset = this.currentDataset.details;
+                        } else if (datasetItem) {
+                            // Try to get dataset ID from the dataset item
+                            const datasetId = datasetItem.getAttribute('data-dataset-id');
+                            if (datasetId) {
+                                try {
+                                    const datasetResponse = await fetch(`${getApiBasePath()}/dataset-details.php?dataset_id=${datasetId}`);
+                                    if (datasetResponse.ok) {
+                                        const datasetData = await datasetResponse.json();
+                                        if (datasetData.success) {
+                                            dataset = datasetData.dataset;
+                                        }
+                                    }
+                                } catch (error) {
+                                    console.warn('Could not fetch dataset details for permission check:', error);
+                                }
+                            }
+                        }
+                        
+                        this.loadDatasetFilesIntoContainer(datasetUuid, content, dataset);
                     }
                 }
             }
@@ -708,7 +734,7 @@ class DatasetManager {
     /**
      * Load dataset files structure into a specific container
      */
-    async loadDatasetFilesIntoContainer(datasetUuid, container) {
+    async loadDatasetFilesIntoContainer(datasetUuid, container, dataset = null) {
         if (!datasetUuid || !container) {
             return;
         }
@@ -723,12 +749,44 @@ class DatasetManager {
         `;
 
         try {
+            // Get dataset details if not provided to check download permissions
+            if (!dataset) {
+                try {
+                    const datasetResponse = await fetch(`${getApiBasePath()}/dataset-details.php?dataset_id=${datasetUuid}`);
+                    if (datasetResponse.ok) {
+                        const datasetData = await datasetResponse.json();
+                        if (datasetData.success) {
+                            dataset = datasetData.dataset;
+                        }
+                    }
+                } catch (error) {
+                    console.warn('Could not fetch dataset details for permission check:', error);
+                }
+            }
+
+            // Check download permissions
+            let canDownload = true;
+            if (dataset) {
+                canDownload = await this.canDownloadDataset(dataset);
+            }
+
             const response = await fetch(`${getApiBasePath()}/dataset-files.php?dataset_uuid=${datasetUuid}`);
             const data = await response.json();
 
             console.log('Dataset files API response:', data);
 
             if (data.success) {
+                // If user can't download, show restricted message instead of files
+                if (!canDownload) {
+                    container.innerHTML = `
+                        <div class="alert alert-info small mb-0">
+                            <i class="fas fa-info-circle me-2"></i>
+                            File access is restricted. Only ${dataset?.is_downloadable === 'only owner' ? 'the owner' : dataset?.is_downloadable === 'only team' ? 'team members' : 'authorized users'} can download files from this dataset.
+                        </div>
+                    `;
+                    return;
+                }
+
                 // Log detailed information for debugging
                 const uploadDir = data.directories?.upload;
                 const convertedDir = data.directories?.converted;
@@ -780,10 +838,43 @@ class DatasetManager {
         `;
 
         try {
+            // Get dataset details to check download permissions
+            let dataset = this.currentDataset?.details || null;
+            if (!dataset) {
+                try {
+                    const datasetResponse = await fetch(`${getApiBasePath()}/dataset-details.php?dataset_id=${datasetUuid}`);
+                    if (datasetResponse.ok) {
+                        const datasetData = await datasetResponse.json();
+                        if (datasetData.success) {
+                            dataset = datasetData.dataset;
+                        }
+                    }
+                } catch (error) {
+                    console.warn('Could not fetch dataset details for permission check:', error);
+                }
+            }
+
+            // Check download permissions
+            let canDownload = true;
+            if (dataset) {
+                canDownload = await this.canDownloadDataset(dataset);
+            }
+
             const response = await fetch(`${getApiBasePath()}/dataset-files.php?dataset_uuid=${datasetUuid}`);
             const data = await response.json();
 
             if (data.success) {
+                // If user can't download, show restricted message
+                if (!canDownload) {
+                    filesContainer.innerHTML = `
+                        <div class="alert alert-info small mb-0">
+                            <i class="fas fa-info-circle me-2"></i>
+                            File access is restricted. Only ${dataset?.is_downloadable === 'only owner' ? 'the owner' : dataset?.is_downloadable === 'only team' ? 'team members' : 'authorized users'} can download files from this dataset.
+                        </div>
+                    `;
+                    return;
+                }
+
                 this.displayDatasetFiles(data);
             } else {
                 filesContainer.innerHTML = `<p class="text-muted small">${data.error || 'Failed to load files'}</p>`;
@@ -826,6 +917,37 @@ class DatasetManager {
         if (!viewerContainer) {
             console.error('Viewer container not found');
             return;
+        }
+
+        // Check download permissions before allowing file viewing
+        let dataset = this.currentDataset?.details || null;
+        if (!dataset) {
+            try {
+                const datasetResponse = await fetch(`${getApiBasePath()}/dataset-details.php?dataset_id=${datasetUuid}`);
+                if (datasetResponse.ok) {
+                    const datasetData = await datasetResponse.json();
+                    if (datasetData.success) {
+                        dataset = datasetData.dataset;
+                    }
+                }
+            } catch (error) {
+                console.warn('Could not fetch dataset details for permission check:', error);
+            }
+        }
+
+        if (dataset) {
+            const canDownload = await this.canDownloadDataset(dataset);
+            if (!canDownload) {
+                viewerContainer.innerHTML = `
+                    <div class="container-fluid p-4">
+                        <div class="alert alert-warning">
+                            <i class="fas fa-lock me-2"></i>
+                            File access is restricted. Only ${dataset.is_downloadable === 'only owner' ? 'the owner' : dataset.is_downloadable === 'only team' ? 'team members' : 'authorized users'} can access files from this dataset.
+                        </div>
+                    </div>
+                `;
+                return;
+            }
         }
 
         // Show loading state
@@ -911,6 +1033,37 @@ class DatasetManager {
         if (!viewerContainer) {
             console.error('Viewer container not found');
             return;
+        }
+
+        // Check download permissions before allowing file viewing
+        let dataset = this.currentDataset?.details || null;
+        if (!dataset) {
+            try {
+                const datasetResponse = await fetch(`${getApiBasePath()}/dataset-details.php?dataset_id=${datasetUuid}`);
+                if (datasetResponse.ok) {
+                    const datasetData = await datasetResponse.json();
+                    if (datasetData.success) {
+                        dataset = datasetData.dataset;
+                    }
+                }
+            } catch (error) {
+                console.warn('Could not fetch dataset details for permission check:', error);
+            }
+        }
+
+        if (dataset) {
+            const canDownload = await this.canDownloadDataset(dataset);
+            if (!canDownload) {
+                viewerContainer.innerHTML = `
+                    <div class="container-fluid p-4">
+                        <div class="alert alert-warning">
+                            <i class="fas fa-lock me-2"></i>
+                            File access is restricted. Only ${dataset.is_downloadable === 'only owner' ? 'the owner' : dataset.is_downloadable === 'only team' ? 'team members' : 'authorized users'} can access files from this dataset.
+                        </div>
+                    </div>
+                `;
+                return;
+            }
         }
 
         // Show loading state
@@ -1262,6 +1415,86 @@ class DatasetManager {
         const div = document.createElement('div');
         div.textContent = text;
         return div.innerHTML;
+    }
+
+    /**
+     * Check if current user can download a dataset based on is_downloadable setting
+     * @param {Object} dataset - Dataset object with is_downloadable, user, user_email, team_uuid fields
+     * @param {string} currentUserEmail - Current user's email (optional, will fetch if not provided)
+     * @param {string} currentUserTeamId - Current user's team ID (optional, will fetch if not provided)
+     * @returns {boolean} - True if user can download, false otherwise
+     */
+    async canDownloadDataset(dataset, currentUserEmail = null, currentUserTeamId = null) {
+        // Default to "only owner" if not set
+        const isDownloadable = dataset.is_downloadable || 'only owner';
+        
+        // If public, anyone can download
+        if (isDownloadable === 'public') {
+            return true;
+        }
+        
+        // Get current user info if not provided
+        if (!currentUserEmail) {
+            try {
+                const userResponse = await fetch(`${getApiBasePath()}/user-info.php`);
+                if (userResponse.ok) {
+                    const userData = await userResponse.json();
+                    if (userData.success) {
+                        // Support both old format (direct fields) and new format (user object)
+                        currentUserEmail = userData.user?.email || userData.email || userData.user?.id || userData.id;
+                        currentUserTeamId = currentUserTeamId || userData.user?.team_id || userData.team_id;
+                    }
+                }
+            } catch (error) {
+                console.warn('Could not get user info for download check:', error);
+                return false; // If we can't get user info, deny download
+            }
+        }
+        
+        if (!currentUserEmail) {
+            return false; // No user email, can't download
+        }
+        
+        // Check if user is the owner
+        const isOwner = dataset.user === currentUserEmail || 
+                       dataset.user_email === currentUserEmail || 
+                       dataset.user_id === currentUserEmail;
+        
+        if (isDownloadable === 'only owner') {
+            return isOwner;
+        }
+        
+        if (isDownloadable === 'only team') {
+            // Owner can always download
+            if (isOwner) {
+                return true;
+            }
+            // Check if user is in the same team
+            if (dataset.team_uuid) {
+                // Get user's team if not provided
+                if (!currentUserTeamId) {
+                    try {
+                        const userResponse = await fetch(`${getApiBasePath()}/user-info.php`);
+                        if (userResponse.ok) {
+                            const userData = await userResponse.json();
+                            if (userData.success) {
+                                currentUserTeamId = userData.user?.team_id || userData.team_id;
+                            }
+                        }
+                    } catch (error) {
+                        console.warn('Could not get user team info:', error);
+                    }
+                }
+                // Compare team IDs
+                if (currentUserTeamId && dataset.team_uuid) {
+                    return currentUserTeamId === dataset.team_uuid;
+                }
+            }
+            return false;
+        }
+        
+        // Default: only owner
+        return isOwner;
     }
 
     /**
