@@ -5,11 +5,11 @@
 
 /* Public Portal Specific Variables */
 .public-portal {
-  --sidebar-bg: #1a1a1a;
+  --sidebar-bg: rgb(78, 71, 127); /* Purple background */
   --sidebar-text: #ffffff;
-  --sidebar-border: #333333;
+  --sidebar-border: rgba(255, 255, 255, 0.2);
   --sidebar-hover: rgba(255, 255, 255, 0.1);
-  --sidebar-active: rgba(255, 255, 255, 0.15);
+  --sidebar-active: rgb(117, 192, 222); /* Selected dataset background */
 }
 
 /* Dark Left Sidebar */
@@ -42,7 +42,8 @@
 .public-portal .sidebar .nav-link.active,
 .public-portal .sidebar .dataset-link.active {
   background-color: var(--sidebar-active) !important;
-  color: var(--sidebar-text) !important;
+  color: #000000 !important; /* Dark text for better contrast on light blue background */
+  font-weight: 500;
 }
 
 /* Buttons in Sidebar */
