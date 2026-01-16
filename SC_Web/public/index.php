@@ -71,6 +71,9 @@ $publicDatasets = getPublicDatasets();
           <a href="../docs.php" class="btn btn-outline-light" title="Documentation" target="_blank">
             <i class="fas fa-book"></i> Docs
           </a>
+          <a href="https://scientistcloud.com/portal/index.php" class="btn btn-outline-light" title="Sign In to Access Full Portal">
+            <i class="fas fa-user-circle"></i> Sign In
+          </a>
         </div>
       </div>
     </div>
