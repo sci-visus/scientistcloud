@@ -6,7 +6,10 @@
 
 require_once(__DIR__ . '/../config.php');
 require_once(__DIR__ . '/auth.php');
-require_once(__DIR__ . '/sclib_client.php');
+// SCLib client is conditionally included - only when needed
+if (!function_exists('getSCLibClient')) {
+    require_once(__DIR__ . '/sclib_client.php');
+}
 
 /**
  * Get user's datasets
@@ -524,53 +527,60 @@ function getAllDatasetsByEmail($userEmail) {
 
 /**
  * Get all public datasets (no authentication required)
- * Queries MongoDB directly for datasets where is_public = true
+ * Uses SCLib API to query for public datasets
  * 
  * @return array Array of formatted public datasets
  */
 function getPublicDatasets() {
     try {
-        logMessage('INFO', 'Getting public datasets');
+        logMessage('INFO', 'Getting public datasets via SCLib API');
         
-        // Get MongoDB connection from config
-        $mongo_url = defined('MONGO_URL') ? MONGO_URL : (getenv('MONGO_URL') ?: 'mongodb://localhost:27017');
-        $db_name = defined('DB_NAME') ? DB_NAME : (getenv('DB_NAME') ?: 'scientistcloud');
+        // Ensure SCLib client is available
+        if (!function_exists('getSCLibClient')) {
+            require_once(__DIR__ . '/sclib_client.php');
+        }
         
-        // Check if MongoDB extension is available
-        if (!class_exists('MongoDB\Client')) {
-            error_log("MongoDB PHP extension not available");
+        $sclib = getSCLibClient();
+        
+        // Call SCLib API endpoint for public datasets
+        try {
+            $response = $sclib->makeRequest('/api/v1/datasets/public', 'GET');
+            
+            if (isset($response['success']) && $response['success']) {
+                $datasets = $response['datasets'] ?? [];
+                
+                logMessage('INFO', 'Retrieved public datasets from SCLib', [
+                    'count' => count($datasets)
+                ]);
+                
+                // Format datasets using formatDataset function
+                $formattedDatasets = [];
+                foreach ($datasets as $dataset) {
+                    try {
+                        $formattedDatasets[] = formatDataset($dataset);
+                    } catch (Exception $e) {
+                        logMessage('ERROR', 'Failed to format dataset', [
+                            'dataset_uuid' => $dataset['uuid'] ?? 'unknown',
+                            'error' => $e->getMessage()
+                        ]);
+                    }
+                }
+                
+                return $formattedDatasets;
+            } else {
+                logMessage('WARNING', 'SCLib API returned unsuccessful response', [
+                    'response' => $response
+                ]);
+                return [];
+            }
+            
+        } catch (Exception $e) {
+            logMessage('ERROR', 'Failed to call SCLib API for public datasets', [
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString()
+            ]);
             return [];
         }
-        
-        // Use MongoDB PHP extension
-        $mongo_client = new MongoDB\Client($mongo_url);
-        $db = $mongo_client->selectDatabase($db_name);
-        $datasets_collection = $db->selectCollection(COLLECTION_DATASETS);
-        
-        // Query for public datasets - handle both boolean and string values
-        $query = [
-            '$or' => [
-                ['is_public' => true],
-                ['is_public' => 'true'],
-                ['is_public' => 'True'],
-                ['is_public' => 1]
-            ]
-        ];
-        
-        // Find public datasets
-        $publicDatasets = $datasets_collection->find($query)
-            ->sort(['time' => -1]) // Sort by creation time, newest first
-            ->toArray();
-        
-        logMessage('INFO', 'Found public datasets', ['count' => count($publicDatasets)]);
-        
-        // Format datasets
-        $formattedDatasets = [];
-        foreach ($publicDatasets as $dataset) {
-            $formattedDatasets[] = formatDataset($dataset);
-        }
-        
-        return $formattedDatasets;
         
     } catch (Exception $e) {
         logMessage('ERROR', 'Failed to get public datasets', [

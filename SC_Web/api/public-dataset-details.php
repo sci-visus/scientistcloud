@@ -35,6 +35,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
 
 require_once(__DIR__ . '/../config.php');
 require_once(__DIR__ . '/../includes/dataset_manager.php');
+require_once(__DIR__ . '/../includes/sclib_client.php');
 
 try {
     // Get dataset ID from request
@@ -46,69 +47,74 @@ try {
         exit;
     }
 
-    // Get MongoDB connection to verify dataset is public
-    $mongo_url = defined('MONGO_URL') ? MONGO_URL : (getenv('MONGO_URL') ?: 'mongodb://localhost:27017');
-    $db_name = defined('DB_NAME') ? DB_NAME : (getenv('DB_NAME') ?: 'scientistcloud');
+    // Use SCLib API to get public dataset details
+    $sclib = getSCLibClient();
     
-    // Check if MongoDB extension is available
-    if (!class_exists('MongoDB\Client')) {
+    try {
+        $sclibResponse = $sclib->makeRequest("/api/v1/datasets/public/{$datasetId}", 'GET');
+        
+        if (isset($sclibResponse['success']) && $sclibResponse['success']) {
+            $dataset = $sclibResponse['dataset'] ?? null;
+            
+            if (!$dataset) {
+                ob_end_clean();
+                http_response_code(404);
+                echo json_encode(['success' => false, 'error' => 'Dataset not found']);
+                exit;
+            }
+            
+            // Format dataset using formatDataset function for consistency
+            try {
+                $formattedDataset = formatDataset($dataset);
+            } catch (Exception $e) {
+                logMessage('ERROR', 'Failed to format dataset', [
+                    'dataset_uuid' => $dataset['uuid'] ?? 'unknown',
+                    'error' => $e->getMessage()
+                ]);
+                // Use dataset as-is if formatting fails
+                $formattedDataset = $dataset;
+            }
+            
+            // Remove sensitive user information (should already be removed by SCLib, but ensure it)
+            unset($formattedDataset['user_id']);
+            unset($formattedDataset['user']);
+            unset($formattedDataset['user_email']);
+            unset($formattedDataset['shared_with']);
+            unset($formattedDataset['team_id']);
+            
+            $response = [
+                'success' => true,
+                'dataset' => $formattedDataset
+            ];
+            
+        } else {
+            $errorMsg = $sclibResponse['detail'] ?? $sclibResponse['error'] ?? 'Failed to get dataset';
+            $statusCode = 404;
+            if (strpos($errorMsg, 'not public') !== false || strpos($errorMsg, '403') !== false) {
+                $statusCode = 403;
+            }
+            
+            ob_end_clean();
+            http_response_code($statusCode);
+            echo json_encode(['success' => false, 'error' => $errorMsg]);
+            exit;
+        }
+        
+    } catch (Exception $e) {
+        logMessage('ERROR', 'Failed to get public dataset from SCLib', [
+            'dataset_id' => $datasetId,
+            'error' => $e->getMessage()
+        ]);
+        
         ob_end_clean();
         http_response_code(500);
-        echo json_encode(['success' => false, 'error' => 'Database connection not available']);
+        echo json_encode([
+            'success' => false,
+            'error' => 'Internal server error',
+            'message' => $e->getMessage()
+        ]);
         exit;
     }
-    
-    // Use MongoDB PHP extension
-    $mongo_client = new MongoDB\Client($mongo_url);
-    $db = $mongo_client->selectDatabase($db_name);
-    $datasets_collection = $db->selectCollection(COLLECTION_DATASETS);
-    
-    // Find dataset by UUID or ID
-    $dataset = $datasets_collection->findOne([
-        '$or' => [
-            ['uuid' => $datasetId],
-            ['_id' => new MongoDB\BSON\ObjectId($datasetId)]
-        ]
-    ]);
-    
-    if (!$dataset) {
-        ob_end_clean();
-        http_response_code(404);
-        echo json_encode(['success' => false, 'error' => 'Dataset not found']);
-        exit;
-    }
-    
-    // Convert MongoDB document to array
-    $datasetArray = $dataset->toArray();
-    
-    // Verify dataset is public
-    $is_public = $datasetArray['is_public'] ?? false;
-    if (is_string($is_public)) {
-        $is_public = filter_var($is_public, FILTER_VALIDATE_BOOLEAN);
-    }
-    
-    if (!$is_public && $is_public !== 'true' && $is_public !== 'True' && $is_public !== 1) {
-        ob_end_clean();
-        http_response_code(403);
-        echo json_encode(['success' => false, 'error' => 'Dataset is not public']);
-        exit;
-    }
-    
-    // Format dataset (keep UUID for dashboard loading, but remove user info)
-    $formattedDataset = formatDataset($datasetArray);
-    
-    // Remove sensitive user information for public access (keep UUID for dashboard functionality)
-    unset($formattedDataset['user_id']);
-    unset($formattedDataset['user']);
-    unset($formattedDataset['user_email']);
-    unset($formattedDataset['shared_with']);
-    unset($formattedDataset['team_id']);
-    
-    // Format response
-    $response = [
-        'success' => true,
-        'dataset' => $formattedDataset
-    ];
 
     // Clean output buffer and send response
     ob_end_clean();

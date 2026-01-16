@@ -96,10 +96,17 @@ class PublicDatasetManager {
             }
             
             // Public datasets are in data.datasets.public
-            this.datasets = data.datasets.public || [];
+            this.datasets = data.datasets?.public || [];
             this.folders = data.folders || [];
             
-            console.log(`Loaded ${this.datasets.length} public datasets`);
+            console.log(`Loaded ${this.datasets.length} public datasets`, data);
+            
+            if (this.datasets.length === 0) {
+                console.warn('No public datasets found. This could mean:');
+                console.warn('1. No datasets are marked as public (is_public = true)');
+                console.warn('2. There are no datasets in the database');
+                console.warn('3. There was an error querying the database');
+            }
             
             // Render dataset list
             this.renderDatasetList();

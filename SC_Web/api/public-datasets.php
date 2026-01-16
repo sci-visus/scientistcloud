@@ -42,101 +42,120 @@ if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
 }
 
 try {
-    // Get public datasets (no authentication required)
-    $publicDatasets = getPublicDatasets();
+    // Get public datasets via SCLib API (no authentication required)
+    require_once(__DIR__ . '/../includes/sclib_client.php');
+    $sclib = getSCLibClient();
     
-    // Extract folders from datasets
-    $folders = [];
-    $folderCounts = [];
-    
-    foreach ($publicDatasets as $dataset) {
-        $folderUuid = $dataset['folder_uuid'] ?: 'root';
-        if (!isset($folderCounts[$folderUuid])) {
-            $folderCounts[$folderUuid] = 0;
+    // Call SCLib API endpoint for public datasets
+    try {
+        $sclibResponse = $sclib->makeRequest('/api/v1/datasets/public', 'GET');
+        
+        if (isset($sclibResponse['success']) && $sclibResponse['success']) {
+            // SCLib already returns formatted data with folders and stats
+            $response = [
+                'success' => true,
+                'datasets' => [
+                    'public' => $sclibResponse['datasets'] ?? []
+                ],
+                'folders' => $sclibResponse['folders'] ?? [],
+                'stats' => $sclibResponse['stats'] ?? [
+                    'total_datasets' => 0,
+                    'total_size' => 0,
+                    'status_counts' => []
+                ]
+            ];
+            
+            // Format datasets using formatDataset function for consistency
+            $formattedDatasets = [];
+            foreach ($response['datasets']['public'] as $dataset) {
+                try {
+                    $formattedDatasets[] = formatDataset($dataset);
+                } catch (Exception $e) {
+                    logMessage('ERROR', 'Failed to format dataset', [
+                        'dataset_uuid' => $dataset['uuid'] ?? 'unknown',
+                        'error' => $e->getMessage()
+                    ]);
+                    // Include unformatted dataset as fallback
+                    $formattedDatasets[] = $dataset;
+                }
+            }
+            
+            $response['datasets']['public'] = $formattedDatasets;
+            
+        } else {
+            // Fallback: use getPublicDatasets() function
+            $publicDatasets = getPublicDatasets();
+            
+            // Extract folders from datasets
+            $folders = [];
+            $folderCounts = [];
+            
+            foreach ($publicDatasets as $dataset) {
+                $folderUuid = $dataset['folder_uuid'] ?: 'root';
+                if (!isset($folderCounts[$folderUuid])) {
+                    $folderCounts[$folderUuid] = 0;
+                }
+                $folderCounts[$folderUuid]++;
+            }
+            
+            foreach ($folderCounts as $folderUuid => $count) {
+                $folders[] = [
+                    'uuid' => $folderUuid,
+                    'name' => $folderUuid === 'root' ? 'Root' : $folderUuid,
+                    'count' => $count
+                ];
+            }
+            
+            // Calculate stats
+            $totalDatasets = count($publicDatasets);
+            $totalSize = 0;
+            $statusCounts = [];
+            
+            foreach ($publicDatasets as $dataset) {
+                $dataSize = $dataset['data_size'] ?? 0;
+                $totalSize += is_numeric($dataSize) ? (float)$dataSize : 0;
+                $status = $dataset['status'] ?? 'unknown';
+                $statusCounts[$status] = ($statusCounts[$status] ?? 0) + 1;
+            }
+            
+            $response = [
+                'success' => true,
+                'datasets' => [
+                    'public' => $publicDatasets
+                ],
+                'folders' => $folders,
+                'stats' => [
+                    'total_datasets' => $totalDatasets,
+                    'total_size' => $totalSize,
+                    'status_counts' => $statusCounts
+                ]
+            ];
         }
-        $folderCounts[$folderUuid]++;
-    }
-    
-    foreach ($folderCounts as $folderUuid => $count) {
-        $folders[] = [
-            'uuid' => $folderUuid,
-            'name' => $folderUuid === 'root' ? 'Root' : $folderUuid,
-            'count' => $count
+        
+    } catch (Exception $e) {
+        logMessage('ERROR', 'Failed to get public datasets from SCLib', [
+            'error' => $e->getMessage()
+        ]);
+        
+        // Fallback: use getPublicDatasets() function
+        $publicDatasets = getPublicDatasets();
+        
+        $response = [
+            'success' => true,
+            'datasets' => [
+                'public' => $publicDatasets
+            ],
+            'folders' => [],
+            'stats' => [
+                'total_datasets' => count($publicDatasets),
+                'total_size' => 0,
+                'status_counts' => []
+            ]
         ];
     }
     
-    // Helper function to convert data_size to GB (for total size calculation)
-    function convertToGb($size) {
-        // If it's already a numeric value, assume it's in GB (new format)
-        if (is_numeric($size)) {
-            return (float)$size;
-        }
-        
-        if (!is_string($size)) {
-            return 0;
-        }
-        
-        // Handle legacy string format (e.g., "758.16 KB", "1.5 GB")
-        $size = trim(strtoupper($size));
-        
-        // Extract number and unit
-        if (preg_match('/^([\d.]+)\s*([KMGT]?B?)$/', $size, $matches)) {
-            $number = (float)$matches[1];
-            $unit = $matches[2] ?? 'B';
-            
-            // Convert to GB
-            switch ($unit) {
-                case 'KB':
-                case 'K':
-                    return $number / (1024 * 1024); // KB to GB
-                case 'MB':
-                case 'M':
-                    return $number / 1024; // MB to GB
-                case 'GB':
-                case 'G':
-                    return $number; // Already in GB
-                case 'TB':
-                case 'T':
-                    return $number * 1024; // TB to GB
-                default:
-                    // Assume bytes, convert to GB
-                    return $number / (1024 * 1024 * 1024);
-            }
-        }
-        
-        return 0;
-    }
-    
-    // Calculate stats
-    $totalDatasets = count($publicDatasets);
-    $totalSize = 0;
-    $statusCounts = [];
-    
-    foreach ($publicDatasets as $dataset) {
-        $dataSize = $dataset['data_size'] ?? 0;
-        $totalSize += convertToGb($dataSize); // Add size in GB
-        $status = $dataset['status'] ?? 'unknown';
-        $statusCounts[$status] = ($statusCounts[$status] ?? 0) + 1;
-    }
-    
-    $stats = [
-        'total_datasets' => $totalDatasets,
-        'total_size' => $totalSize,
-        'status_counts' => $statusCounts
-    ];
-
-    // Format response (public datasets don't have my/shared/team categories)
-    $response = [
-        'success' => true,
-        'datasets' => [
-            'public' => $publicDatasets
-        ],
-        'folders' => $folders,
-        'stats' => $stats
-    ];
-    
     // Log response summary for debugging
-    error_log("Public Datasets API response: count=" . count($publicDatasets));
+    error_log("Public Datasets API response: count=" . count($response['datasets']['public']));
 
     // Check for any unexpected output before JSON
     $output = ob_get_contents();
