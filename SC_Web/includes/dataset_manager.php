@@ -521,4 +521,63 @@ function getAllDatasetsByEmail($userEmail) {
         ];
     }
 }
+
+/**
+ * Get all public datasets (no authentication required)
+ * Queries MongoDB directly for datasets where is_public = true
+ * 
+ * @return array Array of formatted public datasets
+ */
+function getPublicDatasets() {
+    try {
+        logMessage('INFO', 'Getting public datasets');
+        
+        // Get MongoDB connection from config
+        $mongo_url = defined('MONGO_URL') ? MONGO_URL : (getenv('MONGO_URL') ?: 'mongodb://localhost:27017');
+        $db_name = defined('DB_NAME') ? DB_NAME : (getenv('DB_NAME') ?: 'scientistcloud');
+        
+        // Check if MongoDB extension is available
+        if (!class_exists('MongoDB\Client')) {
+            error_log("MongoDB PHP extension not available");
+            return [];
+        }
+        
+        // Use MongoDB PHP extension
+        $mongo_client = new MongoDB\Client($mongo_url);
+        $db = $mongo_client->selectDatabase($db_name);
+        $datasets_collection = $db->selectCollection(COLLECTION_DATASETS);
+        
+        // Query for public datasets - handle both boolean and string values
+        $query = [
+            '$or' => [
+                ['is_public' => true],
+                ['is_public' => 'true'],
+                ['is_public' => 'True'],
+                ['is_public' => 1]
+            ]
+        ];
+        
+        // Find public datasets
+        $publicDatasets = $datasets_collection->find($query)
+            ->sort(['time' => -1]) // Sort by creation time, newest first
+            ->toArray();
+        
+        logMessage('INFO', 'Found public datasets', ['count' => count($publicDatasets)]);
+        
+        // Format datasets
+        $formattedDatasets = [];
+        foreach ($publicDatasets as $dataset) {
+            $formattedDatasets[] = formatDataset($dataset);
+        }
+        
+        return $formattedDatasets;
+        
+    } catch (Exception $e) {
+        logMessage('ERROR', 'Failed to get public datasets', [
+            'error' => $e->getMessage(),
+            'trace' => $e->getTraceAsString()
+        ]);
+        return [];
+    }
+}
 ?>

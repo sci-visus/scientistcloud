@@ -1,0 +1,168 @@
+/**
+ * Public Portal Styling
+ * Distinct dark-themed styling for the public portal to differentiate from authenticated portal
+ */
+
+/* Public Portal Specific Variables */
+.public-portal {
+  --sidebar-bg: #1a1a1a;
+  --sidebar-text: #ffffff;
+  --sidebar-border: #333333;
+  --sidebar-hover: rgba(255, 255, 255, 0.1);
+  --sidebar-active: rgba(255, 255, 255, 0.15);
+}
+
+/* Dark Left Sidebar */
+.public-portal .sidebar {
+  background-color: var(--sidebar-bg) !important;
+  border-right: 1px solid var(--sidebar-border) !important;
+  color: var(--sidebar-text) !important;
+}
+
+.public-portal .sidebar h5,
+.public-portal .sidebar h6,
+.public-portal .sidebar .nav-link,
+.public-portal .sidebar .dataset-link,
+.public-portal .sidebar .dataset-name,
+.public-portal .sidebar .folder-name,
+.public-portal .sidebar .folder-summary,
+.public-portal .sidebar p,
+.public-portal .sidebar span:not(.badge) {
+  color: var(--sidebar-text) !important;
+}
+
+/* Sidebar Links and Interactive Elements */
+.public-portal .sidebar .nav-link:hover,
+.public-portal .sidebar .dataset-link:hover,
+.public-portal .sidebar .folder-summary:hover {
+  background-color: var(--sidebar-hover) !important;
+  color: var(--sidebar-text) !important;
+}
+
+.public-portal .sidebar .nav-link.active,
+.public-portal .sidebar .dataset-link.active {
+  background-color: var(--sidebar-active) !important;
+  color: var(--sidebar-text) !important;
+}
+
+/* Buttons in Sidebar */
+.public-portal .sidebar .btn {
+  color: var(--sidebar-text) !important;
+  border-color: rgba(255, 255, 255, 0.3) !important;
+}
+
+.public-portal .sidebar .btn:hover {
+  background-color: var(--sidebar-hover) !important;
+  border-color: rgba(255, 255, 255, 0.5) !important;
+  color: var(--sidebar-text) !important;
+}
+
+.public-portal .sidebar .btn-outline-light {
+  color: var(--sidebar-text) !important;
+  border-color: rgba(255, 255, 255, 0.3) !important;
+}
+
+.public-portal .sidebar .btn-outline-light:hover {
+  background-color: rgba(255, 255, 255, 0.2) !important;
+  border-color: rgba(255, 255, 255, 0.5) !important;
+  color: var(--sidebar-text) !important;
+}
+
+/* Badges in Sidebar */
+.public-portal .sidebar .badge {
+  background-color: rgba(255, 255, 255, 0.2) !important;
+  color: var(--sidebar-text) !important;
+}
+
+/* Dataset Items */
+.public-portal .sidebar .dataset-item {
+  border-left: 2px solid transparent;
+}
+
+.public-portal .sidebar .dataset-item:hover {
+  border-left-color: rgba(255, 255, 255, 0.3);
+}
+
+/* Folder Groups */
+.public-portal .sidebar .folder-group {
+  border-left: 2px solid rgba(255, 255, 255, 0.1);
+  padding-left: 0.5rem;
+}
+
+/* Text Muted in Sidebar */
+.public-portal .sidebar .text-muted {
+  color: rgba(255, 255, 255, 0.6) !important;
+}
+
+/* Collapse Buttons */
+.public-portal .sidebar .collapse-btn {
+  color: var(--sidebar-text) !important;
+  background-color: rgba(255, 255, 255, 0.1) !important;
+  border-color: rgba(255, 255, 255, 0.2) !important;
+}
+
+.public-portal .sidebar .collapse-btn:hover {
+  background-color: rgba(255, 255, 255, 0.2) !important;
+  color: var(--sidebar-text) !important;
+}
+
+/* Dataset Files Toggle */
+.public-portal .sidebar .dataset-files-toggle {
+  color: var(--sidebar-text) !important;
+}
+
+.public-portal .sidebar .dataset-files-toggle:hover {
+  color: var(--sidebar-text) !important;
+  opacity: 1 !important;
+}
+
+/* Dataset Files Container */
+.public-portal .sidebar .dataset-files {
+  border-left-color: rgba(255, 255, 255, 0.2) !important;
+}
+
+/* Arrow Icons */
+.public-portal .sidebar .arrow-icon {
+  color: var(--sidebar-text) !important;
+}
+
+/* Logo */
+.public-portal .sidebar .logo {
+  filter: brightness(1.2); /* Slightly brighten logo for dark background */
+}
+
+/* Viewer Toolbar - Keep standard styling but ensure visibility */
+.public-portal .viewer-toolbar {
+  background-color: var(--toolbar-bg);
+  border-bottom: 1px solid var(--panel-border);
+}
+
+/* Details Sidebar - Keep standard styling */
+.public-portal .details {
+  background-color: var(--panel-bg);
+  border-left: 1px solid var(--panel-border);
+}
+
+/* Ensure good contrast for all text in sidebar */
+.public-portal .sidebar * {
+  text-shadow: none; /* Remove any text shadows that might reduce readability */
+}
+
+/* Dataset Details Panel - Hide sensitive information */
+.public-portal .dataset-details .detail-item[data-field="uuid"],
+.public-portal .dataset-details [data-action="delete"],
+.public-portal .dataset-details [data-action="edit"],
+.public-portal .dataset-details .retry-conversion-details-btn {
+  display: none !important;
+}
+
+/* Download button - only show if publicly downloadable */
+.public-portal .dataset-details [data-action="download"] {
+  display: inline-block;
+}
+
+/* Ensure download button is visible when dataset is publicly downloadable */
+.public-portal .dataset-details .download-btn-public {
+  display: inline-block !important;
+}
+
