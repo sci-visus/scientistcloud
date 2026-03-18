@@ -319,6 +319,26 @@ class PublicDatasetManager {
 
             const viewers = window.viewerManager?.viewers || {};
 
+            // Parse a dimension number from strings like "4D", "4d", "2D", "4 D", etc.
+            const parseDimension = (value) => {
+                const str = (value ?? '').toString();
+                const match = str.toUpperCase().match(/([1-4])\s*D/);
+                if (!match) return null;
+                const dim = parseInt(match[1], 10);
+                return Number.isFinite(dim) ? dim : null;
+            };
+
+            const select4D = () => {
+                // Prefer the "2x2" dashboard variant if both exist.
+                if (viewers['4d_dashboard'] !== undefined) return '4d_dashboard';
+                if (viewers['4d_dashboardLite'] !== undefined) return '4d_dashboardLite';
+                return '4d_dashboardLite';
+            };
+
+            const dimensionFromDimensions = parseDimension(dataset.dimensions);
+            const dimensionFromSensor = parseDimension(dataset.sensor);
+            const effectiveDimension = dimensionFromDimensions ?? dimensionFromSensor;
+
             // 1) preferred_dashboard (most reliable signal)
             const preferred = (dataset.preferred_dashboard || '').toString().trim();
             if (preferred) {
@@ -356,25 +376,35 @@ class PublicDatasetManager {
                     (viewers[preferred] ? preferred : null);
 
                 if (mapped && viewers[mapped] !== undefined) {
+                    // If dataset is 4D, do not allow a non-4D preferred dashboard to override it.
+                    if (effectiveDimension === 4) {
+                        if (mapped === '4d_dashboard' || mapped === '4d_dashboardLite') {
+                            return mapped;
+                        }
+                        return select4D();
+                    }
+
                     return mapped;
                 }
             }
 
             // 2) dimensions
-            const dimensionsStr = (dataset.dimensions || '').toString().toUpperCase();
-            if (dimensionsStr.includes('4D')) {
-                return viewers['4d_dashboardLite'] !== undefined ? '4d_dashboardLite' : '4d_dashboardLite';
+            if (effectiveDimension === 4) {
+                return select4D();
             }
-            if (dimensionsStr.includes('3D')) {
+            if (effectiveDimension === 3) {
                 // Prefer 3DPlotly if available; otherwise fall back to OpenVisusSlice.
                 return viewers['3DPlotly'] !== undefined ? '3DPlotly' : 'OpenVisusSlice';
             }
-            if (dimensionsStr.includes('2D')) {
+            if (effectiveDimension === 2 || effectiveDimension === 1) {
                 return 'OpenVisusSlice';
             }
 
             // 3) sensor fallbacks (light-touch)
             const sensorStr = (dataset.sensor || '').toString().toUpperCase();
+            if (dimensionFromSensor === 4) {
+                return select4D();
+            }
             if (sensorStr.includes('MAGIC')) {
                 return viewers['magicscan'] !== undefined ? 'magicscan' : 'magicscan';
             }
