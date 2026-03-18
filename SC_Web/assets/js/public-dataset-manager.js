@@ -244,7 +244,8 @@ class PublicDatasetManager {
             datasetLink.classList.add('active');
             
             // Load dataset details
-            await this.loadDatasetDetails(datasetId);
+            const datasetDetails = await this.loadDatasetDetails(datasetId);
+            this.currentDataset = datasetDetails;
             
             // Load dashboard
             if (window.viewerManager) {
@@ -252,13 +253,20 @@ class PublicDatasetManager {
                     id: datasetId,
                     name: datasetName,
                     uuid: datasetUuid,
-                    server: datasetServer
+                    server: datasetServer,
+                    details: datasetDetails
                 };
                 
                 const viewerType = document.getElementById('viewerType');
-                const dashboardType = viewerType ? viewerType.value : (Object.keys(window.viewerManager.viewers)[0] || 'OpenVisusSlice');
+                const selectedDashboardType = this.selectDashboardForPublicDataset(datasetDetails);
                 
-                window.viewerManager.loadDashboard(datasetId, datasetName, datasetUuid, datasetServer, dashboardType);
+                window.viewerManager.loadDashboard(
+                    datasetId,
+                    datasetName,
+                    datasetUuid,
+                    datasetServer,
+                    selectedDashboardType || (viewerType ? viewerType.value : (Object.keys(window.viewerManager.viewers)[0] || 'OpenVisusSlice'))
+                );
             }
             
         } catch (error) {
@@ -281,6 +289,7 @@ class PublicDatasetManager {
             }
             
             this.displayDatasetDetails(data.dataset);
+            return data.dataset;
             
         } catch (error) {
             console.error('Error loading dataset details:', error);
@@ -293,6 +302,92 @@ class PublicDatasetManager {
                     </div>
                 `;
             }
+            return null;
+        }
+    }
+
+    /**
+     * Select best-fit dashboard for public datasets using dataset details.
+     * Mirrors private behavior loosely by prioritizing preferred_dashboard, then dimensions.
+     *
+     * @param {object|null} dataset
+     * @returns {string|null} Dashboard id
+     */
+    selectDashboardForPublicDataset(dataset) {
+        try {
+            if (!dataset) return null;
+
+            const viewers = window.viewerManager?.viewers || {};
+
+            // 1) preferred_dashboard (most reliable signal)
+            const preferred = (dataset.preferred_dashboard || '').toString().trim();
+            if (preferred) {
+                const dashboardNameToId = {
+                    '3D Plotly Explorer': '3DPlotly',
+                    '3D Plotly Dashboard': '3DPlotly',
+                    '3d plotly explorer': '3DPlotly',
+                    '3d plotly dashboard': '3DPlotly',
+                    '3D Plotly': '3DPlotly',
+                    '3d plotly': '3DPlotly',
+                    'plotly': '3DPlotly',
+                    '3D VTK Dashboard': '3DVTK',
+                    '3d vtk dashboard': '3DVTK',
+                    '3D VTK': '3DVTK',
+                    '3d vtk': '3DVTK',
+                    '4D Dashboard (New)': '4d_dashboardLite',
+                    '4D Dashboard': '4d_dashboardLite',
+                    '4d dashboard (new)': '4d_dashboardLite',
+                    '4d dashboard': '4d_dashboardLite',
+                    '4D Dashboard': '4d_dashboardLite',
+                    '4d_dashboardLite': '4d_dashboardLite',
+                    'OpenVisus Slice Dashboard': 'OpenVisusSlice',
+                    'openvisus slice dashboard': 'OpenVisusSlice',
+                    'OpenVisus Slice': 'OpenVisusSlice',
+                    'openvisus slice': 'OpenVisusSlice',
+                    'OpenVisusSlice': 'OpenVisusSlice',
+                    'magicscan': 'magicscan',
+                    'MagicScan Dashboard': 'magicscan',
+                    'magicscan dashboard': 'magicscan'
+                };
+
+                const mapped =
+                    dashboardNameToId[preferred] ||
+                    dashboardNameToId[preferred.toLowerCase()] ||
+                    (viewers[preferred] ? preferred : null);
+
+                if (mapped && viewers[mapped] !== undefined) {
+                    return mapped;
+                }
+            }
+
+            // 2) dimensions
+            const dimensionsStr = (dataset.dimensions || '').toString().toUpperCase();
+            if (dimensionsStr.includes('4D')) {
+                return viewers['4d_dashboardLite'] !== undefined ? '4d_dashboardLite' : '4d_dashboardLite';
+            }
+            if (dimensionsStr.includes('3D')) {
+                // Prefer 3DPlotly if available; otherwise fall back to OpenVisusSlice.
+                return viewers['3DPlotly'] !== undefined ? '3DPlotly' : 'OpenVisusSlice';
+            }
+            if (dimensionsStr.includes('2D')) {
+                return 'OpenVisusSlice';
+            }
+
+            // 3) sensor fallbacks (light-touch)
+            const sensorStr = (dataset.sensor || '').toString().toUpperCase();
+            if (sensorStr.includes('MAGIC')) {
+                return viewers['magicscan'] !== undefined ? 'magicscan' : 'magicscan';
+            }
+            if (sensorStr.includes('NEXUS') && viewers['OpenVisusSlice'] !== undefined) {
+                return 'OpenVisusSlice';
+            }
+
+            // 4) default
+            if (viewers['OpenVisusSlice'] !== undefined) return 'OpenVisusSlice';
+            return Object.keys(viewers)[0] || 'OpenVisusSlice';
+        } catch (error) {
+            console.error('Error selecting public dashboard:', error);
+            return null;
         }
     }
 

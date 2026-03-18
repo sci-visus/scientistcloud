@@ -33,13 +33,15 @@ class ViewerManager {
                 const isLocal = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
                 return isLocal ? '/api' : '/portal/api';
             };
-            
-            const apiUrl = `${getApiBasePath()}/dashboards.php`;
-            console.log('🌐 Loading dashboards from:', apiUrl);
-            
-            const response = await fetch(apiUrl, {
-                credentials: 'include'  // Include cookies for authentication
-            });
+
+            // Public portal doesn't use authentication, so use a public dashboards endpoint.
+            const isPublicPortal = window.IS_PUBLIC_PORTAL === true;
+            const apiFile = isPublicPortal ? 'public-dashboards.php' : 'dashboards.php';
+            const apiUrl = `${getApiBasePath()}/${apiFile}`;
+            console.log('🌐 Loading dashboards from:', apiUrl, 'publicPortal=', isPublicPortal);
+
+            const fetchOptions = isPublicPortal ? {} : { credentials: 'include' };
+            const response = await fetch(apiUrl, fetchOptions);
             
             if (!response.ok) {
                 console.warn(`Failed to load dashboards from API (${response.status} ${response.statusText}), using defaults`);
@@ -1000,9 +1002,13 @@ setTimeout(function() {
             const isLocal = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
             return isLocal ? '/api' : '/portal/api';
         };
-        
+
+        const isPublicPortal = window.IS_PUBLIC_PORTAL === true;
+        const apiFile = isPublicPortal ? 'public-dashboards.php' : 'dashboards.php';
+        const apiUrl = `${getApiBasePath()}/${apiFile}`;
+
         // Manually fetch and populate
-        fetch(`${getApiBasePath()}/dashboards.php`, { credentials: 'include' })
+        fetch(apiUrl, isPublicPortal ? {} : { credentials: 'include' })
             .then(response => response.json())
             .then(data => {
                 if (data.success && data.dashboards) {
