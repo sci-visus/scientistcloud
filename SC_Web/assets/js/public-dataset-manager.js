@@ -314,13 +314,25 @@ class PublicDatasetManager {
                     <h6 class="text-primary mb-2">${this.escapeHtml(dataset.name || 'Unnamed Dataset')}</h6>
                 </div>
                 
-                ${isDownloadable ? `
                 <div class="dataset-actions mb-3 pb-2 border-bottom">
-                    <button type="button" class="btn btn-sm btn-primary w-100" data-action="download" data-dataset-id="${dataset.id || dataset.uuid}">
-                        <i class="fas fa-download"></i> Download Dataset
-                    </button>
+                    <div class="d-flex gap-2">
+                        <button type="button" class="btn btn-sm btn-outline-primary flex-grow-1" 
+                                data-action="open-dashboard-link"
+                                data-dataset-id="${dataset.id || dataset.uuid}"
+                                data-dataset-uuid="${dataset.uuid || dataset.id}"
+                                data-dataset-name="${this.escapeHtml(dataset.name || '')}"
+                                data-dataset-server="${this.escapeHtml(dataset.server || 'false')}"
+                                title="Open this dataset's dashboard in a new tab">
+                            <i class="fas fa-external-link-alt"></i>
+                        </button>
+                        
+                        ${isDownloadable ? `
+                        <button type="button" class="btn btn-sm btn-primary flex-grow-1" data-action="download" data-dataset-id="${dataset.id || dataset.uuid}">
+                            <i class="fas fa-download"></i> Download Dataset
+                        </button>
+                        ` : ''}
+                    </div>
                 </div>
-                ` : ''}
                 
                 <div class="dataset-view-mode">
                     <div class="detail-item mb-2">
@@ -384,6 +396,49 @@ class PublicDatasetManager {
             downloadBtn.addEventListener('click', (e) => {
                 e.preventDefault();
                 this.downloadDataset(dataset.id || dataset.uuid);
+            });
+        }
+
+        // Attach open-dashboard button handler (opens the currently loaded dashboard in a new tab)
+        const openDashboardBtn = detailsContainer.querySelector('[data-action="open-dashboard-link"]');
+        if (openDashboardBtn) {
+            openDashboardBtn.addEventListener('click', (e) => {
+                e.preventDefault();
+
+                // Prefer using the iframe that viewer-manager already created.
+                const iframe = document.getElementById('dashboardFrame');
+                if (iframe && iframe.src) {
+                    window.open(iframe.src, '_blank');
+                    return;
+                }
+
+                // Fallback: generate a URL from the currently selected dashboard type.
+                try {
+                    if (window.viewerManager && window.viewerManager.viewers) {
+                        const datasetUuid = dataset.uuid || dataset.id;
+                        const datasetName = dataset.name || 'Dataset';
+                        const datasetServer = dataset.server || 'false';
+
+                        const viewerType = document.getElementById('viewerType');
+                        const dashboardType = viewerType ? viewerType.value : (window.viewerManager.currentDashboard || 'OpenVisusSlice');
+
+                        const viewer = window.viewerManager.viewers[dashboardType];
+                        if (viewer && viewer.url_template) {
+                            const dashboardUrl = window.viewerManager.generateViewerUrl(
+                                datasetUuid,
+                                datasetServer,
+                                datasetName,
+                                viewer.url_template
+                            );
+                            window.open(dashboardUrl, '_blank');
+                            return;
+                        }
+                    }
+                } catch (err) {
+                    console.error('Failed to generate dashboard URL:', err);
+                }
+
+                alert('Dashboard is still loading. Please try again in a moment.');
             });
         }
     }

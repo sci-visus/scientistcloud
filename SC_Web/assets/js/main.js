@@ -139,6 +139,11 @@ function setupEventListeners() {
     // Dataset selection - ONLY handle if datasetManager is not available
     // dataset-manager.js already has its own handler, so we avoid duplicate processing
     document.addEventListener('click', function(e) {
+        // Public portal uses its own dataset click handling (public-dataset-manager.js)
+        // so we should not trigger the auth-required private fallback.
+        if (window.IS_PUBLIC_PORTAL) {
+            return;
+        }
         if (e.target.closest('.dataset-link')) {
             // If datasetManager exists and has handleDatasetClick, let it handle everything
             // Only use main.js handler as absolute fallback

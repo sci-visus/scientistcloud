@@ -46,6 +46,15 @@ try {
     // Get public datasets via SCLib API (no authentication required)
     require_once(__DIR__ . '/../includes/sclib_client.php');
     $sclib = getSCLibClient();
+
+    // Only show datasets that are completely loaded.
+    // - Accept "done" (completed) and "Ready" (completed, different casing).
+    // - Exclude "failed" and anything else (processing/pending/unknown).
+    $isDatasetComplete = function($formattedDataset) {
+        $status = $formattedDataset['status'] ?? '';
+        $statusLower = is_string($status) ? strtolower($status) : '';
+        return $statusLower === 'done' || $statusLower === 'ready';
+    };
     
     // Call SCLib API endpoint for public datasets
     try {
@@ -70,22 +79,46 @@ try {
             $formattedDatasets = [];
             foreach ($response['datasets']['public'] as $dataset) {
                 try {
-                    $formattedDatasets[] = formatDataset($dataset);
+                    $formatted = formatDataset($dataset);
+                    if ($isDatasetComplete($formatted)) {
+                        $formattedDatasets[] = $formatted;
+                    }
                 } catch (Exception $e) {
                     logMessage('ERROR', 'Failed to format dataset', [
                         'dataset_uuid' => $dataset['uuid'] ?? 'unknown',
                         'error' => $e->getMessage()
                     ]);
-                    // Include unformatted dataset as fallback
-                    $formattedDatasets[] = $dataset;
+                    // Include unformatted dataset only if it explicitly matches the "complete" status.
+                    if ($isDatasetComplete($dataset)) {
+                        $formattedDatasets[] = $dataset;
+                    }
                 }
             }
             
             $response['datasets']['public'] = $formattedDatasets;
+
+            // Recompute stats for the filtered dataset list.
+            $totalDatasets = count($formattedDatasets);
+            $totalSize = 0;
+            $statusCounts = [];
+            foreach ($formattedDatasets as $ds) {
+                $dataSize = $ds['data_size'] ?? 0;
+                $totalSize += is_numeric($dataSize) ? (float)$dataSize : 0;
+                $status = $ds['status'] ?? 'unknown';
+                $statusCounts[$status] = ($statusCounts[$status] ?? 0) + 1;
+            }
+            $response['stats'] = [
+                'total_datasets' => $totalDatasets,
+                'total_size' => $totalSize,
+                'status_counts' => $statusCounts
+            ];
             
         } else {
             // Fallback: use getPublicDatasets() function
             $publicDatasets = getPublicDatasets();
+
+            // Filter to completed datasets only.
+            $publicDatasets = array_values(array_filter($publicDatasets, $isDatasetComplete));
             
             // Extract folders from datasets
             $folders = [];
@@ -140,6 +173,9 @@ try {
         
         // Fallback: use getPublicDatasets() function
         $publicDatasets = getPublicDatasets();
+
+        // Filter to completed datasets only.
+        $publicDatasets = array_values(array_filter($publicDatasets, $isDatasetComplete));
         
         $response = [
             'success' => true,
