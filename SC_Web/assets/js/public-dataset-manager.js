@@ -332,7 +332,11 @@ class PublicDatasetManager {
                 // Prefer the "2x2" dashboard variant if both exist.
                 if (viewers['4d_dashboard'] !== undefined) return '4d_dashboard';
                 if (viewers['4d_dashboardLite'] !== undefined) return '4d_dashboardLite';
-                return '4d_dashboardLite';
+                if (viewers['4d_dashboardopt'] !== undefined) return '4d_dashboardopt';
+
+                // Best-effort: pick any enabled viewer that looks like a 4D dashboard.
+                const any4d = Object.keys(viewers).find(k => (k || '').toLowerCase().includes('4d_dashboard'));
+                return any4d || '4d_dashboardLite';
             };
 
             const dimensionFromDimensions = parseDimension(dataset.dimensions);
@@ -378,7 +382,7 @@ class PublicDatasetManager {
                 if (mapped && viewers[mapped] !== undefined) {
                     // If dataset is 4D, do not allow a non-4D preferred dashboard to override it.
                     if (effectiveDimension === 4) {
-                        if (mapped === '4d_dashboard' || mapped === '4d_dashboardLite') {
+                        if (mapped === '4d_dashboard' || mapped === '4d_dashboardLite' || mapped === '4d_dashboardopt') {
                             return mapped;
                         }
                         return select4D();
