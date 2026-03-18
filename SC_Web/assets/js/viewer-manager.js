@@ -497,6 +497,19 @@ class ViewerManager {
      */
     async checkDatasetStatus(datasetId, dashboardType = null) {
         try {
+            // Public portal is unauthenticated; avoid calling auth-protected endpoints.
+            if (window.IS_PUBLIC_PORTAL === true) {
+                const details = window.viewerManager?.currentDataset?.details;
+                const status = (details?.status || details?.processing_status || '').toString().toLowerCase().trim();
+
+                // Treat "processing-like" statuses as processing; otherwise assume ready.
+                if (['processing', 'pending', 'converting', 'uploading', 'queued'].includes(status)) {
+                    return 'processing';
+                }
+
+                return 'ready';
+            }
+
             // Helper function to get API base path
             const getApiBasePath = () => {
                 const isLocal = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
