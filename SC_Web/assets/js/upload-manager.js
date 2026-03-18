@@ -2925,7 +2925,7 @@ class UploadManager {
             });
             
             // Apply current theme class
-            const currentTheme = localStorage.getItem('theme') || 'dark';
+            const currentTheme = localStorage.getItem('theme') || 'light';
             const themeClass = currentTheme === 'light' ? 'light-theme' : '';
             
             // Load content into viewer container with styles

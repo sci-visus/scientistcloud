@@ -699,7 +699,7 @@ class ViewerManager {
         const isLocal = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
         
         // Get current theme from AppState or localStorage (declare once at function start)
-        const currentTheme = window.AppState?.theme || localStorage.getItem('theme') || 'dark';
+        const currentTheme = window.AppState?.theme || localStorage.getItem('theme') || 'light';
         
         // If urlTemplate doesn't start with / or http, it's likely just an ID - construct proper path
         if (!urlTemplate.startsWith('/') && !urlTemplate.startsWith('http')) {

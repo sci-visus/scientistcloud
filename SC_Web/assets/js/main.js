@@ -44,7 +44,7 @@ function formatFileSizeFromGb(sizeGb) {
 const AppState = {
     currentDataset: null,
     currentDashboard: null,
-    theme: localStorage.getItem('theme') || 'dark',
+    theme: localStorage.getItem('theme') || 'light',
     sidebarCollapsed: false,
     detailsCollapsed: false
 };
