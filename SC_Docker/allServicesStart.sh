@@ -149,45 +149,42 @@ PORTAL_DOCKER_DIR="$HOME/ScientistCloud2.0/scientistcloud/SC_Docker"
 SCIENTISTCLOUD_DIR="$HOME/ScientistCloud2.0/scientistcloud"
 if [ -d "$PORTAL_DOCKER_DIR" ]; then
     echo "📥 Pulling latest Portal Docker code..."
-    
-    # Fix vendor directory permissions BEFORE git operations to prevent permission errors
-    if [ -d "$SCIENTISTCLOUD_DIR/SC_Web/vendor" ]; then
-        echo "🔧 Fixing vendor directory permissions before git operations..."
-        pushd "$SCIENTISTCLOUD_DIR"
-        
-        # Stop any containers that might be using vendor files
-        if docker ps --format "{{.Names}}" | grep -q "scientistcloud-portal"; then
-            echo "   ⏸️  Temporarily stopping portal container to release file locks..."
-            docker stop scientistcloud-portal 2>/dev/null || true
-            sleep 1
-        fi
-        
-        # Remove extended attributes (if on macOS)
-        if command -v xattr >/dev/null 2>&1; then
-            find SC_Web/vendor -type f -exec xattr -c {} \; 2>/dev/null || true
-            find SC_Web/vendor -type d -exec xattr -c {} \; 2>/dev/null || true
-        fi
-        
-        # Fix ownership
-        CURRENT_USER=$(whoami)
-        CURRENT_GROUP=$(id -gn)
-        sudo chown -R "$CURRENT_USER:$CURRENT_GROUP" SC_Web/vendor 2>/dev/null || \
-        chown -R "$CURRENT_USER:$CURRENT_GROUP" SC_Web/vendor 2>/dev/null || true
-        
-        # Fix permissions
-        find SC_Web/vendor -type f -exec chmod 644 {} \; 2>/dev/null || true
-        find SC_Web/vendor -type d -exec chmod 755 {} \; 2>/dev/null || true
-        chmod -R u+w SC_Web/vendor 2>/dev/null || true
-        
-        # If vendor/auth0 is causing issues, remove it (composer will recreate it)
-        if [ -d "SC_Web/vendor/auth0" ] && [ ! -w "SC_Web/vendor/auth0" ]; then
-            echo "   🗑️  Removing problematic vendor/auth0 directory (will be recreated by composer)..."
-            sudo rm -rf SC_Web/vendor/auth0 2>/dev/null || rm -rf SC_Web/vendor/auth0 2>/dev/null || true
-        fi
-        
-        echo "✅ Vendor permissions fixed"
-        popd
+
+    # Stop any containers that might be using vendor files before git ops.
+    if docker ps --format "{{.Names}}" | grep -q "scientistcloud-portal"; then
+        echo "   ⏸️  Temporarily stopping portal container to release file locks..."
+        docker stop scientistcloud-portal 2>/dev/null || true
+        sleep 1
     fi
+
+    # Fix vendor permissions in both possible layouts:
+    # 1) repo root: $SCIENTISTCLOUD_DIR/SC_Web/vendor
+    # 2) SC_Docker-contained checkout: $PORTAL_DOCKER_DIR/SC_Web/vendor
+    CURRENT_USER=$(whoami)
+    CURRENT_GROUP=$(id -gn)
+    for VENDOR_DIR in "$SCIENTISTCLOUD_DIR/SC_Web/vendor" "$PORTAL_DOCKER_DIR/SC_Web/vendor"; do
+        if [ -d "$VENDOR_DIR" ]; then
+            echo "🔧 Fixing vendor directory permissions: $VENDOR_DIR"
+
+            # Ensure auth0 directory exists so git can recreate tracked files there.
+            mkdir -p "$VENDOR_DIR/auth0" 2>/dev/null || true
+            sudo mkdir -p "$VENDOR_DIR/auth0" 2>/dev/null || true
+
+            # Remove extended attributes (macOS/NFS edge cases)
+            if command -v xattr >/dev/null 2>&1; then
+                find "$VENDOR_DIR" -type f -exec xattr -c {} \; 2>/dev/null || true
+                find "$VENDOR_DIR" -type d -exec xattr -c {} \; 2>/dev/null || true
+            fi
+
+            # Fix ownership + permissions recursively.
+            sudo chown -R "$CURRENT_USER:$CURRENT_GROUP" "$VENDOR_DIR" 2>/dev/null || \
+            chown -R "$CURRENT_USER:$CURRENT_GROUP" "$VENDOR_DIR" 2>/dev/null || true
+            find "$VENDOR_DIR" -type f -exec chmod 644 {} \; 2>/dev/null || true
+            find "$VENDOR_DIR" -type d -exec chmod 755 {} \; 2>/dev/null || true
+            chmod -R u+rwX "$VENDOR_DIR" 2>/dev/null || true
+        fi
+    done
+    echo "✅ Vendor permissions fixed"
     pushd "$PORTAL_DOCKER_DIR"
     
     # Fix vendor directory permissions before git operations
@@ -224,6 +221,14 @@ if [ -d "$PORTAL_DOCKER_DIR" ]; then
     if ! git reset --hard origin/main 2>/dev/null; then
         echo "   ⚠️  git reset --hard failed, trying alternative approach..."
         git rm -r --cached SC_Web/vendor 2>/dev/null || true
+        # Re-apply permissions and retry once more before fallback checkout.
+        for VENDOR_DIR in "$SCIENTISTCLOUD_DIR/SC_Web/vendor" "$PORTAL_DOCKER_DIR/SC_Web/vendor"; do
+            if [ -d "$VENDOR_DIR" ]; then
+                sudo chown -R "$CURRENT_USER:$CURRENT_GROUP" "$VENDOR_DIR" 2>/dev/null || \
+                chown -R "$CURRENT_USER:$CURRENT_GROUP" "$VENDOR_DIR" 2>/dev/null || true
+                chmod -R u+rwX "$VENDOR_DIR" 2>/dev/null || true
+            fi
+        done
         git reset --hard origin/main 2>/dev/null || {
             echo "   ⚠️  Still having issues with vendor files, using checkout instead..."
             git checkout -f origin/main 2>/dev/null || true
