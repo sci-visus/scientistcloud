@@ -618,6 +618,17 @@ function getSCLibAuthClient() {
                 $auth_url = 'http://localhost:8001';
             }
         }
+
+        // Guardrail: auth client must never point to dataset API (port 5001).
+        // Some env files accidentally set SCLIB_AUTH_URL to sclib_fastapi:5001.
+        if (strpos($auth_url, ':5001') !== false || strpos($auth_url, 'sclib_fastapi') !== false) {
+            error_log("WARNING: SCLIB auth URL misconfigured ($auth_url). Forcing auth service endpoint.");
+            if (file_exists('/.dockerenv') || getenv('DOCKER_CONTAINER')) {
+                $auth_url = 'http://sclib_auth:8001';
+            } else {
+                $auth_url = 'http://localhost:8001';
+            }
+        }
         
         $auth_client = new SCLibClient($auth_url);
     }
