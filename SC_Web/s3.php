@@ -49,6 +49,8 @@ function s3_sess_clear(): void
 $isLocal = (strpos(SC_SERVER_URL, 'localhost') !== false || strpos(SC_SERVER_URL, '127.0.0.1') !== false);
 $portalHome = $isLocal ? '/index.php' : '/portal/index.php';
 $selfPath = $isLocal ? '/s3.php' : '/portal/s3.php';
+$debugLog = $_SESSION['s3_debug_log'] ?? [];
+unset($_SESSION['s3_debug_log']);
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $action = $_POST['action'] ?? '';
@@ -82,17 +84,34 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 'region' => $region,
                 'path_style' => $pathStyle,
             ];
+            $debugLog = [];
+            $debugLog[] = '[connect] attempting connection test';
+            $debugLog[] = sprintf(
+                '[connect] endpoint=%s bucket=%s prefix=%s region=%s path_style=%s',
+                $endpoint,
+                $bucket,
+                $rootPrefix,
+                $region,
+                $pathStyle ? 'true' : 'false'
+            );
             $list = s3_inspector_list_page($probe, null);
+            if (!empty($list['debug']) && is_array($list['debug'])) {
+                $debugLog = array_merge($debugLog, $list['debug']);
+            }
             if ($list['error'] !== null) {
                 $err = 'Could not list bucket: ' . $list['error'];
+                $debugLog[] = '[connect] failed';
             } else {
+                $debugLog[] = '[connect] success';
                 s3_sess_save($probe);
+                $_SESSION['s3_debug_log'] = $debugLog;
                 header('Location: ' . $selfPath);
                 exit;
             }
         }
         // fall through to show form with error
         $_SESSION['s3_connect_error'] = $err;
+        $_SESSION['s3_debug_log'] = $debugLog;
         header('Location: ' . $selfPath . '?connect_error=1');
         exit;
     }
@@ -114,6 +133,9 @@ if ($connected) {
 
     $continuation = isset($_GET['continuation']) ? (string) $_GET['continuation'] : null;
     $list = s3_inspector_list_page($session, $continuation ?: null);
+    if (!empty($list['debug']) && is_array($list['debug'])) {
+        $debugLog = array_merge($debugLog, $list['debug']);
+    }
 } else {
     $list = null;
 }
@@ -132,6 +154,17 @@ $pageTitle = 'Inspect S3';
     body { padding: 1.25rem; background: var(--bs-body-bg); }
     .breadcrumb { background: var(--bs-secondary-bg); }
     code.key { font-size: 0.85em; word-break: break-all; }
+    .debug-window {
+      max-height: 220px;
+      overflow: auto;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+      font-size: 12px;
+      white-space: pre-wrap;
+      background: #0f172a;
+      color: #e2e8f0;
+      border-radius: 6px;
+      padding: 10px;
+    }
   </style>
 </head>
 <body>
@@ -146,11 +179,20 @@ $pageTitle = 'Inspect S3';
       <div class="alert alert-danger"><?php echo htmlspecialchars($connectError); ?></div>
     <?php endif; ?>
 
+    <?php if (!empty($debugLog)): ?>
+      <div class="card shadow-sm mb-3">
+        <div class="card-header py-2"><strong><i class="fas fa-terminal"></i> Debug Log</strong></div>
+        <div class="card-body p-2">
+          <div class="debug-window"><?php echo htmlspecialchars(implode("\n", $debugLog)); ?></div>
+        </div>
+      </div>
+    <?php endif; ?>
+
     <?php if (!$connected): ?>
       <div class="card shadow-sm">
         <div class="card-body">
           <h2 class="h5 card-title">Connect</h2>
-          <form method="post" action="<?php echo htmlspecialchars($selfPath); ?>" autocomplete="off">
+          <form method="post" action="<?php echo htmlspecialchars($selfPath); ?>" autocomplete="off" id="connectForm">
             <input type="hidden" name="action" value="connect">
             <div class="mb-2">
               <label class="form-label">Endpoint URL</label>
@@ -183,7 +225,7 @@ $pageTitle = 'Inspect S3';
               <input class="form-check-input" type="checkbox" name="path_style" id="path_style" checked>
               <label class="form-check-label" for="path_style">Path-style addressing (recommended for Wasabi / MinIO)</label>
             </div>
-            <button type="submit" class="btn btn-primary"><i class="fas fa-plug"></i> Connect</button>
+            <button type="submit" class="btn btn-primary" id="connectBtn"><i class="fas fa-plug"></i> Connect</button>
           </form>
         </div>
       </div>
@@ -285,5 +327,16 @@ $pageTitle = 'Inspect S3';
       <?php endif; ?>
     <?php endif; ?>
   </div>
+  <script>
+    (function () {
+      const form = document.getElementById('connectForm');
+      const btn = document.getElementById('connectBtn');
+      if (!form || !btn) return;
+      form.addEventListener('submit', function () {
+        btn.disabled = true;
+        btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1" role="status" aria-hidden="true"></span>Connecting...';
+      });
+    })();
+  </script>
 </body>
 </html>

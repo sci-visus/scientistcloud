@@ -68,7 +68,13 @@ function s3_inspector_create_client(array $session): S3Client
         ],
         'use_path_style_endpoint' => $usePathStyle,
         'scheme' => 'https',
-        'http' => ['verify' => true],
+        // Keep calls responsive so the UI does not appear to spin forever.
+        'http' => [
+            'verify' => true,
+            'connect_timeout' => 8,
+            'timeout' => 25,
+        ],
+        'retries' => 1,
     ]);
 }
 
@@ -77,14 +83,28 @@ function s3_inspector_create_client(array $session): S3Client
  */
 function s3_inspector_list_page(array $session, ?string $continuationToken = null): array
 {
-    $out = ['folders' => [], 'files' => [], 'error' => null, 'next_token' => null];
+    $started = microtime(true);
+    $debug = [];
+    $out = ['folders' => [], 'files' => [], 'error' => null, 'next_token' => null, 'debug' => []];
     if (!s3_inspector_connected($session)) {
         $out['error'] = 'Not connected.';
+        $out['debug'][] = '[error] Session is not connected (missing credentials).';
         return $out;
     }
 
     $bucket = $session['bucket'];
     $prefix = s3_inspector_full_prefix($session);
+    $endpoint = (string) ($session['endpoint'] ?? '');
+    $region = (string) ($session['region'] ?? 'us-east-1');
+    $pathStyle = !empty($session['path_style']) ? 'true' : 'false';
+    $debug[] = sprintf(
+        '[start] listObjectsV2 endpoint=%s bucket=%s prefix=%s region=%s path_style=%s',
+        $endpoint,
+        $bucket,
+        $prefix,
+        $region,
+        $pathStyle
+    );
 
     try {
         $client = s3_inspector_create_client($session);
@@ -96,9 +116,11 @@ function s3_inspector_list_page(array $session, ?string $continuationToken = nul
         ];
         if ($continuationToken !== null && $continuationToken !== '') {
             $params['ContinuationToken'] = $continuationToken;
+            $debug[] = '[request] Using continuation token';
         }
 
         $result = $client->listObjectsV2($params);
+        $debug[] = '[response] listObjectsV2 returned successfully';
 
         foreach ($result->get('CommonPrefixes') ?? [] as $cp) {
             $p = $cp['Prefix'] ?? '';
@@ -135,11 +157,23 @@ function s3_inspector_list_page(array $session, ?string $continuationToken = nul
         }
 
         $out['next_token'] = $result->get('NextContinuationToken');
+        $debug[] = sprintf(
+            '[done] folders=%d files=%d truncated=%s',
+            count($out['folders']),
+            count($out['files']),
+            $out['next_token'] ? 'yes' : 'no'
+        );
     } catch (AwsException $e) {
         $out['error'] = $e->getAwsErrorMessage() ?: $e->getMessage();
+        $debug[] = '[aws-error] ' . $out['error'];
     } catch (Throwable $e) {
         $out['error'] = $e->getMessage();
+        $debug[] = '[error] ' . $out['error'];
     }
+
+    $elapsedMs = (int) round((microtime(true) - $started) * 1000);
+    $debug[] = '[timing] elapsed_ms=' . $elapsedMs;
+    $out['debug'] = $debug;
 
     return $out;
 }
