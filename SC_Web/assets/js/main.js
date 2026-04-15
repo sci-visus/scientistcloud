@@ -9,6 +9,18 @@ function getApiBasePath() {
     return isLocal ? '/api' : '/portal/api';
 }
 
+/** Base path for portal pages (s3.php, index.php) — matches PHP SC_Web routing */
+function getPortalBasePath() {
+    const isLocal = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+    return isLocal ? '' : '/portal';
+}
+
+function openInspectS3() {
+    const base = getPortalBasePath();
+    const path = base === '' ? '/s3.php' : `${base}/s3.php`;
+    window.open(path, '_blank', 'noopener,noreferrer');
+}
+
 /**
  * Format file size from GB (as stored in database) to human-readable format
  * data_size is stored in GB (float), but formatFileSize expects bytes
@@ -461,6 +473,9 @@ function displayDatasetDetails(dataset) {
                 ` : ''}
             </div>
             <div class="dataset-actions mt-3">
+                <button type="button" class="btn btn-sm btn-outline-info" onclick="openInspectS3()" title="Browse an S3-compatible bucket with your own credentials">
+                    <i class="fab fa-aws"></i> Inspect S3
+                </button>
                 <button class="btn btn-sm btn-primary" onclick="viewDataset('${dataset.id}')">
                     <i class="fas fa-eye"></i> View
                 </button>
