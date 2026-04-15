@@ -105,31 +105,89 @@ else
 fi
 
 # Pull latest code from scientistCloudLib repository (parent of Docker directory)
+# Using workingPrivateRepo branch from sci-visus/scientistCloudLib
 SCLIB_CODE_DIR="$HOME/ScientistCloud2.0/scientistCloudLib"
 if [ -d "$SCLIB_CODE_DIR" ]; then
-    echo "📥 Pulling latest SCLib code..."
+    echo "📥 Pulling latest SCLib code from workingPrivateRepo branch..."
     pushd "$SCLIB_CODE_DIR"
+    # Ensure remote is set to sci-visus/scientistCloudLib
+    if ! git remote get-url origin 2>/dev/null | grep -q "sci-visus/scientistCloudLib"; then
+        echo "   Setting remote to sci-visus/scientistCloudLib..."
+        git remote set-url origin https://github.com/sci-visus/scientistCloudLib.git 2>/dev/null || \
+        git remote add origin https://github.com/sci-visus/scientistCloudLib.git 2>/dev/null || true
+    fi
     git fetch origin
-    git reset --hard origin/main
+    # Checkout workingPrivateRepo branch (create local if it doesn't exist)
+    git checkout workingPrivateRepo 2>/dev/null || git checkout -b workingPrivateRepo origin/workingPrivateRepo
+    git reset --hard origin/workingPrivateRepo
     popd
-    echo "✅ SCLib code updated"
+    echo "✅ SCLib code updated from workingPrivateRepo branch"
 fi
 
-# Pull SCLib Docker code
+# Pull SCLib Docker code (same repository, different directory)
 SCLIB_DOCKER_DIR="$HOME/ScientistCloud2.0/scientistCloudLib/Docker"
 if [ -d "$SCLIB_DOCKER_DIR" ]; then
-    echo "📥 Pulling latest SCLib Docker code..."
+    echo "📥 Pulling latest SCLib Docker code from workingPrivateRepo branch..."
     pushd "$SCLIB_DOCKER_DIR"
+    # Ensure remote is set to sci-visus/scientistCloudLib
+    if ! git remote get-url origin 2>/dev/null | grep -q "sci-visus/scientistCloudLib"; then
+        echo "   Setting remote to sci-visus/scientistCloudLib..."
+        git remote set-url origin https://github.com/sci-visus/scientistCloudLib.git 2>/dev/null || \
+        git remote add origin https://github.com/sci-visus/scientistCloudLib.git 2>/dev/null || true
+    fi
     git fetch origin
-    git reset --hard origin/main
+    # Checkout workingPrivateRepo branch (create local if it doesn't exist)
+    git checkout workingPrivateRepo 2>/dev/null || git checkout -b workingPrivateRepo origin/workingPrivateRepo
+    git reset --hard origin/workingPrivateRepo
     popd
-    echo "✅ SCLib Docker code updated"
+    echo "✅ SCLib Docker code updated from workingPrivateRepo branch"
 fi
 
 # Pull Portal Docker code
+# Note: Portal code may be in a different repository - adjust if needed
 PORTAL_DOCKER_DIR="$HOME/ScientistCloud2.0/scientistcloud/SC_Docker"
+SCIENTISTCLOUD_DIR="$HOME/ScientistCloud2.0/scientistcloud"
 if [ -d "$PORTAL_DOCKER_DIR" ]; then
-    echo "📥 Pulling latest Portal Docker code from dashChange branch..."
+    echo "📥 Pulling latest Portal Docker code..."
+    
+    # Fix vendor directory permissions BEFORE git operations to prevent permission errors
+    if [ -d "$SCIENTISTCLOUD_DIR/SC_Web/vendor" ]; then
+        echo "🔧 Fixing vendor directory permissions before git operations..."
+        pushd "$SCIENTISTCLOUD_DIR"
+        
+        # Stop any containers that might be using vendor files
+        if docker ps --format "{{.Names}}" | grep -q "scientistcloud-portal"; then
+            echo "   ⏸️  Temporarily stopping portal container to release file locks..."
+            docker stop scientistcloud-portal 2>/dev/null || true
+            sleep 1
+        fi
+        
+        # Remove extended attributes (if on macOS)
+        if command -v xattr >/dev/null 2>&1; then
+            find SC_Web/vendor -type f -exec xattr -c {} \; 2>/dev/null || true
+            find SC_Web/vendor -type d -exec xattr -c {} \; 2>/dev/null || true
+        fi
+        
+        # Fix ownership
+        CURRENT_USER=$(whoami)
+        CURRENT_GROUP=$(id -gn)
+        sudo chown -R "$CURRENT_USER:$CURRENT_GROUP" SC_Web/vendor 2>/dev/null || \
+        chown -R "$CURRENT_USER:$CURRENT_GROUP" SC_Web/vendor 2>/dev/null || true
+        
+        # Fix permissions
+        find SC_Web/vendor -type f -exec chmod 644 {} \; 2>/dev/null || true
+        find SC_Web/vendor -type d -exec chmod 755 {} \; 2>/dev/null || true
+        chmod -R u+w SC_Web/vendor 2>/dev/null || true
+        
+        # If vendor/auth0 is causing issues, remove it (composer will recreate it)
+        if [ -d "SC_Web/vendor/auth0" ] && [ ! -w "SC_Web/vendor/auth0" ]; then
+            echo "   🗑️  Removing problematic vendor/auth0 directory (will be recreated by composer)..."
+            sudo rm -rf SC_Web/vendor/auth0 2>/dev/null || rm -rf SC_Web/vendor/auth0 2>/dev/null || true
+        fi
+        
+        echo "✅ Vendor permissions fixed"
+        popd
+    fi
     pushd "$PORTAL_DOCKER_DIR"
     
     # Fix vendor directory permissions before git operations
@@ -152,11 +210,49 @@ if [ -d "$PORTAL_DOCKER_DIR" ]; then
     fi
     
     git fetch origin
-    #git reset --hard origin/main
-    git checkout dashChange 2>/dev/null || git checkout -b dashChange origin/dashChange
-    git reset --hard origin/dashChange
+    
+    # Clean up git state before reset
+    echo "   🧹 Cleaning git state..."
+    git clean -fd 2>/dev/null || true
+    git reset --hard HEAD 2>/dev/null || true
+    
+    # Check if workingPrivateRepo branch exists for portal, otherwise use main
+    if git ls-remote --heads origin workingPrivateRepo | grep -q workingPrivateRepo; then
+        echo "   Using workingPrivateRepo branch for Portal..."
+        git checkout workingPrivateRepo 2>/dev/null || git checkout -b workingPrivateRepo origin/workingPrivateRepo
+        
+        # Use a more robust reset strategy
+        if ! git reset --hard origin/workingPrivateRepo 2>/dev/null; then
+            echo "   ⚠️  git reset --hard failed, trying alternative approach..."
+            # Remove vendor from git index and try again
+            git rm -r --cached SC_Web/vendor 2>/dev/null || true
+            git reset --hard origin/workingPrivateRepo 2>/dev/null || {
+                echo "   ⚠️  Still having issues with vendor files, using checkout instead..."
+                git checkout -f origin/workingPrivateRepo 2>/dev/null || true
+            }
+        fi
+    else
+        echo "   workingPrivateRepo branch not found, using main branch..."
+        if ! git reset --hard origin/main 2>/dev/null; then
+            echo "   ⚠️  git reset --hard failed, trying alternative approach..."
+            git rm -r --cached SC_Web/vendor 2>/dev/null || true
+            git reset --hard origin/main 2>/dev/null || {
+                echo "   ⚠️  Still having issues with vendor files, using checkout instead..."
+                git checkout -f origin/main 2>/dev/null || true
+            }
+        fi
+    fi
     popd
-    echo "✅ Portal Docker code updated from dashChange branch"
+    
+    # Restart portal container if we stopped it
+    if docker ps -a --format "{{.Names}}" | grep -q "scientistcloud-portal"; then
+        if ! docker ps --format "{{.Names}}" | grep -q "scientistcloud-portal"; then
+            echo "   ▶️  Restarting portal container..."
+            docker start scientistcloud-portal 2>/dev/null || true
+        fi
+    fi
+    
+    echo "✅ Portal Docker code updated"
 fi
 
 # Start services only if not in dashboards-only mode

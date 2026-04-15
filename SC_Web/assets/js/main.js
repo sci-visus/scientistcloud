@@ -9,6 +9,18 @@ function getApiBasePath() {
     return isLocal ? '/api' : '/portal/api';
 }
 
+/** Base path for portal pages (s3.php, index.php) — matches PHP SC_Web routing */
+function getPortalBasePath() {
+    const isLocal = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+    return isLocal ? '' : '/portal';
+}
+
+function openInspectS3() {
+    const base = getPortalBasePath();
+    const path = base === '' ? '/s3.php' : `${base}/s3.php`;
+    window.open(path, '_blank', 'noopener,noreferrer');
+}
+
 /**
  * Format file size from GB (as stored in database) to human-readable format
  * data_size is stored in GB (float), but formatFileSize expects bytes
@@ -172,6 +184,11 @@ function setupEventListeners() {
         // Dataset selection - ONLY handle if datasetManager is not available
         // dataset-manager.js already has its own handler, so we avoid duplicate processing
         document.addEventListener('click', function(e) {
+        // Public portal uses its own dataset click handling (public-dataset-manager.js)
+        // so we should not trigger the auth-required private fallback.
+        if (window.IS_PUBLIC_PORTAL) {
+            return;
+        }
         if (e.target.closest('.dataset-link')) {
             // If datasetManager exists and has handleDatasetClick, let it handle everything
             // Only use main.js handler as absolute fallback
@@ -509,6 +526,9 @@ function displayDatasetDetails(dataset) {
                 ` : ''}
             </div>
             <div class="dataset-actions mt-3">
+                <button type="button" class="btn btn-sm btn-outline-info" onclick="openInspectS3()" title="Browse an S3-compatible bucket with your own credentials">
+                    <i class="fab fa-aws"></i> Inspect S3
+                </button>
                 <button class="btn btn-sm btn-primary" onclick="viewDataset('${dataset.id}')">
                     <i class="fas fa-eye"></i> View
                 </button>

@@ -386,6 +386,16 @@ class UploadManager {
                 </div>
 
                 <div class="mb-3">
+                    <label class="form-label">Download Permission:</label>
+                    <select class="form-select" name="is_downloadable" id="localIsDownloadable">
+                        <option value="only owner" selected>Only Owner</option>
+                        <option value="only team">Only Team</option>
+                        <option value="public">Public</option>
+                    </select>
+                    <small class="form-text text-muted">Who can download this dataset</small>
+                </div>
+
+                <div class="mb-3">
                     <div class="form-check">
                         <input class="form-check-input" type="checkbox" name="convert" id="localConvert" checked>
                         <label class="form-check-label" for="localConvert">
@@ -510,6 +520,16 @@ class UploadManager {
                             Public (Downloadable)
                         </label>
                     </div>
+                </div>
+
+                <div class="mb-3">
+                    <label class="form-label">Download Permission:</label>
+                    <select class="form-select" name="is_downloadable" id="googleIsDownloadable">
+                        <option value="only owner" selected>Only Owner</option>
+                        <option value="only team">Only Team</option>
+                        <option value="public">Public</option>
+                    </select>
+                    <small class="form-text text-muted">Who can download this dataset</small>
                 </div>
 
                 <div class="mb-3">
@@ -2973,7 +2993,7 @@ class UploadManager {
             });
             
             // Apply current theme class
-            const currentTheme = localStorage.getItem('theme') || 'dark';
+            const currentTheme = localStorage.getItem('theme') || 'light';
             const themeClass = currentTheme === 'light' ? 'light-theme' : '';
             
             // Load content into viewer container with styles

@@ -362,6 +362,10 @@ $htmlContent = markdownToHtml($markdown);
           <a class="nav-link <?php echo $page === 'api-datasets' ? 'active' : ''; ?>" href="?page=api-datasets">Datasets API</a>
           <a class="nav-link <?php echo $page === 'curl-scripts' ? 'active' : ''; ?>" href="?page=curl-scripts">Curl Scripts</a>
           <a class="nav-link <?php echo $page === 'python-examples' ? 'active' : ''; ?>" href="?page=python-examples">Python Examples</a>
+          <hr>
+          <h6 class="mt-3 mb-2"><i class="fas fa-info-circle"></i> Portal Access</h6>
+          <a class="nav-link" href="../public/"><i class="fas fa-globe"></i> Public Portal</a>
+          <a class="nav-link" href="../index.php"><i class="fas fa-user"></i> Account Portal</a>
         </nav>
       </div>
       

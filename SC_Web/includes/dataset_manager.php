@@ -6,7 +6,10 @@
 
 require_once(__DIR__ . '/../config.php');
 require_once(__DIR__ . '/auth.php');
-require_once(__DIR__ . '/sclib_client.php');
+// SCLib client is conditionally included - only when needed
+if (!function_exists('getSCLibClient')) {
+    require_once(__DIR__ . '/sclib_client.php');
+}
 
 /**
  * Get user's datasets
@@ -620,6 +623,72 @@ function getAllDatasetsByEmail($userEmail) {
             'shared' => [],
             'team' => []
         ];
+    }
+}
+
+/**
+ * Get all public datasets (no authentication required)
+ * Uses SCLib API to query for public datasets
+ * 
+ * @return array Array of formatted public datasets
+ */
+function getPublicDatasets() {
+    try {
+        logMessage('INFO', 'Getting public datasets via SCLib API');
+        
+        // Ensure SCLib client is available
+        if (!function_exists('getSCLibClient')) {
+            require_once(__DIR__ . '/sclib_client.php');
+        }
+        
+        $sclib = getSCLibClient();
+        
+        // Call SCLib API endpoint for public datasets
+        try {
+            $response = $sclib->makeRequest('/api/v1/datasets/public', 'GET');
+            
+            if (isset($response['success']) && $response['success']) {
+                $datasets = $response['datasets'] ?? [];
+                
+                logMessage('INFO', 'Retrieved public datasets from SCLib', [
+                    'count' => count($datasets)
+                ]);
+                
+                // Format datasets using formatDataset function
+                $formattedDatasets = [];
+                foreach ($datasets as $dataset) {
+                    try {
+                        $formattedDatasets[] = formatDataset($dataset);
+                    } catch (Exception $e) {
+                        logMessage('ERROR', 'Failed to format dataset', [
+                            'dataset_uuid' => $dataset['uuid'] ?? 'unknown',
+                            'error' => $e->getMessage()
+                        ]);
+                    }
+                }
+                
+                return $formattedDatasets;
+            } else {
+                logMessage('WARNING', 'SCLib API returned unsuccessful response', [
+                    'response' => $response
+                ]);
+                return [];
+            }
+            
+        } catch (Exception $e) {
+            logMessage('ERROR', 'Failed to call SCLib API for public datasets', [
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString()
+            ]);
+            return [];
+        }
+        
+    } catch (Exception $e) {
+        logMessage('ERROR', 'Failed to get public datasets', [
+            'error' => $e->getMessage(),
+            'trace' => $e->getTraceAsString()
+        ]);
+        return [];
     }
 }
 ?>

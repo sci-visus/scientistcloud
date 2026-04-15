@@ -113,6 +113,9 @@ try {
     if (isset($data['is_public'])) {
         $updateData['is_public'] = filter_var($data['is_public'], FILTER_VALIDATE_BOOLEAN);
     }
+    if (isset($data['is_downloadable'])) {
+        $updateData['is_downloadable'] = $data['is_downloadable'];
+    }
     if (isset($data['status'])) {
         $updateData['status'] = $data['status'];
     }

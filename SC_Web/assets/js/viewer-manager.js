@@ -40,9 +40,11 @@ class ViewerManager {
                 console.log('📡 API base path:', basePath, '(isLocal:', isLocal, ')');
                 return basePath;
             };
-            
-            const apiUrl = `${getApiBasePath()}/dashboards.php`;
-            console.log('🌐 Loading dashboards from:', apiUrl);
+            // Public portal doesn't use authentication, so use a public dashboards endpoint.
+            const isPublicPortal = window.IS_PUBLIC_PORTAL === true;
+            const apiFile = isPublicPortal ? 'public-dashboards.php' : 'dashboards.php';
+            const apiUrl = `${getApiBasePath()}/${apiFile}`;
+            console.log('🌐 Loading dashboards from:', apiUrl, 'publicPortal=', isPublicPortal);
             console.log('🌐 Full URL will be:', window.location.origin + apiUrl);
             
             const fetchStartTime = Date.now();
@@ -52,14 +54,15 @@ class ViewerManager {
             const timeoutPromise = new Promise((_, reject) => {
                 setTimeout(() => reject(new Error('Fetch timeout after 10 seconds')), 10000);
             });
-            
-            const fetchPromise = fetch(apiUrl, {
-                credentials: 'include',  // Include cookies for authentication
+            const fetchOptions = {
                 method: 'GET',
-                headers: {
-                    'Accept': 'application/json'
-                }
-            });
+                headers: { 'Accept': 'application/json' }
+            };
+            if (!isPublicPortal) {
+                fetchOptions.credentials = 'include';
+            }
+            
+            const fetchPromise = fetch(apiUrl, fetchOptions);
             
             const response = await Promise.race([fetchPromise, timeoutPromise]);
             
@@ -593,6 +596,19 @@ class ViewerManager {
      */
     async checkDatasetStatus(datasetId, dashboardType = null) {
         try {
+            // Public portal is unauthenticated; avoid calling auth-protected endpoints.
+            if (window.IS_PUBLIC_PORTAL === true) {
+                const details = window.viewerManager?.currentDataset?.details;
+                const status = (details?.status || details?.processing_status || '').toString().toLowerCase().trim();
+
+                // Treat "processing-like" statuses as processing; otherwise assume ready.
+                if (['processing', 'pending', 'converting', 'uploading', 'queued'].includes(status)) {
+                    return 'processing';
+                }
+
+                return 'ready';
+            }
+
             // Helper function to get API base path
             const getApiBasePath = () => {
                 const isLocal = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
@@ -782,7 +798,7 @@ class ViewerManager {
         const isLocal = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
         
         // Get current theme from AppState or localStorage (declare once at function start)
-        const currentTheme = window.AppState?.theme || localStorage.getItem('theme') || 'dark';
+        const currentTheme = window.AppState?.theme || localStorage.getItem('theme') || 'light';
         
         // If urlTemplate doesn't start with / or http, it's likely just an ID - construct proper path
         if (!urlTemplate.startsWith('/') && !urlTemplate.startsWith('http')) {
@@ -1104,9 +1120,13 @@ setTimeout(function() {
             const isLocal = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
             return isLocal ? '/api' : '/portal/api';
         };
-        
+
+        const isPublicPortal = window.IS_PUBLIC_PORTAL === true;
+        const apiFile = isPublicPortal ? 'public-dashboards.php' : 'dashboards.php';
+        const apiUrl = `${getApiBasePath()}/${apiFile}`;
+
         // Manually fetch and populate
-        fetch(`${getApiBasePath()}/dashboards.php`, { credentials: 'include' })
+        fetch(apiUrl, isPublicPortal ? {} : { credentials: 'include' })
             .then(response => response.json())
             .then(data => {
                 if (data.success && data.dashboards) {

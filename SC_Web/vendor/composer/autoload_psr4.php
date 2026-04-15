@@ -6,6 +6,9 @@ $vendorDir = dirname(__DIR__);
 $baseDir = dirname($vendorDir);
 
 return array(
+    'Symfony\\Polyfill\\Mbstring\\' => array($vendorDir . '/symfony/polyfill-mbstring'),
+    'Symfony\\Polyfill\\Ctype\\' => array($vendorDir . '/symfony/polyfill-ctype'),
+    'Symfony\\Component\\Filesystem\\' => array($vendorDir . '/symfony/filesystem'),
     'ScientistCloud\\' => array($baseDir . '/src'),
     'Psr\\Log\\' => array($vendorDir . '/psr/log/src'),
     'Psr\\Http\\Message\\' => array($vendorDir . '/psr/http-factory/src', $vendorDir . '/psr/http-message/src'),
@@ -13,12 +16,14 @@ return array(
     'Psr\\EventDispatcher\\' => array($vendorDir . '/psr/event-dispatcher/src'),
     'Psr\\Container\\' => array($vendorDir . '/psr/container/src'),
     'Psr\\Cache\\' => array($vendorDir . '/psr/cache/src'),
-    'PsrDiscovery\\' => array($vendorDir . '/psr-discovery/log-implementations/src', $vendorDir . '/psr-discovery/http-factory-implementations/src', $vendorDir . '/psr-discovery/http-client-implementations/src', $vendorDir . '/psr-discovery/event-dispatcher-implementations/src', $vendorDir . '/psr-discovery/container-implementations/src', $vendorDir . '/psr-discovery/cache-implementations/src', $vendorDir . '/psr-discovery/discovery/src'),
+    'PsrDiscovery\\' => array($baseDir . '/src', $vendorDir . '/psr-discovery/cache-implementations/src', $vendorDir . '/psr-discovery/container-implementations/src', $vendorDir . '/psr-discovery/discovery/src', $vendorDir . '/psr-discovery/event-dispatcher-implementations/src', $vendorDir . '/psr-discovery/http-client-implementations/src', $vendorDir . '/psr-discovery/http-factory-implementations/src', $vendorDir . '/psr-discovery/log-implementations/src'),
+    'JmesPath\\' => array($vendorDir . '/mtdowling/jmespath.php/src'),
     'Http\\Message\\MultipartStream\\' => array($vendorDir . '/php-http/multipart-stream-builder/src'),
     'Http\\Discovery\\' => array($vendorDir . '/php-http/discovery/src'),
     'GuzzleHttp\\Psr7\\' => array($vendorDir . '/guzzlehttp/psr7/src'),
     'GuzzleHttp\\Promise\\' => array($vendorDir . '/guzzlehttp/promises/src'),
     'GuzzleHttp\\' => array($vendorDir . '/guzzlehttp/guzzle/src'),
     'Composer\\Semver\\' => array($vendorDir . '/composer/semver/src'),
+    'Aws\\' => array($vendorDir . '/aws/aws-sdk-php/src'),
     'Auth0\\SDK\\' => array($vendorDir . '/auth0/auth0-php/src'),
 );
