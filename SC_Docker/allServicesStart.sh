@@ -216,31 +216,18 @@ if [ -d "$PORTAL_DOCKER_DIR" ]; then
     git clean -fd 2>/dev/null || true
     git reset --hard HEAD 2>/dev/null || true
     
-    # Check if workingPrivateRepo branch exists for portal, otherwise use main
-    if git ls-remote --heads origin workingPrivateRepo | grep -q workingPrivateRepo; then
-        echo "   Using workingPrivateRepo branch for Portal..."
-        git checkout workingPrivateRepo 2>/dev/null || git checkout -b workingPrivateRepo origin/workingPrivateRepo
-        
-        # Use a more robust reset strategy
-        if ! git reset --hard origin/workingPrivateRepo 2>/dev/null; then
-            echo "   ⚠️  git reset --hard failed, trying alternative approach..."
-            # Remove vendor from git index and try again
-            git rm -r --cached SC_Web/vendor 2>/dev/null || true
-            git reset --hard origin/workingPrivateRepo 2>/dev/null || {
-                echo "   ⚠️  Still having issues with vendor files, using checkout instead..."
-                git checkout -f origin/workingPrivateRepo 2>/dev/null || true
-            }
-        fi
-    else
-        echo "   workingPrivateRepo branch not found, using main branch..."
-        if ! git reset --hard origin/main 2>/dev/null; then
-            echo "   ⚠️  git reset --hard failed, trying alternative approach..."
-            git rm -r --cached SC_Web/vendor 2>/dev/null || true
-            git reset --hard origin/main 2>/dev/null || {
-                echo "   ⚠️  Still having issues with vendor files, using checkout instead..."
-                git checkout -f origin/main 2>/dev/null || true
-            }
-        fi
+    # Always use main branch for ScientistCloud portal code.
+    echo "   Using main branch for Portal..."
+    git checkout main 2>/dev/null || git checkout -b main origin/main
+
+    # Use a robust reset strategy (vendor permissions can still interfere).
+    if ! git reset --hard origin/main 2>/dev/null; then
+        echo "   ⚠️  git reset --hard failed, trying alternative approach..."
+        git rm -r --cached SC_Web/vendor 2>/dev/null || true
+        git reset --hard origin/main 2>/dev/null || {
+            echo "   ⚠️  Still having issues with vendor files, using checkout instead..."
+            git checkout -f origin/main 2>/dev/null || true
+        }
     fi
     popd
     
