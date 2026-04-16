@@ -109,6 +109,11 @@ if ($s3ShareLinkMaxSeconds <= 0) {
 }
 define('S3_SHARE_LINK_MAX_SECONDS', $s3ShareLinkMaxSeconds);
 
+// S3 inspector public URL publishing toggle.
+// Default off until object/bucket public-read policy is finalized.
+$s3EnablePublicUrl = getenv('S3_ENABLE_PUBLIC_URL_BUTTON');
+define('S3_ENABLE_PUBLIC_URL_BUTTON', $s3EnablePublicUrl === '1');
+
 // Logging
 define('LOG_LEVEL', 'INFO');
 define('LOG_FILE', SC_WEB_ROOT . '/logs/app.log');

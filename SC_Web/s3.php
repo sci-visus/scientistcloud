@@ -186,6 +186,7 @@ $shareMaxSeconds = defined('S3_SHARE_LINK_MAX_SECONDS') ? (int) S3_SHARE_LINK_MA
 if ($shareMaxSeconds < 60) {
     $shareMaxSeconds = 60;
 }
+$showPublicUrlButton = defined('S3_ENABLE_PUBLIC_URL_BUTTON') && S3_ENABLE_PUBLIC_URL_BUTTON;
 $shareDurationOptions = [
     900 => '15m',
     3600 => '1h',
@@ -294,7 +295,12 @@ if ($defaultShareSeconds > $shareMaxSeconds) {
       <a class="btn btn-outline-secondary btn-sm" href="<?php echo htmlspecialchars($portalHome); ?>"><i class="fas fa-arrow-left"></i> Portal</a>
     </div>
     <p class="text-muted small">Browse and download objects from an S3-compatible bucket. Credentials are kept in your server session only (not logged).</p>
-    <p class="text-muted small">Use <strong>Copy Link</strong> for private, time-limited sharing. Use <strong>Copy Public URL</strong> for publishing permanently public files (requires bucket/object public-read policy).</p>
+    <p class="text-muted small">
+      Use <strong>Copy Link</strong> for private, time-limited sharing.
+      <?php if ($showPublicUrlButton): ?>
+      Use <strong>Copy Public URL</strong> for publishing permanently public files (requires bucket/object public-read policy).
+      <?php endif; ?>
+    </p>
 
     <?php if ($connectError): ?>
       <div class="alert alert-danger"><?php echo htmlspecialchars($connectError); ?></div>
@@ -436,7 +442,7 @@ if ($defaultShareSeconds > $shareMaxSeconds) {
           <?php foreach ($list['files'] as $file): ?>
             <?php
               $dl = $apiDl . '?k=' . rawurlencode($file['key']);
-              $publicUrl = s3_public_object_url($session, (string) $file['key']);
+              $publicUrl = $showPublicUrlButton ? s3_public_object_url($session, (string) $file['key']) : '';
               $sz = $file['size'];
               $szLabel = $sz >= 1073741824
                 ? number_format($sz / 1073741824, 2) . ' GB'
@@ -454,13 +460,15 @@ if ($defaultShareSeconds > $shareMaxSeconds) {
                   title="Copy a time-limited direct download link">
                   <i class="fas fa-link"></i> Copy Link
                 </button>
-                <button
-                  type="button"
-                  class="btn btn-sm btn-outline-success js-copy-public-link"
-                  data-public-link="<?php echo htmlspecialchars($publicUrl); ?>"
-                  title="Copy permanent public URL (if object is public)">
-                  <i class="fas fa-globe"></i> Copy Public URL
-                </button>
+                <?php if ($showPublicUrlButton): ?>
+                  <button
+                    type="button"
+                    class="btn btn-sm btn-outline-success js-copy-public-link"
+                    data-public-link="<?php echo htmlspecialchars($publicUrl); ?>"
+                    title="Copy permanent public URL (if object is public)">
+                    <i class="fas fa-globe"></i> Copy Public URL
+                  </button>
+                <?php endif; ?>
               </span>
             </li>
           <?php endforeach; ?>
