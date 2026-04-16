@@ -151,9 +151,59 @@ $pageTitle = 'Inspect S3';
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
   <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
   <style>
-    body { padding: 1.25rem; background: var(--bs-body-bg); }
+    :root {
+      --sc-primary: #1f3c88;
+      --sc-accent: #2f7de1;
+      --sc-soft: #eaf2ff;
+      --sc-border: #c9daf8;
+    }
+    body { padding: 1.25rem; background: #f7faff; color: #1b2b52; }
     .breadcrumb { background: var(--bs-secondary-bg); }
     code.key { font-size: 0.85em; word-break: break-all; }
+    .sc-title {
+      color: var(--sc-primary);
+      font-weight: 700;
+      display: inline-flex;
+      align-items: center;
+    }
+    .sc-logo {
+      height: 30px;
+      width: 30px;
+      object-fit: contain;
+      margin-right: 8px;
+    }
+    .card {
+      border-color: var(--sc-border);
+    }
+    .card-header {
+      background: var(--sc-soft);
+      color: var(--sc-primary);
+      border-bottom-color: var(--sc-border);
+    }
+    .btn-primary {
+      background-color: var(--sc-primary);
+      border-color: var(--sc-primary);
+    }
+    .btn-primary:hover,
+    .btn-primary:focus {
+      background-color: var(--sc-accent);
+      border-color: var(--sc-accent);
+    }
+    .btn-outline-primary {
+      color: var(--sc-primary);
+      border-color: var(--sc-primary);
+    }
+    .btn-outline-primary:hover {
+      background-color: var(--sc-primary);
+      border-color: var(--sc-primary);
+    }
+    .list-group-item a {
+      color: var(--sc-primary);
+      text-decoration: none;
+    }
+    .list-group-item a:hover {
+      color: var(--sc-accent);
+    }
     .debug-window {
       max-height: 220px;
       overflow: auto;
@@ -170,7 +220,7 @@ $pageTitle = 'Inspect S3';
 <body>
   <div class="container-fluid" style="max-width: 960px;">
     <div class="d-flex justify-content-between align-items-center mb-3">
-      <h1 class="h3 mb-0"><i class="fab fa-aws text-warning"></i> <?php echo htmlspecialchars($pageTitle); ?></h1>
+      <h1 class="h3 mb-0 sc-title"><img src="../logos/scientistCloudLogo_512.png" alt="ScientistCloud" class="sc-logo"> <?php echo htmlspecialchars($pageTitle); ?></h1>
       <a class="btn btn-outline-secondary btn-sm" href="<?php echo htmlspecialchars($portalHome); ?>"><i class="fas fa-arrow-left"></i> Portal</a>
     </div>
     <p class="text-muted small">Browse and download objects from an S3-compatible bucket. Credentials are kept in your server session only (not logged).</p>
@@ -196,16 +246,18 @@ $pageTitle = 'Inspect S3';
             <input type="hidden" name="action" value="connect">
             <div class="mb-2">
               <label class="form-label">Endpoint URL</label>
-              <input type="url" name="endpoint_url" class="form-control" required placeholder="https://s3.us-east-1.wasabisys.com"
-                     value="<?php echo htmlspecialchars((string) ($_POST['endpoint_url'] ?? 'https://s3.us-east-1.wasabisys.com')); ?>">
+              <input type="url" name="endpoint_url" class="form-control" required placeholder="https://us-east-1.gw.future-tech-holdings.com"
+                     value="<?php echo htmlspecialchars((string) ($_POST['endpoint_url'] ?? 'https://us-east-1.gw.future-tech-holdings.com')); ?>">
             </div>
             <div class="mb-2">
               <label class="form-label">Bucket name</label>
-              <input type="text" name="bucket_name" class="form-control" required placeholder="my-bucket">
+              <input type="text" name="bucket_name" class="form-control" required placeholder="scientistcloud"
+                     value="<?php echo htmlspecialchars((string) ($_POST['bucket_name'] ?? 'scientistcloud')); ?>">
             </div>
             <div class="mb-2">
               <label class="form-label">Prefix (directory on S3)</label>
-              <input type="text" name="prefix" class="form-control" placeholder="optional/path/prefix/">
+              <input type="text" name="prefix" class="form-control" placeholder="utk"
+                     value="<?php echo htmlspecialchars((string) ($_POST['prefix'] ?? 'utk')); ?>">
             </div>
             <div class="row g-2">
               <div class="col-md-6 mb-2">
