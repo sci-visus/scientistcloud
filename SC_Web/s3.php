@@ -46,6 +46,47 @@ function s3_sess_clear(): void
     unset($_SESSION[S3_SESS_KEY]);
 }
 
+function s3_public_object_url(array $session, string $key): string
+{
+    $endpoint = rtrim((string) ($session['endpoint'] ?? ''), '/');
+    $bucket = trim((string) ($session['bucket'] ?? ''));
+    $pathStyle = !empty($session['path_style']);
+
+    $encodedKey = implode('/', array_map('rawurlencode', array_filter(explode('/', ltrim($key, '/')), static function ($seg) {
+        return $seg !== '';
+    })));
+
+    $parsed = parse_url($endpoint);
+    if ($parsed === false || empty($parsed['scheme']) || empty($parsed['host'])) {
+        return $endpoint . '/' . rawurlencode($bucket) . '/' . $encodedKey;
+    }
+
+    $scheme = $parsed['scheme'];
+    $host = $parsed['host'];
+    $port = isset($parsed['port']) ? ':' . $parsed['port'] : '';
+    $basePath = isset($parsed['path']) ? rtrim($parsed['path'], '/') : '';
+
+    if ($pathStyle) {
+        return $scheme . '://' . $host . $port . $basePath . '/' . rawurlencode($bucket) . '/' . $encodedKey;
+    }
+
+    return $scheme . '://' . $bucket . '.' . $host . $port . $basePath . '/' . $encodedKey;
+}
+
+function s3_format_duration(int $seconds): string
+{
+    if ($seconds % 86400 === 0) {
+        return (string) ($seconds / 86400) . 'd';
+    }
+    if ($seconds % 3600 === 0) {
+        return (string) ($seconds / 3600) . 'h';
+    }
+    if ($seconds % 60 === 0) {
+        return (string) ($seconds / 60) . 'm';
+    }
+    return (string) $seconds . 's';
+}
+
 $isLocal = (strpos(SC_SERVER_URL, 'localhost') !== false || strpos(SC_SERVER_URL, '127.0.0.1') !== false);
 $portalHome = $isLocal ? '/index.php' : '/portal/index.php';
 $selfPath = $isLocal ? '/s3.php' : '/portal/s3.php';
@@ -141,6 +182,29 @@ if ($connected) {
 }
 
 $pageTitle = 'Inspect S3';
+$shareMaxSeconds = defined('S3_SHARE_LINK_MAX_SECONDS') ? (int) S3_SHARE_LINK_MAX_SECONDS : 604800;
+if ($shareMaxSeconds < 60) {
+    $shareMaxSeconds = 60;
+}
+$shareDurationOptions = [
+    900 => '15m',
+    3600 => '1h',
+    86400 => '24h',
+    604800 => '7d',
+];
+$shareDurationOptions = array_filter(
+    $shareDurationOptions,
+    static fn (int $seconds): bool => $seconds <= $shareMaxSeconds,
+    ARRAY_FILTER_USE_KEY
+);
+if ($shareDurationOptions === []) {
+    $shareDurationOptions = [$shareMaxSeconds => s3_format_duration($shareMaxSeconds)];
+}
+$defaultShareSeconds = 3600;
+if ($defaultShareSeconds > $shareMaxSeconds) {
+    $keys = array_keys($shareDurationOptions);
+    $defaultShareSeconds = (int) end($keys);
+}
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -215,6 +279,12 @@ $pageTitle = 'Inspect S3';
       border-radius: 6px;
       padding: 10px;
     }
+    .s3-file-actions {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.45rem;
+      flex-wrap: wrap;
+    }
   </style>
 </head>
 <body>
@@ -224,6 +294,7 @@ $pageTitle = 'Inspect S3';
       <a class="btn btn-outline-secondary btn-sm" href="<?php echo htmlspecialchars($portalHome); ?>"><i class="fas fa-arrow-left"></i> Portal</a>
     </div>
     <p class="text-muted small">Browse and download objects from an S3-compatible bucket. Credentials are kept in your server session only (not logged).</p>
+    <p class="text-muted small">Use <strong>Copy Link</strong> for private, time-limited sharing. Use <strong>Copy Public URL</strong> for publishing permanently public files (requires bucket/object public-read policy).</p>
 
     <?php if ($connectError): ?>
       <div class="alert alert-danger"><?php echo htmlspecialchars($connectError); ?></div>
@@ -294,6 +365,17 @@ $pageTitle = 'Inspect S3';
             <strong>Bucket:</strong> <code><?php echo htmlspecialchars($session['bucket']); ?></code>
             &nbsp;·&nbsp; <strong>Root prefix:</strong> <code><?php echo htmlspecialchars($root === '' ? '(bucket root)' : $root); ?></code>
           </div>
+          <div class="d-flex align-items-center gap-2">
+            <label for="shareLinkExpires" class="small text-muted mb-0">Share link duration</label>
+            <select id="shareLinkExpires" class="form-select form-select-sm" style="width:auto;">
+              <?php foreach ($shareDurationOptions as $sec => $label): ?>
+                <option value="<?php echo (int) $sec; ?>"<?php echo ((int) $sec === $defaultShareSeconds) ? ' selected' : ''; ?>>
+                  <?php echo htmlspecialchars($label); ?>
+                </option>
+              <?php endforeach; ?>
+            </select>
+            <span class="small text-muted">max <?php echo htmlspecialchars(s3_format_duration($shareMaxSeconds)); ?></span>
+          </div>
           <form method="post" action="<?php echo htmlspecialchars($selfPath); ?>" class="m-0">
             <input type="hidden" name="action" value="disconnect">
             <button type="submit" class="btn btn-sm btn-outline-danger">Disconnect</button>
@@ -354,6 +436,7 @@ $pageTitle = 'Inspect S3';
           <?php foreach ($list['files'] as $file): ?>
             <?php
               $dl = $apiDl . '?k=' . rawurlencode($file['key']);
+              $publicUrl = s3_public_object_url($session, (string) $file['key']);
               $sz = $file['size'];
               $szLabel = $sz >= 1073741824
                 ? number_format($sz / 1073741824, 2) . ' GB'
@@ -362,7 +445,23 @@ $pageTitle = 'Inspect S3';
             <li class="list-group-item d-flex justify-content-between align-items-center flex-wrap gap-2">
               <span><i class="fas fa-file text-secondary"></i> <?php echo htmlspecialchars($file['name']); ?></span>
               <span class="small text-muted"><?php echo htmlspecialchars($szLabel); ?><?php if (!empty($file['mtime'])): ?> · <?php echo htmlspecialchars($file['mtime']); ?><?php endif; ?></span>
-              <a class="btn btn-sm btn-outline-primary" href="<?php echo htmlspecialchars($dl); ?>"><i class="fas fa-download"></i> Download</a>
+              <span class="s3-file-actions">
+                <a class="btn btn-sm btn-outline-primary" href="<?php echo htmlspecialchars($dl); ?>"><i class="fas fa-download"></i> Download</a>
+                <button
+                  type="button"
+                  class="btn btn-sm btn-outline-secondary js-copy-share-link"
+                  data-share-base="<?php echo htmlspecialchars($apiDl . '?mode=share_link&k=' . rawurlencode($file['key'])); ?>"
+                  title="Copy a time-limited direct download link">
+                  <i class="fas fa-link"></i> Copy Link
+                </button>
+                <button
+                  type="button"
+                  class="btn btn-sm btn-outline-success js-copy-public-link"
+                  data-public-link="<?php echo htmlspecialchars($publicUrl); ?>"
+                  title="Copy permanent public URL (if object is public)">
+                  <i class="fas fa-globe"></i> Copy Public URL
+                </button>
+              </span>
             </li>
           <?php endforeach; ?>
 
@@ -383,10 +482,76 @@ $pageTitle = 'Inspect S3';
     (function () {
       const form = document.getElementById('connectForm');
       const btn = document.getElementById('connectBtn');
-      if (!form || !btn) return;
-      form.addEventListener('submit', function () {
-        btn.disabled = true;
-        btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1" role="status" aria-hidden="true"></span>Connecting...';
+      if (form && btn) {
+        form.addEventListener('submit', function () {
+          btn.disabled = true;
+          btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1" role="status" aria-hidden="true"></span>Connecting...';
+        });
+      }
+      const shareExpiresSelect = document.getElementById('shareLinkExpires');
+      async function copyText(text) {
+        if (navigator.clipboard && window.isSecureContext) {
+          await navigator.clipboard.writeText(text);
+          return;
+        }
+        const input = document.createElement('textarea');
+        input.value = text;
+        document.body.appendChild(input);
+        input.select();
+        document.execCommand('copy');
+        input.remove();
+      }
+
+      const shareButtons = document.querySelectorAll('.js-copy-share-link');
+      shareButtons.forEach(function (btn) {
+        btn.addEventListener('click', async function () {
+          const base = btn.getAttribute('data-share-base');
+          if (!base) return;
+          const expires = shareExpiresSelect ? parseInt(shareExpiresSelect.value || '3600', 10) : 3600;
+          const endpoint = base + '&expires=' + encodeURIComponent(String(expires));
+          const original = btn.innerHTML;
+          btn.disabled = true;
+          btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1" aria-hidden="true"></span>Link...';
+          try {
+            const res = await fetch(endpoint, { credentials: 'same-origin' });
+            const json = await res.json();
+            if (!res.ok || !json.ok || !json.url) {
+              throw new Error((json && json.error) ? json.error : 'Could not create link');
+            }
+            await copyText(json.url);
+            btn.innerHTML = '<i class="fas fa-check"></i> Copied';
+            setTimeout(function () {
+              btn.innerHTML = original;
+              btn.disabled = false;
+            }, 1300);
+          } catch (err) {
+            alert('Failed to create/copy share link: ' + (err && err.message ? err.message : 'Unknown error'));
+            btn.innerHTML = original;
+            btn.disabled = false;
+          }
+        });
+      });
+
+      const publicButtons = document.querySelectorAll('.js-copy-public-link');
+      publicButtons.forEach(function (btn) {
+        btn.addEventListener('click', async function () {
+          const link = btn.getAttribute('data-public-link');
+          if (!link) return;
+          const original = btn.innerHTML;
+          btn.disabled = true;
+          try {
+            await copyText(link);
+            btn.innerHTML = '<i class="fas fa-check"></i> Copied';
+            setTimeout(function () {
+              btn.innerHTML = original;
+              btn.disabled = false;
+            }, 1300);
+          } catch (err) {
+            alert('Failed to copy public URL.');
+            btn.innerHTML = original;
+            btn.disabled = false;
+          }
+        });
       });
     })();
   </script>

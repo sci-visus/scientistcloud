@@ -101,6 +101,14 @@ define('EXCLUDED_FILE_PATTERNS', [
 define('VIEWER_TIMEOUT', 300); // 5 minutes
 define('VIEWER_REFRESH_INTERVAL', 30); // 30 seconds
 
+// S3 inspector share-link policy
+// Admin can override with env var, e.g. S3_SHARE_LINK_MAX_SECONDS=604800 (7 days).
+$s3ShareLinkMaxSeconds = (int) getenv('S3_SHARE_LINK_MAX_SECONDS');
+if ($s3ShareLinkMaxSeconds <= 0) {
+    $s3ShareLinkMaxSeconds = 604800; // 7 days
+}
+define('S3_SHARE_LINK_MAX_SECONDS', $s3ShareLinkMaxSeconds);
+
 // Logging
 define('LOG_LEVEL', 'INFO');
 define('LOG_FILE', SC_WEB_ROOT . '/logs/app.log');

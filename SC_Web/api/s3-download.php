@@ -45,6 +45,18 @@ if ($key === '') {
     exit;
 }
 
+$shareMode = isset($_GET['mode']) && (string) $_GET['mode'] === 'share_link';
+$maxShareSeconds = defined('S3_SHARE_LINK_MAX_SECONDS') ? (int) S3_SHARE_LINK_MAX_SECONDS : 604800;
+if ($maxShareSeconds < 60) {
+    $maxShareSeconds = 60;
+}
+$expiresSeconds = isset($_GET['expires']) ? (int) $_GET['expires'] : 1800;
+if ($expiresSeconds < 60) {
+    $expiresSeconds = 60;
+} elseif ($expiresSeconds > $maxShareSeconds) {
+    $expiresSeconds = $maxShareSeconds;
+}
+
 $rootPrefix = (string) ($session['root_prefix'] ?? '');
 if (!s3_inspector_key_allowed($key, $rootPrefix)) {
     http_response_code(403);
@@ -78,9 +90,19 @@ try {
     // For very large files, avoid proxying bytes through PHP/nginx.
     // Generate a short-lived signed URL and let the browser download directly from S3.
     $cmd = $client->getCommand('GetObject', $params);
-    $signed = $client->createPresignedRequest($cmd, '+30 minutes');
+    $signed = $client->createPresignedRequest($cmd, '+' . $expiresSeconds . ' seconds');
     $signedUrl = (string) $signed->getUri();
     if ($signedUrl !== '') {
+        if ($shareMode) {
+            header('Content-Type: application/json; charset=UTF-8');
+            echo json_encode([
+                'ok' => true,
+                'url' => $signedUrl,
+                'expires_in' => $expiresSeconds,
+                'max_expires_in' => $maxShareSeconds,
+            ], JSON_UNESCAPED_SLASHES);
+            exit;
+        }
         header('Cache-Control: no-store');
         header('Location: ' . $signedUrl, true, 302);
         exit;
@@ -115,10 +137,28 @@ try {
         }
     }
 } catch (Aws\Exception\AwsException $e) {
+    if ($shareMode) {
+        http_response_code(400);
+        header('Content-Type: application/json; charset=UTF-8');
+        echo json_encode([
+            'ok' => false,
+            'error' => $e->getAwsErrorMessage() ?: $e->getMessage(),
+        ], JSON_UNESCAPED_SLASHES);
+        exit;
+    }
     http_response_code(404);
     header('Content-Type: text/plain; charset=UTF-8');
     echo $e->getAwsErrorMessage() ?: $e->getMessage();
 } catch (Throwable $e) {
+    if ($shareMode) {
+        http_response_code(500);
+        header('Content-Type: application/json; charset=UTF-8');
+        echo json_encode([
+            'ok' => false,
+            'error' => 'Could not create share link.',
+        ], JSON_UNESCAPED_SLASHES);
+        exit;
+    }
     http_response_code(500);
     header('Content-Type: text/plain; charset=UTF-8');
     echo 'Download failed.';
