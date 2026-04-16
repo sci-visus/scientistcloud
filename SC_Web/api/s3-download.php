@@ -54,18 +54,43 @@ if (!s3_inspector_key_allowed($key, $rootPrefix)) {
 }
 
 try {
-    $client = s3_inspector_create_client($session);
-    $result = $client->getObject([
+    // Download can take a long time for GB-scale files.
+    @set_time_limit(0);
+    @ini_set('max_execution_time', '0');
+    @ini_set('zlib.output_compression', '0');
+    while (ob_get_level() > 0) {
+        @ob_end_clean();
+    }
+
+    // Override default short timeout used by listing calls.
+    $client = s3_inspector_create_client($session, [
+        'timeout' => 0,
+        'read_timeout' => 0,
+    ]);
+    $params = [
         'Bucket' => $session['bucket'],
         'Key' => $key,
-    ]);
+    ];
+    $rangeHeader = isset($_SERVER['HTTP_RANGE']) ? trim((string) $_SERVER['HTTP_RANGE']) : '';
+    if ($rangeHeader !== '' && preg_match('/^bytes=\d*-\d*$/', $rangeHeader)) {
+        $params['Range'] = $rangeHeader;
+    }
+    $result = $client->getObject($params);
 
     $filename = basename($key);
     $contentType = $result['ContentType'] ?? 'application/octet-stream';
     header('Content-Type: ' . $contentType);
     header('Content-Disposition: attachment; filename="' . str_replace('"', '', $filename) . '"');
+    header('Accept-Ranges: bytes');
+    if (isset($result['ContentRange'])) {
+        http_response_code(206);
+        header('Content-Range: ' . $result['ContentRange']);
+    }
     if (isset($result['ContentLength'])) {
         header('Content-Length: ' . (int) $result['ContentLength']);
+    }
+    if (isset($result['ETag'])) {
+        header('ETag: ' . $result['ETag']);
     }
 
     $body = $result['Body'];
@@ -74,6 +99,7 @@ try {
     } else {
         while (!$body->eof()) {
             echo $body->read(65536);
+            @flush();
         }
     }
 } catch (Aws\Exception\AwsException $e) {

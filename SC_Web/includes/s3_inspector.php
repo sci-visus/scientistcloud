@@ -52,11 +52,17 @@ function s3_inspector_connected(array $session): bool
         && !empty($session['secret_key']);
 }
 
-function s3_inspector_create_client(array $session): S3Client
+function s3_inspector_create_client(array $session, array $httpOverrides = []): S3Client
 {
     $endpoint = rtrim(trim($session['endpoint']), '/');
     $region = trim($session['region'] ?? 'us-east-1') ?: 'us-east-1';
     $usePathStyle = !empty($session['path_style']);
+
+    $http = array_merge([
+        'verify' => true,
+        'connect_timeout' => 8,
+        'timeout' => 25,
+    ], $httpOverrides);
 
     return new S3Client([
         'version' => 'latest',
@@ -68,12 +74,8 @@ function s3_inspector_create_client(array $session): S3Client
         ],
         'use_path_style_endpoint' => $usePathStyle,
         'scheme' => 'https',
-        // Keep calls responsive so the UI does not appear to spin forever.
-        'http' => [
-            'verify' => true,
-            'connect_timeout' => 8,
-            'timeout' => 25,
-        ],
+        // Default is tuned for interactive listing. Download endpoints can override.
+        'http' => $http,
         'retries' => 1,
     ]);
 }

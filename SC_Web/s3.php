@@ -167,8 +167,8 @@ $pageTitle = 'Inspect S3';
       align-items: center;
     }
     .sc-logo {
-      height: 30px;
-      width: 30px;
+      height: 100px;
+      width: 100px;
       object-fit: contain;
       margin-right: 8px;
     }

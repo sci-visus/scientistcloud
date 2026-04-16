@@ -312,6 +312,10 @@ body {
   border-color: var(--panel-border);
   border-radius: 0.5rem;
   font-size: 0.9rem;
+  width: clamp(180px, 24vw, 320px);
+  min-height: 42px;
+  padding-top: 0.45rem;
+  padding-bottom: 0.45rem;
 }
 
 .viewer-toolbar .form-select:focus {
@@ -327,6 +331,9 @@ body {
   color: var(--fg-color);
   border-color: var(--panel-border);
   background-color: transparent;
+  min-height: 42px;
+  display: inline-flex;
+  align-items: center;
 }
 
 .viewer-toolbar .btn:hover {

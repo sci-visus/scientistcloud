@@ -68,6 +68,9 @@ $publicDatasets = getPublicDatasets();
           </a>
         </div>
         <div class="btn-group ms-auto" role="group" aria-label="User actions">
+          <a href="/portal/s3.php" class="btn btn-outline-light" title="Inspect S3 Browser" target="_blank">
+            <i class="fas fa-database"></i> Inspect S3
+          </a>
           <a href="../docs.php" class="btn btn-outline-light" title="Documentation" target="_blank">
             <i class="fas fa-book"></i> Docs
           </a>
