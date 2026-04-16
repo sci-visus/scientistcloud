@@ -75,6 +75,17 @@ try {
     if ($rangeHeader !== '' && preg_match('/^bytes=\d*-\d*$/', $rangeHeader)) {
         $params['Range'] = $rangeHeader;
     }
+    // For very large files, avoid proxying bytes through PHP/nginx.
+    // Generate a short-lived signed URL and let the browser download directly from S3.
+    $cmd = $client->getCommand('GetObject', $params);
+    $signed = $client->createPresignedRequest($cmd, '+30 minutes');
+    $signedUrl = (string) $signed->getUri();
+    if ($signedUrl !== '') {
+        header('Cache-Control: no-store');
+        header('Location: ' . $signedUrl, true, 302);
+        exit;
+    }
+
     $result = $client->getObject($params);
 
     $filename = basename($key);
@@ -82,6 +93,7 @@ try {
     header('Content-Type: ' . $contentType);
     header('Content-Disposition: attachment; filename="' . str_replace('"', '', $filename) . '"');
     header('Accept-Ranges: bytes');
+    header('X-Accel-Buffering: no');
     if (isset($result['ContentRange'])) {
         http_response_code(206);
         header('Content-Range: ' . $result['ContentRange']);
