@@ -119,6 +119,22 @@ define('S3_ENABLE_PUBLIC_URL_BUTTON', $s3EnablePublicUrl === '1');
 $s3RequirePortalAuth = getenv('S3_REQUIRE_PORTAL_AUTH');
 define('S3_REQUIRE_PORTAL_AUTH', $s3RequirePortalAuth === '1');
 
+// S3 folder-download safety limits (zip is built server-side).
+// Admin overrides:
+// - S3_FOLDER_DOWNLOAD_MAX_FILES (default 2000)
+// - S3_FOLDER_DOWNLOAD_MAX_BYTES (default 20GB)
+$s3FolderDownloadMaxFiles = (int) getenv('S3_FOLDER_DOWNLOAD_MAX_FILES');
+if ($s3FolderDownloadMaxFiles <= 0) {
+    $s3FolderDownloadMaxFiles = 2000;
+}
+define('S3_FOLDER_DOWNLOAD_MAX_FILES', $s3FolderDownloadMaxFiles);
+
+$s3FolderDownloadMaxBytes = (int) getenv('S3_FOLDER_DOWNLOAD_MAX_BYTES');
+if ($s3FolderDownloadMaxBytes <= 0) {
+    $s3FolderDownloadMaxBytes = 20 * 1024 * 1024 * 1024;
+}
+define('S3_FOLDER_DOWNLOAD_MAX_BYTES', $s3FolderDownloadMaxBytes);
+
 // Logging
 define('LOG_LEVEL', 'INFO');
 define('LOG_FILE', SC_WEB_ROOT . '/logs/app.log');

@@ -367,6 +367,8 @@ if ($defaultShareSeconds > $shareMaxSeconds) {
         $rel = $session['rel'] ?? '';
         $full = s3_inspector_full_prefix($session);
         $apiDl = $isLocal ? '/api/s3-download.php' : '/portal/api/s3-download.php';
+        $apiFolderDl = $isLocal ? '/api/s3-download-folder.php' : '/portal/api/s3-download-folder.php';
+        $currentFolderDl = $apiFolderDl . '?rel=' . rawurlencode($rel);
       ?>
       <div class="card shadow-sm mb-3">
         <div class="card-body py-2 d-flex flex-wrap justify-content-between align-items-center gap-2">
@@ -385,6 +387,9 @@ if ($defaultShareSeconds > $shareMaxSeconds) {
             </select>
             <span class="small text-muted">max <?php echo htmlspecialchars(s3_format_duration($shareMaxSeconds)); ?></span>
           </div>
+          <a class="btn btn-sm btn-outline-primary" href="<?php echo htmlspecialchars($currentFolderDl); ?>" title="Download the current folder as a zip archive">
+            <i class="fas fa-file-archive"></i> Download Current Folder
+          </a>
           <form method="post" action="<?php echo htmlspecialchars($selfPath); ?>" class="m-0">
             <input type="hidden" name="action" value="disconnect">
             <button type="submit" class="btn btn-sm btn-outline-danger">Disconnect</button>
@@ -436,9 +441,16 @@ if ($defaultShareSeconds > $shareMaxSeconds) {
           <?php endif; ?>
 
           <?php foreach ($list['folders'] as $folder): ?>
-            <?php $href = $selfPath . '?rel=' . rawurlencode($rel . $folder['name'] . '/'); ?>
+            <?php
+              $folderRel = $rel . $folder['name'] . '/';
+              $href = $selfPath . '?rel=' . rawurlencode($folderRel);
+              $folderDl = $apiFolderDl . '?rel=' . rawurlencode($folderRel);
+            ?>
             <li class="list-group-item d-flex justify-content-between align-items-center">
               <a href="<?php echo htmlspecialchars($href); ?>"><i class="fas fa-folder text-warning"></i> <?php echo htmlspecialchars($folder['name']); ?>/</a>
+              <a class="btn btn-sm btn-outline-primary" href="<?php echo htmlspecialchars($folderDl); ?>" title="Download this folder as a zip archive">
+                <i class="fas fa-file-archive"></i> Download Folder
+              </a>
             </li>
           <?php endforeach; ?>
 
