@@ -114,6 +114,11 @@ define('S3_SHARE_LINK_MAX_SECONDS', $s3ShareLinkMaxSeconds);
 $s3EnablePublicUrl = getenv('S3_ENABLE_PUBLIC_URL_BUTTON');
 define('S3_ENABLE_PUBLIC_URL_BUTTON', $s3EnablePublicUrl === '1');
 
+// Whether Inspect S3 requires an existing portal login.
+// Default is disabled because S3 inspector already requires S3 credentials.
+$s3RequirePortalAuth = getenv('S3_REQUIRE_PORTAL_AUTH');
+define('S3_REQUIRE_PORTAL_AUTH', $s3RequirePortalAuth === '1');
+
 // Logging
 define('LOG_LEVEL', 'INFO');
 define('LOG_FILE', SC_WEB_ROOT . '/logs/app.log');

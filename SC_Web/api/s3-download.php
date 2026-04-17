@@ -1,6 +1,6 @@
 <?php
 /**
- * Stream a single S3 object for the authenticated S3 inspector session.
+ * Stream a single S3 object for the S3 inspector session.
  */
 
 declare(strict_types=1);
@@ -21,12 +21,14 @@ if (session_status() === PHP_SESSION_NONE) {
     session_start();
 }
 
-$user = getCurrentUser();
-if (!$user) {
-    http_response_code(403);
-    header('Content-Type: text/plain; charset=UTF-8');
-    echo 'Forbidden';
-    exit;
+if (defined('S3_REQUIRE_PORTAL_AUTH') && S3_REQUIRE_PORTAL_AUTH) {
+    $user = getCurrentUser();
+    if (!$user) {
+        http_response_code(403);
+        header('Content-Type: text/plain; charset=UTF-8');
+        echo 'Forbidden';
+        exit;
+    }
 }
 
 $session = $_SESSION['portal_s3_inspector'] ?? [];

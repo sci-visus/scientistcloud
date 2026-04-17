@@ -1,6 +1,6 @@
 <?php
 /**
- * S3-compatible bucket browser (authenticated portal users).
+ * S3-compatible bucket browser.
  * URL: /portal/s3.php
  */
 
@@ -19,12 +19,15 @@ if (session_status() === PHP_SESSION_NONE) {
     session_start();
 }
 
-$user = getCurrentUser();
-if (!$user) {
-    $isLocal = (strpos(SC_SERVER_URL, 'localhost') !== false || strpos(SC_SERVER_URL, '127.0.0.1') !== false);
-    $loginPath = $isLocal ? '/login.php' : '/portal/login.php';
-    header('Location: ' . $loginPath);
-    exit;
+$requirePortalAuth = defined('S3_REQUIRE_PORTAL_AUTH') && S3_REQUIRE_PORTAL_AUTH;
+if ($requirePortalAuth) {
+    $user = getCurrentUser();
+    if (!$user) {
+        $isLocal = (strpos(SC_SERVER_URL, 'localhost') !== false || strpos(SC_SERVER_URL, '127.0.0.1') !== false);
+        $loginPath = $isLocal ? '/login.php' : '/portal/login.php';
+        header('Location: ' . $loginPath);
+        exit;
+    }
 }
 
 const S3_SESS_KEY = 'portal_s3_inspector';
