@@ -561,6 +561,23 @@ class UploadManager {
                 </div>
 
                 <div class="mb-3">
+                    <label class="form-label">Region</label>
+                    <input type="text" class="form-control" name="region" value="us-east-1" placeholder="us-east-1">
+                </div>
+
+                <div class="form-check mb-3">
+                    <input class="form-check-input" type="checkbox" name="path_style" id="s3UploadPathStyle" checked>
+                    <label class="form-check-label" for="s3UploadPathStyle">Path-style addressing (recommended for Wasabi / MinIO / many S3-compatible gateways)</label>
+                </div>
+
+                <div class="mb-3 d-flex flex-wrap align-items-center gap-2">
+                    <button type="button" class="btn btn-outline-secondary btn-sm" id="s3TestConnectionBtn">
+                        <i class="fas fa-plug"></i> Test S3 connection
+                    </button>
+                    <span id="s3TestConnectionResult" class="small text-muted"></span>
+                </div>
+
+                <div class="mb-3">
                     <label class="form-label">Sensor: <span class="text-danger">*</span></label>
                     <select class="form-select" name="sensor" required>
                         <option value="">-- Select Sensor --</option>
@@ -1318,6 +1335,12 @@ class UploadManager {
                 this.handleS3Upload(s3Form);
             });
         }
+        const s3TestBtn = document.getElementById('s3TestConnectionBtn');
+        if (s3TestBtn && s3Form) {
+            s3TestBtn.addEventListener('click', () => {
+                this.testS3UploadConnection(s3Form);
+            });
+        }
 
         const remoteForm = document.getElementById('remoteUploadForm');
         if (remoteForm) {
@@ -1814,11 +1837,14 @@ class UploadManager {
 
         const bucket = formData.get('bucket');
         const prefix = formData.get('prefix') || '';
+        const endpointUrl = formData.get('endpoint_url');
         const accessKey = formData.get('access_key');
         const secretKey = formData.get('secret_key');
+        const region = (formData.get('region') || 'us-east-1').toString().trim() || 'us-east-1';
+        const pathStyle = formData.get('path_style') === 'on';
 
-        if (!bucket || !accessKey || !secretKey) {
-            alert('Bucket, Access Key, and Secret Key are required');
+        if (!endpointUrl || !bucket || !accessKey || !secretKey) {
+            alert('Endpoint URL, Bucket, Access Key, and Secret Key are required');
             return;
         }
 
@@ -1832,10 +1858,13 @@ class UploadManager {
             const requestData = {
                 source_type: 's3',
                 source_config: {
+                    endpoint_url: endpointUrl,
                     bucket_name: bucket,
                     object_key: prefix,
                     access_key_id: accessKey,
-                    secret_access_key: secretKey
+                    secret_access_key: secretKey,
+                    region_name: region,
+                    path_style: pathStyle
                 },
                 user_email: userEmail,
                 dataset_name: formData.get('name'),
@@ -1851,6 +1880,7 @@ class UploadManager {
                 headers: {
                     'Content-Type': 'application/json',
                 },
+                credentials: 'same-origin',
                 body: JSON.stringify(requestData)
             });
 
@@ -1874,6 +1904,87 @@ class UploadManager {
             if (submitBtn) {
                 submitBtn.disabled = false;
                 submitBtn.innerHTML = '<i class="fas fa-upload"></i> Upload from S3';
+            }
+        }
+    }
+
+    /**
+     * Test S3 credentials + endpoint before enqueueing an upload job.
+     */
+    async testS3UploadConnection(form) {
+        const formData = new FormData(form);
+        const resultEl = document.getElementById('s3TestConnectionResult');
+        const btn = document.getElementById('s3TestConnectionBtn');
+
+        const endpointUrl = (formData.get('endpoint_url') || '').toString().trim();
+        const bucket = (formData.get('bucket') || '').toString().trim();
+        const prefix = (formData.get('prefix') || '').toString();
+        const accessKey = (formData.get('access_key') || '').toString().trim();
+        const secretKey = (formData.get('secret_key') || '').toString();
+        const region = (formData.get('region') || 'us-east-1').toString().trim() || 'us-east-1';
+        const pathStyle = formData.get('path_style') === 'on';
+
+        if (!endpointUrl || !bucket || !accessKey || !secretKey) {
+            if (resultEl) {
+                resultEl.textContent = 'Fill endpoint, bucket, access key, and secret key first.';
+                resultEl.className = 'small text-danger';
+            } else {
+                alert('Fill endpoint, bucket, access key, and secret key first.');
+            }
+            return;
+        }
+
+        const original = btn ? btn.innerHTML : '';
+        if (btn) {
+            btn.disabled = true;
+            btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Testing...';
+        }
+        if (resultEl) {
+            resultEl.textContent = '';
+            resultEl.className = 'small text-muted';
+        }
+
+        try {
+            const response = await fetch(`${getUploadApiBasePath()}/s3-test-connection.php`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                credentials: 'same-origin',
+                body: JSON.stringify({
+                    endpoint_url: endpointUrl,
+                    bucket_name: bucket,
+                    prefix,
+                    access_key: accessKey,
+                    secret_key: secretKey,
+                    region,
+                    path_style: pathStyle
+                })
+            });
+            const data = await response.json().catch(() => ({}));
+            if (!response.ok || !data.ok) {
+                const msg = data.error || data.detail || `HTTP ${response.status}`;
+                throw new Error(msg);
+            }
+            const extra = typeof data.folders === 'number'
+                ? ` (${data.folders} folders, ${data.files} files at this level${data.has_more ? ', more available' : ''})`
+                : '';
+            if (resultEl) {
+                resultEl.textContent = (data.message || 'Connection OK.') + extra;
+                resultEl.className = 'small text-success';
+            } else {
+                alert((data.message || 'Connection OK.') + extra);
+            }
+        } catch (err) {
+            const msg = err && err.message ? err.message : 'Test failed';
+            if (resultEl) {
+                resultEl.textContent = msg;
+                resultEl.className = 'small text-danger';
+            } else {
+                alert(msg);
+            }
+        } finally {
+            if (btn) {
+                btn.disabled = false;
+                btn.innerHTML = original || '<i class="fas fa-plug"></i> Test S3 connection';
             }
         }
     }
