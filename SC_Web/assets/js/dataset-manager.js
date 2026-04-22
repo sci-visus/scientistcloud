@@ -673,13 +673,12 @@ class DatasetManager {
         const status = dataset.status || 'unknown';
         const sensor = dataset.sensor || 'Unknown';
         
-        // Determine server flag: true if google_drive_link exists and includes 'http' but is NOT a Google Drive link
-        // Logic: if google_drive_link exists and contains 'http' but not 'google.com', then server=true
+        // Determine remote-link flag: true for URI links (http/s3/pelican/...) except Google Drive links.
         // The link itself will be used as the dataset UUID for remote loading
         const link = dataset.google_drive_link || dataset.download_url || dataset.viewer_url || '';
-        const containsHttp = link ? link.includes('http') : false;
+        const hasUriScheme = link ? /^[a-zA-Z][a-zA-Z0-9+.-]*:\/\//.test(link) : false;
         const containsGoogle = link ? link.includes('google.com') : false;
-        const datasetServer = (containsHttp && !containsGoogle) ? 'true' : 'false';
+        const datasetServer = (hasUriScheme && !containsGoogle) ? 'true' : 'false';
         
         // When server=true, use the link as the UUID for remote loading
         // Otherwise use the dataset UUID

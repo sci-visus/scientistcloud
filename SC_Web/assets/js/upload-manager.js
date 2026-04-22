@@ -534,9 +534,9 @@ class UploadManager {
                 </div>
 
                 <div class="mb-3">
-                    <label class="form-label">Endpoint URL: <span class="text-danger">*</span></label>
+                    <label class="form-label">Endpoint URL:</label>
                     <input type="text" class="form-control" name="endpoint_url" 
-                           placeholder="https://s3.amazonaws.com" required>
+                           placeholder="https://s3.amazonaws.com (optional for default AWS)">
                 </div>
 
                 <div class="mb-3">
@@ -551,13 +551,13 @@ class UploadManager {
                 </div>
 
                 <div class="mb-3">
-                    <label class="form-label">Access Key: <span class="text-danger">*</span></label>
-                    <input type="text" class="form-control" name="access_key" required>
+                    <label class="form-label">Access Key:</label>
+                    <input type="text" class="form-control" name="access_key" placeholder="Optional for public buckets">
                 </div>
 
                 <div class="mb-3">
-                    <label class="form-label">Secret Key: <span class="text-danger">*</span></label>
-                    <input type="password" class="form-control" name="secret_key" required>
+                    <label class="form-label">Secret Key:</label>
+                    <input type="password" class="form-control" name="secret_key" placeholder="Optional for public buckets">
                 </div>
 
                 <div class="mb-3">
@@ -1843,8 +1843,8 @@ class UploadManager {
         const region = (formData.get('region') || 'us-east-1').toString().trim() || 'us-east-1';
         const pathStyle = formData.get('path_style') === 'on';
 
-        if (!endpointUrl || !bucket || !accessKey || !secretKey) {
-            alert('Endpoint URL, Bucket, Access Key, and Secret Key are required');
+        if (!bucket) {
+            alert('Bucket is required');
             return;
         }
 

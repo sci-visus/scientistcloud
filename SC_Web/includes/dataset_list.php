@@ -43,14 +43,13 @@ foreach ($datasets as $dataset) {
     }
 }
 
-// Function to determine server flag: true if link includes 'http' but is NOT a Google Drive link
+// Function to determine server flag: true for URI links (http/s3/pelican/...) except Google Drive links
 function getDatasetServerFlag($dataset) {
     // Check google_drive_link first (primary field for remote data)
     $link = $dataset['google_drive_link'] ?? $dataset['download_url'] ?? $dataset['viewer_url'] ?? '';
-    
-    // server = true if link includes 'http' AND does NOT contain 'google.com'
-    // This matches the logic: if google_drive_link exists and doesn't contain google.com, then server=true
-    if (!empty($link) && strpos($link, 'http') !== false && strpos($link, 'google.com') === false) {
+
+    $hasScheme = !empty($link) && preg_match('/^[a-zA-Z][a-zA-Z0-9+.-]*:\\/\\//', $link);
+    if ($hasScheme && strpos($link, 'google.com') === false) {
         return 'true';
     }
     
