@@ -288,7 +288,7 @@ class UploadManager {
             <form id="localUploadForm">
                 <div class="mb-3">
                     <label class="form-label">Name: <span class="text-danger">*</span></label>
-                    <input type="text" class="form-control" name="name" required>
+                    <input type="text" class="form-control" name="name" value="s3 nasa Test" required>
                 </div>
 
                 <div class="mb-3">
@@ -544,7 +544,8 @@ class UploadManager {
                 <div class="mb-3" id="s3LinkGroup">
                     <label class="form-label">S3 Dataset Link:</label>
                     <input type="text" class="form-control" name="s3_link" 
-                           placeholder="https://us-east-1.gw.future-tech-holdings.com/nasa-t0/nex-gddp-cmip6/nex-gddp-cmip6.idx">
+                           placeholder="https://us-east-1.gw.future-tech-holdings.com/nasa-t0/nex-gddp-cmip6/nex-gddp-cmip6.idx"
+                           value="https://us-east-1.gw.future-tech-holdings.com/nasa-t0/nex-gddp-cmip6/nex-gddp-cmip6.idx">
                     <small class="form-text text-muted">You can also use <code>s3://bucket/prefix/...</code> links.</small>
                 </div>
 
@@ -552,18 +553,20 @@ class UploadManager {
                 <div class="mb-3">
                     <label class="form-label">Endpoint URL:</label>
                     <input type="text" class="form-control" name="endpoint_url" 
-                           placeholder="https://s3.amazonaws.com">
+                           placeholder="https://s3.amazonaws.com"
+                           value="https://us-east-1.gw.future-tech-holdings.com">
                 </div>
 
                 <div class="mb-3">
                     <label class="form-label">Bucket: <span class="text-danger">*</span></label>
-                    <input type="text" class="form-control" name="bucket" required>
+                    <input type="text" class="form-control" name="bucket" value="nasa-t0" required>
                 </div>
 
                 <div class="mb-3">
                     <label class="form-label">Prefix (directory on S3):</label>
                     <input type="text" class="form-control" name="prefix" 
-                           placeholder="path/to/files/">
+                           placeholder="path/to/files/"
+                           value="nex-gddp-cmip6/nex-gddp-cmip6.idx">
                 </div>
 
                 <div class="mb-3">
