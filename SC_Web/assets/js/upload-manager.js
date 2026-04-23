@@ -534,9 +534,25 @@ class UploadManager {
                 </div>
 
                 <div class="mb-3">
+                    <label class="form-label">S3 Source Input Mode:</label>
+                    <select class="form-select" name="s3_source_mode" id="s3SourceMode">
+                        <option value="link">Single S3/HTTP Link</option>
+                        <option value="fields">Endpoint + Bucket + Prefix</option>
+                    </select>
+                </div>
+
+                <div class="mb-3" id="s3LinkGroup">
+                    <label class="form-label">S3 Dataset Link:</label>
+                    <input type="text" class="form-control" name="s3_link" 
+                           placeholder="https://us-east-1.gw.future-tech-holdings.com/nasa-t0/nex-gddp-cmip6/nex-gddp-cmip6.idx">
+                    <small class="form-text text-muted">You can also use <code>s3://bucket/prefix/...</code> links.</small>
+                </div>
+
+                <div id="s3FieldsGroup" style="display:none;">
+                <div class="mb-3">
                     <label class="form-label">Endpoint URL:</label>
                     <input type="text" class="form-control" name="endpoint_url" 
-                           placeholder="https://s3.amazonaws.com (optional for default AWS)">
+                           placeholder="https://s3.amazonaws.com">
                 </div>
 
                 <div class="mb-3">
@@ -568,6 +584,7 @@ class UploadManager {
                 <div class="form-check mb-3">
                     <input class="form-check-input" type="checkbox" name="path_style" id="s3UploadPathStyle" checked>
                     <label class="form-check-label" for="s3UploadPathStyle">Path-style addressing (recommended for Wasabi / MinIO / many S3-compatible gateways)</label>
+                </div>
                 </div>
 
                 <div class="mb-3 d-flex flex-wrap align-items-center gap-2">
@@ -1166,6 +1183,65 @@ class UploadManager {
         return folderUuid || null;
     }
 
+    setupS3SourceMode(form) {
+        const modeSelect = form.querySelector('#s3SourceMode');
+        const linkGroup = form.querySelector('#s3LinkGroup');
+        const fieldsGroup = form.querySelector('#s3FieldsGroup');
+        if (!modeSelect || !linkGroup || !fieldsGroup) return;
+
+        const applyMode = () => {
+            const mode = modeSelect.value || 'link';
+            if (mode === 'fields') {
+                linkGroup.style.display = 'none';
+                fieldsGroup.style.display = 'block';
+            } else {
+                linkGroup.style.display = 'block';
+                fieldsGroup.style.display = 'none';
+            }
+        };
+
+        modeSelect.addEventListener('change', applyMode);
+        applyMode();
+    }
+
+    resolveS3Source(formData) {
+        const mode = (formData.get('s3_source_mode') || 'link').toString();
+        if (mode === 'fields') {
+            const bucket = (formData.get('bucket') || '').toString().trim();
+            const prefix = (formData.get('prefix') || '').toString().trim();
+            const endpointUrl = (formData.get('endpoint_url') || '').toString().trim();
+            return { bucket, prefix, endpointUrl };
+        }
+
+        const rawLink = (formData.get('s3_link') || '').toString().trim();
+        if (!rawLink) {
+            return { error: 'S3 dataset link is required when using link mode.' };
+        }
+
+        if (rawLink.startsWith('s3://')) {
+            const noScheme = rawLink.slice(5);
+            const slash = noScheme.indexOf('/');
+            const bucket = slash === -1 ? noScheme : noScheme.slice(0, slash);
+            const prefix = slash === -1 ? '' : noScheme.slice(slash + 1);
+            if (!bucket) return { error: 'Invalid s3:// link (missing bucket).' };
+            return { bucket, prefix, endpointUrl: '' };
+        }
+
+        try {
+            const u = new URL(rawLink);
+            const segments = (u.pathname || '').split('/').filter(Boolean);
+            if (segments.length < 2) {
+                return { error: 'HTTP S3 link must include bucket and object path.' };
+            }
+            const bucket = segments[0];
+            const prefix = segments.slice(1).join('/');
+            const endpointUrl = `${u.protocol}//${u.host}`;
+            return { bucket, prefix, endpointUrl };
+        } catch (_e) {
+            return { error: 'Invalid S3 link. Use s3://bucket/path or https://endpoint/bucket/path.' };
+        }
+    }
+
     /**
      * Initialize local file input
      */
@@ -1334,6 +1410,7 @@ class UploadManager {
                 e.preventDefault();
                 this.handleS3Upload(s3Form);
             });
+            this.setupS3SourceMode(s3Form);
         }
         const s3TestBtn = document.getElementById('s3TestConnectionBtn');
         if (s3TestBtn && s3Form) {
@@ -1835,9 +1912,14 @@ class UploadManager {
             return;
         }
 
-        const bucket = formData.get('bucket');
-        const prefix = formData.get('prefix') || '';
-        const endpointUrl = formData.get('endpoint_url');
+        const s3Source = this.resolveS3Source(formData);
+        if (s3Source.error) {
+            alert(s3Source.error);
+            return;
+        }
+        const bucket = s3Source.bucket;
+        const prefix = s3Source.prefix || '';
+        const endpointUrl = s3Source.endpointUrl || '';
         const accessKey = formData.get('access_key');
         const secretKey = formData.get('secret_key');
         const region = (formData.get('region') || 'us-east-1').toString().trim() || 'us-east-1';
@@ -1916,9 +1998,19 @@ class UploadManager {
         const resultEl = document.getElementById('s3TestConnectionResult');
         const btn = document.getElementById('s3TestConnectionBtn');
 
-        const endpointUrl = (formData.get('endpoint_url') || '').toString().trim();
-        const bucket = (formData.get('bucket') || '').toString().trim();
-        const prefix = (formData.get('prefix') || '').toString();
+        const s3Source = this.resolveS3Source(formData);
+        if (s3Source.error) {
+            if (resultEl) {
+                resultEl.textContent = s3Source.error;
+                resultEl.className = 'small text-danger';
+            } else {
+                alert(s3Source.error);
+            }
+            return;
+        }
+        const endpointUrl = (s3Source.endpointUrl || '').toString().trim();
+        const bucket = (s3Source.bucket || '').toString().trim();
+        const prefix = (s3Source.prefix || '').toString();
         const accessKey = (formData.get('access_key') || '').toString().trim();
         const secretKey = (formData.get('secret_key') || '').toString();
         const region = (formData.get('region') || 'us-east-1').toString().trim() || 'us-east-1';
@@ -1926,10 +2018,10 @@ class UploadManager {
 
         if (!endpointUrl || !bucket || !accessKey || !secretKey) {
             if (resultEl) {
-                resultEl.textContent = 'Fill endpoint, bucket, access key, and secret key first.';
+                resultEl.textContent = 'Test requires endpoint + bucket + access key + secret key.';
                 resultEl.className = 'small text-danger';
             } else {
-                alert('Fill endpoint, bucket, access key, and secret key first.');
+                alert('Test requires endpoint + bucket + access key + secret key.');
             }
             return;
         }
