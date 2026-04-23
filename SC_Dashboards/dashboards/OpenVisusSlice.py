@@ -1,5 +1,6 @@
 import os
 import sys
+import re
 from urllib.parse import parse_qs
 from bokeh.io import curdoc
 from bokeh.models.widgets import Div
@@ -92,6 +93,17 @@ deploy_server = os.getenv('DEPLOY_SERVER')
 def is_s3_uri(url):
     return isinstance(url, str) and url.startswith("s3://")
 
+def _valid_email_or_none(value):
+    if not value:
+        return None
+    candidate = str(value).strip()
+    if not candidate:
+        return None
+    # Avoid sending placeholders like "auth0_session_user" to strict API validators.
+    if re.match(r"^[^@\s]+@[^@\s]+\.[^@\s]+$", candidate):
+        return candidate
+    return None
+
 def resolve_s3_dataset_url_via_api(
     s3_uri,
     access_key,
@@ -119,7 +131,7 @@ def resolve_s3_dataset_url_via_api(
         "path_style": bool(path_style),
         "expires_in": 3600,
         "dataset_identifier": dataset_identifier,
-        "user_email": user_email,
+        "user_email": _valid_email_or_none(user_email),
         "cache_credentials": bool(cache_credentials),
         "use_cached_credentials": bool(use_cached_credentials),
     }

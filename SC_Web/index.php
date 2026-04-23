@@ -130,6 +130,7 @@ $preferredDashboard = getUserPreferredDashboard($user['id']);
   <script>
     window.S3_DEFAULT_BUCKET = <?php echo json_encode((defined('S3_DEFAULT_BUCKET') ? S3_DEFAULT_BUCKET : '')); ?>;
     window.S3_DEFAULT_PREFIX = <?php echo json_encode((defined('S3_DEFAULT_PREFIX') ? S3_DEFAULT_PREFIX : '')); ?>;
+    window.S3_DEFAULT_ENDPOINT = <?php echo json_encode((defined('S3_DEFAULT_ENDPOINT') ? S3_DEFAULT_ENDPOINT : '')); ?>;
   </script>
   <script src="assets/js/main.js"></script>
   <script src="assets/js/dataset-manager.js"></script>

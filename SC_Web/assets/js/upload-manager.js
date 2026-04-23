@@ -526,10 +526,12 @@ class UploadManager {
      * Render S3 upload form
      */
     renderS3UploadForm(folders, teams) {
-        const defaultBucket = (window.S3_DEFAULT_BUCKET || 'nasa-t0').toString().trim();
-        const defaultPrefix = (window.S3_DEFAULT_PREFIX || 'nex-gddp-cmip6/nex-gddp-cmip6.idx').toString().trim();
-        const defaultEndpoint = 'https://us-east-1.gw.future-tech-holdings.com';
-        const defaultLink = `s3://${defaultBucket}${defaultPrefix ? `/${defaultPrefix}` : ''}`;
+        const defaultBucket = (window.S3_DEFAULT_BUCKET || '').toString().trim();
+        const defaultPrefix = (window.S3_DEFAULT_PREFIX || '').toString().trim();
+        const defaultEndpoint = (window.S3_DEFAULT_ENDPOINT || '').toString().trim();
+        const defaultLink = defaultBucket
+            ? `s3://${defaultBucket}${defaultPrefix ? `/${defaultPrefix}` : ''}`
+            : '';
         return `
             <form id="s3UploadForm">
                 <div class="mb-3">

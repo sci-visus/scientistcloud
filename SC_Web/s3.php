@@ -192,6 +192,7 @@ if ($shareMaxSeconds < 60) {
 $showPublicUrlButton = defined('S3_ENABLE_PUBLIC_URL_BUTTON') && S3_ENABLE_PUBLIC_URL_BUTTON;
 $defaultBucket = defined('S3_DEFAULT_BUCKET') ? (string) S3_DEFAULT_BUCKET : '';
 $defaultPrefix = defined('S3_DEFAULT_PREFIX') ? (string) S3_DEFAULT_PREFIX : '';
+$defaultEndpoint = defined('S3_DEFAULT_ENDPOINT') ? (string) S3_DEFAULT_ENDPOINT : '';
 $shareDurationOptions = [
     900 => '15m',
     3600 => '1h',
@@ -329,17 +330,17 @@ if ($defaultShareSeconds > $shareMaxSeconds) {
             <div class="mb-2">
               <label class="form-label">Endpoint URL</label>
               <input type="url" name="endpoint_url" class="form-control" required placeholder="https://us-east-1.gw.future-tech-holdings.com"
-                     value="<?php echo htmlspecialchars((string) ($_POST['endpoint_url'] ?? 'https://us-east-1.gw.future-tech-holdings.com')); ?>">
+                     value="<?php echo htmlspecialchars((string) ($_POST['endpoint_url'] ?? $defaultEndpoint)); ?>">
             </div>
             <div class="mb-2">
               <label class="form-label">Bucket name</label>
               <input type="text" name="bucket_name" class="form-control" required placeholder="scientistcloud"
-                     value="<?php echo htmlspecialchars((string) ($_POST['bucket_name'] ?? ($defaultBucket !== '' ? $defaultBucket : 'scientistcloud'))); ?>">
+                     value="<?php echo htmlspecialchars((string) ($_POST['bucket_name'] ?? $defaultBucket)); ?>">
             </div>
             <div class="mb-2">
               <label class="form-label">Prefix (directory on S3)</label>
               <input type="text" name="prefix" class="form-control" placeholder="utk"
-                     value="<?php echo htmlspecialchars((string) ($_POST['prefix'] ?? ($defaultPrefix !== '' ? $defaultPrefix : 'utk'))); ?>">
+                     value="<?php echo htmlspecialchars((string) ($_POST['prefix'] ?? $defaultPrefix)); ?>">
             </div>
             <div class="row g-2">
               <div class="col-md-6 mb-2">

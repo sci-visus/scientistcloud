@@ -137,9 +137,14 @@ define('S3_FOLDER_DOWNLOAD_MAX_BYTES', $s3FolderDownloadMaxBytes);
 
 // Optional S3 UI defaults for bucket/prefix fields.
 $s3DefaultBucket = trim((string) getenv('S3_BUCKET'));
+if ($s3DefaultBucket === '') {
+    $s3DefaultBucket = trim((string) getenv('AWS_S3_BUCKET'));
+}
 $s3DefaultPrefix = trim((string) getenv('S3_PREFIX'));
+$s3DefaultEndpoint = trim((string) getenv('S3_ENDPOINT_URL'));
 define('S3_DEFAULT_BUCKET', $s3DefaultBucket);
 define('S3_DEFAULT_PREFIX', $s3DefaultPrefix);
+define('S3_DEFAULT_ENDPOINT', $s3DefaultEndpoint);
 
 // Logging
 define('LOG_LEVEL', 'INFO');
