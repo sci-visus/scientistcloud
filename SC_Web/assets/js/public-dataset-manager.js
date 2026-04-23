@@ -197,6 +197,7 @@ class PublicDatasetManager {
         const statusColor = this.getStatusColor(dataset.status);
         const fileIcon = this.getFileFormatIcon(dataset.sensor);
         const datasetId = dataset.id || dataset.uuid;
+        const connection = this.resolveDatasetConnection(dataset);
         
         return `
             <div class="dataset-item" data-dataset-id="${this.escapeHtml(datasetId)}">
@@ -204,8 +205,8 @@ class PublicDatasetManager {
                     <a class="nav-link dataset-link" href="javascript:void(0)" 
                        data-dataset-id="${this.escapeHtml(datasetId)}"
                        data-dataset-name="${this.escapeHtml(dataset.name || '')}"
-                       data-dataset-uuid="${this.escapeHtml(dataset.uuid || datasetId)}"
-                       data-dataset-server="${dataset.server || 'false'}">
+                       data-dataset-uuid="${this.escapeHtml(connection.effectiveUuid || dataset.uuid || datasetId)}"
+                       data-dataset-server="${this.escapeHtml(connection.datasetServer)}">
                         <i class="${fileIcon} me-2"></i>
                         <span class="dataset-name">${this.escapeHtml(dataset.name || 'Unnamed Dataset')}</span>
                         <span class="badge bg-${statusColor} ms-2">${this.escapeHtml(dataset.status || 'unknown')}</span>
@@ -246,14 +247,17 @@ class PublicDatasetManager {
             // Load dataset details
             const datasetDetails = await this.loadDatasetDetails(datasetId);
             this.currentDataset = datasetDetails;
+            const resolvedConnection = this.resolveDatasetConnection(datasetDetails || {});
+            const effectiveUuid = resolvedConnection.effectiveUuid || datasetUuid;
+            const effectiveServer = resolvedConnection.datasetServer || datasetServer || 'false';
             
             // Load dashboard
             if (window.viewerManager) {
                 window.viewerManager.currentDataset = {
                     id: datasetId,
                     name: datasetName,
-                    uuid: datasetUuid,
-                    server: datasetServer,
+                    uuid: effectiveUuid,
+                    server: effectiveServer,
                     details: datasetDetails
                 };
                 
@@ -263,8 +267,8 @@ class PublicDatasetManager {
                 window.viewerManager.loadDashboard(
                     datasetId,
                     datasetName,
-                    datasetUuid,
-                    datasetServer,
+                    effectiveUuid,
+                    effectiveServer,
                     selectedDashboardType || (viewerType ? viewerType.value : (Object.keys(window.viewerManager.viewers)[0] || 'OpenVisusSlice'))
                 );
             }
@@ -546,7 +550,9 @@ class PublicDatasetManager {
                     if (window.viewerManager && window.viewerManager.viewers) {
                         const datasetUuid = dataset.uuid || dataset.id;
                         const datasetName = dataset.name || 'Dataset';
-                        const datasetServer = dataset.server || 'false';
+                        const connection = this.resolveDatasetConnection(dataset || {});
+                        const effectiveUuid = connection.effectiveUuid || datasetUuid;
+                        const datasetServer = connection.datasetServer || dataset.server || 'false';
 
                         const viewerType = document.getElementById('viewerType');
                         const dashboardType = viewerType ? viewerType.value : (window.viewerManager.currentDashboard || 'OpenVisusSlice');
@@ -554,7 +560,7 @@ class PublicDatasetManager {
                         const viewer = window.viewerManager.viewers[dashboardType];
                         if (viewer && viewer.url_template) {
                             const dashboardUrl = window.viewerManager.generateViewerUrl(
-                                datasetUuid,
+                                effectiveUuid,
                                 datasetServer,
                                 datasetName,
                                 viewer.url_template
@@ -629,6 +635,19 @@ class PublicDatasetManager {
             'MapIR DRONE': 'fas fa-drone'
         };
         return icons[sensor] || 'fas fa-file';
+    }
+
+    /**
+     * Resolve dataset UUID/server for remote links.
+     * Mirrors private-portal logic so public portal can load s3:// and other URI schemes.
+     */
+    resolveDatasetConnection(dataset) {
+        const link = dataset?.google_drive_link || dataset?.download_url || dataset?.viewer_url || '';
+        const containsGoogle = link.includes('drive.google.com');
+        const hasUriScheme = /:\/\//.test(link);
+        const datasetServer = (hasUriScheme && !containsGoogle) ? 'true' : 'false';
+        const effectiveUuid = (datasetServer === 'true' && link) ? link : (dataset?.uuid || dataset?.id || '');
+        return { datasetServer, effectiveUuid, link };
     }
 }
 
