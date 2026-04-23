@@ -76,6 +76,16 @@ function s3_public_object_url(array $session, string $key): string
     return $scheme . '://' . $bucket . '.' . $host . $port . $basePath . '/' . $encodedKey;
 }
 
+function s3_dataset_source_link(array $session, string $key): string
+{
+    $bucket = trim((string) ($session['bucket'] ?? ''));
+    $normalizedKey = ltrim($key, '/');
+    if ($bucket === '' || $normalizedKey === '') {
+        return '';
+    }
+    return 's3://' . $bucket . '/' . $normalizedKey;
+}
+
 function s3_format_duration(int $seconds): string
 {
     if ($seconds % 86400 === 0) {
@@ -460,6 +470,7 @@ if ($defaultShareSeconds > $shareMaxSeconds) {
           <?php foreach ($list['files'] as $file): ?>
             <?php
               $dl = $apiDl . '?k=' . rawurlencode($file['key']);
+              $datasetSourceLink = s3_dataset_source_link($session, (string) $file['key']);
               $publicUrl = $showPublicUrlButton ? s3_public_object_url($session, (string) $file['key']) : '';
               $sz = $file['size'];
               $szLabel = $sz >= 1073741824
@@ -471,6 +482,13 @@ if ($defaultShareSeconds > $shareMaxSeconds) {
               <span class="small text-muted"><?php echo htmlspecialchars($szLabel); ?><?php if (!empty($file['mtime'])): ?> · <?php echo htmlspecialchars($file['mtime']); ?><?php endif; ?></span>
               <span class="s3-file-actions">
                 <a class="btn btn-sm btn-outline-primary" href="<?php echo htmlspecialchars($dl); ?>"><i class="fas fa-download"></i> Download</a>
+                <button
+                  type="button"
+                  class="btn btn-sm btn-outline-dark js-copy-source-link"
+                  data-source-link="<?php echo htmlspecialchars($datasetSourceLink); ?>"
+                  title="Copy dataset source link for Upload Dataset -> S3">
+                  <i class="fas fa-copy"></i> Copy S3/HTTP Link
+                </button>
                 <button
                   type="button"
                   class="btn btn-sm btn-outline-secondary js-copy-share-link"
@@ -574,6 +592,28 @@ if ($defaultShareSeconds > $shareMaxSeconds) {
             }, 1300);
           } catch (err) {
             alert('Failed to copy public URL.');
+            btn.innerHTML = original;
+            btn.disabled = false;
+          }
+        });
+      });
+
+      const sourceButtons = document.querySelectorAll('.js-copy-source-link');
+      sourceButtons.forEach(function (btn) {
+        btn.addEventListener('click', async function () {
+          const sourceLink = btn.getAttribute('data-source-link');
+          if (!sourceLink) return;
+          const original = btn.innerHTML;
+          btn.disabled = true;
+          try {
+            await copyText(sourceLink);
+            btn.innerHTML = '<i class="fas fa-check"></i> Copied';
+            setTimeout(function () {
+              btn.innerHTML = original;
+              btn.disabled = false;
+            }, 1300);
+          } catch (err) {
+            alert('Failed to copy dataset source link.');
             btn.innerHTML = original;
             btn.disabled = false;
           }

@@ -63,32 +63,68 @@ for arg in "$@"; do
     esac
 done
 
-# Source environment variables first
-ENV_FILE="$HOME/ScientistCloud2.0/SCLib_TryTest/env.scientistcloud"
+# Source environment variables first (shared file + optional local overrides)
+ENV_DIR="$HOME/ScientistCloud2.0/SCLib_TryTest"
+ENV_FILE_LOCAL="$ENV_DIR/env.local"
+ENV_FILE_SHARED="$ENV_DIR/env.scientistcloud"
+ENV_FILE=""
 
-if [ -f "$ENV_FILE" ]; then
+if [ -f "$ENV_FILE_SHARED" ]; then
+    ENV_FILE="$ENV_FILE_SHARED"
+fi
+
+if [ -n "$ENV_FILE" ] && [ -f "$ENV_FILE" ]; then
     echo "📋 Loading environment variables from $ENV_FILE..."
     set -o allexport
     source "$ENV_FILE"
     set +o allexport
     echo "✅ Environment variables loaded"
+    if [ -f "$ENV_FILE_LOCAL" ]; then
+        echo "📋 Applying local overrides from $ENV_FILE_LOCAL..."
+        set -o allexport
+        source "$ENV_FILE_LOCAL"
+        set +o allexport
+        echo "✅ Local override variables loaded"
+    fi
 else
-    echo "⚠️ Environment file not found: $ENV_FILE"
+    echo "⚠️ No environment file found in $ENV_DIR"
+    echo "   Expected: env.scientistcloud (optional overrides in env.local)"
     echo "   Continuing without custom environment variables..."
 fi
 
 # Always update GitHub repos (even in dashboards-only mode)
 # Start Update SCLib_TryTest
-echo "📦 Update SCLib_TryTest and copy env.scientistcloud to SCLib and SC Website..."
+echo "📦 Update SCLib_TryTest and copy environment to SCLib and SC Website..."
 SCLIB_TRYTEST_DIR="$HOME/ScientistCloud2.0/SCLib_TryTest"
 if [ -d "$SCLIB_TRYTEST_DIR" ]; then
     pushd "$SCLIB_TRYTEST_DIR"
+    # Preserve local environment files across git reset.
+    ENV_LOCAL_BACKUP="/tmp/sc_env_local_$$.bak"
+    ENV_SHARED_BACKUP="/tmp/sc_env_scientistcloud_$$.bak"
+    [ -f "env.local" ] && cp "env.local" "$ENV_LOCAL_BACKUP"
+    [ -f "env.scientistcloud" ] && cp "env.scientistcloud" "$ENV_SHARED_BACKUP"
     git fetch origin
     git reset --hard origin/main
-    cp env.scientistcloud "$HOME/ScientistCloud2.0/scientistCloudLib/Docker/.env"
-    cp env.scientistcloud "$HOME/ScientistCloud2.0/scientistcloud/SC_Docker/.env"
+    [ -f "$ENV_LOCAL_BACKUP" ] && cp "$ENV_LOCAL_BACKUP" "env.local"
+    [ -f "$ENV_SHARED_BACKUP" ] && cp "$ENV_SHARED_BACKUP" "env.scientistcloud"
+    rm -f "$ENV_LOCAL_BACKUP" "$ENV_SHARED_BACKUP"
+
+    # Keep env.scientistcloud as deployment source for stability.
+    ENV_SOURCE_FILE=""
+    if [ -f "env.scientistcloud" ]; then
+        ENV_SOURCE_FILE="env.scientistcloud"
+    elif [ -f "env.local" ]; then
+        ENV_SOURCE_FILE="env.local"
+    fi
+
+    if [ -n "$ENV_SOURCE_FILE" ]; then
+        cp "$ENV_SOURCE_FILE" "$HOME/ScientistCloud2.0/scientistCloudLib/Docker/.env"
+        cp "$ENV_SOURCE_FILE" "$HOME/ScientistCloud2.0/scientistcloud/SC_Docker/.env"
+        echo "✅ Environment files copied from $ENV_SOURCE_FILE"
+    else
+        echo "⚠️ No environment source file found after update (expected env.local or env.scientistcloud)"
+    fi
     popd
-    echo "✅ Environment files copied (includes DOMAIN_NAME for dashboard containers)"
 else
     echo "⚠️ SCLib_TryTest directory not found: $SCLIB_TRYTEST_DIR"
 fi
