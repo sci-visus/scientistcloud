@@ -92,7 +92,18 @@ deploy_server = os.getenv('DEPLOY_SERVER')
 def is_s3_uri(url):
     return isinstance(url, str) and url.startswith("s3://")
 
-def resolve_s3_dataset_url_via_api(s3_uri, access_key, secret_key, endpoint_url="", region_name="us-east-1", path_style=True):
+def resolve_s3_dataset_url_via_api(
+    s3_uri,
+    access_key,
+    secret_key,
+    endpoint_url="",
+    region_name="us-east-1",
+    path_style=True,
+    dataset_identifier=None,
+    user_email=None,
+    cache_credentials=True,
+    use_cached_credentials=True
+):
     dataset_api_base = (
         os.getenv("SCLIB_DATASET_URL")
         or os.getenv("SCLIB_API_URL")
@@ -101,12 +112,16 @@ def resolve_s3_dataset_url_via_api(s3_uri, access_key, secret_key, endpoint_url=
     endpoint = f"{dataset_api_base}/api/v1/datasets/s3/presign"
     payload = {
         "s3_uri": s3_uri,
-        "access_key_id": access_key,
-        "secret_access_key": secret_key,
+        "access_key_id": access_key or None,
+        "secret_access_key": secret_key or None,
         "endpoint_url": endpoint_url or None,
         "region_name": region_name or "us-east-1",
         "path_style": bool(path_style),
         "expires_in": 3600,
+        "dataset_identifier": dataset_identifier,
+        "user_email": user_email,
+        "cache_credentials": bool(cache_credentials),
+        "use_cached_credentials": bool(use_cached_credentials),
     }
     response = requests.post(endpoint, json=payload, timeout=20)
     if response.status_code >= 400:
@@ -118,7 +133,7 @@ def resolve_s3_dataset_url_via_api(s3_uri, access_key, secret_key, endpoint_url=
     data = response.json()
     if not data.get("success") or not data.get("url"):
         raise RuntimeError(data.get("detail") or "Presign endpoint returned no URL")
-    return data["url"]
+    return data["url"], data
 
 
 
@@ -386,33 +401,69 @@ if __name__.startswith('bokeh'):
         ])
 
     if is_s3_uri(dataset_url):
-        s3_status = Div(
-            text="<b>Private S3 dataset detected.</b> Provide runtime credentials to load this dashboard dataset.",
-            styles={"margin-bottom": "6px"}
-        )
-        s3_endpoint = TextInput(title="S3 Endpoint URL (optional)", value=os.getenv("S3_ENDPOINT_URL", ""))
-        s3_region = TextInput(title="Region", value="us-east-1")
-        s3_access = TextInput(title="Access Key", value="")
-        s3_secret = PasswordInput(title="Secret Key", value="")
-        s3_connect = Button(label="Load S3 Dataset", button_type="primary")
+        # First, try loading without prompting:
+        # 1) public datasets via direct URL, or
+        # 2) private datasets via server-side cached credentials.
+        s3_auto_loaded = False
+        try:
+            signed, response_meta = resolve_s3_dataset_url_via_api(
+                dataset_url,
+                "",
+                "",
+                endpoint_url=os.getenv("S3_ENDPOINT_URL", ""),
+                region_name="us-east-1",
+                path_style=True,
+                dataset_identifier=uuid if uuid and not is_s3_uri(uuid) else None,
+                user_email=user_email,
+                cache_credentials=False,
+                use_cached_credentials=True
+            )
+            view.setDataset(signed)
+            s3_auto_loaded = True
+            if response_meta.get("is_public_url"):
+                s3_status_message = "<span style='color: green;'><b>Public S3 dataset loaded.</b> No credentials required.</span>"
+            elif response_meta.get("cached_credentials_used"):
+                s3_status_message = "<span style='color: green;'><b>Private S3 dataset loaded.</b> Using cached credentials.</span>"
+            else:
+                s3_status_message = "<span style='color: green;'><b>S3 dataset loaded.</b></span>"
+        except Exception:
+            s3_status_message = "<b>Private S3 dataset detected.</b> Provide runtime credentials to load this dashboard dataset."
 
-        def _connect_s3_dataset():
-            try:
-                signed = resolve_s3_dataset_url_via_api(
-                    dataset_url,
-                    s3_access.value.strip(),
-                    s3_secret.value,
-                    endpoint_url=s3_endpoint.value.strip(),
-                    region_name=s3_region.value.strip() or "us-east-1",
-                    path_style=True,
-                )
-                view.setDataset(signed)
-                s3_status.text = "<span style='color: green;'><b>S3 connection ready.</b> Dataset loaded.</span>"
-            except Exception as ex:
-                s3_status.text = f"<span style='color: red;'>Failed to load S3 dataset: {ex}</span>"
+        if s3_auto_loaded:
+            s3_status = Div(text=s3_status_message, styles={"margin-bottom": "6px"})
+            s3_auth_panel = column(s3_status, sizing_mode="stretch_width")
+        else:
+            s3_status = Div(
+                text=s3_status_message,
+                styles={"margin-bottom": "6px"}
+            )
+            s3_endpoint = TextInput(title="S3 Endpoint URL (optional)", value=os.getenv("S3_ENDPOINT_URL", ""))
+            s3_region = TextInput(title="Region", value="us-east-1")
+            s3_access = TextInput(title="Access Key", value="")
+            s3_secret = PasswordInput(title="Secret Key", value="")
+            s3_connect = Button(label="Load S3 Dataset", button_type="primary")
 
-        s3_connect.on_click(_connect_s3_dataset)
-        s3_auth_panel = column(s3_status, s3_endpoint, s3_region, s3_access, s3_secret, s3_connect, sizing_mode="stretch_width")
+            def _connect_s3_dataset():
+                try:
+                    signed, _response_meta = resolve_s3_dataset_url_via_api(
+                        dataset_url,
+                        s3_access.value.strip(),
+                        s3_secret.value,
+                        endpoint_url=s3_endpoint.value.strip(),
+                        region_name=s3_region.value.strip() or "us-east-1",
+                        path_style=True,
+                        dataset_identifier=uuid if uuid and not is_s3_uri(uuid) else None,
+                        user_email=user_email,
+                        cache_credentials=True,
+                        use_cached_credentials=True
+                    )
+                    view.setDataset(signed)
+                    s3_status.text = "<span style='color: green;'><b>S3 connection ready.</b> Dataset loaded. Credentials cached for reuse.</span>"
+                except Exception as ex:
+                    s3_status.text = f"<span style='color: red;'>Failed to load S3 dataset: {ex}</span>"
+
+            s3_connect.on_click(_connect_s3_dataset)
+            s3_auth_panel = column(s3_status, s3_endpoint, s3_region, s3_access, s3_secret, s3_connect, sizing_mode="stretch_width")
     else:
         s3_auth_panel = None
         view.setDataset(dataset_url)
