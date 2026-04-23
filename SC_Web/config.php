@@ -50,6 +50,20 @@ if (strpos($deployServer, 'scientistcloud') !== false && strpos($deployServer, '
     $deployServer = str_replace('http://scientistcloud', 'http://scientistcloud.com', $deployServer);
     error_log("Fixed DEPLOY_SERVER URL: " . $config['server']['deploy_server'] . " -> " . $deployServer);
 }
+
+// Safety guard for production: if env is stale (localhost) but request host is remote,
+// derive SC_SERVER_URL from the incoming request host/proto.
+$requestHost = (string) ($_SERVER['HTTP_HOST'] ?? '');
+$requestHost = preg_replace('/:\d+$/', '', $requestHost); // strip port
+$requestIsLocalHost = ($requestHost === '' || $requestHost === 'localhost' || $requestHost === '127.0.0.1');
+$deployLooksLocal = (strpos($deployServer, 'localhost') !== false || strpos($deployServer, '127.0.0.1') !== false);
+if ($deployLooksLocal && !$requestIsLocalHost) {
+    $forwardedProto = strtolower((string) ($_SERVER['HTTP_X_FORWARDED_PROTO'] ?? ''));
+    $httpsOn = (!empty($_SERVER['HTTPS']) && strtolower((string) $_SERVER['HTTPS']) !== 'off');
+    $scheme = ($forwardedProto === 'https' || $httpsOn) ? 'https' : 'http';
+    $deployServer = $scheme . '://' . $requestHost;
+    error_log("Adjusted SC_SERVER_URL from local env to request host: " . $deployServer);
+}
 define('SC_SERVER_URL', $deployServer);
 
 // Ensure domain_name has .com if it's missing

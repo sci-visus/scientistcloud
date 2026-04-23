@@ -38,6 +38,10 @@ $auth0_audience = getEnvVar('AUTH0_AUDIENCE', null);
 use Auth0\SDK\Configuration\SdkConfiguration;
 
 if (!isset($auth0)) {
+    $isLocal = (strpos(SC_SERVER_URL, 'localhost') !== false || strpos(SC_SERVER_URL, '127.0.0.1') !== false);
+    $authCallbackPath = $isLocal ? '/auth/callback.php' : '/portal/auth/callback.php';
+    $authRedirectUri = rtrim(SC_SERVER_URL, '/') . $authCallbackPath;
+
     // Explicitly create HTTP factories before SdkConfiguration construction
     // This prevents the "Could not find a PSR-17 compatible request factory" error
     $httpRequestFactory = null;
@@ -325,7 +329,7 @@ if (!isset($auth0)) {
         domain: $auth0_domain,
         clientId: $auth0_client_id,
         clientSecret: $auth0_client_secret,
-        redirectUri: SC_SERVER_URL . '/portal/auth/callback.php',
+        redirectUri: $authRedirectUri,
         audience: $audience,  // null if not using API access, or [AUTH0_AUDIENCE] if API exists
         scope: ['openid', 'profile', 'email', 'offline_access', 'https://www.googleapis.com/auth/drive.readonly', 'https://www.googleapis.com/auth/gmail.send'],
         cookieSecret: SECRET_KEY,
