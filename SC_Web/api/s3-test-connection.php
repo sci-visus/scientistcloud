@@ -45,7 +45,11 @@ if (!is_file(__DIR__ . '/../vendor/autoload.php')) {
 require_once __DIR__ . '/../vendor/autoload.php';
 
 try {
-    if (!isAuthenticated()) {
+    // Keep this endpoint session-gated, but avoid strict auth API dependency.
+    // isAuthenticated() may fail if profile lookup is temporarily unavailable,
+    // even when the browser has a valid logged-in portal session.
+    $hasPortalSession = !empty($_SESSION['user_email']) || !empty($_SESSION['user_id']);
+    if (!$hasPortalSession && !isAuthenticated()) {
         ob_end_clean();
         http_response_code(401);
         echo json_encode(['ok' => false, 'error' => 'Authentication required']);
