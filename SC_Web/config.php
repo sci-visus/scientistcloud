@@ -135,6 +135,12 @@ if ($s3FolderDownloadMaxBytes <= 0) {
 }
 define('S3_FOLDER_DOWNLOAD_MAX_BYTES', $s3FolderDownloadMaxBytes);
 
+// Optional S3 UI defaults for bucket/prefix fields.
+$s3DefaultBucket = trim((string) getenv('S3_BUCKET'));
+$s3DefaultPrefix = trim((string) getenv('S3_PREFIX'));
+define('S3_DEFAULT_BUCKET', $s3DefaultBucket);
+define('S3_DEFAULT_PREFIX', $s3DefaultPrefix);
+
 // Logging
 define('LOG_LEVEL', 'INFO');
 define('LOG_FILE', SC_WEB_ROOT . '/logs/app.log');

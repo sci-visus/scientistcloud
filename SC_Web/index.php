@@ -127,6 +127,10 @@ $preferredDashboard = getUserPreferredDashboard($user['id']);
 
   <!-- Scripts -->
   <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+  <script>
+    window.S3_DEFAULT_BUCKET = <?php echo json_encode((defined('S3_DEFAULT_BUCKET') ? S3_DEFAULT_BUCKET : '')); ?>;
+    window.S3_DEFAULT_PREFIX = <?php echo json_encode((defined('S3_DEFAULT_PREFIX') ? S3_DEFAULT_PREFIX : '')); ?>;
+  </script>
   <script src="assets/js/main.js"></script>
   <script src="assets/js/dataset-manager.js"></script>
   <script src="assets/js/viewer-manager.js"></script>

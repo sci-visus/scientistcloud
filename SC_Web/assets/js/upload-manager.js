@@ -526,6 +526,10 @@ class UploadManager {
      * Render S3 upload form
      */
     renderS3UploadForm(folders, teams) {
+        const defaultBucket = (window.S3_DEFAULT_BUCKET || 'nasa-t0').toString().trim();
+        const defaultPrefix = (window.S3_DEFAULT_PREFIX || 'nex-gddp-cmip6/nex-gddp-cmip6.idx').toString().trim();
+        const defaultEndpoint = 'https://us-east-1.gw.future-tech-holdings.com';
+        const defaultLink = `s3://${defaultBucket}${defaultPrefix ? `/${defaultPrefix}` : ''}`;
         return `
             <form id="s3UploadForm">
                 <div class="mb-3">
@@ -545,7 +549,7 @@ class UploadManager {
                     <label class="form-label">S3 Dataset Link:</label>
                     <input type="text" class="form-control" name="s3_link" 
                            placeholder="https://us-east-1.gw.future-tech-holdings.com/nasa-t0/nex-gddp-cmip6/nex-gddp-cmip6.idx"
-                           value="https://us-east-1.gw.future-tech-holdings.com/nasa-t0/nex-gddp-cmip6/nex-gddp-cmip6.idx">
+                           value="${this.escapeHtml(defaultLink)}">
                     <small class="form-text text-muted">You can also use <code>s3://bucket/prefix/...</code> links.</small>
                 </div>
 
@@ -554,19 +558,19 @@ class UploadManager {
                     <label class="form-label">Endpoint URL:</label>
                     <input type="text" class="form-control" name="endpoint_url" 
                            placeholder="https://s3.amazonaws.com"
-                           value="https://us-east-1.gw.future-tech-holdings.com">
+                           value="${this.escapeHtml(defaultEndpoint)}">
                 </div>
 
                 <div class="mb-3">
                     <label class="form-label">Bucket: <span class="text-danger">*</span></label>
-                    <input type="text" class="form-control" name="bucket" value="nasa-t0" required>
+                    <input type="text" class="form-control" name="bucket" value="${this.escapeHtml(defaultBucket)}" required>
                 </div>
 
                 <div class="mb-3">
                     <label class="form-label">Prefix (directory on S3):</label>
                     <input type="text" class="form-control" name="prefix" 
                            placeholder="path/to/files/"
-                           value="nex-gddp-cmip6/nex-gddp-cmip6.idx">
+                           value="${this.escapeHtml(defaultPrefix)}">
                 </div>
 
                 <div class="mb-3">
