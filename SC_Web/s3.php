@@ -528,6 +528,16 @@ if ($defaultShareSeconds > $shareMaxSeconds) {
       const btn = document.getElementById('connectBtn');
       if (form && btn) {
         form.addEventListener('submit', function () {
+          // If users leave required fields blank but placeholders are shown,
+          // treat placeholders as quick defaults to avoid forced retyping.
+          const endpointInput = form.querySelector('input[name="endpoint_url"]');
+          const bucketInput = form.querySelector('input[name="bucket_name"]');
+          if (endpointInput && !endpointInput.value.trim() && endpointInput.placeholder) {
+            endpointInput.value = endpointInput.placeholder.trim();
+          }
+          if (bucketInput && !bucketInput.value.trim() && bucketInput.placeholder) {
+            bucketInput.value = bucketInput.placeholder.trim();
+          }
           btn.disabled = true;
           btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1" role="status" aria-hidden="true"></span>Connecting...';
         });
