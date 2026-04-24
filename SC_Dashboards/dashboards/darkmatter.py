@@ -354,7 +354,36 @@ class AppState:
     def load_mid_files(self, remote_url):
         self.mid_files = get_mid_files(remote_url)
 
+    def _get_remote_dataset_url(self, mid_file: str) -> str:
+        candidate = str(uuid or "").strip()
+        if not candidate:
+            return ""
+        if candidate.endswith(".idx"):
+            return candidate
+        base = candidate.rstrip("/")
+        if not mid_file:
+            return base
+        return f"{base}/{mid_file}.idx"
+
     def load_scene_data(self, mid_file):
+        # ScientistCloud mode: prefer direct remote dataset loading from UUID (s3 link).
+        server_mode = str(server).strip() in ["true", "%20true", " true"]
+        if has_args and server_mode:
+            remote_dataset_url = self._get_remote_dataset_url(mid_file)
+            if remote_dataset_url:
+                self.scene_data = ov.LoadDataset(remote_dataset_url).read(field="data")
+
+                # Keep sidecar metadata behavior (event/channel maps) by caching txt/csv locally.
+                download_processed_files(mid_file)
+                self.detector_to_channels = create_channel_metadata_map(
+                    os.path.join(FILES_VOLUME, mid_file, f"{mid_file}.txt")
+                )
+                self.event_to_metadata = create_event_metadata_map(
+                    os.path.join(FILES_VOLUME, mid_file, f"{mid_file}.csv")
+                )
+                return
+
+        # Legacy/local fallback path.
         os.makedirs(FILES_VOLUME, exist_ok=True)
         cached_files = os.listdir(FILES_VOLUME)
         if cached_files and len(cached_files) > 20:
