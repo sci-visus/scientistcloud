@@ -240,6 +240,17 @@ def get_mid_files(remote_url: str):
     return mid_files
 
 
+def parse_s3_uri(uri: str):
+    candidate = str(uri or "").strip()
+    if not candidate.startswith("s3://"):
+        return None, None
+    no_scheme = candidate[len("s3://"):]
+    if "/" not in no_scheme:
+        return no_scheme, ""
+    bucket, key = no_scheme.split("/", 1)
+    return bucket, key
+
+
 def download_processed_files(midfile: str):
     """
     Download processed files from storage (idx, channel metadata, event metadata)
@@ -357,11 +368,28 @@ class AppState:
 
         base = candidate.rstrip("/")
         last_segment = base.split("/")[-1] if base else ""
+        bucket_from_uuid, key_from_uuid = parse_s3_uri(candidate)
+
+        remote_candidates = []
+
+        # If uuid is an s3 prefix/folder, try discovering an .idx under that remote folder first.
+        if bucket_from_uuid and key_from_uuid and not key_from_uuid.endswith(".idx"):
+            try:
+                bucket = get_aws_bucket()
+                prefix = key_from_uuid if key_from_uuid.endswith("/") else f"{key_from_uuid}/"
+                for obj in bucket.objects.filter(Prefix=prefix):
+                    key = getattr(obj, "key", "")
+                    if key and key.endswith(".idx"):
+                        remote_candidates.append(f"s3://{bucket_from_uuid}/{key}")
+                        break
+            except Exception as exc:
+                print(f"Remote .idx discovery failed for {candidate}: {exc}")
+
         # Try most likely URLs first:
         # 1) UUID as-is (OpenVisusSlice style when UUID is already dataset URL)
         # 2) UUID base path
         # 3) base/<mid>.idx (legacy darkmatter layout)
-        remote_candidates = [candidate, base]
+        remote_candidates.extend([candidate, base])
         if mid_file:
             remote_candidates.append(f"{base}/{mid_file}.idx")
             if last_segment and last_segment != mid_file:
