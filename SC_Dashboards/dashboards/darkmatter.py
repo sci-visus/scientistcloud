@@ -112,6 +112,12 @@ shared_team_collection = None
 remote_url = ""
 init_failed = False
 
+
+def is_remote_uuid(value: str) -> bool:
+    candidate = str(value or "").strip().lower()
+    return candidate.startswith("http") or candidate.startswith("s3") or candidate.startswith("pelican")
+
+
 if has_args:
     class RequestWithArgs:
         def __init__(self, real_request, args_dict):
@@ -146,6 +152,12 @@ if has_args:
         name = params["name"]
         base_dir = params.get("base_dir")
         save_dir = params.get("save_dir")
+        if str(server).strip() in ["true", "%20true", " true"] and is_remote_uuid(uuid):
+            # In server mode, the dashboard UUID is the authoritative remote dataset path.
+            # Normalize base/save dirs so downstream code does not treat remote paths as local filesystem roots.
+            normalized_uuid = str(uuid).strip()
+            base_dir = normalized_uuid
+            save_dir = normalized_uuid
         is_authorized = auth_result["is_authorized"]
         user_email = auth_result["user_email"]
 
@@ -365,14 +377,48 @@ class AppState:
             return base
         return f"{base}/{mid_file}.idx"
 
+    def _load_remote_scene_data(self, mid_file: str) -> bool:
+        candidate = str(uuid or "").strip()
+        if not candidate:
+            return False
+
+        base = candidate.rstrip("/")
+        last_segment = base.split("/")[-1] if base else ""
+        # Try most likely URLs first:
+        # 1) UUID as-is (OpenVisusSlice style when UUID is already dataset URL)
+        # 2) UUID base path
+        # 3) base/<mid>.idx (legacy darkmatter layout)
+        remote_candidates = [candidate, base]
+        if mid_file:
+            remote_candidates.append(f"{base}/{mid_file}.idx")
+            if last_segment and last_segment != mid_file:
+                remote_candidates.append(f"{base}/{last_segment}.idx")
+
+        seen = set()
+        deduped_candidates = []
+        for url in remote_candidates:
+            if url and url not in seen:
+                seen.add(url)
+                deduped_candidates.append(url)
+
+        last_error = None
+        for remote_url in deduped_candidates:
+            try:
+                self.scene_data = ov.LoadDataset(remote_url).read(field="data")
+                return True
+            except Exception as exc:
+                last_error = exc
+                continue
+
+        if last_error:
+            print(f"Failed remote OpenVisus load for {mid_file}: {last_error}")
+        return False
+
     def load_scene_data(self, mid_file):
         # ScientistCloud mode: prefer direct remote dataset loading from UUID (s3 link).
         server_mode = str(server).strip() in ["true", "%20true", " true"]
         if has_args and server_mode:
-            remote_dataset_url = self._get_remote_dataset_url(mid_file)
-            if remote_dataset_url:
-                self.scene_data = ov.LoadDataset(remote_dataset_url).read(field="data")
-
+            if self._load_remote_scene_data(mid_file):
                 # Keep sidecar metadata behavior (event/channel maps) by caching txt/csv locally.
                 download_processed_files(mid_file)
                 self.detector_to_channels = create_channel_metadata_map(
