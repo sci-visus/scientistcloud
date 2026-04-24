@@ -27,7 +27,7 @@
       "MONGO_URL": "${MONGO_URL}"
     },
     "nginx_path": "/dashboard/darkmatter",
-    "health_check_path": "/health",
+    "health_check_path": "",
     "supported_dimensions": ["1D"],
     "build_args": {
       "D_GIT_TOKEN": "${D_GIT_TOKEN}"

@@ -201,19 +201,18 @@ location ${NGINX_PATH}assets/ {
 }
 STATICEOF
 elif [[ "$DASHBOARD_TYPE" == "bokeh" ]]; then
-    # Bokeh uses /static/ for static files (shared across all apps, served from root)
-    # Check if dashboard uses Panel (common for VTK dashboards)
-    USES_PANEL=$(jq -r '.additional_requirements[]? | select(. | test("panel"; "i"))' "$CONFIG_FILE" | head -1)
-    if [ -n "$USES_PANEL" ]; then
-        # Dashboard uses Panel - add Panel static file routes
-        cat > "$STATIC_TEMP" << STATICEOF
+    # Bokeh uses /static/ for static files (shared across all apps, served from root).
+    # Always include Panel extension routes for Bokeh dashboards, since Panel may come
+    # from the base image rather than dashboard-specific requirements.
+    cat > "$STATIC_TEMP" << STATICEOF
 # Static files (Bokeh - uses static/ at root level, not app path)
 location ${NGINX_PATH}static/ {
     # Use variable to defer hostname resolution
     set \$upstream_host "dashboard_${CONTAINER_NAME_SERVICE}";
     set \$upstream_port "${DASHBOARD_PORT}";
-    # Bokeh serves static files from /static/ at root, not from app path
-    proxy_pass http://\$upstream_host:\$upstream_port/static/;
+    # Preserve full static path suffix after ${NGINX_PATH}static/
+    rewrite ^${NGINX_PATH}static/(.*)$ /static/\$1 break;
+    proxy_pass http://\$upstream_host:\$upstream_port;
     proxy_set_header Host \$host;
     proxy_set_header X-Real-IP \$remote_addr;
     proxy_set_header X-Forwarded-For "\$proxy_add_x_forwarded_for";
@@ -255,23 +254,6 @@ location ${NGINX_PATH}static/extensions/panel/ {
     add_header Cache-Control "public, immutable";
 }
 STATICEOF
-    else
-        # Standard Bokeh dashboard without Panel
-        cat > "$STATIC_TEMP" << STATICEOF
-# Static files (Bokeh - uses static/ at root level, not app path)
-location ${NGINX_PATH}static/ {
-    # Use variable to defer hostname resolution
-    set \$upstream_host "dashboard_${CONTAINER_NAME_SERVICE}";
-    set \$upstream_port "${DASHBOARD_PORT}";
-    # Bokeh serves static files from /static/ at root, not from app path
-    proxy_pass http://\$upstream_host:\$upstream_port/static/;
-    proxy_set_header Host \$host;
-    proxy_set_header X-Real-IP \$remote_addr;
-    proxy_set_header X-Forwarded-For "\$proxy_add_x_forwarded_for";
-    proxy_set_header X-Forwarded-Proto \$scheme;
-}
-STATICEOF
-    fi
 else
     # Other types (vtk, etc.) - no static file section
     echo "# Static files not configured for type: $DASHBOARD_TYPE" > "$STATIC_TEMP"
