@@ -59,14 +59,14 @@ RUN if [ -s requirements.txt ]; then \
 
 
 # Expose dashboard port
-EXPOSE 8054
+EXPOSE 8058
 
 # Health check (if specified)
 
 HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
-  CMD curl -f http://localhost:8054/health || exit 1
+  CMD curl -f http://localhost:8058/health || exit 1
 
 
 # Run dashboard entry point
-CMD ["sh", "-c", "python3 -m bokeh serve ./darkmatter.py --allow-websocket-origin=$DOMAIN_NAME --allow-websocket-origin=127.0.0.1 --allow-websocket-origin=0.0.0.0 --port=8054 --address=0.0.0.0 --use-xheaders --session-token-expiration=86400"]
+CMD ["sh", "-c", "WS_ORIGIN=${DOMAIN_NAME:-scientistcloud.com}; python3 -m bokeh serve ./darkmatter.py --allow-websocket-origin=$WS_ORIGIN --allow-websocket-origin=scientistcloud.com --allow-websocket-origin=www.scientistcloud.com --allow-websocket-origin=127.0.0.1 --allow-websocket-origin=0.0.0.0 --port=8058 --address=0.0.0.0 --use-xheaders --session-token-expiration=86400"]
 

@@ -277,7 +277,7 @@ class AppState:
         self.palettes = {color: generate_palette(color) for color in COLORS}
         self.gradient_idx = 0
         self.mid_files = []
-        self.scene_data: np.ndarray
+        self.scene_data: np.ndarray = np.array([])
         self.event_idx = 0
         self.events = []
         self.detectors = []
@@ -387,39 +387,50 @@ class AppState:
             print(f"Failed remote OpenVisus load for {mid_file}: {last_error}")
         return False
 
+    def _load_sidecar_metadata(self, mid_file: str) -> bool:
+        try:
+            download_processed_files(mid_file)
+            self.detector_to_channels = create_channel_metadata_map(
+                os.path.join(FILES_VOLUME, mid_file, f"{mid_file}.txt")
+            )
+            self.event_to_metadata = create_event_metadata_map(
+                os.path.join(FILES_VOLUME, mid_file, f"{mid_file}.csv")
+            )
+            return True
+        except Exception as exc:
+            print(f"Sidecar metadata load failed for {mid_file}: {exc}")
+            return False
+
     def load_scene_data(self, mid_file):
         # ScientistCloud mode: prefer direct remote dataset loading from UUID (s3 link).
         server_mode = str(server).strip() in ["true", "%20true", " true"]
         if has_args and server_mode:
             if self._load_remote_scene_data(mid_file):
-                # Keep sidecar metadata behavior (event/channel maps) by caching txt/csv locally.
-                download_processed_files(mid_file)
-                self.detector_to_channels = create_channel_metadata_map(
-                    os.path.join(FILES_VOLUME, mid_file, f"{mid_file}.txt")
-                )
-                self.event_to_metadata = create_event_metadata_map(
-                    os.path.join(FILES_VOLUME, mid_file, f"{mid_file}.csv")
-                )
+                # Optional sidecar metadata for event/channel maps.
+                self._load_sidecar_metadata(mid_file)
                 return
 
         # Legacy/local fallback path.
-        os.makedirs(FILES_VOLUME, exist_ok=True)
-        cached_files = os.listdir(FILES_VOLUME)
-        if cached_files and len(cached_files) > 20:
-            os.remove(os.path.join(FILES_VOLUME, cached_files[0]))
+        try:
+            os.makedirs(FILES_VOLUME, exist_ok=True)
+            cached_files = os.listdir(FILES_VOLUME)
+            if cached_files and len(cached_files) > 20:
+                os.remove(os.path.join(FILES_VOLUME, cached_files[0]))
 
-        if mid_file not in cached_files:
-            download_processed_files(mid_file)
+            if mid_file not in cached_files:
+                download_processed_files(mid_file)
 
-        self.detector_to_channels = create_channel_metadata_map(
-            os.path.join(FILES_VOLUME, mid_file, f"{mid_file}.txt")
-        )
-        self.event_to_metadata = create_event_metadata_map(
-            os.path.join(FILES_VOLUME, mid_file, f"{mid_file}.csv")
-        )
-        self.scene_data = ov.LoadDataset(
-            os.path.join(FILES_VOLUME, mid_file, f"{mid_file}.idx")
-        ).read(field="data")
+            self.detector_to_channels = create_channel_metadata_map(
+                os.path.join(FILES_VOLUME, mid_file, f"{mid_file}.txt")
+            )
+            self.event_to_metadata = create_event_metadata_map(
+                os.path.join(FILES_VOLUME, mid_file, f"{mid_file}.csv")
+            )
+            self.scene_data = ov.LoadDataset(
+                os.path.join(FILES_VOLUME, mid_file, f"{mid_file}.idx")
+            ).read(field="data")
+        except Exception as exc:
+            raise RuntimeError(f"Unable to load dataset '{mid_file}': {exc}") from exc
 
     def load_events(self):
         if self.scene_data.any():
@@ -705,18 +716,30 @@ def main():
         app_state.toggle_loading_spinner(True)
         app_state.render_app_info_text(f"Loading {mid_file}...")
         toggle_all_component_interactivity(True)
-        app_state.load_scene_data(mid_file)
-        toggle_all_component_interactivity(False)
-        app_state.render_app_info_text("")
-        app_state.toggle_loading_spinner(False)
-        app_state.send_notification(SUCCESS, f"Loaded {mid_file} successfully")
+        load_ok = False
+        try:
+            app_state.load_scene_data(mid_file)
+            load_ok = True
+            app_state.send_notification(SUCCESS, f"Loaded {mid_file} successfully")
 
-        app_state.load_events()
-        input_event.options = app_state.events
-        # needs to transition from empty to trigger update_detectors
-        input_event.value = ""
-        if input_event.options:
-            input_event.value = input_event.options[0]
+            app_state.load_events()
+            input_event.options = app_state.events
+            # needs to transition from empty to trigger update_detectors
+            input_event.value = ""
+            if input_event.options:
+                input_event.value = input_event.options[0]
+            else:
+                app_state.send_notification(INFO, f"No events found for {mid_file}")
+        except Exception as exc:
+            app_state.send_notification(ERROR, str(exc))
+            app_state.render_app_info_text(f"Failed to load {mid_file}")
+            input_event.options = []
+            input_event.value = ""
+        finally:
+            toggle_all_component_interactivity(False)
+            app_state.toggle_loading_spinner(False)
+            if load_ok:
+                app_state.render_app_info_text("")
 
     def update_detectors(eventID):
         if eventID != "":

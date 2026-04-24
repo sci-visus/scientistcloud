@@ -188,12 +188,12 @@ elif [ "$DASHBOARD_TYPE" = "dash" ]; then
     CMD_SECTION="CMD [\"python3\", \"${ENTRY_POINT}\"]"
 elif [ "$DASHBOARD_TYPE" = "bokeh" ]; then
     # Bokeh needs special command with bokeh serve
-    # DOMAIN_NAME should be set via environment variables from docker-compose
-    CMD_SECTION="CMD [\"sh\", \"-c\", \"python3 -m bokeh serve ./${ENTRY_POINT} --allow-websocket-origin=\\\$DOMAIN_NAME --allow-websocket-origin=127.0.0.1 --allow-websocket-origin=0.0.0.0 --port=${DASHBOARD_PORT} --address=0.0.0.0 --use-xheaders --session-token-expiration=86400\"]"
+    # DOMAIN_NAME may be missing in some deploys, so provide a safe fallback.
+    CMD_SECTION="CMD [\"sh\", \"-c\", \"WS_ORIGIN=\\\${DOMAIN_NAME:-scientistcloud.com}; python3 -m bokeh serve ./${ENTRY_POINT} --allow-websocket-origin=\\\$WS_ORIGIN --allow-websocket-origin=scientistcloud.com --allow-websocket-origin=www.scientistcloud.com --allow-websocket-origin=127.0.0.1 --allow-websocket-origin=0.0.0.0 --port=${DASHBOARD_PORT} --address=0.0.0.0 --use-xheaders --session-token-expiration=86400\"]"
 elif [ "$DASHBOARD_TYPE" = "panel" ]; then
     # Panel needs panel serve command
-    # DOMAIN_NAME should be set via environment variables from docker-compose
-    CMD_SECTION="CMD [\"sh\", \"-c\", \"python3 -m panel serve ./${ENTRY_POINT} --allow-websocket-origin=\\\$DOMAIN_NAME --port=${DASHBOARD_PORT} --address=0.0.0.0 --use-xheaders\"]"
+    # DOMAIN_NAME may be missing in some deploys, so provide a safe fallback.
+    CMD_SECTION="CMD [\"sh\", \"-c\", \"WS_ORIGIN=\\\${DOMAIN_NAME:-scientistcloud.com}; python3 -m panel serve ./${ENTRY_POINT} --allow-websocket-origin=\\\$WS_ORIGIN --allow-websocket-origin=scientistcloud.com --allow-websocket-origin=www.scientistcloud.com --port=${DASHBOARD_PORT} --address=0.0.0.0 --use-xheaders\"]"
 else
     CMD_SECTION="CMD [\"python3\", \"${ENTRY_POINT}\"]"
 fi
