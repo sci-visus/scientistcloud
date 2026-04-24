@@ -217,8 +217,19 @@ def generate_palette(hex_color, steps=8):
 
 
 def get_mid_files(remote_url: str):
+    os.makedirs(FILES_VOLUME, exist_ok=True)
     mid_files = []
     if remote_url != "":
+        # ScientistCloud mode: UUID already points to a specific dataset, so prefer that over legacy list files.
+        candidate = str(uuid or "").strip()
+        if candidate.endswith("/"):
+            candidate = candidate[:-1]
+        derived_mid = candidate.split("/")[-1] if candidate else ""
+        if derived_mid:
+            mid_files.append(derived_mid)
+            return mid_files
+
+        # Legacy mode fallback for older deployments that only provide uploaded_files.txt.
         uploaded_files_path = "./uploaded_files.txt"
         if os.path.exists(uploaded_files_path):
             with open(uploaded_files_path) as f:
@@ -226,14 +237,6 @@ def get_mid_files(remote_url: str):
                     mid_file = line.strip()
                     if mid_file:
                         mid_files.append(mid_file)
-        else:
-            # ScientistCloud path: derive the MID identifier from URL/UUID when no uploaded_files.txt is mounted.
-            candidate = str(uuid or "").strip()
-            if candidate.endswith("/"):
-                candidate = candidate[:-1]
-            derived_mid = candidate.split("/")[-1] if candidate else ""
-            if derived_mid:
-                mid_files.append(derived_mid)
     else:
         for filename in os.listdir(FILES_VOLUME):
             if filename.endswith(".mid") or filename.endswith(".mid.gz"):
@@ -352,6 +355,7 @@ class AppState:
         self.mid_files = get_mid_files(remote_url)
 
     def load_scene_data(self, mid_file):
+        os.makedirs(FILES_VOLUME, exist_ok=True)
         cached_files = os.listdir(FILES_VOLUME)
         if cached_files and len(cached_files) > 20:
             os.remove(os.path.join(FILES_VOLUME, cached_files[0]))
