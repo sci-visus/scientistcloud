@@ -1,6 +1,6 @@
 {
   "version": "1.0.0",
-  "last_updated": "2025-12-16T14:47:57Z",
+  "last_updated": "2026-04-24T16:15:01Z",
   "port_range": {
     "start": 8050,
     "end": 8999,
@@ -62,6 +62,14 @@
       "port": 8057,
       "nginx_path": "/dashboard/4d_dashboardopt",
       "config_file": "../dashboards/4d_dashboardopt.json"
+    },
+    "darkmatter": {
+      "name": "darkmatter",
+      "display_name": "Dark Matter Dashboard",
+      "enabled": true,
+      "port": 8054,
+      "nginx_path": "/dashboard/darkmatter",
+      "config_file": "../dashboards/darkmatter.json"
     }
   }
 }

@@ -1,0 +1,41 @@
+{
+    "name": "darkmatter",
+    "display_name": "Dark Matter Dashboard",
+    "description": "Interactive SLAC Dark Matter visualization using OpenVisus",
+    "version": "1.0.0",
+    "type": "bokeh",
+    "entry_point": "darkmatter.py",
+    "entry_point_type": "python",
+    "port": 8058,
+    "base_image": "visstore-bokeh-dashboard-base",
+    "base_image_tag": "latest",
+    "requirements_file": "requirements.txt",
+    "additional_requirements": [
+    ],
+    "shared_utilities": [
+      "mongo_connection.py",
+      "utils_bokeh_mongodb.py",
+      "utils_bokeh_dashboard.py",
+      "utils_bokeh_auth.py",
+      "utils_bokeh_param.py",
+      "utils_darkmatter.py"
+    ],
+    "environment_variables": {
+      "SECRET_KEY": "${SECRET_KEY}",
+      "DEPLOY_SERVER": "${DEPLOY_SERVER}",
+      "DB_NAME": "${DB_NAME}",
+      "MONGO_URL": "${MONGO_URL}"
+    },
+    "nginx_path": "/dashboard/darkmatter",
+    "health_check_path": "/health",
+    "supported_dimensions": ["1D"],
+    "build_args": {
+      "D_GIT_TOKEN": "${D_GIT_TOKEN}"
+    },
+    "volume_mounts": [],
+    "exposed_ports": [8058],
+    "depends_on": [],
+    "enabled": true
+  }
+  
+  
