@@ -219,10 +219,21 @@ def generate_palette(hex_color, steps=8):
 def get_mid_files(remote_url: str):
     mid_files = []
     if remote_url != "":
-        with open("./uploaded_files.txt") as f:
-            for line in f:
-                mid_file = line.strip()
-                mid_files.append(mid_file)
+        uploaded_files_path = "./uploaded_files.txt"
+        if os.path.exists(uploaded_files_path):
+            with open(uploaded_files_path) as f:
+                for line in f:
+                    mid_file = line.strip()
+                    if mid_file:
+                        mid_files.append(mid_file)
+        else:
+            # ScientistCloud path: derive the MID identifier from URL/UUID when no uploaded_files.txt is mounted.
+            candidate = str(uuid or "").strip()
+            if candidate.endswith("/"):
+                candidate = candidate[:-1]
+            derived_mid = candidate.split("/")[-1] if candidate else ""
+            if derived_mid:
+                mid_files.append(derived_mid)
     else:
         for filename in os.listdir(FILES_VOLUME):
             if filename.endswith(".mid") or filename.endswith(".mid.gz"):
@@ -545,7 +556,7 @@ class AppState:
 
 
 def main():
-    runtime_remote_url = remote_url if has_args else ""
+    runtime_remote_url = (uuid if has_args else "")
     if len(sys.argv) == 2:
         runtime_remote_url = sys.argv[1]
 
@@ -577,7 +588,7 @@ def main():
         case_sensitive=False,
         search_strategy="includes",
         placeholder="Search Mid File",
-        value=app_state.mid_files[0],
+        value=app_state.mid_files[0] if app_state.mid_files else "",
         min_characters=0)
 
     event_controls_tooltip = pn.widgets.TooltipIcon(
@@ -652,7 +663,8 @@ def main():
         input_event.options = app_state.events
         # needs to transition from empty to trigger update_detectors
         input_event.value = ""
-        input_event.value = input_event.options[0]
+        if input_event.options:
+            input_event.value = input_event.options[0]
 
     def update_detectors(eventID):
         if eventID != "":
@@ -685,14 +697,20 @@ def main():
         app_state.toggle_event_controls(False)
 
     def update_event_to_first(_):
+        if not input_event.options:
+            return
         input_event.value = input_event.options[0]
         app_state.event_idx = 0
 
     def update_event_to_last(_):
+        if not input_event.options:
+            return
         input_event.value = input_event.options[-1]
         app_state.event_idx = len(app_state.events) - 1
 
     def update_event_to_next(_):
+        if not input_event.options:
+            return
         app_state.event_idx = (
             app_state.event_idx
             if app_state.event_idx + 1 >= len(app_state.events)
@@ -701,6 +719,8 @@ def main():
         input_event.value = input_event.options[app_state.event_idx]
 
     def update_event_to_prev(_):
+        if not input_event.options:
+            return
         app_state.event_idx = (
             0 if app_state.event_idx - 1 < 0 else app_state.event_idx - 1
         )
