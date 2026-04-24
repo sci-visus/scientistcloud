@@ -93,7 +93,6 @@ def get_request_args():
 
 request, request_args = get_request_args()
 has_args = request is not None and len(request_args) > 0
-DATA_IS_LOCAL = not has_args
 deploy_server = os.getenv("DEPLOY_SERVER", "")
 
 # Global context populated by dashboard initialization.
@@ -109,14 +108,7 @@ collection = None
 collection1 = None
 team_collection = None
 shared_team_collection = None
-remote_url = ""
 init_failed = False
-
-
-def is_remote_uuid(value: str) -> bool:
-    candidate = str(value or "").strip().lower()
-    return candidate.startswith("http") or candidate.startswith("s3") or candidate.startswith("pelican")
-
 
 if has_args:
     class RequestWithArgs:
@@ -152,12 +144,6 @@ if has_args:
         name = params["name"]
         base_dir = params.get("base_dir")
         save_dir = params.get("save_dir")
-        if str(server).strip() in ["true", "%20true", " true"] and is_remote_uuid(uuid):
-            # In server mode, the dashboard UUID is the authoritative remote dataset path.
-            # Normalize base/save dirs so downstream code does not treat remote paths as local filesystem roots.
-            normalized_uuid = str(uuid).strip()
-            base_dir = normalized_uuid
-            save_dir = normalized_uuid
         is_authorized = auth_result["is_authorized"]
         user_email = auth_result["user_email"]
 
@@ -167,8 +153,6 @@ if has_args:
             collection1 = mongodb["collection1"]
             team_collection = mongodb["team_collection"]
             shared_team_collection = mongodb.get("shared_team_collection")
-
-        remote_url = "s3"
 
 
 class EventMetadata:
@@ -365,17 +349,6 @@ class AppState:
 
     def load_mid_files(self, remote_url):
         self.mid_files = get_mid_files(remote_url)
-
-    def _get_remote_dataset_url(self, mid_file: str) -> str:
-        candidate = str(uuid or "").strip()
-        if not candidate:
-            return ""
-        if candidate.endswith(".idx"):
-            return candidate
-        base = candidate.rstrip("/")
-        if not mid_file:
-            return base
-        return f"{base}/{mid_file}.idx"
 
     def _load_remote_scene_data(self, mid_file: str) -> bool:
         candidate = str(uuid or "").strip()
