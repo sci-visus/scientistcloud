@@ -221,6 +221,8 @@ def get_mid_files(remote_url: str):
         if candidate.endswith("/"):
             candidate = candidate[:-1]
         derived_mid = candidate.split("/")[-1] if candidate else ""
+        if derived_mid.endswith(".idx"):
+            derived_mid = derived_mid[:-4]
         if derived_mid:
             mid_files.append(derived_mid)
             return mid_files
@@ -366,6 +368,7 @@ class AppState:
         if not candidate:
             return False
 
+        mid_name = mid_file[:-4] if str(mid_file).endswith(".idx") else str(mid_file)
         base = candidate.rstrip("/")
         last_segment = base.split("/")[-1] if base else ""
         bucket_from_uuid, key_from_uuid = parse_s3_uri(candidate)
@@ -390,9 +393,9 @@ class AppState:
         # 2) UUID base path
         # 3) base/<mid>.idx (legacy darkmatter layout)
         remote_candidates.extend([candidate, base])
-        if mid_file:
-            remote_candidates.append(f"{base}/{mid_file}.idx")
-            if last_segment and last_segment != mid_file:
+        if mid_name:
+            remote_candidates.append(f"{base}/{mid_name}.idx")
+            if last_segment and last_segment != mid_name:
                 remote_candidates.append(f"{base}/{last_segment}.idx")
 
         seen = set()
@@ -415,27 +418,28 @@ class AppState:
             print(f"Failed remote OpenVisus load for {mid_file}: {last_error}")
         return False
 
-    def _load_sidecar_metadata(self, mid_file: str) -> bool:
+    def _load_sidecar_metadata(self, mid_name: str) -> bool:
         try:
-            download_processed_files(mid_file)
+            download_processed_files(mid_name)
             self.detector_to_channels = create_channel_metadata_map(
-                os.path.join(FILES_VOLUME, mid_file, f"{mid_file}.txt")
+                os.path.join(FILES_VOLUME, mid_name, f"{mid_name}.txt")
             )
             self.event_to_metadata = create_event_metadata_map(
-                os.path.join(FILES_VOLUME, mid_file, f"{mid_file}.csv")
+                os.path.join(FILES_VOLUME, mid_name, f"{mid_name}.csv")
             )
             return True
         except Exception as exc:
-            print(f"Sidecar metadata load failed for {mid_file}: {exc}")
+            print(f"Sidecar metadata load failed for {mid_name}: {exc}")
             return False
 
     def load_scene_data(self, mid_file):
+        mid_name = mid_file[:-4] if str(mid_file).endswith(".idx") else str(mid_file)
         # ScientistCloud mode: prefer direct remote dataset loading from UUID (s3 link).
         server_mode = str(server).strip() in ["true", "%20true", " true"]
         if has_args and server_mode:
             if self._load_remote_scene_data(mid_file):
                 # Optional sidecar metadata for event/channel maps.
-                self._load_sidecar_metadata(mid_file)
+                self._load_sidecar_metadata(mid_name)
                 return
 
         # Legacy/local fallback path.
@@ -445,20 +449,20 @@ class AppState:
             if cached_files and len(cached_files) > 20:
                 os.remove(os.path.join(FILES_VOLUME, cached_files[0]))
 
-            if mid_file not in cached_files:
-                download_processed_files(mid_file)
+            if mid_name not in cached_files:
+                download_processed_files(mid_name)
 
             self.detector_to_channels = create_channel_metadata_map(
-                os.path.join(FILES_VOLUME, mid_file, f"{mid_file}.txt")
+                os.path.join(FILES_VOLUME, mid_name, f"{mid_name}.txt")
             )
             self.event_to_metadata = create_event_metadata_map(
-                os.path.join(FILES_VOLUME, mid_file, f"{mid_file}.csv")
+                os.path.join(FILES_VOLUME, mid_name, f"{mid_name}.csv")
             )
             self.scene_data = ov.LoadDataset(
-                os.path.join(FILES_VOLUME, mid_file, f"{mid_file}.idx")
+                os.path.join(FILES_VOLUME, mid_name, f"{mid_name}.idx")
             ).read(field="data")
         except Exception as exc:
-            raise RuntimeError(f"Unable to load dataset '{mid_file}': {exc}") from exc
+            raise RuntimeError(f"Unable to load dataset '{mid_name}': {exc}") from exc
 
     def load_events(self):
         if self.scene_data.any():

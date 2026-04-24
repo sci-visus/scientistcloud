@@ -528,16 +528,17 @@ if ($defaultShareSeconds > $shareMaxSeconds) {
       const btn = document.getElementById('connectBtn');
       if (form && btn) {
         form.addEventListener('submit', function () {
-          // If users leave required fields blank but placeholders are shown,
-          // treat placeholders as quick defaults to avoid forced retyping.
-          const endpointInput = form.querySelector('input[name="endpoint_url"]');
-          const bucketInput = form.querySelector('input[name="bucket_name"]');
-          if (endpointInput && !endpointInput.value.trim() && endpointInput.placeholder) {
-            endpointInput.value = endpointInput.placeholder.trim();
-          }
-          if (bucketInput && !bucketInput.value.trim() && bucketInput.placeholder) {
-            bucketInput.value = bucketInput.placeholder.trim();
-          }
+          // Promote placeholders into values for required inputs so browser
+          // validation does not block when defaults are shown as placeholders.
+          form.querySelectorAll('input[required], textarea[required], select[required]').forEach(function (field) {
+            const hasValue = typeof field.value === 'string' && field.value.trim() !== '';
+            if (!hasValue && typeof field.placeholder === 'string' && field.placeholder.trim() !== '') {
+              field.value = field.placeholder.trim();
+            }
+            if (typeof field.value === 'string') {
+              field.value = field.value.trim();
+            }
+          });
           btn.disabled = true;
           btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1" role="status" aria-hidden="true"></span>Connecting...';
         });
