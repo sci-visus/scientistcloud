@@ -16,7 +16,7 @@ from bisect import bisect_left
 from datetime import datetime, timezone
 
 import OpenVisus as ov
-from urllib.parse import parse_qs, urlparse
+from urllib.parse import parse_qs
 from bokeh.io import curdoc
 from bokeh.models.widgets import Div
 from bokeh.plotting import figure
@@ -556,25 +556,6 @@ def read_text_lines_from_url(url: str) -> List[str]:
     return resp.text.splitlines()
 
 
-def http_url_to_s3_uri(url: str) -> str:
-    """
-    Convert path-style object URL to s3:// URI.
-    Example:
-      https://host/scientistcloud/cdms/umn/file.txt
-      -> s3://scientistcloud/cdms/umn/file.txt
-    """
-    parsed = urlparse(str(url or "").strip())
-    if parsed.scheme not in ("http", "https"):
-        return ""
-    path = (parsed.path or "").lstrip("/")
-    if "/" not in path:
-        return ""
-    bucket, key = path.split("/", 1)
-    if not bucket or not key:
-        return ""
-    return f"s3://{bucket}/{key}"
-
-
 def s3_key_exists(s3_uri: str) -> bool:
     bucket_name, key = parse_s3_uri(s3_uri)
     if not bucket_name or not key:
@@ -862,12 +843,8 @@ class AppState:
                             idx_for_read = http_idx
                             print(f"[DarkMatter][DEBUG] using HTTP idx URL for OpenVisus: {idx_for_read}")
 
-                # OpenVisusSlice approach: use presigned URL when we can map to s3:// source.
-                s3_idx_uri = (
-                    self.runtime_dataset["idx_uri"]
-                    if self.runtime_dataset["idx_uri"].startswith("s3://")
-                    else http_url_to_s3_uri(self.runtime_dataset["idx_uri"])
-                )
+                # Preserve HTTPS datasets as HTTPS; only presign true s3:// URIs.
+                s3_idx_uri = self.runtime_dataset["idx_uri"] if self.runtime_dataset["idx_uri"].startswith("s3://") else ""
                 if s3_idx_uri:
                     try:
                         override = self.s3_auth_override or {}
@@ -894,47 +871,9 @@ class AppState:
                         txt_lines = read_text_lines_from_url(self.runtime_dataset["txt_uri"])
                         csv_lines = read_text_lines_from_url(self.runtime_dataset["csv_uri"])
                     except Exception as http_sidecar_exc:
-                        print(
-                            f"[DarkMatter][DEBUG] http sidecars failed, falling back to s3 sidecars: "
-                            f"{http_sidecar_exc}"
-                        )
-                        txt_s3_uri = http_url_to_s3_uri(self.runtime_dataset["txt_uri"])
-                        csv_s3_uri = http_url_to_s3_uri(self.runtime_dataset["csv_uri"])
-                        if not txt_s3_uri or not csv_s3_uri:
-                            raise
-                        try:
-                            override = self.s3_auth_override or {}
-                            signed_txt = resolve_s3_url_via_api(
-                                txt_s3_uri,
-                                access_key=override.get("aws_access_key_id", ""),
-                                secret_key=override.get("aws_secret_access_key", ""),
-                                endpoint_url=override.get("endpoint_url", ""),
-                                region_name=override.get("region_name", "us-east-1"),
-                                path_style=True,
-                                dataset_identifier=dataset_identifier,
-                                user_email=user_email,
-                                cache_credentials=bool(override.get("aws_access_key_id") and override.get("aws_secret_access_key")),
-                                use_cached_credentials=True,
-                            )
-                            signed_csv = resolve_s3_url_via_api(
-                                csv_s3_uri,
-                                access_key=override.get("aws_access_key_id", ""),
-                                secret_key=override.get("aws_secret_access_key", ""),
-                                endpoint_url=override.get("endpoint_url", ""),
-                                region_name=override.get("region_name", "us-east-1"),
-                                path_style=True,
-                                dataset_identifier=dataset_identifier,
-                                user_email=user_email,
-                                cache_credentials=bool(override.get("aws_access_key_id") and override.get("aws_secret_access_key")),
-                                use_cached_credentials=True,
-                            )
-                            txt_lines = read_text_lines_from_url(signed_txt)
-                            csv_lines = read_text_lines_from_url(signed_csv)
-                            print("[DarkMatter][DEBUG] using presigned sidecar URLs after HTTP 403")
-                        except Exception as sidecar_presign_exc:
-                            print(f"[DarkMatter][DEBUG] sidecar presign unavailable, using direct S3 sidecar read: {sidecar_presign_exc}")
-                            txt_lines = read_s3_text_lines(txt_s3_uri, auth_override=self.s3_auth_override)
-                            csv_lines = read_s3_text_lines(csv_s3_uri, auth_override=self.s3_auth_override)
+                        raise RuntimeError(
+                            f"Failed to load HTTP sidecar metadata without S3 rewrite fallback: {http_sidecar_exc}"
+                        ) from http_sidecar_exc
                 else:
                     txt_lines = read_s3_text_lines(self.runtime_dataset["txt_uri"], auth_override=self.s3_auth_override)
                     csv_lines = read_s3_text_lines(self.runtime_dataset["csv_uri"], auth_override=self.s3_auth_override)
