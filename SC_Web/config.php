@@ -156,9 +156,35 @@ if ($s3DefaultBucket === '') {
 }
 $s3DefaultPrefix = trim((string) getenv('S3_PREFIX'));
 $s3DefaultEndpoint = trim((string) getenv('S3_ENDPOINT_URL'));
+$s3DefaultAccessKey = trim((string) getenv('S3_ACCESS_KEY'));
+if ($s3DefaultAccessKey === '') {
+    $s3DefaultAccessKey = trim((string) getenv('AWS_ACCESS_KEY_ID'));
+}
+$s3DefaultSecretKey = trim((string) getenv('S3_SECRET_KEY'));
+if ($s3DefaultSecretKey === '') {
+    $s3DefaultSecretKey = trim((string) getenv('AWS_SECRET_ACCESS_KEY'));
+}
+$s3DefaultRegion = trim((string) getenv('S3_REGION'));
+if ($s3DefaultRegion === '') {
+    $s3DefaultRegion = trim((string) getenv('AWS_DEFAULT_REGION'));
+}
+if ($s3DefaultRegion === '') {
+    $s3DefaultRegion = 'us-east-1';
+}
+$s3DefaultPathStyle = trim((string) getenv('S3_PATH_STYLE'));
+if ($s3DefaultPathStyle === '') {
+    $s3DefaultPathStyle = trim((string) getenv('AWS_S3_PATH_STYLE'));
+}
+if ($s3DefaultPathStyle === '') {
+    $s3DefaultPathStyle = '1';
+}
 define('S3_DEFAULT_BUCKET', $s3DefaultBucket);
 define('S3_DEFAULT_PREFIX', $s3DefaultPrefix);
 define('S3_DEFAULT_ENDPOINT', $s3DefaultEndpoint);
+define('S3_DEFAULT_ACCESS_KEY', $s3DefaultAccessKey);
+define('S3_DEFAULT_SECRET_KEY', $s3DefaultSecretKey);
+define('S3_DEFAULT_REGION', $s3DefaultRegion);
+define('S3_DEFAULT_PATH_STYLE', in_array(strtolower($s3DefaultPathStyle), ['1', 'true', 'yes', 'on'], true));
 
 // Logging
 define('LOG_LEVEL', 'INFO');

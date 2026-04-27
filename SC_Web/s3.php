@@ -119,8 +119,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $rootPrefix = s3_inspector_normalize_root_prefix((string) ($_POST['prefix'] ?? ''));
         $access = trim((string) ($_POST['access_key'] ?? ''));
         $secret = trim((string) ($_POST['secret_key'] ?? ''));
-        $region = trim((string) ($_POST['region'] ?? 'us-east-1')) ?: 'us-east-1';
-        $pathStyle = isset($_POST['path_style']);
+        $defaultPathStyleFlag = defined('S3_DEFAULT_PATH_STYLE') ? (bool) S3_DEFAULT_PATH_STYLE : true;
+        $region = trim((string) ($_POST['region'] ?? (defined('S3_DEFAULT_REGION') ? (string) S3_DEFAULT_REGION : 'us-east-1'))) ?: 'us-east-1';
+        $pathStyle = isset($_POST['path_style']) ? true : $defaultPathStyleFlag;
 
         $err = null;
         if ($endpoint === '' || $bucket === '' || $access === '' || $secret === '') {
@@ -203,6 +204,10 @@ $showPublicUrlButton = defined('S3_ENABLE_PUBLIC_URL_BUTTON') && S3_ENABLE_PUBLI
 $defaultBucket = defined('S3_DEFAULT_BUCKET') ? (string) S3_DEFAULT_BUCKET : '';
 $defaultPrefix = defined('S3_DEFAULT_PREFIX') ? (string) S3_DEFAULT_PREFIX : '';
 $defaultEndpoint = defined('S3_DEFAULT_ENDPOINT') ? (string) S3_DEFAULT_ENDPOINT : '';
+$defaultAccessKey = defined('S3_DEFAULT_ACCESS_KEY') ? (string) S3_DEFAULT_ACCESS_KEY : '';
+$defaultSecretKey = defined('S3_DEFAULT_SECRET_KEY') ? (string) S3_DEFAULT_SECRET_KEY : '';
+$defaultRegion = defined('S3_DEFAULT_REGION') ? (string) S3_DEFAULT_REGION : 'us-east-1';
+$defaultPathStyle = defined('S3_DEFAULT_PATH_STYLE') ? (bool) S3_DEFAULT_PATH_STYLE : true;
 $shareDurationOptions = [
     900 => '15m',
     3600 => '1h',
@@ -355,19 +360,23 @@ if ($defaultShareSeconds > $shareMaxSeconds) {
             <div class="row g-2">
               <div class="col-md-6 mb-2">
                 <label class="form-label">Access key</label>
-                <input type="text" name="access_key" class="form-control" required autocomplete="off">
+                <input type="text" name="access_key" class="form-control" required autocomplete="off"
+                       value="<?php echo htmlspecialchars((string) ($_POST['access_key'] ?? $defaultAccessKey)); ?>">
               </div>
               <div class="col-md-6 mb-2">
                 <label class="form-label">Secret key</label>
-                <input type="password" name="secret_key" class="form-control" required autocomplete="off">
+                <input type="password" name="secret_key" class="form-control" required autocomplete="off"
+                       value="<?php echo htmlspecialchars((string) ($_POST['secret_key'] ?? $defaultSecretKey)); ?>">
               </div>
             </div>
             <div class="mb-2">
               <label class="form-label">Region</label>
-              <input type="text" name="region" class="form-control" value="us-east-1">
+              <input type="text" name="region" class="form-control"
+                     value="<?php echo htmlspecialchars((string) ($_POST['region'] ?? $defaultRegion)); ?>">
             </div>
             <div class="form-check mb-3">
-              <input class="form-check-input" type="checkbox" name="path_style" id="path_style" checked>
+              <?php $pathStyleChecked = isset($_POST['path_style']) ? true : $defaultPathStyle; ?>
+              <input class="form-check-input" type="checkbox" name="path_style" id="path_style"<?php echo $pathStyleChecked ? ' checked' : ''; ?>>
               <label class="form-check-label" for="path_style">Path-style addressing (recommended for Wasabi / MinIO)</label>
             </div>
             <button type="submit" class="btn btn-primary" id="connectBtn"><i class="fas fa-plug"></i> Connect</button>

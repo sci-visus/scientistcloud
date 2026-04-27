@@ -131,6 +131,10 @@ $preferredDashboard = getUserPreferredDashboard($user['id']);
     window.S3_DEFAULT_BUCKET = <?php echo json_encode((defined('S3_DEFAULT_BUCKET') ? S3_DEFAULT_BUCKET : '')); ?>;
     window.S3_DEFAULT_PREFIX = <?php echo json_encode((defined('S3_DEFAULT_PREFIX') ? S3_DEFAULT_PREFIX : '')); ?>;
     window.S3_DEFAULT_ENDPOINT = <?php echo json_encode((defined('S3_DEFAULT_ENDPOINT') ? S3_DEFAULT_ENDPOINT : '')); ?>;
+    window.S3_DEFAULT_ACCESS_KEY = <?php echo json_encode((defined('S3_DEFAULT_ACCESS_KEY') ? S3_DEFAULT_ACCESS_KEY : '')); ?>;
+    window.S3_DEFAULT_SECRET_KEY = <?php echo json_encode((defined('S3_DEFAULT_SECRET_KEY') ? S3_DEFAULT_SECRET_KEY : '')); ?>;
+    window.S3_DEFAULT_REGION = <?php echo json_encode((defined('S3_DEFAULT_REGION') ? S3_DEFAULT_REGION : 'us-east-1')); ?>;
+    window.S3_DEFAULT_PATH_STYLE = <?php echo json_encode((defined('S3_DEFAULT_PATH_STYLE') ? S3_DEFAULT_PATH_STYLE : true)); ?>;
   </script>
   <script src="assets/js/main.js"></script>
   <script src="assets/js/dataset-manager.js"></script>

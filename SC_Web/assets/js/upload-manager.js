@@ -529,6 +529,10 @@ class UploadManager {
         const defaultBucket = (window.S3_DEFAULT_BUCKET || '').toString().trim();
         const defaultPrefix = (window.S3_DEFAULT_PREFIX || '').toString().trim();
         const defaultEndpoint = (window.S3_DEFAULT_ENDPOINT || '').toString().trim();
+        const defaultAccessKey = (window.S3_DEFAULT_ACCESS_KEY || '').toString().trim();
+        const defaultSecretKey = (window.S3_DEFAULT_SECRET_KEY || '').toString();
+        const defaultRegion = (window.S3_DEFAULT_REGION || 'us-east-1').toString().trim() || 'us-east-1';
+        const defaultPathStyle = window.S3_DEFAULT_PATH_STYLE !== false;
         const defaultLink = defaultBucket
             ? `s3://${defaultBucket}${defaultPrefix ? `/${defaultPrefix}` : ''}`
             : '';
@@ -574,26 +578,26 @@ class UploadManager {
                            placeholder="path/to/files/"
                            value="${this.escapeHtml(defaultPrefix)}">
                 </div>
-
-                <div class="mb-3">
-                    <label class="form-label">Access Key:</label>
-                    <input type="text" class="form-control" name="access_key" placeholder="Optional for public buckets">
                 </div>
 
                 <div class="mb-3">
-                    <label class="form-label">Secret Key:</label>
-                    <input type="password" class="form-control" name="secret_key" placeholder="Optional for public buckets">
+                    <label class="form-label">Access Key: <span class="text-danger">*</span></label>
+                    <input type="text" class="form-control" name="access_key" value="${this.escapeHtml(defaultAccessKey)}" required>
+                </div>
+
+                <div class="mb-3">
+                    <label class="form-label">Secret Key: <span class="text-danger">*</span></label>
+                    <input type="password" class="form-control" name="secret_key" value="${this.escapeHtml(defaultSecretKey)}" required>
                 </div>
 
                 <div class="mb-3">
                     <label class="form-label">Region</label>
-                    <input type="text" class="form-control" name="region" value="us-east-1" placeholder="us-east-1">
+                    <input type="text" class="form-control" name="region" value="${this.escapeHtml(defaultRegion)}" placeholder="us-east-1">
                 </div>
 
                 <div class="form-check mb-3">
-                    <input class="form-check-input" type="checkbox" name="path_style" id="s3UploadPathStyle" checked>
+                    <input class="form-check-input" type="checkbox" name="path_style" id="s3UploadPathStyle" ${defaultPathStyle ? 'checked' : ''}>
                     <label class="form-check-label" for="s3UploadPathStyle">Path-style addressing (recommended for Wasabi / MinIO / many S3-compatible gateways)</label>
-                </div>
                 </div>
 
                 <div class="mb-3 d-flex flex-wrap align-items-center gap-2">
@@ -1219,7 +1223,7 @@ class UploadManager {
             const bucket = (formData.get('bucket') || '').toString().trim();
             const prefix = (formData.get('prefix') || '').toString().trim();
             const endpointUrl = (formData.get('endpoint_url') || '').toString().trim();
-            return { bucket, prefix, endpointUrl };
+            return { bucket, prefix, endpointUrl, rawLink: '' };
         }
 
         const rawLink = (formData.get('s3_link') || '').toString().trim();
@@ -1233,7 +1237,7 @@ class UploadManager {
             const bucket = slash === -1 ? noScheme : noScheme.slice(0, slash);
             const prefix = slash === -1 ? '' : noScheme.slice(slash + 1);
             if (!bucket) return { error: 'Invalid s3:// link (missing bucket).' };
-            return { bucket, prefix, endpointUrl: '' };
+            return { bucket, prefix, endpointUrl: '', rawLink };
         }
 
         try {
@@ -1245,7 +1249,7 @@ class UploadManager {
             const bucket = segments[0];
             const prefix = segments.slice(1).join('/');
             const endpointUrl = `${u.protocol}//${u.host}`;
-            return { bucket, prefix, endpointUrl };
+            return { bucket, prefix, endpointUrl, rawLink };
         } catch (_e) {
             return { error: 'Invalid S3 link. Use s3://bucket/path or https://endpoint/bucket/path.' };
         }
@@ -1938,6 +1942,10 @@ class UploadManager {
             alert('Bucket is required');
             return;
         }
+        if (!accessKey || !secretKey) {
+            alert('Access key and secret key are required for S3 upload.');
+            return;
+        }
 
         try {
             const submitBtn = form.querySelector('button[type="submit"]');
@@ -1955,7 +1963,8 @@ class UploadManager {
                     access_key_id: accessKey,
                     secret_access_key: secretKey,
                     region_name: region,
-                    path_style: pathStyle
+                    path_style: pathStyle,
+                    original_link: s3Source.rawLink || ''
                 },
                 user_email: userEmail,
                 dataset_name: formData.get('name'),

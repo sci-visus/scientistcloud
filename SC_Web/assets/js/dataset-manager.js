@@ -2051,7 +2051,7 @@ class DatasetManager {
                         
                         <div class="mb-2">
                             <label class="form-label small">Data Link (Google Drive/Remote):</label>
-                            <input type="url" class="form-control form-control-sm" name="google_drive_link" 
+                            <input type="text" class="form-control form-control-sm" name="google_drive_link" 
                                    value="${this.escapeHtml(dataset.google_drive_link || '')}" 
                                    placeholder="http://example.com/mod_visus?dataset=...">
                             <small class="form-text text-muted">Link to remote data (e.g., S3, external server). If provided and not a Google Drive link, data will be loaded remotely.</small>

@@ -6,16 +6,22 @@ import os
 import atexit
 from collections import defaultdict
 import csv
+import traceback
+import re
+import requests
+from dotenv import load_dotenv
+from botocore.client import Config
+from boto3.session import Session
 from bisect import bisect_left
 from datetime import datetime, timezone
 
 import OpenVisus as ov
-from urllib.parse import parse_qs
+from urllib.parse import parse_qs, urlparse
 from bokeh.io import curdoc
 from bokeh.models.widgets import Div
 from bokeh.plotting import figure
 from bokeh.layouts import row, column, gridplot
-from bokeh.models import Button, AutocompleteInput, MultiChoice, Checkbox, CustomJS
+from bokeh.models import Button, AutocompleteInput, MultiChoice, Checkbox, CustomJS, TextInput, PasswordInput
 from bokeh.models import (
     GlyphRenderer,
     HoverTool,
@@ -304,9 +310,66 @@ def parse_s3_uri(uri: str):
     return bucket, key
 
 
-def derive_dataset_from_s3_uri(s3_uri: str):
-    uri = str(s3_uri or "").strip()
-    if not uri.startswith("s3://"):
+def _valid_email_or_none(value):
+    if not value:
+        return None
+    candidate = str(value).strip()
+    if not candidate:
+        return None
+    if re.match(r"^[^@\s]+@[^@\s]+\.[^@\s]+$", candidate):
+        return candidate
+    return None
+
+
+def resolve_s3_url_via_api(
+    s3_uri: str,
+    access_key="",
+    secret_key="",
+    endpoint_url="",
+    region_name="us-east-1",
+    path_style=True,
+    dataset_identifier=None,
+    user_email=None,
+    cache_credentials=False,
+    use_cached_credentials=True,
+):
+    dataset_api_base = (
+        os.getenv("SCLIB_DATASET_URL")
+        or os.getenv("SCLIB_API_URL")
+        or "http://sclib_fastapi:5001"
+    ).rstrip("/")
+    endpoint = f"{dataset_api_base}/api/v1/datasets/s3/presign"
+    payload = {
+        "s3_uri": s3_uri,
+        "access_key_id": access_key or None,
+        "secret_access_key": secret_key or None,
+        "endpoint_url": endpoint_url or os.getenv("S3_ENDPOINT_URL", "") or None,
+        "region_name": region_name or "us-east-1",
+        "path_style": bool(path_style),
+        "expires_in": 3600,
+        "dataset_identifier": dataset_identifier,
+        "user_email": _valid_email_or_none(user_email),
+        "cache_credentials": bool(cache_credentials),
+        "use_cached_credentials": bool(use_cached_credentials),
+    }
+    response = requests.post(endpoint, json=payload, timeout=20)
+    if response.status_code >= 400:
+        try:
+            detail = response.json().get("detail")
+        except Exception:
+            detail = response.text
+        raise RuntimeError(detail or f"HTTP {response.status_code}")
+    data = response.json()
+    if not data.get("success") or not data.get("url"):
+        raise RuntimeError(data.get("detail") or "Presign endpoint returned no URL")
+    return data["url"]
+
+
+def derive_dataset_from_remote_uri(remote_uri: str):
+    uri = str(remote_uri or "").strip()
+    is_s3 = uri.startswith("s3://")
+    is_http = uri.startswith("http://") or uri.startswith("https://")
+    if not is_s3 and not is_http:
         return None
 
     if uri.endswith("/"):
@@ -322,7 +385,7 @@ def derive_dataset_from_s3_uri(s3_uri: str):
 
     mid_file = base_uri.split("/")[-1]
     return {
-        "mode": "s3_explicit",
+        "mode": "s3_explicit" if is_s3 else "http_explicit",
         "mid_file": mid_file,
         "idx_uri": idx_uri,
         "txt_uri": f"{base_uri}.txt",
@@ -389,70 +452,268 @@ def resolve_local_idx_path(idx_path: str, mid_file: str) -> str:
     return fixed_path
 
 
-def download_s3_uri_to_file(s3_uri: str, dst: str):
+# def download_s3_uri_to_file(s3_uri: str, dst: str):
+#     bucket_name, key = parse_s3_uri(s3_uri)
+#     if not bucket_name or not key:
+#         raise RuntimeError(f"Invalid s3 uri: {s3_uri}")
+#     os.makedirs(os.path.dirname(dst), exist_ok=True)
+#     bucket = get_aws_bucket()
+#     default_bucket_name = getattr(bucket, "name", None)
+
+#     if default_bucket_name and bucket_name == default_bucket_name:
+#         bucket.download_file(key, dst)
+#         return
+
+#     # Fallback for cross-bucket/object access using the underlying client.
+#     bucket.meta.client.download_file(bucket_name, key, dst)
+
+
+def read_s3_text_lines(s3_uri: str, auth_override=None) -> List[str]:
     bucket_name, key = parse_s3_uri(s3_uri)
     if not bucket_name or not key:
         raise RuntimeError(f"Invalid s3 uri: {s3_uri}")
-    os.makedirs(os.path.dirname(dst), exist_ok=True)
-    bucket = get_aws_bucket()
-    default_bucket_name = getattr(bucket, "name", None)
 
-    if default_bucket_name and bucket_name == default_bucket_name:
-        bucket.download_file(key, dst)
-        return
-
-    # Fallback for cross-bucket/object access using the underlying client.
-    bucket.meta.client.download_file(bucket_name, key, dst)
-
-
-def read_s3_text_lines(s3_uri: str) -> List[str]:
-    bucket_name, key = parse_s3_uri(s3_uri)
-    if not bucket_name or not key:
-        raise RuntimeError(f"Invalid s3 uri: {s3_uri}")
-
-    bucket = get_aws_bucket()
-    default_bucket_name = getattr(bucket, "name", None)
-
-    if default_bucket_name and bucket_name == default_bucket_name:
-        obj = bucket.Object(key)
-        body = obj.get()["Body"].read().decode("utf-8")
-        return body.splitlines()
-
-    resp = bucket.meta.client.get_object(Bucket=bucket_name, Key=key)
-    body = resp["Body"].read().decode("utf-8")
-    return body.splitlines()
-
-
-def download_processed_files(midfile: str):
-    """
-    Download processed files from storage (idx, channel metadata, event metadata)
-    -----------------------------------------------------------------------------
-    Parameters
-    ----------
-    file(str): the mid file to download in the the format 07180808_1558_F0001
-    """
-    s3 = get_aws_bucket()
-
-    filenames = [f"{midfile}.idx", f"0000.bin",
-                 f"{midfile}.txt", f"{midfile}.csv"]
-    download_files = [
-        os.path.join(PREFIX, midfile, filenames[0]),
-        os.path.join(PREFIX, midfile, filenames[1]),
-        os.path.join(PREFIX, midfile, filenames[2]),
-        os.path.join(PREFIX, midfile, filenames[3]),
+    # Load credentials/config from common project locations for local runs.
+    dotenv_candidates = [
+        os.path.join(PROJECT_ROOT, ".env"),
+        os.path.join(PROJECT_ROOT, "SC_Docker", ".env"),
+        os.path.join(PROJECT_ROOT, "SC_Docker", "env.scientistcloud.com"),
+        os.path.join(PROJECT_ROOT, "..", "VisusDataPortalPrivate", "Docker", ".env"),
     ]
+    load_dotenv()
+    for dotenv_path in dotenv_candidates:
+        if os.path.exists(dotenv_path):
+            load_dotenv(dotenv_path=dotenv_path, override=False)
 
-    for i, file in enumerate(download_files):
-        dst = os.path.join(FILES_VOLUME, midfile, filenames[i])
-        if filenames[i].split(".")[1] == "bin":
-            dst = os.path.join(FILES_VOLUME, midfile, midfile, filenames[i])
+    endpoint_url = os.getenv("ENDPOINT_URL")
+    aws_access_key_id = os.getenv("AWS_ACCESS_KEY_ID")
+    aws_secret_access_key = os.getenv("AWS_SECRET_ACCESS_KEY")
+    region_name = os.getenv("AWS_S3_REGION", "us-east-1")
+    if auth_override:
+        endpoint_url = auth_override.get("endpoint_url") or endpoint_url
+        aws_access_key_id = auth_override.get("aws_access_key_id") or aws_access_key_id
+        aws_secret_access_key = auth_override.get("aws_secret_access_key") or aws_secret_access_key
+        region_name = auth_override.get("region_name") or region_name
 
-        if not os.path.exists(dst):
-            if check_if_key_exists(file, True):
-                os.makedirs(os.path.dirname(dst), exist_ok=True)
-                s3.download_file(file, dst)
-            else:
-                raise FileNotFoundError(f"{midfile} not in storage")
+    if not aws_access_key_id or not aws_secret_access_key:
+        raise RuntimeError(
+            "Missing AWS credentials for S3 read. "
+            "Set AWS_ACCESS_KEY_ID/AWS_SECRET_ACCESS_KEY in environment or .env."
+        )
+
+    endpoint_candidates = []
+    for candidate in [
+        endpoint_url,
+        os.getenv("S3_ENDPOINT_URL"),
+        os.getenv("S3_PUBLIC_ENDPOINT_URL"),
+        os.getenv("ENDPOINT_URL"),
+        None,
+    ]:
+        if candidate not in endpoint_candidates:
+            endpoint_candidates.append(candidate)
+
+    last_error = None
+    for candidate_endpoint in endpoint_candidates:
+        for addr_style in ["path", "virtual"]:
+            try:
+                config = Config(
+                    signature_version="s3v4",
+                    s3={"addressing_style": addr_style},
+                )
+                s3_client = Session().client(
+                    "s3",
+                    endpoint_url=candidate_endpoint,
+                    region_name=region_name,
+                    config=config,
+                    aws_access_key_id=aws_access_key_id,
+                    aws_secret_access_key=aws_secret_access_key,
+                )
+                resp = s3_client.get_object(Bucket=bucket_name, Key=key)
+                body = resp["Body"].read().decode("utf-8")
+                if candidate_endpoint:
+                    print(
+                        f"[DarkMatter][DEBUG] sidecar S3 read succeeded with endpoint={candidate_endpoint} "
+                        f"addressing_style={addr_style}"
+                    )
+                else:
+                    print(
+                        f"[DarkMatter][DEBUG] sidecar S3 read succeeded with default AWS endpoint "
+                        f"addressing_style={addr_style}"
+                    )
+                return body.splitlines()
+            except Exception as exc:
+                last_error = exc
+                continue
+
+    if last_error:
+        raise last_error
+    raise RuntimeError("Failed to read S3 sidecar text lines")
+
+
+def read_text_lines_from_url(url: str) -> List[str]:
+    resp = requests.get(url, timeout=20)
+    resp.raise_for_status()
+    return resp.text.splitlines()
+
+
+def http_url_to_s3_uri(url: str) -> str:
+    """
+    Convert path-style object URL to s3:// URI.
+    Example:
+      https://host/scientistcloud/cdms/umn/file.txt
+      -> s3://scientistcloud/cdms/umn/file.txt
+    """
+    parsed = urlparse(str(url or "").strip())
+    if parsed.scheme not in ("http", "https"):
+        return ""
+    path = (parsed.path or "").lstrip("/")
+    if "/" not in path:
+        return ""
+    bucket, key = path.split("/", 1)
+    if not bucket or not key:
+        return ""
+    return f"s3://{bucket}/{key}"
+
+
+def s3_key_exists(s3_uri: str) -> bool:
+    bucket_name, key = parse_s3_uri(s3_uri)
+    if not bucket_name or not key:
+        return False
+
+    load_dotenv()
+    endpoint_url = os.getenv("ENDPOINT_URL")
+    aws_access_key_id = os.getenv("AWS_ACCESS_KEY_ID")
+    aws_secret_access_key = os.getenv("AWS_SECRET_ACCESS_KEY")
+    config = Config(signature_version="s3v4")
+    s3_client = Session().client(
+        "s3",
+        endpoint_url=endpoint_url,
+        config=config,
+        aws_access_key_id=aws_access_key_id,
+        aws_secret_access_key=aws_secret_access_key,
+    )
+    try:
+        s3_client.head_object(Bucket=bucket_name, Key=key)
+        return True
+    except Exception:
+        return False
+
+
+def get_s3_http_gateway_base() -> str:
+    # Prefer public gateway for object URLs; fall back to configured S3 endpoint.
+    endpoint = (
+        os.getenv("S3_PUBLIC_ENDPOINT_URL")
+        or os.getenv("S3_ENDPOINT_URL")
+        or os.getenv("ENDPOINT_URL")
+        or ""
+    ).strip()
+    if not endpoint:
+        return ""
+    if endpoint.endswith("/"):
+        endpoint = endpoint[:-1]
+    return endpoint
+
+
+def s3_uri_to_http_url(s3_uri: str, endpoint_base: str) -> str:
+    bucket_name, key = parse_s3_uri(s3_uri)
+    if not bucket_name or not key or not endpoint_base:
+        return ""
+    # Path-style URL expected by current object gateway deployment.
+    return f"{endpoint_base}/{bucket_name}/{key}"
+
+
+def http_url_exists(url: str) -> bool:
+    if not url:
+        return False
+    try:
+        resp = requests.head(url, timeout=10, allow_redirects=True)
+        if resp.status_code < 400:
+            return True
+        # Some gateways block HEAD; fallback to lightweight GET.
+        resp = requests.get(url, timeout=10, stream=True)
+        return resp.status_code < 400
+    except Exception:
+        return False
+
+
+# def materialize_idx_for_s3(idx_uri: str, mid_file: str) -> str:
+#     """
+#     OpenVisus local builds may fail to open s3://...idx directly.
+#     Workaround: fetch idx metadata text from S3, write local idx, and force
+#     filename_template to point at S3 bin objects.
+#     """
+#     lines = read_s3_text_lines(idx_uri)
+#     fixed_lines = [f"{line}\n" for line in lines]
+
+#     template_idx = -1
+#     for i, line in enumerate(lines):
+#         if line.strip() == "(filename_template)" and i + 1 < len(lines):
+#             template_idx = i + 1
+#             break
+
+#     # Prefer HTTP(S) gateway templates for OpenVisus data blocks when available.
+#     # Keep s3:// candidates as fallback.
+#     base_uri = idx_uri[:-4] if idx_uri.endswith(".idx") else idx_uri
+#     parent_uri = base_uri.rsplit("/", 1)[0] if "/" in base_uri else base_uri
+#     s3_candidates = [f"{base_uri}/%04x.bin", f"{parent_uri}/%04x.bin"]
+#     candidate_templates = []
+#     gateway_base = get_s3_http_gateway_base()
+#     if gateway_base:
+#         for tmpl in s3_candidates:
+#             as_http = s3_uri_to_http_url(tmpl, gateway_base)
+#             if as_http:
+#                 candidate_templates.append(as_http)
+#     candidate_templates.extend(s3_candidates)
+
+#     s3_bin_template = candidate_templates[0]
+#     for tmpl in candidate_templates:
+#         probe_uri = tmpl.replace("%04x", "0000")
+#         exists = http_url_exists(probe_uri) if probe_uri.startswith("http") else s3_key_exists(probe_uri)
+#         if exists:
+#             s3_bin_template = tmpl
+#             break
+#     if template_idx != -1:
+#         fixed_lines[template_idx] = f"{s3_bin_template}\n"
+#     else:
+#         fixed_lines.extend(["(filename_template)\n", f"{s3_bin_template}\n"])
+
+#     os.makedirs(FILES_VOLUME, exist_ok=True)
+#     local_idx_path = os.path.join(FILES_VOLUME, f"{mid_file}.s3.resolved.idx")
+#     with open(local_idx_path, "w") as f:
+#         f.writelines(fixed_lines)
+#     return local_idx_path
+
+
+# def download_processed_files(midfile: str):
+#     """
+#     Download processed files from storage (idx, channel metadata, event metadata)
+#     -----------------------------------------------------------------------------
+#     Parameters
+#     ----------
+#     file(str): the mid file to download in the the format 07180808_1558_F0001
+#     """
+#     s3 = get_aws_bucket()
+
+#     filenames = [f"{midfile}.idx", f"0000.bin",
+#                  f"{midfile}.txt", f"{midfile}.csv"]
+#     download_files = [
+#         os.path.join(PREFIX, midfile, filenames[0]),
+#         os.path.join(PREFIX, midfile, filenames[1]),
+#         os.path.join(PREFIX, midfile, filenames[2]),
+#         os.path.join(PREFIX, midfile, filenames[3]),
+#     ]
+
+#     for i, file in enumerate(download_files):
+#         dst = os.path.join(FILES_VOLUME, midfile, filenames[i])
+#         if filenames[i].split(".")[1] == "bin":
+#             dst = os.path.join(FILES_VOLUME, midfile, midfile, filenames[i])
+
+#         if not os.path.exists(dst):
+#             if check_if_key_exists(file, True):
+#                 os.makedirs(os.path.dirname(dst), exist_ok=True)
+#                 s3.download_file(file, dst)
+#             else:
+#                 raise FileNotFoundError(f"{midfile} not in storage")
 
 
 class AppState:
@@ -472,6 +733,7 @@ class AppState:
         self.event_to_metadata = defaultdict(EventMetadata)
         self.event_metadata: EventMetadata
         self.runtime_dataset = runtime_dataset
+        self.s3_auth_override = None
         # widgets
         self.fig = self.new_fig("")
         self.load_mid_files(url)
@@ -487,6 +749,28 @@ class AppState:
 
     def has_scene_data(self) -> bool:
         return isinstance(self.scene_data, np.ndarray) and self.scene_data.size > 0
+
+    def set_s3_auth_override(self, endpoint_url: str, access_key: str, secret_key: str):
+        endpoint = str(endpoint_url or "").strip()
+        access = str(access_key or "").strip()
+        secret = str(secret_key or "").strip()
+        region = os.getenv("AWS_S3_REGION", "us-east-1")
+        self.s3_auth_override = {
+            "endpoint_url": endpoint if endpoint else None,
+            "aws_access_key_id": access if access else None,
+            "aws_secret_access_key": secret if secret else None,
+            "region_name": region,
+        }
+        # Make runtime credentials available to OpenVisus (native S3 path).
+        if access:
+            os.environ["AWS_ACCESS_KEY_ID"] = access
+        if secret:
+            os.environ["AWS_SECRET_ACCESS_KEY"] = secret
+        if endpoint:
+            os.environ["ENDPOINT_URL"] = endpoint
+            os.environ["S3_ENDPOINT_URL"] = endpoint
+        if region:
+            os.environ["AWS_DEFAULT_REGION"] = region
 
     def reset_gradient_idx(self):
         self.gradient_idx = 0
@@ -560,28 +844,120 @@ class AppState:
                 )
                 return
 
-            if self.runtime_dataset["mode"] == "s3_explicit":
-                # Load dataset directly from S3 idx URL so sidecar bin paths resolve from source.
-                print(f"[DarkMatter][DEBUG] s3_explicit mid={mid_file}")
+            if self.runtime_dataset["mode"] in ("s3_explicit", "http_explicit"):
+                # Use OpenVisus directly on remote idx URL (no local idx rewriting).
+                print(f"[DarkMatter][DEBUG] {self.runtime_dataset['mode']} mid={mid_file}")
                 print(f"[DarkMatter][DEBUG] idx_uri={self.runtime_dataset['idx_uri']}")
                 print(f"[DarkMatter][DEBUG] txt_uri={self.runtime_dataset['txt_uri']}")
                 print(f"[DarkMatter][DEBUG] csv_uri={self.runtime_dataset['csv_uri']}")
-                self.scene_data = ov.LoadDataset(
+                idx_for_read = self.runtime_dataset["idx_uri"]
+                # For http_explicit, always keep original HTTP(S) URL in OpenVisus load path.
+                force_http_openvisus = self.runtime_dataset["mode"] == "http_explicit"
+                dataset_identifier = uuid if uuid and not str(uuid).startswith("s3://") else None
+                gateway_base = get_s3_http_gateway_base()
+                if gateway_base and idx_for_read.startswith("s3://"):
+                    http_idx = s3_uri_to_http_url(idx_for_read, gateway_base)
+                    if http_idx:
+                        if not force_http_openvisus:
+                            idx_for_read = http_idx
+                            print(f"[DarkMatter][DEBUG] using HTTP idx URL for OpenVisus: {idx_for_read}")
+
+                # OpenVisusSlice approach: use presigned URL when we can map to s3:// source.
+                s3_idx_uri = (
                     self.runtime_dataset["idx_uri"]
-                ).read(field="data")
-                txt_lines = read_s3_text_lines(self.runtime_dataset["txt_uri"])
-                csv_lines = read_s3_text_lines(self.runtime_dataset["csv_uri"])
+                    if self.runtime_dataset["idx_uri"].startswith("s3://")
+                    else http_url_to_s3_uri(self.runtime_dataset["idx_uri"])
+                )
+                if s3_idx_uri:
+                    try:
+                        override = self.s3_auth_override or {}
+                        signed_idx = resolve_s3_url_via_api(
+                            s3_idx_uri,
+                            access_key=override.get("aws_access_key_id", ""),
+                            secret_key=override.get("aws_secret_access_key", ""),
+                            endpoint_url=override.get("endpoint_url", ""),
+                            region_name=override.get("region_name", "us-east-1"),
+                            path_style=True,
+                            dataset_identifier=dataset_identifier,
+                            user_email=user_email,
+                            cache_credentials=bool(override.get("aws_access_key_id") and override.get("aws_secret_access_key")),
+                            use_cached_credentials=True,
+                        )
+                        idx_for_read = signed_idx
+                        print("[DarkMatter][DEBUG] using presigned URL for OpenVisus dataset load")
+                    except Exception as presign_exc:
+                        print(f"[DarkMatter][DEBUG] dataset presign unavailable, using direct URL: {presign_exc}")
+
+                self.scene_data = ov.LoadDataset(idx_for_read).read(field="data")
+                if self.runtime_dataset["mode"] == "http_explicit":
+                    try:
+                        txt_lines = read_text_lines_from_url(self.runtime_dataset["txt_uri"])
+                        csv_lines = read_text_lines_from_url(self.runtime_dataset["csv_uri"])
+                    except Exception as http_sidecar_exc:
+                        print(
+                            f"[DarkMatter][DEBUG] http sidecars failed, falling back to s3 sidecars: "
+                            f"{http_sidecar_exc}"
+                        )
+                        txt_s3_uri = http_url_to_s3_uri(self.runtime_dataset["txt_uri"])
+                        csv_s3_uri = http_url_to_s3_uri(self.runtime_dataset["csv_uri"])
+                        if not txt_s3_uri or not csv_s3_uri:
+                            raise
+                        try:
+                            override = self.s3_auth_override or {}
+                            signed_txt = resolve_s3_url_via_api(
+                                txt_s3_uri,
+                                access_key=override.get("aws_access_key_id", ""),
+                                secret_key=override.get("aws_secret_access_key", ""),
+                                endpoint_url=override.get("endpoint_url", ""),
+                                region_name=override.get("region_name", "us-east-1"),
+                                path_style=True,
+                                dataset_identifier=dataset_identifier,
+                                user_email=user_email,
+                                cache_credentials=bool(override.get("aws_access_key_id") and override.get("aws_secret_access_key")),
+                                use_cached_credentials=True,
+                            )
+                            signed_csv = resolve_s3_url_via_api(
+                                csv_s3_uri,
+                                access_key=override.get("aws_access_key_id", ""),
+                                secret_key=override.get("aws_secret_access_key", ""),
+                                endpoint_url=override.get("endpoint_url", ""),
+                                region_name=override.get("region_name", "us-east-1"),
+                                path_style=True,
+                                dataset_identifier=dataset_identifier,
+                                user_email=user_email,
+                                cache_credentials=bool(override.get("aws_access_key_id") and override.get("aws_secret_access_key")),
+                                use_cached_credentials=True,
+                            )
+                            txt_lines = read_text_lines_from_url(signed_txt)
+                            csv_lines = read_text_lines_from_url(signed_csv)
+                            print("[DarkMatter][DEBUG] using presigned sidecar URLs after HTTP 403")
+                        except Exception as sidecar_presign_exc:
+                            print(f"[DarkMatter][DEBUG] sidecar presign unavailable, using direct S3 sidecar read: {sidecar_presign_exc}")
+                            txt_lines = read_s3_text_lines(txt_s3_uri, auth_override=self.s3_auth_override)
+                            csv_lines = read_s3_text_lines(csv_s3_uri, auth_override=self.s3_auth_override)
+                else:
+                    txt_lines = read_s3_text_lines(self.runtime_dataset["txt_uri"], auth_override=self.s3_auth_override)
+                    csv_lines = read_s3_text_lines(self.runtime_dataset["csv_uri"], auth_override=self.s3_auth_override)
                 self.detector_to_channels = create_channel_metadata_map_from_lines(txt_lines)
                 self.event_to_metadata = create_event_metadata_map_from_lines(csv_lines)
                 arr = np.asarray(self.scene_data)
+                arr_min = np.nanmin(arr) if arr.size else np.nan
+                arr_max = np.nanmax(arr) if arr.size else np.nan
                 print(
                     f"[DarkMatter][DEBUG] s3 scene_data dtype={arr.dtype} shape={arr.shape} "
-                    f"min={np.nanmin(arr)} max={np.nanmax(arr)}"
+                    f"min={arr_min} max={arr_max}"
                 )
                 print(
                     f"[DarkMatter][DEBUG] s3 txt_lines={len(txt_lines)} csv_lines={len(csv_lines)} "
                     f"channels={len(self.detector_to_channels)} events={len(self.event_to_metadata)}"
                 )
+                # Remote metadata can load while data blocks are unauthorized/unreadable.
+                # Treat all-zero payload as probable auth failure so UI can prompt for creds.
+                if self.runtime_dataset["mode"] in ("s3_explicit", "http_explicit") and arr.size and arr_min == 0 and arr_max == 0:
+                    raise RuntimeError(
+                        "Potential authorization failure while reading remote data blocks "
+                        "(scene_data min=0 max=0). Please provide S3 credentials."
+                    )
                 return
 
         # In ScientistCloud-served mode we should never download/copy data locally.
@@ -814,8 +1190,8 @@ def main():
         arg = sys.argv[1].strip()
         runtime_dataset = derive_dataset_from_local_dir(arg)
         if runtime_dataset is None:
-            runtime_dataset = derive_dataset_from_s3_uri(arg)
-        # Keep slac.py legacy behavior when arg is not an explicit local/s3 dataset.
+            runtime_dataset = derive_dataset_from_remote_uri(arg)
+        # Keep slac.py legacy behavior when arg is not an explicit local/remote dataset.
         runtime_remote_url = arg
 
     # ScientistCloud-served mode: auto-resolve dataset from init params
@@ -827,7 +1203,7 @@ def main():
                 continue
             ds = derive_dataset_from_local_dir(candidate)
             if ds is None:
-                ds = derive_dataset_from_s3_uri(candidate)
+                ds = derive_dataset_from_remote_uri(candidate)
             if ds is not None:
                 runtime_dataset = ds
                 runtime_remote_url = candidate
@@ -905,6 +1281,41 @@ def main():
     )
 
     runtime_info_section = row(app_state.loading_dataset_spinner, app_state.app_info_text)
+    s3_auth_status = Div(text="", visible=False, width=420)
+    s3_endpoint_input = TextInput(
+        title="S3 Endpoint URL",
+        value=os.getenv("ENDPOINT_URL", ""),
+        width=420,
+    )
+    s3_access_input = TextInput(title="AWS Access Key ID", value="", width=420)
+    s3_secret_input = PasswordInput(title="AWS Secret Access Key", value="", width=420)
+    s3_apply_button = Button(label="Apply Credentials & Retry", button_type="warning", width=220)
+    s3_auth_panel = column(
+        Div(
+            text=(
+                "<div style='font-weight:700; color:#7a3e00; margin-bottom:6px;'>"
+                "S3 authorization required"
+                "</div>"
+                "<div style='margin-bottom:8px;'>"
+                "Remote metadata could not be read. Enter runtime credentials and retry."
+                "</div>"
+            )
+        ),
+        s3_auth_status,
+        s3_endpoint_input,
+        s3_access_input,
+        s3_secret_input,
+        s3_apply_button,
+        visible=False,
+        width=860,
+        sizing_mode="stretch_width",
+        styles={
+            "border": "2px solid #d98e2b",
+            "background-color": "#fff7ec",
+            "padding": "12px",
+            "margin-bottom": "10px",
+        },
+    )
 
     # ------------------- REACTIVITY ---------------------
     def toggle_all_component_interactivity(state: bool):
@@ -941,8 +1352,23 @@ def main():
             else:
                 app_state.send_notification(INFO, f"No events found for {mid_file}")
         except Exception as exc:
+            print(f"[DarkMatter][ERROR] update_events failed for {mid_file}: {exc}")
+            traceback.print_exc()
             app_state.send_notification(ERROR, str(exc))
             app_state.render_app_info_text(f"Failed to load {mid_file}")
+            error_text = str(exc)
+            auth_failed = (
+                "403" in error_text
+                or "forbidden" in error_text.lower()
+                or "missing aws credentials" in error_text.lower()
+                or "unable to locate credentials" in error_text.lower()
+                or "access denied" in error_text.lower()
+                or "authorization failure" in error_text.lower()
+            )
+            if auth_failed:
+                s3_auth_panel.visible = True
+                s3_auth_status.text = "<span style='color:#b35c00;'>Authorization failed. Enter credentials and retry.</span>"
+                s3_auth_status.visible = True
             input_event.completions = []
             input_event.value = ""
         finally:
@@ -1011,10 +1437,25 @@ def main():
         )
         input_event.value = input_event.completions[app_state.event_idx]
 
+    def apply_s3_credentials_and_retry(_=None):
+        app_state.set_s3_auth_override(
+            s3_endpoint_input.value,
+            s3_access_input.value,
+            s3_secret_input.value,
+        )
+        s3_auth_status.text = "<span style='color:#1f7a1f;'>Credentials applied. Retrying...</span>"
+        s3_auth_status.visible = True
+        target_mid = select_scene.value.strip() if select_scene.value else ""
+        if target_mid:
+            update_events(target_mid)
+        if app_state.has_scene_data():
+            s3_auth_panel.visible = False
+
     app_state.first_event_button.on_click(update_event_to_first)
     app_state.prev_event_button.on_click(update_event_to_prev)
     app_state.next_event_button.on_click(update_event_to_next)
     app_state.last_event_button.on_click(update_event_to_last)
+    s3_apply_button.on_click(apply_s3_credentials_and_retry)
     select_scene.on_change("value", lambda attr, old, new: update_events(new))
     input_event.on_change("value", lambda attr, old, new: update_detectors(new))
     checkbox_toggle_detectors.on_change("active", lambda attr, old, new: toggle_detectors(bool(new)))
@@ -1054,7 +1495,7 @@ def main():
         dashboard_type="Nexus DM Dashboard",
     )
     main_layout = row(sidebar, app_state.fig, sizing_mode="stretch_both")
-    curdoc().add_root(column(header_banner, main_layout, sizing_mode="stretch_both"))
+    curdoc().add_root(column(header_banner, s3_auth_panel, main_layout, sizing_mode="stretch_both"))
     if select_scene.value:
         update_events(select_scene.value)
 
