@@ -150,11 +150,14 @@ try {
     $sharedTempDir = '/mnt/visus_datasets/tmp';
     
     // For files > 100MB, we'll use chunked uploads (handled by frontend)
-    // For smaller files, optimize by using path-based upload
+    // For smaller files, optional optimization via path-based upload.
+    // This can be fragile when containers do not share identical filesystem views,
+    // so keep it disabled by default unless explicitly enabled.
     $usePathBasedUpload = false;
     $sharedTempPath = null;
+    $enablePathBasedUpload = filter_var(getenv('SC_ENABLE_PATH_BASED_UPLOAD') ?: 'false', FILTER_VALIDATE_BOOLEAN);
     
-    if ($fileSize < $LARGE_FILE_THRESHOLD && is_dir($sharedTempDir) && is_writable($sharedTempDir)) {
+    if ($enablePathBasedUpload && $fileSize < $LARGE_FILE_THRESHOLD && is_dir($sharedTempDir) && is_writable($sharedTempDir)) {
         // Move PHP temp file to shared location for path-based upload
         // This eliminates FastAPI's temp copy
         $sharedTempPath = $sharedTempDir . '/' . uniqid('upload_', true) . '_' . basename($fileName);
@@ -284,16 +287,92 @@ try {
         exit;
     }
 
-    // Clean up shared temp file if we used path-based upload and there was an error
-    if ($usePathBasedUpload && $sharedTempPath && file_exists($sharedTempPath)) {
-        if ($httpCode >= 400) {
-            // Error occurred, clean up temp file
-            @unlink($sharedTempPath);
-            error_log("Cleaned up shared temp file after error: $sharedTempPath");
+    // If path-based upload failed due path visibility issues, automatically fallback to
+    // content-based upload for reliability (same request, no user retry needed).
+    $didPathFallback = false;
+    if ($usePathBasedUpload && $httpCode >= 400) {
+        $errorData = json_decode($response, true);
+        $detail = strtolower((string) (($errorData['detail'] ?? $errorData['error'] ?? '')));
+        $pathProblem = strpos($detail, 'file not found') !== false || strpos($detail, 'path is not a file') !== false;
+        if ($pathProblem) {
+            error_log("Path-based upload failed due missing path; retrying with content upload.");
+            $uploadEndpoint = rtrim($uploadApiUrl, '/') . '/api/upload/upload';
+            // If we moved the original PHP temp file already, use that moved path for fallback.
+            $fallbackFilePath = ($sharedTempPath && file_exists($sharedTempPath))
+                ? $sharedTempPath
+                : $_FILES['file']['tmp_name'];
+            if (!$fallbackFilePath || !file_exists($fallbackFilePath)) {
+                http_response_code(500);
+                echo json_encode([
+                    'success' => false,
+                    'error' => 'Fallback upload file path is missing',
+                    'message' => 'Could not locate file for fallback upload after path-based failure'
+                ]);
+                exit;
+            }
+            $cfile = new CURLFile($fallbackFilePath, $_FILES['file']['type'], $fileName);
+            $postData = [
+                'file' => $cfile,
+                'user_email' => $userEmail,
+                'dataset_name' => $datasetName,
+                'sensor' => $sensor,
+                'convert' => $convert ? 'true' : 'false',
+                'is_public' => $isPublic ? 'true' : 'false',
+                'is_downloadable' => $isDownloadable
+            ];
+            if ($folder) {
+                $postData['folder'] = $folder;
+            }
+            if ($relativePath) {
+                $postData['relative_path'] = $relativePath;
+            }
+            if ($teamUuid) {
+                $postData['team_uuid'] = $teamUuid;
+            }
+            if ($tags) {
+                $postData['tags'] = $tags;
+            }
+            if ($datasetIdentifier) {
+                $postData['dataset_identifier'] = $datasetIdentifier;
+            }
+            if ($addToExisting) {
+                $postData['add_to_existing'] = 'true';
+            }
+
+            $ch = curl_init();
+            curl_setopt($ch, CURLOPT_URL, $uploadEndpoint);
+            curl_setopt($ch, CURLOPT_POST, true);
+            curl_setopt($ch, CURLOPT_POSTFIELDS, $postData);
+            curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+            curl_setopt($ch, CURLOPT_HTTPHEADER, ['Accept: application/json']);
+            curl_setopt($ch, CURLOPT_TIMEOUT, $calculatedTimeout);
+            curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 10);
+            $response = curl_exec($ch);
+            $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+            $curlError = curl_error($ch);
+            curl_close($ch);
+            $didPathFallback = true;
+            if ($curlError) {
+                http_response_code(500);
+                echo json_encode([
+                    'success' => false,
+                    'error' => 'Failed to connect to upload service (fallback)',
+                    'message' => $curlError
+                ]);
+                exit;
+            }
         }
-        // Note: If successful, FastAPI will handle cleanup when it moves the file to final destination
     }
-    
+
+    // Clean up shared temp file only after fallback logic has had a chance to use it.
+    if ($usePathBasedUpload && $sharedTempPath && file_exists($sharedTempPath)) {
+        if (($httpCode >= 400 && !$didPathFallback) || ($didPathFallback && $httpCode < 400)) {
+            @unlink($sharedTempPath);
+            error_log("Cleaned up shared temp file: $sharedTempPath");
+        }
+        // If primary path-based upload succeeded, FastAPI upload processor handles temp cleanup.
+    }
+
     // Check HTTP status
     if ($httpCode >= 400) {
         // Log detailed error information
