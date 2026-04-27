@@ -178,6 +178,19 @@ if ($s3DefaultPathStyle === '') {
 if ($s3DefaultPathStyle === '') {
     $s3DefaultPathStyle = '1';
 }
+
+// When env vars are unset, still emit real input values (not empty fields with grey placeholders).
+// Secrets are never defaulted here — only endpoint/bucket/prefix hints.
+if ($s3DefaultEndpoint === '') {
+    $s3DefaultEndpoint = 'https://us-east-1.gw.future-tech-holdings.com';
+}
+if ($s3DefaultBucket === '') {
+    $s3DefaultBucket = 'scientistcloud';
+}
+if ($s3DefaultPrefix === '') {
+    $s3DefaultPrefix = 'utk';
+}
+
 define('S3_DEFAULT_BUCKET', $s3DefaultBucket);
 define('S3_DEFAULT_PREFIX', $s3DefaultPrefix);
 define('S3_DEFAULT_ENDPOINT', $s3DefaultEndpoint);

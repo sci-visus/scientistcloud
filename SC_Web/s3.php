@@ -344,17 +344,17 @@ if ($defaultShareSeconds > $shareMaxSeconds) {
             <input type="hidden" name="action" value="connect">
             <div class="mb-2">
               <label class="form-label">Endpoint URL</label>
-              <input type="url" name="endpoint_url" class="form-control" required placeholder="https://us-east-1.gw.future-tech-holdings.com"
+              <input type="url" name="endpoint_url" class="form-control" required
                      value="<?php echo htmlspecialchars((string) ($_POST['endpoint_url'] ?? $defaultEndpoint)); ?>">
             </div>
             <div class="mb-2">
               <label class="form-label">Bucket name</label>
-              <input type="text" name="bucket_name" class="form-control" required placeholder="scientistcloud"
+              <input type="text" name="bucket_name" class="form-control" required
                      value="<?php echo htmlspecialchars((string) ($_POST['bucket_name'] ?? $defaultBucket)); ?>">
             </div>
             <div class="mb-2">
               <label class="form-label">Prefix (directory on S3)</label>
-              <input type="text" name="prefix" class="form-control" placeholder="utk"
+              <input type="text" name="prefix" class="form-control"
                      value="<?php echo htmlspecialchars((string) ($_POST['prefix'] ?? $defaultPrefix)); ?>">
             </div>
             <div class="row g-2">
@@ -537,13 +537,7 @@ if ($defaultShareSeconds > $shareMaxSeconds) {
       const btn = document.getElementById('connectBtn');
       if (form && btn) {
         form.addEventListener('submit', function () {
-          // Promote placeholders into values for required inputs so browser
-          // validation does not block when defaults are shown as placeholders.
-          form.querySelectorAll('input[required], textarea[required], select[required]').forEach(function (field) {
-            const hasValue = typeof field.value === 'string' && field.value.trim() !== '';
-            if (!hasValue && typeof field.placeholder === 'string' && field.placeholder.trim() !== '') {
-              field.value = field.placeholder.trim();
-            }
+          form.querySelectorAll('input, textarea, select').forEach(function (field) {
             if (typeof field.value === 'string') {
               field.value = field.value.trim();
             }
