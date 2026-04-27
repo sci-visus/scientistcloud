@@ -584,6 +584,14 @@ class AppState:
                 )
                 return
 
+        # In ScientistCloud-served mode we should never download/copy data locally.
+        # Require an explicit local or s3 dataset resolution.
+        if has_args:
+            raise RuntimeError(
+                "No explicit dataset source resolved for served mode. "
+                "Expected local folder or s3://... dataset URL."
+            )
+
         cached_files = os.listdir(FILES_VOLUME)
         if cached_files and len(cached_files) > 20:
             os.remove(os.path.join(FILES_VOLUME, cached_files[0]))
@@ -809,6 +817,25 @@ def main():
             runtime_dataset = derive_dataset_from_s3_uri(arg)
         # Keep slac.py legacy behavior when arg is not an explicit local/s3 dataset.
         runtime_remote_url = arg
+
+    # ScientistCloud-served mode: auto-resolve dataset from init params
+    # (save_dir/base_dir/uuid) so renderer data is loaded on first paint.
+    if runtime_dataset is None and has_args:
+        for candidate in [save_dir, base_dir, uuid]:
+            candidate = str(candidate or "").strip()
+            if not candidate:
+                continue
+            ds = derive_dataset_from_local_dir(candidate)
+            if ds is None:
+                ds = derive_dataset_from_s3_uri(candidate)
+            if ds is not None:
+                runtime_dataset = ds
+                runtime_remote_url = candidate
+                print(
+                    f"[DarkMatter][DEBUG] resolved runtime_dataset from init params: "
+                    f"mode={ds['mode']} mid={ds['mid_file']}"
+                )
+                break
 
     if init_failed:
         return
