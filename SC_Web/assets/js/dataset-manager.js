@@ -542,10 +542,14 @@ class DatasetManager {
             datasets.forEach(dataset => {
                 if (!dataset) return;
                 
-                // Extract folder_uuid - check both direct field and metadata
-                const folderUuid = dataset.folder_uuid || 
-                                   (dataset.metadata && dataset.metadata.folder_uuid) || 
+                // Same resolution as Mongo/API: folder_uuid | folder | metadata.*
+                let folderUuid = dataset.folder_uuid || dataset.folder ||
+                                   (dataset.metadata && (dataset.metadata.folder_uuid || dataset.metadata.folder)) ||
                                    null;
+                if (folderUuid !== null && folderUuid !== undefined) {
+                    folderUuid = String(folderUuid).trim();
+                    if (folderUuid === '') folderUuid = null;
+                }
                 
                 // Normalize empty/null values - treat as root level
                 if (folderUuid === null || folderUuid === '' || 

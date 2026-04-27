@@ -142,6 +142,23 @@ function formatDataset($dataset) {
     if (is_string($is_public)) {
         $is_public = filter_var($is_public, FILTER_VALIDATE_BOOLEAN);
     }
+
+    // Folder label for sidebar grouping — Mongo may use folder_uuid or legacy `folder`
+    $resolvedFolder = '';
+    foreach (['folder_uuid', 'folder'] as $fk) {
+        if (!empty($dataset[$fk])) {
+            $resolvedFolder = trim((string)$dataset[$fk]);
+            break;
+        }
+    }
+    if ($resolvedFolder === '' && isset($dataset['metadata']) && is_array($dataset['metadata'])) {
+        foreach (['folder_uuid', 'folder'] as $fk) {
+            if (!empty($dataset['metadata'][$fk])) {
+                $resolvedFolder = trim((string)$dataset['metadata'][$fk]);
+                break;
+            }
+        }
+    }
     
     // Base dataset structure
     $formatted = [
@@ -155,7 +172,7 @@ function formatDataset($dataset) {
         'data_size' => $data_size,
         'dimensions' => $dataset['dimensions'] ?? $dataset['metadata']['dimensions'] ?? '',
         'google_drive_link' => $dataset['google_drive_link'] ?? $dataset['metadata']['google_drive_link'] ?? null,
-        'folder_uuid' => $dataset['folder_uuid'] ?? $dataset['metadata']['folder_uuid'] ?? '',
+        'folder_uuid' => $resolvedFolder,
         'team_uuid' => $dataset['team_uuid'] ?? $dataset['team_id'] ?? '',
         'user_id' => $dataset['user'] ?? $dataset['user_email'] ?? $dataset['user_id'] ?? '',
         'tags' => $tags,
@@ -212,7 +229,10 @@ function getDatasetFolders($userId) {
         $folderCounts = [];
         
         foreach ($datasets as $dataset) {
-            $folderUuid = $dataset['metadata']['folder_uuid'] ?? null;
+            $folderUuid = $dataset['folder_uuid'] ?? $dataset['folder'] ?? null;
+            if (!$folderUuid && isset($dataset['metadata']) && is_array($dataset['metadata'])) {
+                $folderUuid = $dataset['metadata']['folder_uuid'] ?? $dataset['metadata']['folder'] ?? null;
+            }
             if ($folderUuid) {
                 if (!isset($folderCounts[$folderUuid])) {
                     $folderCounts[$folderUuid] = 0;

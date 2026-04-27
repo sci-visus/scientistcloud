@@ -9,6 +9,21 @@ require_once(__DIR__ . '/auth.php');
 require_once(__DIR__ . '/dataset_manager.php');
 require_once(__DIR__ . '/sclib_client.php');
 
+/**
+ * @param array<string, mixed> $dataset
+ * @return string|null
+ */
+function dataset_list_resolve_folder($dataset) {
+    $folderUuid = $dataset['folder_uuid'] ?? $dataset['folder'] ?? null;
+    if (($folderUuid === null || $folderUuid === '') && isset($dataset['metadata']) && is_array($dataset['metadata'])) {
+        $folderUuid = $dataset['metadata']['folder_uuid'] ?? $dataset['metadata']['folder'] ?? null;
+    }
+    if ($folderUuid === null || $folderUuid === '') {
+        return null;
+    }
+    return is_string($folderUuid) ? $folderUuid : (string) $folderUuid;
+}
+
 // Get current user
 $user = getCurrentUser();
 if (!$user) {
@@ -24,9 +39,7 @@ $folders = getDatasetFolders($user['id']);
 $groupedDatasets = [];
 $rootDatasets = [];
 foreach ($datasets as $dataset) {
-    // Extract folder_uuid - check both direct field and metadata
-    // formatDataset() should have already extracted it, but check both just in case
-    $folderUuid = $dataset['folder_uuid'] ?? $dataset['metadata']['folder_uuid'] ?? null;
+    $folderUuid = dataset_list_resolve_folder($dataset);
     
     // Debug: log if we have folder_uuid (remove after testing)
     // error_log("Dataset: " . ($dataset['name'] ?? 'unnamed') . " folder_uuid: " . ($folderUuid ?? 'null'));
@@ -209,8 +222,7 @@ function formatFileSize($bytes) {
         $sharedGroupedDatasets = [];
         $sharedRootDatasets = [];
         foreach ($sharedDatasets as $dataset) {
-            // Extract folder_uuid - check both direct field and metadata
-            $folderUuid = $dataset['folder_uuid'] ?? $dataset['metadata']['folder_uuid'] ?? null;
+            $folderUuid = dataset_list_resolve_folder($dataset);
             
             // Normalize empty/null values
             if ($folderUuid === null || $folderUuid === '' || $folderUuid === 'No_Folder_Selected' || $folderUuid === 'root') {
@@ -325,8 +337,7 @@ function formatFileSize($bytes) {
         $teamGroupedDatasets = [];
         $teamRootDatasets = [];
         foreach ($teamDatasets as $dataset) {
-            // Extract folder_uuid - check both direct field and metadata
-            $folderUuid = $dataset['folder_uuid'] ?? $dataset['metadata']['folder_uuid'] ?? null;
+            $folderUuid = dataset_list_resolve_folder($dataset);
             
             // Normalize empty/null values
             if ($folderUuid === null || $folderUuid === '' || $folderUuid === 'No_Folder_Selected' || $folderUuid === 'root') {
