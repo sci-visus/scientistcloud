@@ -219,24 +219,7 @@ location ${NGINX_PATH}static/ {
     proxy_set_header X-Forwarded-Proto \$scheme;
 }
 
-# Panel static files (Panel extensions need to be served)
-# Panel serves its static files from /static/extensions/panel/
-location /static/extensions/panel/ {
-    # Proxy to the dashboard container for Panel static files
-    set \$upstream_host "dashboard_${CONTAINER_NAME_SERVICE}";
-    set \$upstream_port "${DASHBOARD_PORT}";
-    proxy_pass http://\$upstream_host:\$upstream_port/static/extensions/panel/;
-    proxy_set_header Host \$host;
-    proxy_set_header X-Real-IP \$remote_addr;
-    proxy_set_header X-Forwarded-For "\$proxy_add_x_forwarded_for";
-    proxy_set_header X-Forwarded-Proto \$scheme;
-    
-    # Cache Panel static files
-    expires 1y;
-    add_header Cache-Control "public, immutable";
-}
-
-# Panel bundled files (Panel serves bundled resources from /static/extensions/panel/bundled/)
+# Panel static files via dashboard path to avoid duplicate global locations
 location ${NGINX_PATH}static/extensions/panel/ {
     # Proxy to the dashboard container
     set \$upstream_host "dashboard_${CONTAINER_NAME_SERVICE}";

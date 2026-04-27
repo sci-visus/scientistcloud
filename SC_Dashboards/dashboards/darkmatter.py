@@ -10,11 +10,12 @@ from bisect import bisect_left
 from datetime import datetime, timezone
 
 import OpenVisus as ov
-import panel as pn
 from urllib.parse import parse_qs
 from bokeh.io import curdoc
 from bokeh.models.widgets import Div
 from bokeh.plotting import figure
+from bokeh.layouts import row, column, gridplot
+from bokeh.models import Button, AutocompleteInput, MultiChoice, Checkbox, CustomJS
 from bokeh.models import (
     GlyphRenderer,
     HoverTool,
@@ -306,26 +307,14 @@ class AppState:
         self.fig = self.new_fig("")
         self.load_mid_files(url)
 
-        self.prev_event_button = pn.widgets.Button(
-            icon=LEFT_ARROW, button_type="primary", icon_size="1.5em"
-        )
-        self.next_event_button = pn.widgets.Button(
-            icon=RIGHT_ARROW, button_type="primary", icon_size="1.5em"
-        )
-        self.first_event_button = pn.widgets.Button(
-            icon=LEFT_DOUBLE_ARROW, button_type="success", icon_size="1.5em"
-        )
-        self.last_event_button = pn.widgets.Button(
-            icon=RIGHT_DOUBLE_ARROW, button_type="success", icon_size="1.5em"
-        )
-        self.event_metadata_widget = pn.pane.Markdown("""
-        **Event Information**
-        """)
-        self.loading_dataset_spinner = pn.indicators.LoadingSpinner(
-            value=False, height=25, width=25,
-            color="secondary", visible=False, align="center"
-        )
-        self.app_info_text = pn.pane.Markdown("""""")
+        self.prev_event_button = Button(label="<", button_type="primary", width=48)
+        self.next_event_button = Button(label=">", button_type="primary", width=48)
+        self.first_event_button = Button(label="<<", button_type="success", width=56)
+        self.last_event_button = Button(label=">>", button_type="success", width=56)
+        self.event_metadata_widget = Div(text="<b>Event Information</b>")
+        self.loading_dataset_spinner = Div(text="", visible=False, width=200)
+        self.app_info_text = Div(text="")
+        self.notification_div = Div(text="", visible=False, width=420)
 
     def reset_gradient_idx(self):
         self.gradient_idx = 0
@@ -514,13 +503,14 @@ class AppState:
         self.channel_to_renderer[channel_name] = line
 
     def send_notification(self, ntype, text):
-        match ntype:
-            case "SUCCESS":
-                pn.state.notifications.success(f"{text}", duration=3000)
-            case "ERROR":
-                pn.state.notifications.error(f"{text}", duration=3000)
-            case "INFO":
-                pn.state.notifications.info(f"{text}", duration=3000)
+        colors = {
+            SUCCESS: "#2e7d32",
+            ERROR: "#c62828",
+            INFO: "#1565c0",
+        }
+        color = colors.get(ntype, "#333333")
+        self.notification_div.text = f"<div style='color:{color}; font-weight:600;'>{text}</div>"
+        self.notification_div.visible = True
 
     def handle_channel_selection(self, channel_name, state):
         """
@@ -549,7 +539,8 @@ class AppState:
         self.last_event_button.disabled = state
 
     def toggle_loading_spinner(self, state):
-        self.loading_dataset_spinner.value = self.loading_dataset_spinner.visible = state
+        self.loading_dataset_spinner.visible = state
+        self.loading_dataset_spinner.text = "Loading dataset..." if state else ""
 
     def add_line_glyph(self, data, label):
         d_num = label.split("_")[1]
@@ -574,7 +565,7 @@ class AppState:
             self.fig.legend.label_text_font_size = '18pt'
 
     def render_event_metadata(self):
-        self.event_metadata_widget.object = f"""
+        self.event_metadata_widget.text = f"""
        <style>
        .title {{
             text-align: center;
@@ -617,7 +608,7 @@ class AppState:
     """
 
     def render_app_info_text(self, text: str):
-        self.app_info_text.object = f"""
+        self.app_info_text.text = f"""
        <style>
        .title {{
             text-align: center;
@@ -659,49 +650,43 @@ def main():
         return
 
     if has_args and not is_authorized:
-        pn.extension(design="material", sizing_mode="stretch_width", notifications=True)
         error_text = "Authentication failed. Please sign in through ScientistCloud and reopen this dashboard."
         if deploy_server:
             error_text = (
                 "Authentication failed. Please sign in through ScientistCloud and reopen this dashboard. "
                 f"[Open ScientistCloud]({deploy_server})"
             )
-        pn.Column(
-            pn.pane.Markdown("## Access denied"),
-            pn.pane.Markdown(error_text),
-        ).servable()
+        curdoc().add_root(
+            column(
+                Div(text="<h2>Access denied</h2>"),
+                Div(text=f"<p>{error_text}</p>"),
+            )
+        )
         return
 
     app_state = AppState(runtime_remote_url)
-    pn.extension(design="material", sizing_mode="stretch_width", notifications=True)
 
     # ---------------- WIDGETS ---------------------------
-    select_scene = pn.widgets.AutocompleteInput(
+    select_scene = AutocompleteInput(
         name="Mid File",
         restrict=True,
         options=app_state.mid_files,
-        case_sensitive=False,
-        search_strategy="includes",
         placeholder="Search Mid File",
         value=app_state.mid_files[0] if app_state.mid_files else "",
-        min_characters=0)
-
-    event_controls_tooltip = pn.widgets.TooltipIcon(
-        value="first event, prev event, next event, last event"
     )
 
-    input_event = pn.widgets.AutocompleteInput(
+    event_controls_tooltip = Div(text="<small>first event, prev event, next event, last event</small>")
+
+    input_event = AutocompleteInput(
         name="Event ID",
         restrict=True,
         options=[],
-        case_sensitive=False,
-        search_strategy="includes",
         placeholder="Search Event",
         value="",
     )
 
-    event_controls = pn.layout.Row(
-        pn.Spacer(width=50),
+    event_controls = row(
+        Div(text="", width=30),
         app_state.first_event_button,
         app_state.prev_event_button,
         app_state.next_event_button,
@@ -709,24 +694,26 @@ def main():
         event_controls_tooltip,
     )
 
-    multichoice_detectors = pn.widgets.MultiChoice(
+    multichoice_detectors = MultiChoice(
         name="Detectors",
         options=[],
         value=[],
-        solid=False,
     )
 
-    checkbox_toggle_detectors = pn.widgets.Checkbox(
+    checkbox_toggle_detectors = Checkbox(
         name="Select/Deselect All Detectors", disabled=True
     )
 
-    cite_button = pn.widgets.Button(name="Cite", button_type="success")
-    cite_button.js_on_click(args={}, code="""
-    const w = window.open("https://nsdf-fabric.github.io/nsdf-slac/citations/", "_blank", "noopener,noreferrer");
-    if(w) w.opener = null;
-    """)
+    cite_button = Button(label="Cite", button_type="success")
+    cite_button.js_on_event(
+        "button_click",
+        CustomJS(code="""
+        const w = window.open("https://nsdf-fabric.github.io/nsdf-slac/citations/", "_blank", "noopener,noreferrer");
+        if (w) w.opener = null;
+        """),
+    )
 
-    runtime_info_section = pn.Row(app_state.loading_dataset_spinner, app_state.app_info_text)
+    runtime_info_section = row(app_state.loading_dataset_spinner, app_state.app_info_text)
 
     # ------------------- REACTIVITY ---------------------
     def toggle_all_component_interactivity(state: bool):
@@ -736,12 +723,12 @@ def main():
         checkbox_toggle_detectors.disabled = state
         app_state.toggle_event_controls(state)
 
-    def filter_channels(evt):
-        state = True if evt.obj.button_type == "primary" else False
-        channel_name = evt.obj.name
+    def filter_channels(button):
+        state = True if button.button_type == "primary" else False
+        channel_name = button.label
         app_state.handle_channel_selection(channel_name, not state)
-        evt.obj.button_type = (
-            "default" if evt.obj.button_type == "primary" else "primary"
+        button.button_type = (
+            "default" if button.button_type == "primary" else "primary"
         )
 
     def update_events(mid_file):
@@ -803,19 +790,19 @@ def main():
         app_state.render_channels(detectors)
         app_state.toggle_event_controls(False)
 
-    def update_event_to_first(_):
+    def update_event_to_first(_=None):
         if not input_event.options:
             return
         input_event.value = input_event.options[0]
         app_state.event_idx = 0
 
-    def update_event_to_last(_):
+    def update_event_to_last(_=None):
         if not input_event.options:
             return
         input_event.value = input_event.options[-1]
         app_state.event_idx = len(app_state.events) - 1
 
-    def update_event_to_next(_):
+    def update_event_to_next(_=None):
         if not input_event.options:
             return
         app_state.event_idx = (
@@ -825,7 +812,7 @@ def main():
         )
         input_event.value = input_event.options[app_state.event_idx]
 
-    def update_event_to_prev(_):
+    def update_event_to_prev(_=None):
         if not input_event.options:
             return
         app_state.event_idx = (
@@ -837,22 +824,16 @@ def main():
     app_state.prev_event_button.on_click(update_event_to_prev)
     app_state.next_event_button.on_click(update_event_to_next)
     app_state.last_event_button.on_click(update_event_to_last)
-
-    evt_bind = pn.bind(update_events, select_scene)
-    detectors_bind = pn.bind(update_detectors, input_event)
-    toggle_detectors_bind = pn.bind(toggle_detectors, checkbox_toggle_detectors)
-    fig_bind = pn.bind(update_fig, multichoice_detectors)
+    select_scene.on_change("value", lambda attr, old, new: update_events(new))
+    input_event.on_change("value", lambda attr, old, new: update_detectors(new))
+    checkbox_toggle_detectors.on_change("active", lambda attr, old, new: toggle_detectors(bool(new)))
+    multichoice_detectors.on_change("value", lambda attr, old, new: update_fig(new))
     # ---------------------------------------------------
 
-    channels_grid = pn.GridBox(
-        *[
-            pn.widgets.Button(
-                name=f"C{i+1}", button_type="primary", on_click=filter_channels
-            )
-            for i in range(20)
-        ],
-        ncols=5,
-    )
+    channel_buttons = [Button(label=f"C{i+1}", button_type="primary", width=70) for i in range(20)]
+    for btn in channel_buttons:
+        btn.on_click(lambda b=btn: filter_channels(b))
+    channels_grid = gridplot([channel_buttons[i:i + 5] for i in range(0, 20, 5)], merge_tools=False)
 
     def disable_buttons():
         """
@@ -862,26 +843,25 @@ def main():
         for _, arr in app_state.channels_data:
             limit = max(limit, len(arr))
         for i in range(20):
-            channels_grid[i].disabled = False if i < limit else True
+            channel_buttons[i].disabled = False if i < limit else True
 
-    main_layout = pn.template.MaterialTemplate(
-        title="Nexus DM Dashboard",
-        header=[evt_bind, detectors_bind, toggle_detectors_bind, fig_bind, cite_button],
-        sidebar=[
-            select_scene,
-            input_event,
-            event_controls,
-            multichoice_detectors,
-            checkbox_toggle_detectors,
-            channels_grid,
-            app_state.event_metadata_widget,
-            runtime_info_section
-        ],
-        main=[app_state.fig],
-        sidebar_width=420,
+    sidebar = column(
+        cite_button,
+        select_scene,
+        input_event,
+        event_controls,
+        multichoice_detectors,
+        checkbox_toggle_detectors,
+        channels_grid,
+        app_state.event_metadata_widget,
+        app_state.notification_div,
+        runtime_info_section,
+        width=430,
     )
-
-    main_layout.servable()
+    main_layout = row(sidebar, app_state.fig, sizing_mode="stretch_both")
+    curdoc().add_root(main_layout)
+    if select_scene.value:
+        update_events(select_scene.value)
 
 
 main()
