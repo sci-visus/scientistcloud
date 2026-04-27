@@ -26,9 +26,48 @@ from bokeh.models import (
     WheelZoomTool,
 )
 
+SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+PROJECT_ROOT = os.path.abspath(os.path.join(SCRIPT_DIR, "..", "..", ".."))
+SHARED_UTILS_DIR = os.path.join(PROJECT_ROOT, "scientistCloudLib", "SCLib_Dashboards")
+if SHARED_UTILS_DIR not in sys.path and os.path.isdir(SHARED_UTILS_DIR):
+    sys.path.insert(0, SHARED_UTILS_DIR)
+
 from utils_bokeh_dashboard import initialize_dashboard
 from utils_bokeh_mongodb import cleanup_mongodb
 from utils_darkmatter import get_aws_bucket, check_if_key_exists, PREFIX
+try:
+    from SCLib_Dashboards import create_header_banner
+except Exception:
+    def create_header_banner(dataset_name: str = "", dashboard_type: str = "Dashboard"):
+        sc_blue = "#4E477F"
+        title_text = (
+            f"ScientistCloud | {dashboard_type}: {dataset_name}"
+            if dataset_name
+            else f"ScientistCloud | {dashboard_type}"
+        )
+        return Div(
+            text=(
+                f'<div class="dashboard-header-banner" style="background-color: {sc_blue}; '
+                'padding: 10px 20px; display: flex; align-items: center; border-radius: 0; '
+                '">'
+                '<img src="https://scientistcloud.com/portal/assets/images/scientistCloudLogo_noText.png" '
+                'style="height: 40px; margin-right: 15px;">'
+                f'<span style="color: white; font-family: sans-serif; font-size: 1.5em; '
+                f'font-weight: bold; text-shadow: 1px 1px 2px rgba(0,0,0,0.1);">{title_text}</span>'
+                '</div>'
+            ),
+            sizing_mode="stretch_width",
+            styles={
+                "width": "100vw",
+                "max-width": "100vw",
+                "margin": "0",
+                "padding": "0",
+                "position": "relative",
+                "background-color": sc_blue,
+                "border-bottom": "3px solid #75c0de",
+                "margin-bottom": "20px",
+            },
+        )
 
 
 # detectors_map = {'10000_2_Phonon4096': False, '10000_1_Phonon4096': False}
@@ -164,16 +203,14 @@ class EventMetadata:
 
     def extract(self, headers: List[str], metadata: List[str]):
         for i, h in enumerate(headers):
-            match h.strip():
-                case "trigger_type":
-                    self.trigger_type = metadata[i].strip()
-                case "readout_type":
-                    self.readout_type = metadata[i].strip()
-                case "global_timestamp":
-                    dt = datetime.fromtimestamp(int(metadata[i].strip()), tz=timezone.utc)
-                    self.global_timestamp = dt.strftime('%A, %B %d, %Y %I:%M:%S %p UTC')
-                case _:
-                    continue
+            key = h.strip()
+            if key == "trigger_type":
+                self.trigger_type = metadata[i].strip()
+            elif key == "readout_type":
+                self.readout_type = metadata[i].strip()
+            elif key == "global_timestamp":
+                dt = datetime.fromtimestamp(int(metadata[i].strip()), tz=timezone.utc)
+                self.global_timestamp = dt.strftime('%A, %B %d, %Y %I:%M:%S %p UTC')
 
 def create_channel_metadata_map(filepath: str) -> DefaultDict[str, List]:
     mp = defaultdict(list)
@@ -183,6 +220,18 @@ def create_channel_metadata_map(filepath: str) -> DefaultDict[str, List]:
             mp[channel_name].append(int(lo))
             mp[channel_name].append(int(hi))
     f.close()
+    return mp
+
+
+def create_channel_metadata_map_from_lines(lines: List[str]) -> DefaultDict[str, List]:
+    mp = defaultdict(list)
+    for raw in lines:
+        line = str(raw).strip()
+        if not line:
+            continue
+        channel_name, lo, hi = line.split(" ")
+        mp[channel_name].append(int(lo))
+        mp[channel_name].append(int(hi))
     return mp
 
 
@@ -204,6 +253,20 @@ def create_event_metadata_map(filepath: str) -> DefaultDict[str, EventMetadata]:
     return mp
 
 
+def create_event_metadata_map_from_lines(lines: List[str]) -> DefaultDict[str, EventMetadata]:
+    mp = defaultdict(EventMetadata)
+    reader = csv.reader(lines)
+    headers = []
+    for i, line in enumerate(reader):
+        if i == 0:
+            headers = line
+            continue
+        evt_metadata = EventMetadata()
+        evt_metadata.extract(headers, line)
+        mp[line[0]] = evt_metadata
+    return mp
+
+
 def generate_palette(hex_color, steps=8):
     """Generate a palette of 20 colors from a given hex color"""
     cmap = mcolors.LinearSegmentedColormap.from_list(
@@ -214,21 +277,8 @@ def generate_palette(hex_color, steps=8):
 
 
 def get_mid_files(remote_url: str):
-    os.makedirs(FILES_VOLUME, exist_ok=True)
     mid_files = []
     if remote_url != "":
-        # ScientistCloud mode: UUID already points to a specific dataset, so prefer that over legacy list files.
-        candidate = str(uuid or "").strip()
-        if candidate.endswith("/"):
-            candidate = candidate[:-1]
-        derived_mid = candidate.split("/")[-1] if candidate else ""
-        if derived_mid.endswith(".idx"):
-            derived_mid = derived_mid[:-4]
-        if derived_mid:
-            mid_files.append(derived_mid)
-            return mid_files
-
-        # Legacy mode fallback for older deployments that only provide uploaded_files.txt.
         uploaded_files_path = "./uploaded_files.txt"
         if os.path.exists(uploaded_files_path):
             with open(uploaded_files_path) as f:
@@ -252,6 +302,125 @@ def parse_s3_uri(uri: str):
         return no_scheme, ""
     bucket, key = no_scheme.split("/", 1)
     return bucket, key
+
+
+def derive_dataset_from_s3_uri(s3_uri: str):
+    uri = str(s3_uri or "").strip()
+    if not uri.startswith("s3://"):
+        return None
+
+    if uri.endswith("/"):
+        uri = uri[:-1]
+
+    if uri.endswith(".idx"):
+        idx_uri = uri
+        base_uri = uri[:-4]
+    else:
+        mid_name = uri.split("/")[-1]
+        base_uri = f"{uri}/{mid_name}"
+        idx_uri = f"{base_uri}.idx"
+
+    mid_file = base_uri.split("/")[-1]
+    return {
+        "mode": "s3_explicit",
+        "mid_file": mid_file,
+        "idx_uri": idx_uri,
+        "txt_uri": f"{base_uri}.txt",
+        "csv_uri": f"{base_uri}.csv",
+    }
+
+
+def derive_dataset_from_local_dir(dataset_dir: str):
+    path = os.path.abspath(str(dataset_dir or "").strip())
+    if not os.path.isdir(path):
+        return None
+
+    mid_file = os.path.basename(path.rstrip("/"))
+    idx_path = os.path.join(path, f"{mid_file}.idx")
+    txt_path = os.path.join(path, f"{mid_file}.txt")
+    csv_path = os.path.join(path, f"{mid_file}.csv")
+    if not os.path.exists(idx_path):
+        return None
+
+    return {
+        "mode": "local_explicit",
+        "mid_file": mid_file,
+        "idx_path": idx_path,
+        "txt_path": txt_path,
+        "csv_path": csv_path,
+    }
+
+
+def resolve_local_idx_path(idx_path: str, mid_file: str) -> str:
+    """
+    Fix local idx filename_template when it incorrectly duplicates the dataset folder.
+    Example buggy template: ./07180808_1558_F0001/%04x.bin while 0000.bin is in same folder as .idx
+    """
+    try:
+        with open(idx_path, "r") as f:
+            lines = f.readlines()
+    except Exception:
+        return idx_path
+
+    template_idx = -1
+    for i, line in enumerate(lines):
+        if line.strip() == "(filename_template)" and i + 1 < len(lines):
+            template_idx = i + 1
+            break
+
+    if template_idx == -1:
+        return idx_path
+
+    template = lines[template_idx].strip()
+    flat_bin = os.path.join(os.path.dirname(idx_path), "0000.bin")
+    nested_bin = os.path.join(os.path.dirname(idx_path), mid_file, "0000.bin")
+
+    needs_fix = template == f"./{mid_file}/%04x.bin" and os.path.exists(flat_bin) and not os.path.exists(nested_bin)
+    if not needs_fix:
+        return idx_path
+
+    fixed_lines = list(lines)
+    dataset_dir = os.path.dirname(idx_path)
+    fixed_lines[template_idx] = f"{dataset_dir}/%04x.bin\n"
+
+    fixed_path = os.path.join(os.path.dirname(idx_path), f"{mid_file}.resolved.idx")
+    with open(fixed_path, "w") as f:
+        f.writelines(fixed_lines)
+    return fixed_path
+
+
+def download_s3_uri_to_file(s3_uri: str, dst: str):
+    bucket_name, key = parse_s3_uri(s3_uri)
+    if not bucket_name or not key:
+        raise RuntimeError(f"Invalid s3 uri: {s3_uri}")
+    os.makedirs(os.path.dirname(dst), exist_ok=True)
+    bucket = get_aws_bucket()
+    default_bucket_name = getattr(bucket, "name", None)
+
+    if default_bucket_name and bucket_name == default_bucket_name:
+        bucket.download_file(key, dst)
+        return
+
+    # Fallback for cross-bucket/object access using the underlying client.
+    bucket.meta.client.download_file(bucket_name, key, dst)
+
+
+def read_s3_text_lines(s3_uri: str) -> List[str]:
+    bucket_name, key = parse_s3_uri(s3_uri)
+    if not bucket_name or not key:
+        raise RuntimeError(f"Invalid s3 uri: {s3_uri}")
+
+    bucket = get_aws_bucket()
+    default_bucket_name = getattr(bucket, "name", None)
+
+    if default_bucket_name and bucket_name == default_bucket_name:
+        obj = bucket.Object(key)
+        body = obj.get()["Body"].read().decode("utf-8")
+        return body.splitlines()
+
+    resp = bucket.meta.client.get_object(Bucket=bucket_name, Key=key)
+    body = resp["Body"].read().decode("utf-8")
+    return body.splitlines()
 
 
 def download_processed_files(midfile: str):
@@ -287,7 +456,7 @@ def download_processed_files(midfile: str):
 
 
 class AppState:
-    def __init__(self, url):
+    def __init__(self, url, runtime_dataset=None):
         self.palettes = {color: generate_palette(color) for color in COLORS}
         self.gradient_idx = 0
         self.mid_files = []
@@ -302,7 +471,7 @@ class AppState:
         self.detector_to_channels = defaultdict(List)
         self.event_to_metadata = defaultdict(EventMetadata)
         self.event_metadata: EventMetadata
-
+        self.runtime_dataset = runtime_dataset
         # widgets
         self.fig = self.new_fig("")
         self.load_mid_files(url)
@@ -315,6 +484,9 @@ class AppState:
         self.loading_dataset_spinner = Div(text="", visible=False, width=200)
         self.app_info_text = Div(text="")
         self.notification_div = Div(text="", visible=False, width=420)
+
+    def has_scene_data(self) -> bool:
+        return isinstance(self.scene_data, np.ndarray) and self.scene_data.size > 0
 
     def reset_gradient_idx(self):
         self.gradient_idx = 0
@@ -350,111 +522,87 @@ class AppState:
         return fig
 
     def load_mid_files(self, remote_url):
+        if self.runtime_dataset:
+            self.mid_files = [self.runtime_dataset["mid_file"]]
+            return
         self.mid_files = get_mid_files(remote_url)
 
-    def _load_remote_scene_data(self, mid_file: str) -> bool:
-        candidate = str(uuid or "").strip()
-        if not candidate:
-            return False
-
-        mid_name = mid_file[:-4] if str(mid_file).endswith(".idx") else str(mid_file)
-        base = candidate.rstrip("/")
-        last_segment = base.split("/")[-1] if base else ""
-        bucket_from_uuid, key_from_uuid = parse_s3_uri(candidate)
-
-        remote_candidates = []
-
-        # If uuid is an s3 prefix/folder, try discovering an .idx under that remote folder first.
-        if bucket_from_uuid and key_from_uuid and not key_from_uuid.endswith(".idx"):
-            try:
-                bucket = get_aws_bucket()
-                prefix = key_from_uuid if key_from_uuid.endswith("/") else f"{key_from_uuid}/"
-                for obj in bucket.objects.filter(Prefix=prefix):
-                    key = getattr(obj, "key", "")
-                    if key and key.endswith(".idx"):
-                        remote_candidates.append(f"s3://{bucket_from_uuid}/{key}")
-                        break
-            except Exception as exc:
-                print(f"Remote .idx discovery failed for {candidate}: {exc}")
-
-        # Try most likely URLs first:
-        # 1) UUID as-is (OpenVisusSlice style when UUID is already dataset URL)
-        # 2) UUID base path
-        # 3) base/<mid>.idx (legacy darkmatter layout)
-        remote_candidates.extend([candidate, base])
-        if mid_name:
-            remote_candidates.append(f"{base}/{mid_name}.idx")
-            if last_segment and last_segment != mid_name:
-                remote_candidates.append(f"{base}/{last_segment}.idx")
-
-        seen = set()
-        deduped_candidates = []
-        for url in remote_candidates:
-            if url and url not in seen:
-                seen.add(url)
-                deduped_candidates.append(url)
-
-        last_error = None
-        for remote_url in deduped_candidates:
-            try:
-                self.scene_data = ov.LoadDataset(remote_url).read(field="data")
-                return True
-            except Exception as exc:
-                last_error = exc
-                continue
-
-        if last_error:
-            print(f"Failed remote OpenVisus load for {mid_file}: {last_error}")
-        return False
-
-    def _load_sidecar_metadata(self, mid_name: str) -> bool:
-        try:
-            download_processed_files(mid_name)
-            self.detector_to_channels = create_channel_metadata_map(
-                os.path.join(FILES_VOLUME, mid_name, f"{mid_name}.txt")
-            )
-            self.event_to_metadata = create_event_metadata_map(
-                os.path.join(FILES_VOLUME, mid_name, f"{mid_name}.csv")
-            )
-            return True
-        except Exception as exc:
-            print(f"Sidecar metadata load failed for {mid_name}: {exc}")
-            return False
-
     def load_scene_data(self, mid_file):
-        mid_name = mid_file[:-4] if str(mid_file).endswith(".idx") else str(mid_file)
-        # ScientistCloud mode: prefer direct remote dataset loading from UUID (s3 link).
-        server_mode = str(server).strip() in ["true", "%20true", " true"]
-        if has_args and server_mode:
-            if self._load_remote_scene_data(mid_file):
-                # Optional sidecar metadata for event/channel maps.
-                self._load_sidecar_metadata(mid_name)
+        if self.runtime_dataset:
+            if mid_file != self.runtime_dataset["mid_file"]:
+                raise RuntimeError(f"Unknown dataset '{mid_file}'")
+
+            if self.runtime_dataset["mode"] == "local_explicit":
+                print(f"[DarkMatter][DEBUG] local_explicit mid={mid_file}")
+                print(f"[DarkMatter][DEBUG] idx={self.runtime_dataset['idx_path']}")
+                print(f"[DarkMatter][DEBUG] txt={self.runtime_dataset['txt_path']}")
+                print(f"[DarkMatter][DEBUG] csv={self.runtime_dataset['csv_path']}")
+                idx_for_read = resolve_local_idx_path(self.runtime_dataset["idx_path"], mid_file)
+                if idx_for_read != self.runtime_dataset["idx_path"]:
+                    print(f"[DarkMatter][DEBUG] fixed local idx filename_template -> {idx_for_read}")
+                self.detector_to_channels = create_channel_metadata_map(
+                    self.runtime_dataset["txt_path"]
+                )
+                self.event_to_metadata = create_event_metadata_map(
+                    self.runtime_dataset["csv_path"]
+                )
+                self.scene_data = ov.LoadDataset(
+                    idx_for_read
+                ).read(field="data")
+                arr = np.asarray(self.scene_data)
+                print(
+                    f"[DarkMatter][DEBUG] local scene_data dtype={arr.dtype} shape={arr.shape} "
+                    f"min={np.nanmin(arr)} max={np.nanmax(arr)}"
+                )
+                print(
+                    f"[DarkMatter][DEBUG] local channels={len(self.detector_to_channels)} "
+                    f"events={len(self.event_to_metadata)}"
+                )
                 return
 
-        # Legacy/local fallback path.
-        try:
-            os.makedirs(FILES_VOLUME, exist_ok=True)
-            cached_files = os.listdir(FILES_VOLUME)
-            if cached_files and len(cached_files) > 20:
-                os.remove(os.path.join(FILES_VOLUME, cached_files[0]))
+            if self.runtime_dataset["mode"] == "s3_explicit":
+                # Load dataset directly from S3 idx URL so sidecar bin paths resolve from source.
+                print(f"[DarkMatter][DEBUG] s3_explicit mid={mid_file}")
+                print(f"[DarkMatter][DEBUG] idx_uri={self.runtime_dataset['idx_uri']}")
+                print(f"[DarkMatter][DEBUG] txt_uri={self.runtime_dataset['txt_uri']}")
+                print(f"[DarkMatter][DEBUG] csv_uri={self.runtime_dataset['csv_uri']}")
+                self.scene_data = ov.LoadDataset(
+                    self.runtime_dataset["idx_uri"]
+                ).read(field="data")
+                txt_lines = read_s3_text_lines(self.runtime_dataset["txt_uri"])
+                csv_lines = read_s3_text_lines(self.runtime_dataset["csv_uri"])
+                self.detector_to_channels = create_channel_metadata_map_from_lines(txt_lines)
+                self.event_to_metadata = create_event_metadata_map_from_lines(csv_lines)
+                arr = np.asarray(self.scene_data)
+                print(
+                    f"[DarkMatter][DEBUG] s3 scene_data dtype={arr.dtype} shape={arr.shape} "
+                    f"min={np.nanmin(arr)} max={np.nanmax(arr)}"
+                )
+                print(
+                    f"[DarkMatter][DEBUG] s3 txt_lines={len(txt_lines)} csv_lines={len(csv_lines)} "
+                    f"channels={len(self.detector_to_channels)} events={len(self.event_to_metadata)}"
+                )
+                return
 
-            if mid_name not in cached_files:
-                download_processed_files(mid_name)
+        cached_files = os.listdir(FILES_VOLUME)
+        if cached_files and len(cached_files) > 20:
+            os.remove(os.path.join(FILES_VOLUME, cached_files[0]))
 
-            self.detector_to_channels = create_channel_metadata_map(
-                os.path.join(FILES_VOLUME, mid_name, f"{mid_name}.txt")
-            )
-            self.event_to_metadata = create_event_metadata_map(
-                os.path.join(FILES_VOLUME, mid_name, f"{mid_name}.csv")
-            )
-            self.scene_data = ov.LoadDataset(
-                os.path.join(FILES_VOLUME, mid_name, f"{mid_name}.idx")
-            ).read(field="data")
-        except Exception as exc:
-            raise RuntimeError(f"Unable to load dataset '{mid_name}': {exc}") from exc
+        if mid_file not in cached_files:
+            download_processed_files(mid_file)
+
+        self.detector_to_channels = create_channel_metadata_map(
+            os.path.join(FILES_VOLUME, mid_file, f"{mid_file}.txt")
+        )
+        self.event_to_metadata = create_event_metadata_map(
+            os.path.join(FILES_VOLUME, mid_file, f"{mid_file}.csv")
+        )
+        self.scene_data = ov.LoadDataset(
+            os.path.join(FILES_VOLUME, mid_file, f"{mid_file}.idx")
+        ).read(field="data")
 
     def load_events(self):
-        if self.scene_data.any():
+        if self.has_scene_data():
             st = set()
             for k in self.detector_to_channels.keys():
                 evt = k.split("_")[0]
@@ -465,7 +613,7 @@ class AppState:
             self.events = events
 
     def load_detectors(self, event_id):
-        if self.scene_data.any():
+        if self.has_scene_data():
             detectors, detectors_map = [], defaultdict(bool)
             for k in self.detector_to_channels.keys():
                 if event_id in k:
@@ -486,7 +634,7 @@ class AppState:
                 self.detectors_map[k] = True
 
     def load_channel_data(self, detectors):
-        if self.scene_data.any() and len(detectors) > 0:
+        if self.has_scene_data() and len(detectors) > 0:
             channels = []
             for k in self.detectors_map.keys():
                 lo, hi = self.detector_to_channels[k]
@@ -544,11 +692,13 @@ class AppState:
 
     def add_line_glyph(self, data, label):
         d_num = label.split("_")[1]
+        y = np.asarray(data, dtype=float)
+
         self.add_channel(
             label,
             self.fig.line(
-                x=list(range(len(data))),
-                y=data,
+                x=list(range(len(y))),
+                y=y,
                 name=label,
                 color=self.palettes[COLORS[int(d_num)]][self.gradient_idx],
                 line_width=3,
@@ -557,10 +707,18 @@ class AppState:
         self.gradient_idx += 1 if self.gradient_idx + 1 < 20 else 0
 
     def render_legend_glyph(self):
+        # Reset legend entries each time detectors change.
+        if self.fig.legend:
+            self.fig.legend.items = []
         for d in self.detectors_map.keys():
             d_num = d.split("_")[1]
             self.fig.line(
-                legend_label=f"D{d_num}", line_color=COLORS[int(d_num)], line_width=3
+                x=[0, 1],
+                y=[0, 0],
+                legend_label=f"D{d_num}",
+                line_color=COLORS[int(d_num)],
+                line_width=3,
+                visible=False,
             )
             self.fig.legend.label_text_font_size = '18pt'
 
@@ -642,9 +800,15 @@ class AppState:
 
 
 def main():
-    runtime_remote_url = (uuid if has_args else "")
+    runtime_remote_url = "s3"
+    runtime_dataset = None
     if len(sys.argv) == 2:
-        runtime_remote_url = sys.argv[1]
+        arg = sys.argv[1].strip()
+        runtime_dataset = derive_dataset_from_local_dir(arg)
+        if runtime_dataset is None:
+            runtime_dataset = derive_dataset_from_s3_uri(arg)
+        # Keep slac.py legacy behavior when arg is not an explicit local/s3 dataset.
+        runtime_remote_url = arg
 
     if init_failed:
         return
@@ -664,13 +828,13 @@ def main():
         )
         return
 
-    app_state = AppState(runtime_remote_url)
+    app_state = AppState(runtime_remote_url, runtime_dataset=runtime_dataset)
 
     # ---------------- WIDGETS ---------------------------
     select_scene = AutocompleteInput(
         name="Mid File",
         restrict=True,
-        options=app_state.mid_files,
+        completions=app_state.mid_files,
         placeholder="Search Mid File",
         value=app_state.mid_files[0] if app_state.mid_files else "",
     )
@@ -680,7 +844,7 @@ def main():
     input_event = AutocompleteInput(
         name="Event ID",
         restrict=True,
-        options=[],
+        completions=[],
         placeholder="Search Event",
         value="",
     )
@@ -742,17 +906,17 @@ def main():
             app_state.send_notification(SUCCESS, f"Loaded {mid_file} successfully")
 
             app_state.load_events()
-            input_event.options = app_state.events
+            input_event.completions = app_state.events
             # needs to transition from empty to trigger update_detectors
             input_event.value = ""
-            if input_event.options:
-                input_event.value = input_event.options[0]
+            if input_event.completions:
+                input_event.value = input_event.completions[0]
             else:
                 app_state.send_notification(INFO, f"No events found for {mid_file}")
         except Exception as exc:
             app_state.send_notification(ERROR, str(exc))
             app_state.render_app_info_text(f"Failed to load {mid_file}")
-            input_event.options = []
+            input_event.completions = []
             input_event.value = ""
         finally:
             toggle_all_component_interactivity(False)
@@ -771,13 +935,13 @@ def main():
             checkbox_toggle_detectors.disabled = False
 
             # update event index on search (options is sorted)
-            idx = bisect_left(input_event.options, eventID)
-            if idx >= 0 and idx < len(input_event.options):
+            idx = bisect_left(input_event.completions, eventID)
+            if idx >= 0 and idx < len(input_event.completions):
                 app_state.update_event_idx(idx)
             # needs to transition from empty to trigger update_fig
             multichoice_detectors.value = []
             multichoice_detectors.value = app_state.detectors
-            checkbox_toggle_detectors.value = True
+            checkbox_toggle_detectors.active = True
 
     def toggle_detectors(state):
         multichoice_detectors.value = app_state.detectors if state else []
@@ -791,34 +955,34 @@ def main():
         app_state.toggle_event_controls(False)
 
     def update_event_to_first(_=None):
-        if not input_event.options:
+        if not input_event.completions:
             return
-        input_event.value = input_event.options[0]
+        input_event.value = input_event.completions[0]
         app_state.event_idx = 0
 
     def update_event_to_last(_=None):
-        if not input_event.options:
+        if not input_event.completions:
             return
-        input_event.value = input_event.options[-1]
+        input_event.value = input_event.completions[-1]
         app_state.event_idx = len(app_state.events) - 1
 
     def update_event_to_next(_=None):
-        if not input_event.options:
+        if not input_event.completions:
             return
         app_state.event_idx = (
             app_state.event_idx
             if app_state.event_idx + 1 >= len(app_state.events)
             else app_state.event_idx + 1
         )
-        input_event.value = input_event.options[app_state.event_idx]
+        input_event.value = input_event.completions[app_state.event_idx]
 
     def update_event_to_prev(_=None):
-        if not input_event.options:
+        if not input_event.completions:
             return
         app_state.event_idx = (
             0 if app_state.event_idx - 1 < 0 else app_state.event_idx - 1
         )
-        input_event.value = input_event.options[app_state.event_idx]
+        input_event.value = input_event.completions[app_state.event_idx]
 
     app_state.first_event_button.on_click(update_event_to_first)
     app_state.prev_event_button.on_click(update_event_to_prev)
@@ -858,11 +1022,18 @@ def main():
         runtime_info_section,
         width=430,
     )
+    header_banner = create_header_banner(
+        dataset_name=name if name else "",
+        dashboard_type="Nexus DM Dashboard",
+    )
     main_layout = row(sidebar, app_state.fig, sizing_mode="stretch_both")
-    curdoc().add_root(main_layout)
+    curdoc().add_root(column(header_banner, main_layout, sizing_mode="stretch_both"))
     if select_scene.value:
         update_events(select_scene.value)
 
 
 main()
 atexit.register(cleanup_mongodb)
+
+# Test locally:
+# bokeh serve darkmatter.py --port 8058 --allow-websocket-origin=localhost:8058 --args "/Users/amygooch/GIT/SCI/DATA/07180808_1558_F0001"
