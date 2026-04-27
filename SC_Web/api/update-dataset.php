@@ -107,8 +107,10 @@ try {
     if (isset($data['preferred_dashboard'])) {
         $updateData['preferred_dashboard'] = $data['preferred_dashboard'];
     }
-    if (isset($data['google_drive_link'])) {
-        $updateData['google_drive_link'] = $data['google_drive_link'];
+    // Include key even when null/empty so user can clear the Data Link (isset is false for null).
+    if (array_key_exists('google_drive_link', $data)) {
+        $link = $data['google_drive_link'];
+        $updateData['google_drive_link'] = ($link === null || $link === '') ? '' : $link;
     }
     if (isset($data['is_public'])) {
         $updateData['is_public'] = filter_var($data['is_public'], FILTER_VALIDATE_BOOLEAN);

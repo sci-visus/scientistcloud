@@ -2195,7 +2195,7 @@ class DatasetManager {
             team_uuid: formData.get('team_uuid'),
             dimensions: formData.get('dimensions'),
             preferred_dashboard: formData.get('preferred_dashboard'),
-            google_drive_link: formData.get('google_drive_link') || null,
+            google_drive_link: (formData.get('google_drive_link') ?? '').trim(),
             is_public: isPublic,
             is_downloadable: isDownloadable
         };
