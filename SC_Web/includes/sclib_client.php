@@ -129,15 +129,47 @@ class SCLibClient {
                 $user = getCurrentUser();
                 $userEmail = $user['email'] ?? null;
             }
-            
-            // Prefer user_email, fallback to user_id for backward compatibility
-            $params = [];
-            if ($userEmail) {
-                $params['user_email'] = $userEmail;
-            } else {
-                $params['user_id'] = $userId;
+            // Some sessions store email-like values on user_id
+            if (!$userEmail && is_string($userId) && strpos($userId, '@') !== false) {
+                $userEmail = $userId;
             }
-            
+            if (!$userEmail) {
+                error_log('getUserDatasets: no user email available');
+                return [];
+            }
+
+            // Primary path: Dataset Management API (same logic as getAllDatasetsByEmail / datasets.php).
+            // The legacy /api/datasets route only matched {'user': email} exactly and dropped many rows.
+            try {
+                $response = $this->makeRequest('/api/v1/datasets/by-user', 'GET', null, ['user_email' => $userEmail]);
+                if (!empty($response['success']) && isset($response['datasets']) && is_array($response['datasets'])) {
+                    $organized = $response['datasets'];
+                    $merged = [];
+                    $seen = [];
+                    foreach (['my', 'shared', 'team'] as $bucket) {
+                        if (empty($organized[$bucket]) || !is_array($organized[$bucket])) {
+                            continue;
+                        }
+                        foreach ($organized[$bucket] as $row) {
+                            $uuid = isset($row['uuid']) ? (string) $row['uuid'] : '';
+                            if ($uuid === '') {
+                                $merged[] = $row;
+                                continue;
+                            }
+                            if (isset($seen[$uuid])) {
+                                continue;
+                            }
+                            $seen[$uuid] = true;
+                            $merged[] = $row;
+                        }
+                    }
+                    return $merged;
+                }
+            } catch (Exception $e) {
+                error_log('getUserDatasets: by-user endpoint failed, falling back: ' . $e->getMessage());
+            }
+
+            $params = ['user_email' => $userEmail];
             $response = $this->makeRequest('/api/datasets', 'GET', null, $params);
             return $response['datasets'] ?? [];
         } catch (Exception $e) {
