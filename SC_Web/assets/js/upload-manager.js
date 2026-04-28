@@ -2333,12 +2333,14 @@ class UploadManager {
                         
                         this.updateProgressWidget();
 
-                        // Continue polling if not completed or failed
-                        if (data.status !== 'completed' && data.status !== 'failed') {
+                        // Continue polling only while status is active/in-progress.
+                        const status = String(data.status || '').toLowerCase();
+                        const terminalStatuses = new Set(['completed', 'done', 'ready', 'failed', 'error', 'cancelled', 'canceled']);
+                        if (!terminalStatuses.has(status)) {
                             setTimeout(poll, 1000);
                         } else {
                             // Upload finished
-                            if (data.status === 'completed') {
+                            if (status === 'completed' || status === 'done' || status === 'ready') {
                                 // Update widget to show completion message
                                 this.updateProgressWidget();
                                 
