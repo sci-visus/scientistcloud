@@ -65,7 +65,6 @@ done
 
 # Source environment variables first (shared file + optional local overrides)
 ENV_DIR="$HOME/ScientistCloud2.0/SCLib_TryTest"
-ENV_FILE_LOCAL="$ENV_DIR/env.local"
 ENV_FILE_SHARED="$ENV_DIR/env.scientistcloud"
 ENV_FILE=""
 
@@ -79,16 +78,9 @@ if [ -n "$ENV_FILE" ] && [ -f "$ENV_FILE" ]; then
     source "$ENV_FILE"
     set +o allexport
     echo "✅ Environment variables loaded"
-    if [ -f "$ENV_FILE_LOCAL" ]; then
-        echo "📋 Applying local overrides from $ENV_FILE_LOCAL..."
-        set -o allexport
-        source "$ENV_FILE_LOCAL"
-        set +o allexport
-        echo "✅ Local override variables loaded"
-    fi
 else
     echo "⚠️ No environment file found in $ENV_DIR"
-    echo "   Expected: env.scientistcloud (optional overrides in env.local)"
+    echo "   Expected: env.scientistcloud"
     echo "   Continuing without custom environment variables..."
 fi
 
@@ -99,22 +91,17 @@ SCLIB_TRYTEST_DIR="$HOME/ScientistCloud2.0/SCLib_TryTest"
 if [ -d "$SCLIB_TRYTEST_DIR" ]; then
     pushd "$SCLIB_TRYTEST_DIR"
     # Preserve local environment files across git reset.
-    ENV_LOCAL_BACKUP="/tmp/sc_env_local_$$.bak"
     ENV_SHARED_BACKUP="/tmp/sc_env_scientistcloud_$$.bak"
-    [ -f "env.local" ] && cp "env.local" "$ENV_LOCAL_BACKUP"
     [ -f "env.scientistcloud" ] && cp "env.scientistcloud" "$ENV_SHARED_BACKUP"
     git fetch origin
     git reset --hard origin/main
-    [ -f "$ENV_LOCAL_BACKUP" ] && cp "$ENV_LOCAL_BACKUP" "env.local"
     [ -f "$ENV_SHARED_BACKUP" ] && cp "$ENV_SHARED_BACKUP" "env.scientistcloud"
-    rm -f "$ENV_LOCAL_BACKUP" "$ENV_SHARED_BACKUP"
+    rm -f "$ENV_SHARED_BACKUP"
 
     # Keep env.scientistcloud as deployment source for stability.
     ENV_SOURCE_FILE=""
     if [ -f "env.scientistcloud" ]; then
         ENV_SOURCE_FILE="env.scientistcloud"
-    elif [ -f "env.local" ]; then
-        ENV_SOURCE_FILE="env.local"
     fi
 
     if [ -n "$ENV_SOURCE_FILE" ]; then
@@ -122,7 +109,7 @@ if [ -d "$SCLIB_TRYTEST_DIR" ]; then
         cp "$ENV_SOURCE_FILE" "$HOME/ScientistCloud2.0/scientistcloud/SC_Docker/.env"
         echo "✅ Environment files copied from $ENV_SOURCE_FILE"
     else
-        echo "⚠️ No environment source file found after update (expected env.local or env.scientistcloud)"
+        echo "⚠️ No environment source file found after update (expected env.scientistcloud)"
     fi
     popd
 else
