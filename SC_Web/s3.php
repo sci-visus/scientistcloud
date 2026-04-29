@@ -78,12 +78,8 @@ function s3_public_object_url(array $session, string $key): string
 
 function s3_dataset_source_link(array $session, string $key): string
 {
-    $bucket = trim((string) ($session['bucket'] ?? ''));
-    $normalizedKey = ltrim($key, '/');
-    if ($bucket === '' || $normalizedKey === '') {
-        return '';
-    }
-    return 's3://' . $bucket . '/' . $normalizedKey;
+    // "Copy S3/HTTP Link" should provide the complete HTTP(S) object URL.
+    return s3_public_object_url($session, $key);
 }
 
 function s3_format_duration(int $seconds): string
@@ -329,7 +325,7 @@ if ($defaultShareSeconds > $shareMaxSeconds) {
   </style>
 </head>
 <body>
-  <div class="container-fluid" style="max-width: 960px;">
+  <div class="container-fluid" style="max-width: 1260px;">
     <div class="d-flex justify-content-between align-items-center mb-3">
       <h1 class="h3 mb-0 sc-title"><img src="../logos/scientistCloudLogo_512.png" alt="ScientistCloud" class="sc-logo"> <?php echo htmlspecialchars($pageTitle); ?></h1>
       <a class="btn btn-outline-secondary btn-sm" href="<?php echo htmlspecialchars($portalHome); ?>"><i class="fas fa-arrow-left"></i> Portal</a>
@@ -515,6 +511,16 @@ if ($defaultShareSeconds > $shareMaxSeconds) {
               <span><i class="fas fa-file text-secondary"></i> <?php echo htmlspecialchars($file['name']); ?></span>
               <span class="small text-muted"><?php echo htmlspecialchars($szLabel); ?><?php if (!empty($file['mtime'])): ?> · <?php echo htmlspecialchars($file['mtime']); ?><?php endif; ?></span>
               <span class="s3-file-actions">
+                <?php if ($isTextPreviewable): ?>
+                  <button
+                    type="button"
+                    class="btn btn-sm btn-outline-info js-preview-idx"
+                    data-preview-url="<?php echo htmlspecialchars($preview); ?>"
+                    data-file-name="<?php echo htmlspecialchars((string) $file['name']); ?>"
+                    title="View text inline">
+                    <i class="fas fa-eye"></i> Preview
+                  </button>
+                <?php endif; ?>
                 <a class="btn btn-sm btn-outline-primary" href="<?php echo htmlspecialchars($dl); ?>"><i class="fas fa-download"></i> Download</a>
                 <button
                   type="button"
@@ -530,16 +536,6 @@ if ($defaultShareSeconds > $shareMaxSeconds) {
                   title="Copy a time-limited direct download link">
                   <i class="fas fa-link"></i> Copy Link
                 </button>
-                <?php if ($isTextPreviewable): ?>
-                  <button
-                    type="button"
-                    class="btn btn-sm btn-outline-info js-preview-idx"
-                    data-preview-url="<?php echo htmlspecialchars($preview); ?>"
-                    data-file-name="<?php echo htmlspecialchars((string) $file['name']); ?>"
-                    title="View text inline">
-                    <i class="fas fa-file-lines"></i> Preview
-                  </button>
-                <?php endif; ?>
                 <?php if ($showPublicUrlButton): ?>
                   <button
                     type="button"
