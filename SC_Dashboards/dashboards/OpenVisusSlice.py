@@ -91,7 +91,7 @@ else:
 deploy_server = os.getenv('DEPLOY_SERVER')
 
 def is_s3_uri(url):
-    return isinstance(url, str) and url.startswith("s3://")
+    return isinstance(url, str) and url.strip().lower().startswith("s3://")
 
 def is_remote_link(url):
     if not isinstance(url, str):
@@ -110,10 +110,13 @@ def normalize_remote_dataset_url(url):
     lower = candidate.lower()
     if not (lower.startswith("http://") or lower.startswith("https://")):
         return candidate
-    if "visus.idx" in lower:
+    parts = urlsplit(candidate)
+    # Preserve any explicitly provided IDX filename (do not rewrite it to visus.idx).
+    provided_name = os.path.basename(parts.path or "").strip()
+    if re.search(r"\.idx$", provided_name, re.IGNORECASE):
         return candidate
 
-    parts = urlsplit(candidate)
+    # Only guess visus.idx when no idx filename was provided.
     normalized_path = (parts.path or "").rstrip("/") + "/visus.idx"
     normalized = urlunsplit((parts.scheme, parts.netloc, normalized_path, parts.query, parts.fragment))
     print(f"[OpenVisusSlice][DEBUG] normalized remote URL to visus.idx: {normalized}")
@@ -282,7 +285,22 @@ elif server in ['true', '%20true', ' true']:
             if document:
                 print(f"🔍 DEBUG: Document keys: {list(document.keys())}")
                 print(f"🔍 DEBUG: Has google_drive_link: {'google_drive_link' in document}")
-                if 'google_drive_link' in document and document['google_drive_link']:
+                source_path = str(document.get('source_path') or '').strip()
+                source_type = str(document.get('source_type') or '').strip().lower()
+
+                # Prefer canonical S3 URI path when available so OpenVisus can resolve blocks correctly.
+                # This avoids relying on gateway HTTPS links that can return all-zero data blocks.
+                if source_type == 's3' and is_s3_uri(source_path):
+                    old_uuid = uuid
+                    uuid = source_path
+                    dataset_url = uuid
+                    print(f"🔍 DEBUG: Replaced uuid '{old_uuid}' with source_path S3 URI '{uuid}'")
+                elif is_s3_uri(name):
+                    old_uuid = uuid
+                    uuid = name.strip()
+                    dataset_url = uuid
+                    print(f"🔍 DEBUG: Using S3 URI from name, replaced uuid '{old_uuid}' with '{uuid}'")
+                elif 'google_drive_link' in document and document['google_drive_link']:
                     old_uuid = uuid
                     uuid = document['google_drive_link']
                     dataset_url = uuid
