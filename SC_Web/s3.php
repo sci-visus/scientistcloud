@@ -322,6 +322,13 @@ if ($defaultShareSeconds > $shareMaxSeconds) {
       border-radius: 6px;
       padding: 10px;
     }
+    .s3-connect-panel {
+      border: 1px solid var(--sc-border);
+      border-radius: 8px;
+      background: #ffffff;
+      padding: 0.9rem;
+      display: none;
+    }
   </style>
 </head>
 <body>
@@ -405,6 +412,10 @@ if ($defaultShareSeconds > $shareMaxSeconds) {
         $full = s3_inspector_full_prefix($session);
         $apiDl = $isLocal ? '/api/s3-download.php' : '/portal/api/s3-download.php';
         $apiFolderDl = $isLocal ? '/api/s3-download-folder.php' : '/portal/api/s3-download-folder.php';
+        $apiCreateDataset = $isLocal ? '/api/s3-create-dataset.php' : '/portal/api/s3-create-dataset.php';
+        $apiFolders = $isLocal ? '/api/get-folders.php' : '/portal/api/get-folders.php';
+        $apiTeams = $isLocal ? '/api/get-teams.php' : '/portal/api/get-teams.php';
+        $apiDashboards = $isLocal ? '/api/dashboards.php' : '/portal/api/dashboards.php';
         $currentFolderDl = $apiFolderDl . '?rel=' . rawurlencode($rel);
       ?>
       <div class="card shadow-sm mb-3">
@@ -522,6 +533,16 @@ if ($defaultShareSeconds > $shareMaxSeconds) {
                   </button>
                 <?php endif; ?>
                 <a class="btn btn-sm btn-outline-primary" href="<?php echo htmlspecialchars($dl); ?>"><i class="fas fa-download"></i> Download</a>
+                <?php if (str_ends_with($lowerName, '.idx')): ?>
+                  <button
+                    type="button"
+                    class="btn btn-sm btn-outline-success js-connect-portal"
+                    data-key="<?php echo htmlspecialchars((string) $file['key']); ?>"
+                    data-filename="<?php echo htmlspecialchars((string) $file['name']); ?>"
+                    title="Create remote dataset entry in Data Portal">
+                    <i class="fas fa-cloud-upload-alt"></i> Connect to Data Portal
+                  </button>
+                <?php endif; ?>
                 <button
                   type="button"
                   class="btn btn-sm btn-outline-dark js-copy-source-link"
@@ -566,11 +587,92 @@ if ($defaultShareSeconds > $shareMaxSeconds) {
           </div>
           <pre id="idxPreviewContent">Select a text file (.idx, .txt, .csv, .json) and click Preview.</pre>
         </div>
+        <div id="s3ConnectPanel" class="s3-connect-panel mt-3">
+          <div class="d-flex justify-content-between align-items-center mb-2">
+            <strong id="s3ConnectTitle">Create Remote Dataset</strong>
+            <button type="button" id="s3ConnectClose" class="btn btn-sm btn-outline-secondary">Close</button>
+          </div>
+          <form id="s3ConnectForm">
+            <input type="hidden" name="key" id="s3ConnectKey">
+            <div class="row g-2">
+              <div class="col-md-6">
+                <label class="form-label">Name *</label>
+                <input type="text" class="form-control" name="dataset_name" id="s3ConnectName" required>
+              </div>
+              <div class="col-md-3">
+                <label class="form-label">Sensor *</label>
+                <select class="form-select" name="sensor" id="s3ConnectSensor" required>
+                  <option value="IDX" selected>IDX</option>
+                  <option value="TIFF">TIFF</option>
+                  <option value="TIFF RGB">TIFF RGB</option>
+                  <option value="NETCDF">NETCDF</option>
+                  <option value="HDF5">HDF5</option>
+                  <option value="4D_NEXUS">4D_NEXUS</option>
+                  <option value="RGB">RGB</option>
+                  <option value="MAPIR">MAPIR</option>
+                  <option value="OTHER">OTHER</option>
+                </select>
+              </div>
+              <div class="col-md-3">
+                <label class="form-label">Download Permission</label>
+                <select class="form-select" name="is_downloadable" id="s3ConnectDownloadable">
+                  <option value="only owner" selected>Only Owner</option>
+                  <option value="only team">Only Team</option>
+                  <option value="public">Public</option>
+                </select>
+              </div>
+              <div class="col-md-6">
+                <label class="form-label">Folder</label>
+                <select class="form-select" name="folder" id="s3ConnectFolder">
+                  <option value="">-- No Folder --</option>
+                </select>
+              </div>
+              <div class="col-md-6">
+                <label class="form-label">Team</label>
+                <select class="form-select" name="team_uuid" id="s3ConnectTeam">
+                  <option value="">-- No Team --</option>
+                </select>
+              </div>
+              <div class="col-md-6">
+                <label class="form-label">Preferred Dashboard</label>
+                <select class="form-select" name="preferred_dashboard" id="s3ConnectDashboard">
+                  <option value="">-- Auto --</option>
+                </select>
+              </div>
+              <div class="col-md-6">
+                <label class="form-label">Dimensions</label>
+                <input type="text" class="form-control" name="dimensions" id="s3ConnectDimensions" placeholder="e.g., 1024x1024x100 or 2D/3D">
+              </div>
+              <div class="col-12">
+                <label class="form-label">Tags</label>
+                <input type="text" class="form-control" name="tags" id="s3ConnectTags" placeholder="Comma-separated tags">
+              </div>
+            </div>
+            <div class="form-check mt-2">
+              <input class="form-check-input" type="checkbox" name="is_public" id="s3ConnectPublic">
+              <label class="form-check-label" for="s3ConnectPublic">Public Data Access Granted</label>
+            </div>
+            <div class="form-check mt-1">
+              <input class="form-check-input" type="checkbox" name="convert" id="s3ConnectConvert">
+              <label class="form-check-label" for="s3ConnectConvert">Convert To IDX</label>
+            </div>
+            <div class="mt-3 d-flex align-items-center gap-2">
+              <button type="submit" class="btn btn-success" id="s3ConnectSubmit">
+                <i class="fas fa-cloud-upload-alt"></i> Create Dataset Entry
+              </button>
+              <span class="small text-muted" id="s3ConnectStatus"></span>
+            </div>
+          </form>
+        </div>
       <?php endif; ?>
     <?php endif; ?>
   </div>
   <script>
     (function () {
+      const S3_CREATE_DATASET_API = <?php echo json_encode($apiCreateDataset); ?>;
+      const S3_FOLDERS_API = <?php echo json_encode($apiFolders); ?>;
+      const S3_TEAMS_API = <?php echo json_encode($apiTeams); ?>;
+      const S3_DASHBOARDS_API = <?php echo json_encode($apiDashboards); ?>;
       const form = document.getElementById('connectForm');
       const btn = document.getElementById('connectBtn');
       if (form && btn) {
@@ -717,6 +819,135 @@ if ($defaultShareSeconds > $shareMaxSeconds) {
           }
         });
       });
+
+      const connectPanel = document.getElementById('s3ConnectPanel');
+      const connectForm = document.getElementById('s3ConnectForm');
+      const connectClose = document.getElementById('s3ConnectClose');
+      const connectTitle = document.getElementById('s3ConnectTitle');
+      const connectKey = document.getElementById('s3ConnectKey');
+      const connectName = document.getElementById('s3ConnectName');
+      const connectStatus = document.getElementById('s3ConnectStatus');
+      const connectSubmit = document.getElementById('s3ConnectSubmit');
+      const connectFolder = document.getElementById('s3ConnectFolder');
+      const connectTeam = document.getElementById('s3ConnectTeam');
+      const connectDashboard = document.getElementById('s3ConnectDashboard');
+      const connectButtons = document.querySelectorAll('.js-connect-portal');
+      let connectMetadataLoaded = false;
+
+      async function loadConnectMetadata() {
+        if (connectMetadataLoaded) return;
+        connectMetadataLoaded = true;
+        try {
+          const [foldersRes, teamsRes, dashboardsRes] = await Promise.all([
+            fetch(S3_FOLDERS_API, { credentials: 'same-origin' }),
+            fetch(S3_TEAMS_API, { credentials: 'same-origin' }),
+            fetch(S3_DASHBOARDS_API, { credentials: 'same-origin' }),
+          ]);
+          const foldersJson = await foldersRes.json();
+          const teamsJson = await teamsRes.json();
+          const dashboardsJson = await dashboardsRes.json();
+
+          if (connectFolder && foldersJson && foldersJson.success && Array.isArray(foldersJson.folders)) {
+            foldersJson.folders.forEach(function (f) {
+              const opt = document.createElement('option');
+              opt.value = String(f.uuid || '');
+              opt.textContent = String(f.name || f.uuid || '');
+              connectFolder.appendChild(opt);
+            });
+          }
+          if (connectTeam && teamsJson && teamsJson.success && Array.isArray(teamsJson.teams)) {
+            teamsJson.teams.forEach(function (t) {
+              const teamName = String(t.team_name || t.name || t.uuid || '');
+              const opt = document.createElement('option');
+              opt.value = teamName;
+              opt.textContent = teamName;
+              connectTeam.appendChild(opt);
+            });
+          }
+          if (connectDashboard && dashboardsJson && dashboardsJson.success && Array.isArray(dashboardsJson.dashboards)) {
+            dashboardsJson.dashboards.filter(d => d.enabled).forEach(function (d) {
+              const opt = document.createElement('option');
+              opt.value = String(d.id || '');
+              opt.textContent = String(d.display_name || d.name || d.id || '');
+              connectDashboard.appendChild(opt);
+            });
+          }
+        } catch (_e) {
+          // Non-fatal: users can still submit with defaults.
+        }
+      }
+
+      if (connectClose && connectPanel) {
+        connectClose.addEventListener('click', function () {
+          connectPanel.style.display = 'none';
+        });
+      }
+
+      connectButtons.forEach(function (btn) {
+        btn.addEventListener('click', async function () {
+          if (!connectPanel || !connectForm || !connectName || !connectKey || !connectTitle) return;
+          const key = btn.getAttribute('data-key') || '';
+          const filename = btn.getAttribute('data-filename') || 'dataset.idx';
+          const suggested = filename.replace(/\.idx$/i, '');
+          connectKey.value = key;
+          connectName.value = suggested || filename;
+          connectTitle.textContent = 'Create Remote Dataset — ' + filename;
+          if (connectStatus) connectStatus.textContent = '';
+          connectPanel.style.display = 'block';
+          await loadConnectMetadata();
+          connectPanel.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        });
+      });
+
+      if (connectForm) {
+        connectForm.addEventListener('submit', async function (e) {
+          e.preventDefault();
+          const payload = {
+            key: (connectKey && connectKey.value) ? connectKey.value.trim() : '',
+            dataset_name: (connectName && connectName.value) ? connectName.value.trim() : '',
+            sensor: (document.getElementById('s3ConnectSensor') || {}).value || 'IDX',
+            tags: (document.getElementById('s3ConnectTags') || {}).value || '',
+            folder: (connectFolder || {}).value || '',
+            team_uuid: (connectTeam || {}).value || '',
+            dimensions: (document.getElementById('s3ConnectDimensions') || {}).value || '',
+            preferred_dashboard: (connectDashboard || {}).value || '',
+            is_public: !!((document.getElementById('s3ConnectPublic') || {}).checked),
+            is_downloadable: (document.getElementById('s3ConnectDownloadable') || {}).value || 'only owner',
+            convert: !!((document.getElementById('s3ConnectConvert') || {}).checked),
+          };
+          if (!payload.key || !payload.dataset_name) {
+            if (connectStatus) connectStatus.textContent = 'Dataset key and name are required.';
+            return;
+          }
+
+          const original = connectSubmit ? connectSubmit.innerHTML : '';
+          if (connectSubmit) {
+            connectSubmit.disabled = true;
+            connectSubmit.innerHTML = '<span class="spinner-border spinner-border-sm me-1" aria-hidden="true"></span>Creating...';
+          }
+          if (connectStatus) connectStatus.textContent = '';
+          try {
+            const res = await fetch(S3_CREATE_DATASET_API, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              credentials: 'same-origin',
+              body: JSON.stringify(payload),
+            });
+            const json = await res.json();
+            if (!res.ok || !(json.job_id || json.success)) {
+              throw new Error((json && (json.error || json.detail || json.message)) || 'Could not create dataset entry');
+            }
+            if (connectStatus) connectStatus.textContent = 'Dataset job created: ' + (json.job_id || 'success');
+          } catch (err) {
+            if (connectStatus) connectStatus.textContent = 'Failed: ' + (err && err.message ? err.message : 'Unknown error');
+          } finally {
+            if (connectSubmit) {
+              connectSubmit.disabled = false;
+              connectSubmit.innerHTML = original;
+            }
+          }
+        });
+      }
     })();
   </script>
 </body>

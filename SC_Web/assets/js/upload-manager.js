@@ -674,7 +674,7 @@ class UploadManager {
                 </div>
 
                 <button type="submit" class="btn btn-primary">
-                    <i class="fas fa-upload"></i> Upload from S3
+                    <i class="fas fa-plug"></i> Connect to Data Portal
                 </button>
             </form>
         `;
@@ -2003,7 +2003,7 @@ class UploadManager {
             const submitBtn = form.querySelector('button[type="submit"]');
             if (submitBtn) {
                 submitBtn.disabled = false;
-                submitBtn.innerHTML = '<i class="fas fa-upload"></i> Upload from S3';
+                submitBtn.innerHTML = '<i class="fas fa-plug"></i> Connect to Data Portal';
             }
         }
     }
