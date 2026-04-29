@@ -416,6 +416,7 @@ if ($defaultShareSeconds > $shareMaxSeconds) {
         $apiFolders = $isLocal ? '/api/get-folders.php' : '/portal/api/get-folders.php';
         $apiTeams = $isLocal ? '/api/get-teams.php' : '/portal/api/get-teams.php';
         $apiDashboards = $isLocal ? '/api/dashboards.php' : '/portal/api/dashboards.php';
+        $portalIndex = $isLocal ? '/index.php' : '/portal/index.php';
         $currentFolderDl = $apiFolderDl . '?rel=' . rawurlencode($rel);
       ?>
       <div class="card shadow-sm mb-3">
@@ -658,7 +659,7 @@ if ($defaultShareSeconds > $shareMaxSeconds) {
             </div>
             <div class="mt-3 d-flex align-items-center gap-2">
               <button type="submit" class="btn btn-success" id="s3ConnectSubmit">
-                <i class="fas fa-cloud-upload-alt"></i> Create Dataset Entry
+                <i class="fas fa-external-link-alt"></i> Show in Data Portal
               </button>
               <span class="small text-muted" id="s3ConnectStatus"></span>
             </div>
@@ -673,6 +674,7 @@ if ($defaultShareSeconds > $shareMaxSeconds) {
       const S3_FOLDERS_API = <?php echo json_encode($apiFolders); ?>;
       const S3_TEAMS_API = <?php echo json_encode($apiTeams); ?>;
       const S3_DASHBOARDS_API = <?php echo json_encode($apiDashboards); ?>;
+      const PORTAL_INDEX_PATH = <?php echo json_encode($portalIndex); ?>;
       const form = document.getElementById('connectForm');
       const btn = document.getElementById('connectBtn');
       if (form && btn) {
@@ -937,7 +939,15 @@ if ($defaultShareSeconds > $shareMaxSeconds) {
             if (!res.ok || !(json.job_id || json.success)) {
               throw new Error((json && (json.error || json.detail || json.message)) || 'Could not create dataset entry');
             }
-            if (connectStatus) connectStatus.textContent = 'Dataset job created: ' + (json.job_id || 'success');
+            if (connectStatus) connectStatus.textContent = 'Created. Opening Data Portal...';
+            const createdDatasetId = json.dataset_id || json.dataset_uuid || json.uuid || '';
+            let portalUrl = PORTAL_INDEX_PATH;
+            if (createdDatasetId) {
+              portalUrl += '?dataset_id=' + encodeURIComponent(String(createdDatasetId));
+            } else if (json.job_id) {
+              portalUrl += '?job_id=' + encodeURIComponent(String(json.job_id));
+            }
+            window.open(portalUrl, '_blank', 'noopener,noreferrer');
           } catch (err) {
             if (connectStatus) connectStatus.textContent = 'Failed: ' + (err && err.message ? err.message : 'Unknown error');
           } finally {
