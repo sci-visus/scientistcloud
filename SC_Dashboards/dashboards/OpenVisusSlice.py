@@ -93,6 +93,12 @@ deploy_server = os.getenv('DEPLOY_SERVER')
 def is_s3_uri(url):
     return isinstance(url, str) and url.startswith("s3://")
 
+def is_remote_link(url):
+    if not isinstance(url, str):
+        return False
+    value = url.strip().lower()
+    return value.startswith("s3://") or value.startswith("http://") or value.startswith("https://") or value.startswith("pelican://")
+
 def normalize_remote_dataset_url(url):
     if not isinstance(url, str):
         return url
@@ -305,7 +311,30 @@ elif server in ['true', '%20true', ' true']:
 else:
     # When server='false', use direct file path to the IDX file
     # OpenVisus needs a direct path to the visus.idx file, not just the directory
-    if save_dir:
+    dataset_url = None
+
+    # Defensive fallback: if UI passes server=false but name indicates remote source,
+    # resolve the actual remote link from Mongo (or use name directly).
+    if is_remote_link(name):
+        if not DATA_IS_LOCAL and collection is not None and uuid and not is_remote_link(uuid):
+            try:
+                remote_doc = collection.find_one({'uuid': uuid})
+                if remote_doc and remote_doc.get('google_drive_link'):
+                    dataset_url = str(remote_doc.get('google_drive_link')).strip()
+                    print(f"⚠️ server=false with remote name; using google_drive_link from Mongo: {dataset_url}")
+                else:
+                    dataset_url = name
+                    print(f"⚠️ server=false with remote name; no Mongo link found, using name: {dataset_url}")
+            except Exception as ex:
+                dataset_url = name
+                print(f"⚠️ server=false remote fallback failed ({ex}); using name: {dataset_url}")
+        else:
+            dataset_url = uuid if is_remote_link(uuid) else name
+            print(f"⚠️ server=false with remote hint; using remote dataset URL: {dataset_url}")
+
+    if dataset_url is not None:
+        dataset_url = dataset_url.strip()
+    elif save_dir:
         # Construct full path to visus.idx file in the converted directory
         idx_path = os.path.join(save_dir, 'visus.idx')
         if os.path.exists(idx_path):

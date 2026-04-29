@@ -292,6 +292,22 @@ class ViewerManager {
         localStorage.setItem('viewerSettings', JSON.stringify(settings));
     }
 
+    isRemoteLinkedValue(value) {
+        const normalized = String(value || '').trim().toLowerCase();
+        if (!normalized) return false;
+        return normalized.startsWith('s3://') ||
+            normalized.startsWith('http://') ||
+            normalized.startsWith('https://') ||
+            normalized.startsWith('pelican://');
+    }
+
+    normalizeServerFlag(datasetUuid, datasetServer, datasetName = '') {
+        if (this.isRemoteLinkedValue(datasetUuid) || this.isRemoteLinkedValue(datasetName)) {
+            return 'true';
+        }
+        return String(datasetServer || '').toLowerCase() === 'true' ? 'true' : 'false';
+    }
+
     /**
      * Handle viewer type change
      */
@@ -335,6 +351,9 @@ class ViewerManager {
     async loadDashboard(datasetId, datasetName, datasetUuid, datasetServer, dashboardType = 'OpenVisusSlice', triedDashboards = new Set()) {
         const viewerContainer = document.getElementById('viewerContainer');
         if (!viewerContainer) return;
+
+        // Hard rule: remote links must always load with server=true.
+        datasetServer = this.normalizeServerFlag(datasetUuid, datasetServer, datasetName);
 
         // Validate dashboardType - it should be a dashboard ID, not a dataset name
         // If dashboardType looks like a dataset name (contains spaces, is too long, etc.), use default
@@ -1068,11 +1087,16 @@ window.loadDashboard = function(datasetId, dashboardType) {
         // Only proceed if the datasetId matches the current dataset
         if (datasetId === dataset.id || datasetId === dataset.uuid) {
             if (window.viewerManager) {
+                const normalizedServer = window.viewerManager.normalizeServerFlag(
+                    dataset.uuid || datasetId,
+                    dataset.server || 'false',
+                    dataset.name || ''
+                );
                 window.viewerManager.loadDashboard(
                     dataset.id,
                     dataset.name || 'Dataset',
                     dataset.uuid || datasetId,
-                    dataset.server || 'false',
+                    normalizedServer,
                     dashboardType || 'OpenVisusSlice'
                 );
             }
@@ -1082,7 +1106,8 @@ window.loadDashboard = function(datasetId, dashboardType) {
     } else {
         // Fallback - use default values, but only if dashboardType is valid
         if (window.viewerManager && dashboardType && !dashboardType.includes(' ')) {
-            window.viewerManager.loadDashboard(datasetId, 'Dataset', datasetId, 'false', dashboardType);
+            const normalizedServer = window.viewerManager.normalizeServerFlag(datasetId, 'false', 'Dataset');
+            window.viewerManager.loadDashboard(datasetId, 'Dataset', datasetId, normalizedServer, dashboardType);
         } else {
             console.warn('⚠️ Legacy loadDashboard called without valid parameters. Ignoring.');
         }
