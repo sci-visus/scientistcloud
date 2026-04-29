@@ -430,6 +430,7 @@ if __name__.startswith('bokeh'):
                 cache_credentials=False,
                 use_cached_credentials=True
             )
+            print(f"[OpenVisusSlice][DEBUG] setDataset input={signed}")
             view.setDataset(signed)
             s3_auto_loaded = True
             if response_meta.get("is_public_url"):
@@ -469,6 +470,7 @@ if __name__.startswith('bokeh'):
                         cache_credentials=True,
                         use_cached_credentials=True
                     )
+                    print(f"[OpenVisusSlice][DEBUG] setDataset input={signed}")
                     view.setDataset(signed)
                     s3_status.text = "<span style='color: green;'><b>S3 connection ready.</b> Dataset loaded. Credentials cached for reuse.</span>"
                 except Exception as ex:
@@ -478,6 +480,7 @@ if __name__.startswith('bokeh'):
             s3_auth_panel = column(s3_status, s3_endpoint, s3_region, s3_access, s3_secret, s3_connect, sizing_mode="stretch_width")
     else:
         s3_auth_panel = None
+        print(f"[OpenVisusSlice][DEBUG] setDataset input={dataset_url}")
         view.setDataset(dataset_url)
 
     if is_panel:

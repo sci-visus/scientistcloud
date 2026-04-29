@@ -811,6 +811,7 @@ class AppState:
                 self.event_to_metadata = create_event_metadata_map(
                     self.runtime_dataset["csv_path"]
                 )
+                print(f"[DarkMatter][DEBUG] LoadDataset input={idx_for_read}")
                 self.scene_data = ov.LoadDataset(
                     idx_for_read
                 ).read(field="data")
@@ -865,6 +866,7 @@ class AppState:
                     except Exception as presign_exc:
                         print(f"[DarkMatter][DEBUG] dataset presign unavailable, using direct URL: {presign_exc}")
 
+                print(f"[DarkMatter][DEBUG] LoadDataset input={idx_for_read}")
                 self.scene_data = ov.LoadDataset(idx_for_read).read(field="data")
                 if self.runtime_dataset["mode"] == "http_explicit":
                     try:
@@ -920,8 +922,10 @@ class AppState:
         self.event_to_metadata = create_event_metadata_map(
             os.path.join(FILES_VOLUME, mid_file, f"{mid_file}.csv")
         )
+        idx_for_read = os.path.join(FILES_VOLUME, mid_file, f"{mid_file}.idx")
+        print(f"[DarkMatter][DEBUG] LoadDataset input={idx_for_read}")
         self.scene_data = ov.LoadDataset(
-            os.path.join(FILES_VOLUME, mid_file, f"{mid_file}.idx")
+            idx_for_read
         ).read(field="data")
 
     def load_events(self):
