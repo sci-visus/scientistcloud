@@ -181,7 +181,8 @@ function formatDataset($dataset) {
         'created_at' => $created_at,
         'updated_at' => $dataset['date_updated'] ?? $dataset['updated_at'] ?? null,
         'viewer_url' => $dataset['viewer_url'] ?? '',
-        'download_url' => $dataset['download_url'] ?? ''
+        'download_url' => $dataset['download_url'] ?? '',
+        'server' => $dataset['server'] ?? $dataset['metadata']['server'] ?? ''
     ];
     
     return $formatted;

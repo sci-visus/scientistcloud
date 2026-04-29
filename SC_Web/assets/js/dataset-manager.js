@@ -2884,9 +2884,15 @@ class DatasetManager {
                 }
             }
             
-            const datasetUuid = dataset.uuid || buttonData.uuid || datasetId;
             const datasetName = dataset.name || buttonData.name || 'Dataset';
-            const datasetServer = dataset.server || buttonData.server || '';
+            const resolvedConnection = this.resolveDatasetConnection({
+                ...dataset,
+                uuid: dataset.uuid || buttonData.uuid || datasetId,
+                server: dataset.server || buttonData.server || '',
+                google_drive_link: dataset.google_drive_link || this.currentDataset?.details?.google_drive_link || ''
+            });
+            const datasetUuid = resolvedConnection.effectiveUuid || dataset.uuid || buttonData.uuid || datasetId;
+            const datasetServer = resolvedConnection.datasetServer || dataset.server || buttonData.server || 'false';
             
             // Determine the default dashboard
             // Priority: 1. Currently loaded dashboard (from viewerManager), 2. Toolbar selector, 3. dataset.preferred_dashboard, 4. smart selection, 5. OpenVisusSlice
@@ -3059,9 +3065,15 @@ class DatasetManager {
                 }
             }
             
-            const datasetUuid = dataset.uuid || buttonData.uuid || datasetId;
             const datasetName = dataset.name || buttonData.name || 'Dataset';
-            const datasetServer = dataset.server || buttonData.server || '';
+            const resolvedConnection = this.resolveDatasetConnection({
+                ...dataset,
+                uuid: dataset.uuid || buttonData.uuid || datasetId,
+                server: dataset.server || buttonData.server || '',
+                google_drive_link: dataset.google_drive_link || this.currentDataset?.details?.google_drive_link || ''
+            });
+            const datasetUuid = resolvedConnection.effectiveUuid || dataset.uuid || buttonData.uuid || datasetId;
+            const datasetServer = resolvedConnection.datasetServer || dataset.server || buttonData.server || 'false';
             
             // Determine the default dashboard (same logic as copyDashboardLink)
             let dashboardType = null;

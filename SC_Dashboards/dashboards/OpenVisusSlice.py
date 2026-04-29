@@ -1,7 +1,7 @@
 import os
 import sys
 import re
-from urllib.parse import parse_qs
+from urllib.parse import parse_qs, urlsplit, urlunsplit
 from bokeh.io import curdoc
 from bokeh.models.widgets import Div
 from bokeh.layouts import column, row
@@ -92,6 +92,26 @@ deploy_server = os.getenv('DEPLOY_SERVER')
 
 def is_s3_uri(url):
     return isinstance(url, str) and url.startswith("s3://")
+
+def normalize_remote_dataset_url(url):
+    if not isinstance(url, str):
+        return url
+
+    candidate = url.strip()
+    if not candidate:
+        return candidate
+
+    lower = candidate.lower()
+    if not (lower.startswith("http://") or lower.startswith("https://")):
+        return candidate
+    if "visus.idx" in lower:
+        return candidate
+
+    parts = urlsplit(candidate)
+    normalized_path = (parts.path or "").rstrip("/") + "/visus.idx"
+    normalized = urlunsplit((parts.scheme, parts.netloc, normalized_path, parts.query, parts.fragment))
+    print(f"[OpenVisusSlice][DEBUG] normalized remote URL to visus.idx: {normalized}")
+    return normalized
 
 def _valid_email_or_none(value):
     if not value:
@@ -430,6 +450,7 @@ if __name__.startswith('bokeh'):
                 cache_credentials=False,
                 use_cached_credentials=True
             )
+            signed = normalize_remote_dataset_url(signed)
             print(f"[OpenVisusSlice][DEBUG] setDataset input={signed}")
             view.setDataset(signed)
             s3_auto_loaded = True
@@ -470,6 +491,7 @@ if __name__.startswith('bokeh'):
                         cache_credentials=True,
                         use_cached_credentials=True
                     )
+                    signed = normalize_remote_dataset_url(signed)
                     print(f"[OpenVisusSlice][DEBUG] setDataset input={signed}")
                     view.setDataset(signed)
                     s3_status.text = "<span style='color: green;'><b>S3 connection ready.</b> Dataset loaded. Credentials cached for reuse.</span>"
@@ -480,6 +502,7 @@ if __name__.startswith('bokeh'):
             s3_auth_panel = column(s3_status, s3_endpoint, s3_region, s3_access, s3_secret, s3_connect, sizing_mode="stretch_width")
     else:
         s3_auth_panel = None
+        dataset_url = normalize_remote_dataset_url(dataset_url)
         print(f"[OpenVisusSlice][DEBUG] setDataset input={dataset_url}")
         view.setDataset(dataset_url)
 
