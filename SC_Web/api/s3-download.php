@@ -47,7 +47,9 @@ if ($key === '') {
     exit;
 }
 
-$shareMode = isset($_GET['mode']) && (string) $_GET['mode'] === 'share_link';
+$mode = isset($_GET['mode']) ? (string) $_GET['mode'] : '';
+$shareMode = $mode === 'share_link';
+$previewMode = $mode === 'preview_text';
 $maxShareSeconds = defined('S3_SHARE_LINK_MAX_SECONDS') ? (int) S3_SHARE_LINK_MAX_SECONDS : 604800;
 if ($maxShareSeconds < 60) {
     $maxShareSeconds = 60;
@@ -85,32 +87,53 @@ try {
         'Bucket' => $session['bucket'],
         'Key' => $key,
     ];
+    if ($previewMode) {
+        // Keep previews fast and bounded.
+        $params['Range'] = 'bytes=0-262143'; // 256 KB
+    }
     $rangeHeader = isset($_SERVER['HTTP_RANGE']) ? trim((string) $_SERVER['HTTP_RANGE']) : '';
     if ($rangeHeader !== '' && preg_match('/^bytes=\d*-\d*$/', $rangeHeader)) {
         $params['Range'] = $rangeHeader;
     }
     // For very large files, avoid proxying bytes through PHP/nginx.
     // Generate a short-lived signed URL and let the browser download directly from S3.
-    $cmd = $client->getCommand('GetObject', $params);
-    $signed = $client->createPresignedRequest($cmd, '+' . $expiresSeconds . ' seconds');
-    $signedUrl = (string) $signed->getUri();
-    if ($signedUrl !== '') {
-        if ($shareMode) {
-            header('Content-Type: application/json; charset=UTF-8');
-            echo json_encode([
-                'ok' => true,
-                'url' => $signedUrl,
-                'expires_in' => $expiresSeconds,
-                'max_expires_in' => $maxShareSeconds,
-            ], JSON_UNESCAPED_SLASHES);
+    if (!$previewMode) {
+        $cmd = $client->getCommand('GetObject', $params);
+        $signed = $client->createPresignedRequest($cmd, '+' . $expiresSeconds . ' seconds');
+        $signedUrl = (string) $signed->getUri();
+        if ($signedUrl !== '') {
+            if ($shareMode) {
+                header('Content-Type: application/json; charset=UTF-8');
+                echo json_encode([
+                    'ok' => true,
+                    'url' => $signedUrl,
+                    'expires_in' => $expiresSeconds,
+                    'max_expires_in' => $maxShareSeconds,
+                ], JSON_UNESCAPED_SLASHES);
+                exit;
+            }
+            header('Cache-Control: no-store');
+            header('Location: ' . $signedUrl, true, 302);
             exit;
         }
-        header('Cache-Control: no-store');
-        header('Location: ' . $signedUrl, true, 302);
-        exit;
     }
 
     $result = $client->getObject($params);
+
+    if ($previewMode) {
+        $body = $result['Body'];
+        $content = is_resource($body) ? stream_get_contents($body) : (string) $body;
+        $truncated = strlen($content) >= 262144;
+        header('Content-Type: application/json; charset=UTF-8');
+        echo json_encode([
+            'ok' => true,
+            'key' => $key,
+            'content' => $content,
+            'truncated' => $truncated,
+            'bytes' => strlen($content),
+        ], JSON_UNESCAPED_SLASHES);
+        exit;
+    }
 
     $filename = basename($key);
     $contentType = $result['ContentType'] ?? 'application/octet-stream';
@@ -139,6 +162,15 @@ try {
         }
     }
 } catch (Aws\Exception\AwsException $e) {
+    if ($previewMode) {
+        http_response_code(400);
+        header('Content-Type: application/json; charset=UTF-8');
+        echo json_encode([
+            'ok' => false,
+            'error' => $e->getAwsErrorMessage() ?: $e->getMessage(),
+        ], JSON_UNESCAPED_SLASHES);
+        exit;
+    }
     if ($shareMode) {
         http_response_code(400);
         header('Content-Type: application/json; charset=UTF-8');
@@ -152,6 +184,15 @@ try {
     header('Content-Type: text/plain; charset=UTF-8');
     echo $e->getAwsErrorMessage() ?: $e->getMessage();
 } catch (Throwable $e) {
+    if ($previewMode) {
+        http_response_code(500);
+        header('Content-Type: application/json; charset=UTF-8');
+        echo json_encode([
+            'ok' => false,
+            'error' => 'Preview failed.',
+        ], JSON_UNESCAPED_SLASHES);
+        exit;
+    }
     if ($shareMode) {
         http_response_code(500);
         header('Content-Type: application/json; charset=UTF-8');

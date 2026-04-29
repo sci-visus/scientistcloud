@@ -307,6 +307,25 @@ if ($defaultShareSeconds > $shareMaxSeconds) {
       gap: 0.45rem;
       flex-wrap: wrap;
     }
+    .s3-preview {
+      border: 1px solid var(--sc-border);
+      border-radius: 6px;
+      background: #f8fbff;
+      padding: 0.75rem;
+      display: none;
+    }
+    .s3-preview pre {
+      margin: 0;
+      max-height: 360px;
+      overflow: auto;
+      font-size: 12px;
+      white-space: pre-wrap;
+      word-break: break-word;
+      background: #0f172a;
+      color: #e2e8f0;
+      border-radius: 6px;
+      padding: 10px;
+    }
   </style>
 </head>
 <body>
@@ -479,9 +498,11 @@ if ($defaultShareSeconds > $shareMaxSeconds) {
           <?php foreach ($list['files'] as $file): ?>
             <?php
               $dl = $apiDl . '?k=' . rawurlencode($file['key']);
+              $preview = $apiDl . '?mode=preview_text&k=' . rawurlencode($file['key']);
               $datasetSourceLink = s3_dataset_source_link($session, (string) $file['key']);
               $publicUrl = $showPublicUrlButton ? s3_public_object_url($session, (string) $file['key']) : '';
               $sz = $file['size'];
+              $isIdx = str_ends_with(strtolower((string) $file['name']), '.idx');
               $szLabel = $sz >= 1073741824
                 ? number_format($sz / 1073741824, 2) . ' GB'
                 : ($sz >= 1048576 ? number_format($sz / 1048576, 2) . ' MB' : ($sz >= 1024 ? number_format($sz / 1024, 1) . ' KB' : $sz . ' B'));
@@ -505,6 +526,16 @@ if ($defaultShareSeconds > $shareMaxSeconds) {
                   title="Copy a time-limited direct download link">
                   <i class="fas fa-link"></i> Copy Link
                 </button>
+                <?php if ($isIdx): ?>
+                  <button
+                    type="button"
+                    class="btn btn-sm btn-outline-info js-preview-idx"
+                    data-preview-url="<?php echo htmlspecialchars($preview); ?>"
+                    data-file-name="<?php echo htmlspecialchars((string) $file['name']); ?>"
+                    title="View IDX text inline">
+                    <i class="fas fa-file-lines"></i> Preview IDX
+                  </button>
+                <?php endif; ?>
                 <?php if ($showPublicUrlButton): ?>
                   <button
                     type="button"
@@ -528,6 +559,13 @@ if ($defaultShareSeconds > $shareMaxSeconds) {
             <a class="btn btn-outline-secondary btn-sm" href="<?php echo htmlspecialchars($selfPath . '?rel=' . rawurlencode($rel) . '&continuation=' . rawurlencode($list['next_token'])); ?>">Load more</a>
           </div>
         <?php endif; ?>
+        <div id="idxPreviewPanel" class="s3-preview mt-3">
+          <div class="d-flex justify-content-between align-items-center mb-2">
+            <strong id="idxPreviewTitle">IDX Preview</strong>
+            <button type="button" id="idxPreviewClose" class="btn btn-sm btn-outline-secondary">Close</button>
+          </div>
+          <pre id="idxPreviewContent">Select an .idx file and click Preview IDX.</pre>
+        </div>
       <?php endif; ?>
     <?php endif; ?>
   </div>
@@ -628,6 +666,52 @@ if ($defaultShareSeconds > $shareMaxSeconds) {
             }, 1300);
           } catch (err) {
             alert('Failed to copy dataset source link.');
+            btn.innerHTML = original;
+            btn.disabled = false;
+          }
+        });
+      });
+
+      const previewPanel = document.getElementById('idxPreviewPanel');
+      const previewTitle = document.getElementById('idxPreviewTitle');
+      const previewContent = document.getElementById('idxPreviewContent');
+      const previewClose = document.getElementById('idxPreviewClose');
+      const previewButtons = document.querySelectorAll('.js-preview-idx');
+
+      if (previewClose && previewPanel) {
+        previewClose.addEventListener('click', function () {
+          previewPanel.style.display = 'none';
+        });
+      }
+
+      previewButtons.forEach(function (btn) {
+        btn.addEventListener('click', async function () {
+          if (!previewPanel || !previewContent || !previewTitle) return;
+          const endpoint = btn.getAttribute('data-preview-url');
+          const fileName = btn.getAttribute('data-file-name') || '.idx';
+          if (!endpoint) return;
+
+          const original = btn.innerHTML;
+          btn.disabled = true;
+          btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1" aria-hidden="true"></span>Loading...';
+          previewPanel.style.display = 'block';
+          previewTitle.textContent = 'IDX Preview — ' + fileName;
+          previewContent.textContent = 'Loading...';
+
+          try {
+            const res = await fetch(endpoint, { credentials: 'same-origin' });
+            const json = await res.json();
+            if (!res.ok || !json.ok) {
+              throw new Error((json && json.error) ? json.error : 'Could not load preview');
+            }
+            let text = json.content || '';
+            if (json.truncated) {
+              text += '\n\n[Preview truncated to first 256KB]';
+            }
+            previewContent.textContent = text;
+          } catch (err) {
+            previewContent.textContent = 'Failed to load preview: ' + (err && err.message ? err.message : 'Unknown error');
+          } finally {
             btn.innerHTML = original;
             btn.disabled = false;
           }
