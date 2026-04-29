@@ -291,10 +291,21 @@ function generateViewerUrl($dataset, $dashboardType) {
         return null;
     }
     
-    // Determine server flag: true if link includes 'http' but is NOT a Google Drive link
-    // Check download_url, viewer_url, or google_drive_link
+    // Determine server flag from remote-link schemes; keep this list easy to extend.
     $link = $dataset['download_url'] ?? $dataset['viewer_url'] ?? $dataset['google_drive_link'] ?? '';
-    $server = (!empty($link) && strpos($link, 'http') !== false && strpos($link, 'drive.google.com') === false) ? 'true' : 'false';
+    $link_lc = strtolower(trim((string)$link));
+    $remote_schemes = ['s3://', 'http://', 'https://', 'pelican://'];
+    $is_remote = false;
+    foreach ($remote_schemes as $scheme) {
+        if (strpos($link_lc, $scheme) === 0) {
+            $is_remote = true;
+            break;
+        }
+    }
+    if (strpos($link_lc, 'google.com') !== false) {
+        $is_remote = false;
+    }
+    $server = $is_remote ? 'true' : 'false';
     
     $datasetName = $dataset['name'] ?? '';
     

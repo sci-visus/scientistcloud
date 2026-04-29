@@ -661,6 +661,27 @@ class DatasetManager {
         return div.innerHTML;
     }
 
+    getRemoteLinkSchemes() {
+        // Keep this list centralized so new remote sources can be enabled in one place.
+        return ['s3://', 'http://', 'https://', 'pelican://'];
+    }
+
+    isRemoteLinkedDataset(link) {
+        const normalizedLink = (link || '').trim().toLowerCase();
+        if (!normalizedLink) return false;
+        if (normalizedLink.includes('google.com')) return false;
+        return this.getRemoteLinkSchemes().some((scheme) => normalizedLink.startsWith(scheme));
+    }
+
+    resolveDatasetConnection(dataset = {}) {
+        const link = dataset.google_drive_link || dataset.download_url || dataset.viewer_url || '';
+        const explicitServer = String(dataset.server || '').trim().toLowerCase() === 'true';
+        const isRemote = explicitServer || this.isRemoteLinkedDataset(link);
+        const datasetServer = isRemote ? 'true' : 'false';
+        const effectiveUuid = (isRemote && link) ? link : (dataset.uuid || dataset.id || '');
+        return { datasetServer, effectiveUuid, link };
+    }
+
     /**
      * Render a single dataset item
      */
@@ -677,16 +698,7 @@ class DatasetManager {
         const status = dataset.status || 'unknown';
         const sensor = dataset.sensor || 'Unknown';
         
-        // Determine remote-link flag: true for URI links (http/s3/pelican/...) except Google Drive links.
-        // The link itself will be used as the dataset UUID for remote loading
-        const link = dataset.google_drive_link || dataset.download_url || dataset.viewer_url || '';
-        const hasUriScheme = link ? /^[a-zA-Z][a-zA-Z0-9+.-]*:\/\//.test(link) : false;
-        const containsGoogle = link ? link.includes('google.com') : false;
-        const datasetServer = (hasUriScheme && !containsGoogle) ? 'true' : 'false';
-        
-        // When server=true, use the link as the UUID for remote loading
-        // Otherwise use the dataset UUID
-        const effectiveUuid = (datasetServer === 'true' && link) ? link : datasetUuid;
+        const { datasetServer, effectiveUuid } = this.resolveDatasetConnection(dataset);
         
         const statusColor = this.getStatusColor(status);
         const fileIcon = this.getFileIcon(sensor);
@@ -1593,18 +1605,11 @@ class DatasetManager {
                 // Store full dataset details in currentDataset
                 this.currentDataset.details = datasetDetails;
                 
-                // Handle google_drive_link for remote datasets
-                const googleDriveLink = datasetDetails.google_drive_link || '';
-                if (googleDriveLink) {
-                    const containsHttp = googleDriveLink.includes('http');
-                    const containsGoogle = googleDriveLink.includes('google.com');
-                    
-                    if (containsHttp && !containsGoogle) {
-                        // Use the link as the UUID for remote loading
-                        this.currentDataset.uuid = googleDriveLink;
-                        this.currentDataset.server = 'true';
-                        console.log('Using google_drive_link as UUID:', googleDriveLink);
-                    }
+                const resolvedConnection = this.resolveDatasetConnection(datasetDetails);
+                this.currentDataset.uuid = resolvedConnection.effectiveUuid || this.currentDataset.uuid;
+                this.currentDataset.server = resolvedConnection.datasetServer;
+                if (resolvedConnection.datasetServer === 'true') {
+                    console.log('Using remote dataset link as UUID:', resolvedConnection.link);
                 }
                 
                 console.log('Dataset details fetched:', {

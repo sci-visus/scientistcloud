@@ -231,8 +231,8 @@ else:
         collection1 = None
         team_collection = None
     
-    print(f"base_dir: {base_dir}")
-    print(f"save_dir: {save_dir}")
+print(f"base_dir: {base_dir}")
+print(f"save_dir: {save_dir}")
 
 # Set dataset URL
 if not has_args:

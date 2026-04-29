@@ -13,6 +13,17 @@ function getApiBasePath() {
 }
 
 class PublicDatasetManager {
+    getRemoteLinkSchemes() {
+        return ['s3://', 'http://', 'https://', 'pelican://'];
+    }
+
+    isRemoteLinkedDataset(link) {
+        const normalizedLink = (link || '').trim().toLowerCase();
+        if (!normalizedLink) return false;
+        if (normalizedLink.includes('google.com')) return false;
+        return this.getRemoteLinkSchemes().some((scheme) => normalizedLink.startsWith(scheme));
+    }
+
     constructor() {
         this.currentDataset = null;
         this.datasets = [];
@@ -643,9 +654,8 @@ class PublicDatasetManager {
      */
     resolveDatasetConnection(dataset) {
         const link = dataset?.google_drive_link || dataset?.download_url || dataset?.viewer_url || '';
-        const containsGoogle = link.includes('drive.google.com');
-        const hasUriScheme = /:\/\//.test(link);
-        const datasetServer = (hasUriScheme && !containsGoogle) ? 'true' : 'false';
+        const explicitServer = String(dataset?.server || '').trim().toLowerCase() === 'true';
+        const datasetServer = (explicitServer || this.isRemoteLinkedDataset(link)) ? 'true' : 'false';
         const effectiveUuid = (datasetServer === 'true' && link) ? link : (dataset?.uuid || dataset?.id || '');
         return { datasetServer, effectiveUuid, link };
     }
