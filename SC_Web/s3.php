@@ -502,7 +502,11 @@ if ($defaultShareSeconds > $shareMaxSeconds) {
               $datasetSourceLink = s3_dataset_source_link($session, (string) $file['key']);
               $publicUrl = $showPublicUrlButton ? s3_public_object_url($session, (string) $file['key']) : '';
               $sz = $file['size'];
-              $isIdx = str_ends_with(strtolower((string) $file['name']), '.idx');
+              $lowerName = strtolower((string) $file['name']);
+              $isTextPreviewable = str_ends_with($lowerName, '.idx')
+                || str_ends_with($lowerName, '.txt')
+                || str_ends_with($lowerName, '.csv')
+                || str_ends_with($lowerName, '.json');
               $szLabel = $sz >= 1073741824
                 ? number_format($sz / 1073741824, 2) . ' GB'
                 : ($sz >= 1048576 ? number_format($sz / 1048576, 2) . ' MB' : ($sz >= 1024 ? number_format($sz / 1024, 1) . ' KB' : $sz . ' B'));
@@ -526,14 +530,14 @@ if ($defaultShareSeconds > $shareMaxSeconds) {
                   title="Copy a time-limited direct download link">
                   <i class="fas fa-link"></i> Copy Link
                 </button>
-                <?php if ($isIdx): ?>
+                <?php if ($isTextPreviewable): ?>
                   <button
                     type="button"
                     class="btn btn-sm btn-outline-info js-preview-idx"
                     data-preview-url="<?php echo htmlspecialchars($preview); ?>"
                     data-file-name="<?php echo htmlspecialchars((string) $file['name']); ?>"
-                    title="View IDX text inline">
-                    <i class="fas fa-file-lines"></i> Preview IDX
+                    title="View text inline">
+                    <i class="fas fa-file-lines"></i> Preview
                   </button>
                 <?php endif; ?>
                 <?php if ($showPublicUrlButton): ?>
@@ -561,10 +565,10 @@ if ($defaultShareSeconds > $shareMaxSeconds) {
         <?php endif; ?>
         <div id="idxPreviewPanel" class="s3-preview mt-3">
           <div class="d-flex justify-content-between align-items-center mb-2">
-            <strong id="idxPreviewTitle">IDX Preview</strong>
+            <strong id="idxPreviewTitle">Text Preview</strong>
             <button type="button" id="idxPreviewClose" class="btn btn-sm btn-outline-secondary">Close</button>
           </div>
-          <pre id="idxPreviewContent">Select an .idx file and click Preview IDX.</pre>
+          <pre id="idxPreviewContent">Select a text file (.idx, .txt, .csv, .json) and click Preview.</pre>
         </div>
       <?php endif; ?>
     <?php endif; ?>
@@ -695,7 +699,7 @@ if ($defaultShareSeconds > $shareMaxSeconds) {
           btn.disabled = true;
           btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1" aria-hidden="true"></span>Loading...';
           previewPanel.style.display = 'block';
-          previewTitle.textContent = 'IDX Preview — ' + fileName;
+          previewTitle.textContent = 'Preview — ' + fileName;
           previewContent.textContent = 'Loading...';
 
           try {
