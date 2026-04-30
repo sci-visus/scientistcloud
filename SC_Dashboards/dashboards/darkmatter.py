@@ -845,17 +845,18 @@ class AppState:
 
                 print(f"[DarkMatter][DEBUG] LoadDataset input={idx_for_read}")
                 self.scene_data = ov.LoadDataset(idx_for_read).read(field="data")
-                if self.runtime_dataset["mode"] == "http_explicit":
-                    try:
+                txt_lines, csv_lines = [], []
+                try:
+                    if self.runtime_dataset["mode"] == "http_explicit":
                         txt_lines = read_text_lines_from_url(self.runtime_dataset["txt_uri"])
                         csv_lines = read_text_lines_from_url(self.runtime_dataset["csv_uri"])
-                    except Exception as http_sidecar_exc:
-                        raise RuntimeError(
-                            f"Failed to load HTTP sidecar metadata without S3 rewrite fallback: {http_sidecar_exc}"
-                        ) from http_sidecar_exc
-                else:
-                    txt_lines = read_s3_text_lines(self.runtime_dataset["txt_uri"], auth_override=self.s3_auth_override)
-                    csv_lines = read_s3_text_lines(self.runtime_dataset["csv_uri"], auth_override=self.s3_auth_override)
+                    else:
+                        txt_lines = read_s3_text_lines(self.runtime_dataset["txt_uri"], auth_override=self.s3_auth_override)
+                        csv_lines = read_s3_text_lines(self.runtime_dataset["csv_uri"], auth_override=self.s3_auth_override)
+                except Exception as sidecar_exc:
+                    # Sidecar metadata can be protected separately from IDX blocks.
+                    # Keep dashboard usable for volume rendering even without metadata.
+                    print(f"[DarkMatter][WARN] sidecar metadata unavailable, continuing without txt/csv: {sidecar_exc}")
                 self.detector_to_channels = create_channel_metadata_map_from_lines(txt_lines)
                 self.event_to_metadata = create_event_metadata_map_from_lines(csv_lines)
                 arr = np.asarray(self.scene_data)
