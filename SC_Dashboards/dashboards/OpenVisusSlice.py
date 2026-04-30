@@ -9,6 +9,7 @@ from bokeh.models import CustomJS, Button, TextInput, PasswordInput
 from bokeh.events import ButtonClick
 from dotenv import load_dotenv
 import requests
+import time
 
 # Import utility modules
 from utils_bokeh_dashboard import initialize_dashboard
@@ -220,18 +221,26 @@ def resolve_openvisus_resolved_idx_via_api(
         "use_cached_credentials": bool(use_cached_credentials),
         "output_filename": "visus.idx",
     }
-    response = requests.post(endpoint, json=payload, timeout=30)
-    if response.status_code >= 400:
-        try:
-            detail = response.json().get("detail")
-        except Exception:
-            detail = response.text
-        raise RuntimeError(detail or f"HTTP {response.status_code}")
-    data = response.json()
-    resolved_idx_path = str(data.get("resolved_idx_path") or "").strip()
-    if not data.get("success") or not resolved_idx_path:
-        raise RuntimeError(data.get("detail") or "Resolved idx endpoint returned no path")
-    return resolved_idx_path, data
+    last_detail = "Resolved idx endpoint returned no path"
+    for _ in range(15):
+        response = requests.post(endpoint, json=payload, timeout=30)
+        if response.status_code >= 400:
+            try:
+                detail = response.json().get("detail")
+            except Exception:
+                detail = response.text
+            raise RuntimeError(detail or f"HTTP {response.status_code}")
+        data = response.json()
+        resolved_idx_path = str(data.get("resolved_idx_path") or "").strip()
+        status = str(data.get("status") or "").lower()
+        if data.get("success") and resolved_idx_path:
+            return resolved_idx_path, data
+        if status == "pending" and resolved_idx_path:
+            time.sleep(1.0)
+            continue
+        last_detail = str(data.get("detail") or last_detail)
+        break
+    raise RuntimeError(last_detail)
 
 
 
@@ -543,7 +552,7 @@ if __name__.startswith('bokeh'):
         s3_auto_loaded = False
         try:
             resolved_idx_path, response_meta = resolve_openvisus_resolved_idx_via_api(
-                dataset_identifier=uuid if uuid and not is_s3_uri(uuid) else None,
+                dataset_identifier=uuid if uuid and not is_remote_link(uuid) else None,
                 s3_uri=dataset_url,
                 user_email=user_email,
                 endpoint_url=os.getenv("S3_ENDPOINT_URL", ""),
@@ -575,7 +584,7 @@ if __name__.startswith('bokeh'):
             def _connect_s3_dataset():
                 try:
                     resolved_idx_path, _response_meta = resolve_openvisus_resolved_idx_via_api(
-                        dataset_identifier=uuid if uuid and not is_s3_uri(uuid) else None,
+                        dataset_identifier=uuid if uuid and not is_remote_link(uuid) else None,
                         s3_uri=dataset_url,
                         user_email=user_email,
                         access_key=s3_access.value.strip(),

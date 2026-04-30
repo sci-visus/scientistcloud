@@ -9,6 +9,7 @@ import csv
 import traceback
 import re
 import requests
+import time
 from dotenv import load_dotenv
 from botocore.client import Config
 from boto3.session import Session
@@ -392,18 +393,26 @@ def resolve_openvisus_idx_via_api(
         "use_cached_credentials": True,
         "output_filename": "visus.idx",
     }
-    response = requests.post(endpoint, json=payload, timeout=30)
-    if response.status_code >= 400:
-        try:
-            detail = response.json().get("detail")
-        except Exception:
-            detail = response.text
-        raise RuntimeError(detail or f"HTTP {response.status_code}")
-    data = response.json()
-    resolved_idx_path = str(data.get("resolved_idx_path") or "").strip()
-    if not data.get("success") or not resolved_idx_path:
-        raise RuntimeError(data.get("detail") or "Resolved idx endpoint returned no path")
-    return resolved_idx_path
+    last_detail = "Resolved idx endpoint returned no path"
+    for _ in range(15):
+        response = requests.post(endpoint, json=payload, timeout=30)
+        if response.status_code >= 400:
+            try:
+                detail = response.json().get("detail")
+            except Exception:
+                detail = response.text
+            raise RuntimeError(detail or f"HTTP {response.status_code}")
+        data = response.json()
+        resolved_idx_path = str(data.get("resolved_idx_path") or "").strip()
+        status = str(data.get("status") or "").lower()
+        if data.get("success") and resolved_idx_path:
+            return resolved_idx_path
+        if status == "pending" and resolved_idx_path:
+            time.sleep(1.0)
+            continue
+        last_detail = str(data.get("detail") or last_detail)
+        break
+    raise RuntimeError(last_detail)
 
 
 def derive_dataset_from_remote_uri(remote_uri: str):
@@ -1019,7 +1028,11 @@ class AppState:
                     if access_from_query and secret_from_query:
                         self.set_s3_auth_override(endpoint_from_query, access_from_query, secret_from_query)
                         print("[DarkMatter][DEBUG] loaded S3 auth override from idx URL query credentials")
-                dataset_identifier = uuid if uuid and not str(uuid).startswith("s3://") else None
+                dataset_identifier = None
+                if uuid:
+                    uuid_str = str(uuid).strip().lower()
+                    if not (uuid_str.startswith("s3://") or uuid_str.startswith("http://") or uuid_str.startswith("https://")):
+                        dataset_identifier = uuid
 
                 # Stable server pattern: ask backend to generate/store resolved idx at converted/<uuid>/visus.idx.
                 s3_idx_for_resolve = (

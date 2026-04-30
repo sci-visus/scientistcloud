@@ -6,6 +6,7 @@
 
 import os
 import requests
+import time
 
 # this may be dangerous, only for local testing/debugging
 os.environ["BOKEH_ALLOW_WS_ORIGIN"] = "*"
@@ -168,18 +169,26 @@ def resolve_openvisus_resolved_idx_via_api(dataset_identifier, s3_uri=None, user
         "use_cached_credentials": True,
         "output_filename": "visus.idx",
     }
-    response = requests.post(endpoint, json=payload, timeout=30)
-    if response.status_code >= 400:
-        try:
-            detail = response.json().get("detail")
-        except Exception:
-            detail = response.text
-        raise RuntimeError(detail or f"HTTP {response.status_code}")
-    data = response.json()
-    resolved_idx_path = str(data.get("resolved_idx_path") or "").strip()
-    if not data.get("success") or not resolved_idx_path:
-        raise RuntimeError(data.get("detail") or "Resolved idx endpoint returned no path")
-    return resolved_idx_path
+    last_detail = "Resolved idx endpoint returned no path"
+    for _ in range(15):
+        response = requests.post(endpoint, json=payload, timeout=30)
+        if response.status_code >= 400:
+            try:
+                detail = response.json().get("detail")
+            except Exception:
+                detail = response.text
+            raise RuntimeError(detail or f"HTTP {response.status_code}")
+        data = response.json()
+        resolved_idx_path = str(data.get("resolved_idx_path") or "").strip()
+        status = str(data.get("status") or "").lower()
+        if data.get("success") and resolved_idx_path:
+            return resolved_idx_path
+        if status == "pending" and resolved_idx_path:
+            time.sleep(1.0)
+            continue
+        last_detail = str(data.get("detail") or last_detail)
+        break
+    raise RuntimeError(last_detail)
 
 
 def resolve_dataset_path_for_openvisus(dataset_identifier: str, server_flag: str) -> str:
