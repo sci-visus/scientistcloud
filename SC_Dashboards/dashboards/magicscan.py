@@ -8,6 +8,7 @@ from bokeh.models import CustomJS, Button
 from bokeh.events import ButtonClick
 from dotenv import load_dotenv
 import jwt
+import requests
 
 # Set environment variables for OpenVisus and Bokeh
 os.environ["PYTHONPATH"] = "/home/ViSOAR/dataportal/openvisuspy/src"
@@ -111,6 +112,54 @@ selected_values = None
 dataset_url = None
 init_failed = False  # Initialize init_failed flag
  
+
+
+def _is_remote_identifier(value):
+    candidate = str(value or "").strip().lower()
+    return candidate.startswith("s3://") or candidate.startswith("http://") or candidate.startswith("https://")
+
+
+def _http_object_url_to_s3_uri(url):
+    from urllib.parse import urlsplit
+    parts = urlsplit(str(url or "").strip())
+    if parts.scheme not in ("http", "https"):
+        return ""
+    path_parts = [segment for segment in (parts.path or "").split("/") if segment]
+    if len(path_parts) < 2:
+        return ""
+    return f"s3://{path_parts[0]}/{'/'.join(path_parts[1:])}"
+
+
+def resolve_openvisus_resolved_idx_via_api(dataset_identifier, s3_uri=None, user_email=None):
+    dataset_api_base = (
+        os.getenv("SCLIB_DATASET_URL")
+        or os.getenv("SCLIB_API_URL")
+        or "http://sclib_fastapi:5001"
+    ).rstrip("/")
+    endpoint = f"{dataset_api_base}/api/v1/datasets/s3/openvisus-resolved-idx"
+    payload = {
+        "dataset_identifier": dataset_identifier if dataset_identifier and not _is_remote_identifier(dataset_identifier) else None,
+        "s3_uri": s3_uri,
+        "user_email": user_email,
+        "endpoint_url": os.getenv("S3_ENDPOINT_URL", ""),
+        "region_name": os.getenv("AWS_S3_REGION", "us-east-1"),
+        "path_style": True,
+        "cache_credentials": False,
+        "use_cached_credentials": True,
+        "output_filename": "visus.idx",
+    }
+    response = requests.post(endpoint, json=payload, timeout=30)
+    if response.status_code >= 400:
+        try:
+            detail = response.json().get("detail")
+        except Exception:
+            detail = response.text
+        raise RuntimeError(detail or f"HTTP {response.status_code}")
+    data = response.json()
+    resolved_idx_path = str(data.get("resolved_idx_path") or "").strip()
+    if not data.get("success") or not resolved_idx_path:
+        raise RuntimeError(data.get("detail") or "Resolved idx endpoint returned no path")
+    return resolved_idx_path
 
 
 if not has_args:
@@ -270,6 +319,7 @@ if __name__.startswith('bokeh'):
         # If initialization failed, don't proceed
         pass
     elif server in ['true', '%20true', ' true']:
+        original_identifier = uuid
         if not DATA_IS_LOCAL and collection is not None:
             print(f"🔍 DEBUG: Looking for dataset with uuid: {uuid}")
             document = collection.find_one({'uuid': uuid})
@@ -293,6 +343,13 @@ if __name__.startswith('bokeh'):
                 else:
                     print(f"🔍 DEBUG: No document found with google_drive_link: {uuid}")
         dataset_url = uuid
+        s3_uri = dataset_url if str(dataset_url).startswith("s3://") else _http_object_url_to_s3_uri(dataset_url)
+        if s3_uri:
+            try:
+                dataset_url = resolve_openvisus_resolved_idx_via_api(original_identifier, s3_uri=s3_uri, user_email=user_email)
+                print(f"[magicscan][DEBUG] using resolved idx path: {dataset_url}")
+            except Exception as ex:
+                print(f"[magicscan][WARN] resolved idx unavailable, using direct remote URL: {ex}")
         print(f'🔍 DEBUG: Final dataset_url: {dataset_url}')
         print('loading server data...')
     else:

@@ -177,6 +177,63 @@ def resolve_s3_dataset_url_via_api(
     return data["url"], data
 
 
+def http_object_url_to_s3_uri(url: str) -> str:
+    parts = urlsplit(str(url or "").strip())
+    if parts.scheme not in ("http", "https"):
+        return ""
+    path_parts = [segment for segment in (parts.path or "").split("/") if segment]
+    if len(path_parts) < 2:
+        return ""
+    bucket_name = path_parts[0]
+    key = "/".join(path_parts[1:])
+    return f"s3://{bucket_name}/{key}"
+
+
+def resolve_openvisus_resolved_idx_via_api(
+    *,
+    dataset_identifier=None,
+    s3_uri=None,
+    user_email=None,
+    access_key="",
+    secret_key="",
+    endpoint_url="",
+    region_name="us-east-1",
+    cache_credentials=True,
+    use_cached_credentials=True,
+):
+    dataset_api_base = (
+        os.getenv("SCLIB_DATASET_URL")
+        or os.getenv("SCLIB_API_URL")
+        or "http://sclib_fastapi:5001"
+    ).rstrip("/")
+    endpoint = f"{dataset_api_base}/api/v1/datasets/s3/openvisus-resolved-idx"
+    payload = {
+        "dataset_identifier": dataset_identifier,
+        "s3_uri": s3_uri,
+        "user_email": _valid_email_or_none(user_email),
+        "access_key_id": access_key or None,
+        "secret_access_key": secret_key or None,
+        "endpoint_url": endpoint_url or None,
+        "region_name": region_name or "us-east-1",
+        "path_style": True,
+        "cache_credentials": bool(cache_credentials),
+        "use_cached_credentials": bool(use_cached_credentials),
+        "output_filename": "visus.idx",
+    }
+    response = requests.post(endpoint, json=payload, timeout=30)
+    if response.status_code >= 400:
+        try:
+            detail = response.json().get("detail")
+        except Exception:
+            detail = response.text
+        raise RuntimeError(detail or f"HTTP {response.status_code}")
+    data = response.json()
+    resolved_idx_path = str(data.get("resolved_idx_path") or "").strip()
+    if not data.get("success") or not resolved_idx_path:
+        raise RuntimeError(data.get("detail") or "Resolved idx endpoint returned no path")
+    return resolved_idx_path, data
+
+
 
 if not has_args:
     # Local mode - skip all the complex setup
@@ -485,28 +542,19 @@ if __name__.startswith('bokeh'):
         # 2) private datasets via server-side cached credentials.
         s3_auto_loaded = False
         try:
-            signed, response_meta = resolve_s3_dataset_url_via_api(
-                dataset_url,
-                "",
-                "",
+            resolved_idx_path, response_meta = resolve_openvisus_resolved_idx_via_api(
+                dataset_identifier=uuid if uuid and not is_s3_uri(uuid) else None,
+                s3_uri=dataset_url,
+                user_email=user_email,
                 endpoint_url=os.getenv("S3_ENDPOINT_URL", ""),
                 region_name="us-east-1",
-                path_style=True,
-                dataset_identifier=uuid if uuid and not is_s3_uri(uuid) else None,
-                user_email=user_email,
                 cache_credentials=False,
                 use_cached_credentials=True
             )
-            signed = normalize_remote_dataset_url(signed)
-            print(f"[OpenVisusSlice][DEBUG] setDataset input={signed}")
-            view.setDataset(signed)
+            print(f"[OpenVisusSlice][DEBUG] setDataset input={resolved_idx_path}")
+            view.setDataset(resolved_idx_path)
             s3_auto_loaded = True
-            if response_meta.get("is_public_url"):
-                s3_status_message = "<span style='color: green;'><b>Public S3 dataset loaded.</b> No credentials required.</span>"
-            elif response_meta.get("cached_credentials_used"):
-                s3_status_message = "<span style='color: green;'><b>Private S3 dataset loaded.</b> Using cached credentials.</span>"
-            else:
-                s3_status_message = "<span style='color: green;'><b>S3 dataset loaded.</b></span>"
+            s3_status_message = "<span style='color: green;'><b>S3 dataset loaded.</b> Using resolved converted idx.</span>"
         except Exception:
             s3_status_message = "<b>Private S3 dataset detected.</b> Provide runtime credentials to load this dashboard dataset."
 
@@ -526,27 +574,44 @@ if __name__.startswith('bokeh'):
 
             def _connect_s3_dataset():
                 try:
-                    signed, _response_meta = resolve_s3_dataset_url_via_api(
-                        dataset_url,
-                        s3_access.value.strip(),
-                        s3_secret.value,
+                    resolved_idx_path, _response_meta = resolve_openvisus_resolved_idx_via_api(
+                        dataset_identifier=uuid if uuid and not is_s3_uri(uuid) else None,
+                        s3_uri=dataset_url,
+                        user_email=user_email,
+                        access_key=s3_access.value.strip(),
+                        secret_key=s3_secret.value,
                         endpoint_url=s3_endpoint.value.strip(),
                         region_name=s3_region.value.strip() or "us-east-1",
-                        path_style=True,
-                        dataset_identifier=uuid if uuid and not is_s3_uri(uuid) else None,
-                        user_email=user_email,
                         cache_credentials=True,
                         use_cached_credentials=True
                     )
-                    signed = normalize_remote_dataset_url(signed)
-                    print(f"[OpenVisusSlice][DEBUG] setDataset input={signed}")
-                    view.setDataset(signed)
+                    print(f"[OpenVisusSlice][DEBUG] setDataset input={resolved_idx_path}")
+                    view.setDataset(resolved_idx_path)
                     s3_status.text = "<span style='color: green;'><b>S3 connection ready.</b> Dataset loaded. Credentials cached for reuse.</span>"
                 except Exception as ex:
                     s3_status.text = f"<span style='color: red;'>Failed to load S3 dataset: {ex}</span>"
 
             s3_connect.on_click(_connect_s3_dataset)
             s3_auth_panel = column(s3_status, s3_endpoint, s3_region, s3_access, s3_secret, s3_connect, sizing_mode="stretch_width")
+    elif is_remote_link(dataset_url):
+        s3_auth_panel = None
+        try:
+            resolved_idx_path, _meta = resolve_openvisus_resolved_idx_via_api(
+                dataset_identifier=uuid if uuid and not is_remote_link(uuid) else None,
+                s3_uri=http_object_url_to_s3_uri(dataset_url),
+                user_email=user_email,
+                endpoint_url=os.getenv("S3_ENDPOINT_URL", ""),
+                region_name="us-east-1",
+                cache_credentials=False,
+                use_cached_credentials=True,
+            )
+            print(f"[OpenVisusSlice][DEBUG] setDataset input={resolved_idx_path}")
+            view.setDataset(resolved_idx_path)
+        except Exception as ex:
+            dataset_url = normalize_remote_dataset_url(dataset_url)
+            print(f"[OpenVisusSlice][WARN] resolved idx unavailable ({ex}), falling back to direct remote URL")
+            print(f"[OpenVisusSlice][DEBUG] setDataset input={dataset_url}")
+            view.setDataset(dataset_url)
     else:
         s3_auth_panel = None
         dataset_url = normalize_remote_dataset_url(dataset_url)

@@ -5,6 +5,7 @@
 
 
 import os
+import requests
 
 # this may be dangerous, only for local testing/debugging
 os.environ["BOKEH_ALLOW_WS_ORIGIN"] = "*"
@@ -132,6 +133,72 @@ else:
 
 print(f'ScientistCloud VTK Dashboard: UUID: {uuid}, server: {server}, name: {name}')
 
+
+def _is_remote_identifier(value):
+    candidate = str(value or "").strip().lower()
+    return candidate.startswith("s3://") or candidate.startswith("http://") or candidate.startswith("https://")
+
+
+def _http_object_url_to_s3_uri(url):
+    from urllib.parse import urlsplit
+    parts = urlsplit(str(url or "").strip())
+    if parts.scheme not in ("http", "https"):
+        return ""
+    path_parts = [segment for segment in (parts.path or "").split("/") if segment]
+    if len(path_parts) < 2:
+        return ""
+    return f"s3://{path_parts[0]}/{'/'.join(path_parts[1:])}"
+
+
+def resolve_openvisus_resolved_idx_via_api(dataset_identifier, s3_uri=None, user_email=None):
+    dataset_api_base = (
+        os.getenv("SCLIB_DATASET_URL")
+        or os.getenv("SCLIB_API_URL")
+        or "http://sclib_fastapi:5001"
+    ).rstrip("/")
+    endpoint = f"{dataset_api_base}/api/v1/datasets/s3/openvisus-resolved-idx"
+    payload = {
+        "dataset_identifier": dataset_identifier if dataset_identifier and not _is_remote_identifier(dataset_identifier) else None,
+        "s3_uri": s3_uri,
+        "user_email": user_email,
+        "endpoint_url": os.getenv("S3_ENDPOINT_URL", ""),
+        "region_name": os.getenv("AWS_S3_REGION", "us-east-1"),
+        "path_style": True,
+        "cache_credentials": False,
+        "use_cached_credentials": True,
+        "output_filename": "visus.idx",
+    }
+    response = requests.post(endpoint, json=payload, timeout=30)
+    if response.status_code >= 400:
+        try:
+            detail = response.json().get("detail")
+        except Exception:
+            detail = response.text
+        raise RuntimeError(detail or f"HTTP {response.status_code}")
+    data = response.json()
+    resolved_idx_path = str(data.get("resolved_idx_path") or "").strip()
+    if not data.get("success") or not resolved_idx_path:
+        raise RuntimeError(data.get("detail") or "Resolved idx endpoint returned no path")
+    return resolved_idx_path
+
+
+def resolve_dataset_path_for_openvisus(dataset_identifier: str, server_flag: str) -> str:
+    identifier = str(dataset_identifier or "").strip()
+    if DATA_IS_LOCAL:
+        return f"{local_base_dir}/visus.idx"
+    if server_flag in ("false", "%20false", " false"):
+        return f"/mnt/visus_datasets/converted/{identifier}/visus.idx"
+
+    s3_uri = identifier if identifier.startswith("s3://") else _http_object_url_to_s3_uri(identifier)
+    if s3_uri:
+        try:
+            resolved_idx = resolve_openvisus_resolved_idx_via_api(identifier, s3_uri=s3_uri, user_email=user_email)
+            print(f"[3DVTK][DEBUG] using resolved idx: {resolved_idx}")
+            return resolved_idx
+        except Exception as ex:
+            print(f"[3DVTK][WARN] resolved idx unavailable, using direct remote URL: {ex}")
+    return identifier
+
 def button_redirect():
     button = Button(label="ScientistCloud Home", button_type="success")
     button.js_on_event(ButtonClick, CustomJS(code=f"window.location.href = '{deploy_server}';"))
@@ -156,17 +223,9 @@ info_div = Div(text="", visible=False)
 def show_info(event):
     global uuid, server, name, deploy_server
 
-    if server == 'true' or server == '%20true':
-        url = uuid
-    else:
-        url = f"{deploy_server}/mod_visus?dataset={uuid}"
-        if os.path.exists(url):
-            print(f"Path exists: {url}")
-        else:
-            url = find_visus_idx_file(uuid);
-            print(f"Path may exist: {url}")
-            if (not os.path.exists(url)):
-                print(f"Path does not exist: {url}")
+    url = resolve_dataset_path_for_openvisus(uuid, server)
+    if url.startswith("/") and not os.path.exists(url):
+        print(f"Path does not exist: {url}")
 
     db = LoadDataset(url)
     dimensions = db.getLogicBox()
@@ -559,18 +618,10 @@ def getDataset(attr, old, new):
 
         print('Displaying : ',uuid)
         print(server)
-        if DATA_IS_LOCAL:
-            dataset_path = f"{local_base_dir}/visus.idx"
-            MicroCT = ov.LoadDataset(dataset_path)
-        elif server=="false" or server=="%20false" or server==" false":
-            dataset_path = f"/mnt/visus_datasets/converted/{uuid}/visus.idx"
-            if os.path.exists(dataset_path):
-                print(f"Path exists: {dataset_path}")
-            else:
-                print(f"Path does not exist: {dataset_path}")
-            MicroCT = ov.LoadDataset(dataset_path)
-        else:
-            MicroCT=ov.LoadDataset(uuid)
+        dataset_path = resolve_dataset_path_for_openvisus(uuid, server)
+        if dataset_path.startswith("/") and not os.path.exists(dataset_path):
+            print(f"Path does not exist: {dataset_path}")
+        MicroCT = ov.LoadDataset(dataset_path)
         resolution_max =  MicroCT.getMaxResolution()
         resolution_slider.end = int(resolution_max)
         resolution_val= int(resolution_slider.value)
@@ -647,18 +698,10 @@ def volResolutionChange(attr, old, new):
         print(f"Resolution change: {old} -> {new}")
         uuid = uuid_opts[uuid_name]
         
-        if DATA_IS_LOCAL:
-            dataset_path = f"{local_base_dir}/visus.idx"
-            MicroCT = ov.LoadDataset(dataset_path)
-        elif server=="false" or server=="%20false" or server==" false":
-            dataset_path = f"/mnt/visus_datasets/converted/{uuid}/visus.idx"
-            if os.path.exists(dataset_path):
-                print(f"Path exists: {dataset_path}")
-            else:
-                print(f"Path does not exist: {dataset_path}")
-            MicroCT = ov.LoadDataset(dataset_path)
-        else:
-            MicroCT=ov.LoadDataset(uuid)
+        dataset_path = resolve_dataset_path_for_openvisus(uuid, server)
+        if dataset_path.startswith("/") and not os.path.exists(dataset_path):
+            print(f"Path does not exist: {dataset_path}")
+        MicroCT = ov.LoadDataset(dataset_path)
 
         resolution_max =  MicroCT.getMaxResolution()
         resolution_slider.end = int(resolution_max)
@@ -761,18 +804,10 @@ uuid_reload_button.on_click(reloadButtonF)
 resolution_slider.on_change('value', volResolutionChange)
 
 UI_INIT_DONE = True
-if DATA_IS_LOCAL:
-    dataset_path = f"{local_base_dir}/visus.idx"
-    MicroCT = ov.LoadDataset(dataset_path)
-elif server=='false' or server=="%20false" or server==" false":
-    dataset_path = f"/mnt/visus_datasets/converted/{uuid}/visus.idx"
-    if os.path.exists(dataset_path):
-        print(f"Path exists: {dataset_path}")
-    else:
-        print(f"Path does not exist: {dataset_path}")
-    MicroCT = ov.LoadDataset(dataset_path)
-else:
-    MicroCT=ov.LoadDataset(uuid)
+dataset_path = resolve_dataset_path_for_openvisus(uuid, server)
+if dataset_path.startswith("/") and not os.path.exists(dataset_path):
+    print(f"Path does not exist: {dataset_path}")
+MicroCT = ov.LoadDataset(dataset_path)
 resolution_max =  MicroCT.getMaxResolution()
 resolution_slider.end = int(resolution_max)
 resolution_val= int(resolution_slider.value)

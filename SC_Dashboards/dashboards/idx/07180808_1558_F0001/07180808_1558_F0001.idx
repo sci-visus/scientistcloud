@@ -1,0 +1,22 @@
+(version)
+6
+(box)
+0 4095 0 15711
+(physic_box)
+0 4096 0 15712
+(fields)
+data uint16 default_compression(zip) default_layout() default_value(0) min(0) max(0) 
+(bits)
+V01010101010101010101010111
+(bitsperblock)
+16
+(blocksperfile)
+1024
+(interleave block)
+0
+(filename_template)
+./07180808_1558_F0001/%04x.bin
+(missing_blocks)
+0
+(arco)
+0

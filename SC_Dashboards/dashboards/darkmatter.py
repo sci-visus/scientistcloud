@@ -1,7 +1,7 @@
 import matplotlib.colors as mcolors
 import numpy as np
 import sys
-from typing import DefaultDict, List
+from typing import DefaultDict, List, Optional
 import os
 import atexit
 from collections import defaultdict
@@ -16,7 +16,7 @@ from bisect import bisect_left
 from datetime import datetime, timezone
 
 import OpenVisus as ov
-from urllib.parse import parse_qs
+from urllib.parse import parse_qs, parse_qsl, urlencode, urlsplit, urlunsplit
 from bokeh.io import curdoc
 from bokeh.models.widgets import Div
 from bokeh.plotting import figure
@@ -366,21 +366,72 @@ def resolve_s3_url_via_api(
     return data["url"]
 
 
+def resolve_openvisus_idx_via_api(
+    s3_uri: str,
+    dataset_identifier: Optional[str] = None,
+    user_email: Optional[str] = None,
+    auth_override=None,
+):
+    dataset_api_base = (
+        os.getenv("SCLIB_DATASET_URL")
+        or os.getenv("SCLIB_API_URL")
+        or "http://sclib_fastapi:5001"
+    ).rstrip("/")
+    endpoint = f"{dataset_api_base}/api/v1/datasets/s3/openvisus-resolved-idx"
+    override = auth_override or {}
+    payload = {
+        "s3_uri": s3_uri,
+        "dataset_identifier": dataset_identifier,
+        "user_email": _valid_email_or_none(user_email),
+        "access_key_id": override.get("aws_access_key_id", ""),
+        "secret_access_key": override.get("aws_secret_access_key", ""),
+        "endpoint_url": override.get("endpoint_url", "") or os.getenv("S3_ENDPOINT_URL", "") or None,
+        "region_name": override.get("region_name", "us-east-1"),
+        "path_style": True,
+        "cache_credentials": bool(override.get("aws_access_key_id") and override.get("aws_secret_access_key")),
+        "use_cached_credentials": True,
+        "output_filename": "visus.idx",
+    }
+    response = requests.post(endpoint, json=payload, timeout=30)
+    if response.status_code >= 400:
+        try:
+            detail = response.json().get("detail")
+        except Exception:
+            detail = response.text
+        raise RuntimeError(detail or f"HTTP {response.status_code}")
+    data = response.json()
+    resolved_idx_path = str(data.get("resolved_idx_path") or "").strip()
+    if not data.get("success") or not resolved_idx_path:
+        raise RuntimeError(data.get("detail") or "Resolved idx endpoint returned no path")
+    return resolved_idx_path
+
+
 def derive_dataset_from_remote_uri(remote_uri: str):
     return parse_remote_dataset_uri(remote_uri)
 
 
 def derive_dataset_from_local_dir(dataset_dir: str):
     path = os.path.abspath(str(dataset_dir or "").strip())
-    if not os.path.isdir(path):
+    idx_path = ""
+    mid_file = ""
+    dataset_root = ""
+
+    # Support both dataset directory and direct .idx file arguments.
+    if os.path.isfile(path) and path.lower().endswith(".idx"):
+        idx_path = path
+        mid_file = os.path.splitext(os.path.basename(path))[0]
+        dataset_root = os.path.dirname(path)
+    elif os.path.isdir(path):
+        dataset_root = path
+        mid_file = os.path.basename(path.rstrip("/"))
+        idx_path = os.path.join(dataset_root, f"{mid_file}.idx")
+        if not os.path.exists(idx_path):
+            return None
+    else:
         return None
 
-    mid_file = os.path.basename(path.rstrip("/"))
-    idx_path = os.path.join(path, f"{mid_file}.idx")
-    txt_path = os.path.join(path, f"{mid_file}.txt")
-    csv_path = os.path.join(path, f"{mid_file}.csv")
-    if not os.path.exists(idx_path):
-        return None
+    txt_path = os.path.join(dataset_root, f"{mid_file}.txt")
+    csv_path = os.path.join(dataset_root, f"{mid_file}.csv")
 
     return {
         "mode": "local_explicit",
@@ -531,6 +582,151 @@ def read_text_lines_from_url(url: str) -> List[str]:
     resp = requests.get(url, timeout=20)
     resp.raise_for_status()
     return resp.text.splitlines()
+
+
+def http_object_url_to_s3_uri(url: str) -> str:
+    """
+    Convert path-style HTTP object URL to s3://bucket/key when possible.
+    Example: https://host/bucket/prefix/file.idx -> s3://bucket/prefix/file.idx
+    """
+    parts = urlsplit(str(url or "").strip())
+    if parts.scheme not in ("http", "https"):
+        return ""
+    path_parts = [segment for segment in (parts.path or "").split("/") if segment]
+    if len(path_parts) < 2:
+        return ""
+    bucket_name = path_parts[0]
+    key = "/".join(path_parts[1:])
+    return f"s3://{bucket_name}/{key}"
+
+
+def with_query_params(url: str, params: dict) -> str:
+    parts = urlsplit(str(url or "").strip())
+    existing = dict(parse_qsl(parts.query, keep_blank_values=True))
+    for key, value in (params or {}).items():
+        if value is None:
+            continue
+        value_str = str(value).strip()
+        if value_str:
+            existing[key] = value_str
+    query = urlencode(existing, doseq=False)
+    return urlunsplit((parts.scheme, parts.netloc, parts.path, query, parts.fragment))
+
+
+def materialize_http_idx_for_openvisus(idx_url: str, mid_file: str) -> str:
+    """
+    Build a local idx file with an authenticated HTTP filename_template.
+    This ensures OpenVisus block reads (%04x.bin) use the same query credentials.
+    """
+    try:
+        response = requests.get(idx_url, timeout=20)
+        response.raise_for_status()
+        lines = [f"{line}\n" for line in response.text.splitlines()]
+    except Exception as http_idx_exc:
+        # Some gateways deny direct HTTP idx download even with query keys.
+        # Fall back to S3 API read using provided runtime credentials.
+        s3_idx_uri = http_object_url_to_s3_uri(idx_url)
+        if not s3_idx_uri:
+            raise RuntimeError(
+                f"HTTP idx fetch failed and URL could not be converted to s3:// URI: {idx_url}"
+            ) from http_idx_exc
+        print(
+            "[DarkMatter][WARN] HTTP idx fetch failed; attempting S3 fallback for idx materialization: "
+            f"{http_idx_exc}"
+        )
+        idx_lines = read_s3_text_lines(s3_idx_uri)
+        lines = [f"{line}\n" for line in idx_lines]
+
+    parts = urlsplit(idx_url)
+    idx_path = (parts.path or "").rstrip("/")
+    base_path = idx_path[:-4] if idx_path.lower().endswith(".idx") else idx_path
+    parent_path = base_path.rsplit("/", 1)[0] if "/" in base_path else base_path
+
+    def _build_candidate(path_value: str) -> str:
+        return urlunsplit((parts.scheme, parts.netloc, path_value, parts.query, parts.fragment))
+
+    # Try both common layouts for 0000.bin relative to idx.
+    template_candidates = [
+        _build_candidate(f"{base_path}/%04x.bin"),
+        _build_candidate(f"{parent_path}/%04x.bin"),
+    ]
+    s3_template_candidates = [
+        http_object_url_to_s3_uri(_build_candidate(f"{base_path}/%04x.bin")),
+        http_object_url_to_s3_uri(_build_candidate(f"{parent_path}/%04x.bin")),
+    ]
+
+    # Prefer resolving the original idx filename_template when present.
+    source_template = ""
+    template_idx = -1
+    for i, line in enumerate(lines):
+        if line.strip() == "(filename_template)" and i + 1 < len(lines):
+            template_idx = i + 1
+            source_template = lines[template_idx].strip()
+            break
+
+    if source_template and "%04x" in source_template:
+        if source_template.startswith("http://") or source_template.startswith("https://"):
+            src_parts = urlsplit(source_template)
+            src_query = src_parts.query or parts.query
+            template_candidates.insert(
+                0,
+                urlunsplit((src_parts.scheme, src_parts.netloc, src_parts.path, src_query, src_parts.fragment)),
+            )
+            s3_from_http = http_object_url_to_s3_uri(
+                urlunsplit((src_parts.scheme, src_parts.netloc, src_parts.path, "", src_parts.fragment))
+            )
+            if s3_from_http:
+                s3_template_candidates.insert(0, s3_from_http)
+        elif source_template.startswith("s3://"):
+            gateway_base = f"{parts.scheme}://{parts.netloc}"
+            as_http = s3_uri_to_http_url(source_template, gateway_base)
+            if as_http:
+                if parts.query:
+                    src_http_parts = urlsplit(as_http)
+                    as_http = urlunsplit(
+                        (
+                            src_http_parts.scheme,
+                            src_http_parts.netloc,
+                            src_http_parts.path,
+                            parts.query,
+                            src_http_parts.fragment,
+                        )
+                    )
+                template_candidates.insert(0, as_http)
+            s3_template_candidates.insert(0, source_template)
+        else:
+            relative = source_template.lstrip("./")
+            rel_path = f"{parent_path}/{relative}" if relative else f"{parent_path}/%04x.bin"
+            template_candidates.insert(0, _build_candidate(rel_path))
+            s3_rel = http_object_url_to_s3_uri(_build_candidate(rel_path))
+            if s3_rel:
+                s3_template_candidates.insert(0, s3_rel)
+
+    selected_template = template_candidates[0]
+    for candidate in template_candidates:
+        probe = candidate.replace("%04x", "0000")
+        if http_url_exists(probe):
+            selected_template = candidate
+            break
+    else:
+        for s3_candidate in s3_template_candidates:
+            if not s3_candidate:
+                continue
+            probe = s3_candidate.replace("%04x", "0000")
+            if s3_key_exists(probe):
+                selected_template = s3_candidate
+                break
+
+    if template_idx >= 0:
+        lines[template_idx] = f"{selected_template}\n"
+    else:
+        lines.extend(["(filename_template)\n", f"{selected_template}\n"])
+
+    os.makedirs(FILES_VOLUME, exist_ok=True)
+    local_idx_path = os.path.join(FILES_VOLUME, f"{mid_file}.http.resolved.idx")
+    with open(local_idx_path, "w") as fp:
+        fp.writelines(lines)
+    return local_idx_path
 
 
 def s3_key_exists(s3_uri: str) -> bool:
@@ -779,9 +975,7 @@ class AppState:
                 print(f"[DarkMatter][DEBUG] idx={self.runtime_dataset['idx_path']}")
                 print(f"[DarkMatter][DEBUG] txt={self.runtime_dataset['txt_path']}")
                 print(f"[DarkMatter][DEBUG] csv={self.runtime_dataset['csv_path']}")
-                idx_for_read = resolve_local_idx_path(self.runtime_dataset["idx_path"], mid_file)
-                if idx_for_read != self.runtime_dataset["idx_path"]:
-                    print(f"[DarkMatter][DEBUG] fixed local idx filename_template -> {idx_for_read}")
+                idx_for_read = self.runtime_dataset["idx_path"]
                 self.detector_to_channels = create_channel_metadata_map(
                     self.runtime_dataset["txt_path"]
                 )
@@ -793,9 +987,15 @@ class AppState:
                     idx_for_read
                 ).read(field="data")
                 arr = np.asarray(self.scene_data)
+                arr_sample = arr[0, :16].tolist() if arr.ndim == 2 and arr.shape[0] > 0 else []
+                nonzero_count = int(np.count_nonzero(arr)) if arr.size else 0
                 print(
                     f"[DarkMatter][DEBUG] local scene_data dtype={arr.dtype} shape={arr.shape} "
                     f"min={np.nanmin(arr)} max={np.nanmax(arr)}"
+                )
+                print(
+                    f"[DarkMatter][DEBUG] local nonzero_count={nonzero_count} "
+                    f"sample_first_row_16={arr_sample}"
                 )
                 print(
                     f"[DarkMatter][DEBUG] local channels={len(self.detector_to_channels)} "
@@ -804,28 +1004,64 @@ class AppState:
                 return
 
             if self.runtime_dataset["mode"] in ("s3_explicit", "http_explicit"):
-                # Use OpenVisus directly on remote idx URL (no local idx rewriting).
+                # For HTTP datasets we may rewrite idx locally so block URLs carry auth query.
                 print(f"[DarkMatter][DEBUG] {self.runtime_dataset['mode']} mid={mid_file}")
                 print(f"[DarkMatter][DEBUG] idx_uri={self.runtime_dataset['idx_uri']}")
                 print(f"[DarkMatter][DEBUG] txt_uri={self.runtime_dataset['txt_uri']}")
                 print(f"[DarkMatter][DEBUG] csv_uri={self.runtime_dataset['csv_uri']}")
                 idx_for_read = self.runtime_dataset["idx_uri"]
-                # For http_explicit, always keep original HTTP(S) URL in OpenVisus load path.
-                force_http_openvisus = self.runtime_dataset["mode"] == "http_explicit"
+                if self.runtime_dataset["mode"] == "http_explicit" and not self.s3_auth_override:
+                    idx_parts = urlsplit(self.runtime_dataset["idx_uri"])
+                    idx_query = parse_qs(idx_parts.query or "")
+                    access_from_query = (idx_query.get("access_key", [""])[0] or "").strip()
+                    secret_from_query = (idx_query.get("secret_key", [""])[0] or "").strip()
+                    endpoint_from_query = f"{idx_parts.scheme}://{idx_parts.netloc}" if idx_parts.scheme and idx_parts.netloc else ""
+                    if access_from_query and secret_from_query:
+                        self.set_s3_auth_override(endpoint_from_query, access_from_query, secret_from_query)
+                        print("[DarkMatter][DEBUG] loaded S3 auth override from idx URL query credentials")
                 dataset_identifier = uuid if uuid and not str(uuid).startswith("s3://") else None
-                gateway_base = get_s3_http_gateway_base()
-                if gateway_base and idx_for_read.startswith("s3://"):
-                    http_idx = s3_uri_to_http_url(idx_for_read, gateway_base)
-                    if http_idx:
-                        if not force_http_openvisus:
-                            idx_for_read = http_idx
-                            print(f"[DarkMatter][DEBUG] using HTTP idx URL for OpenVisus: {idx_for_read}")
 
-                # Preserve HTTPS datasets as HTTPS; only presign true s3:// URIs.
-                s3_idx_uri = self.runtime_dataset["idx_uri"] if self.runtime_dataset["idx_uri"].startswith("s3://") else ""
-                if s3_idx_uri:
+                # Stable server pattern: ask backend to generate/store resolved idx at converted/<uuid>/visus.idx.
+                s3_idx_for_resolve = (
+                    self.runtime_dataset["idx_uri"]
+                    if self.runtime_dataset["idx_uri"].startswith("s3://")
+                    else http_object_url_to_s3_uri(self.runtime_dataset["idx_uri"])
+                )
+                if s3_idx_for_resolve:
                     try:
-                        override = self.s3_auth_override or {}
+                        resolved_idx_path = resolve_openvisus_idx_via_api(
+                            s3_uri=s3_idx_for_resolve,
+                            dataset_identifier=dataset_identifier,
+                            user_email=user_email,
+                            auth_override=self.s3_auth_override,
+                        )
+                        idx_for_read = resolved_idx_path
+                        print(f"[DarkMatter][DEBUG] using resolved idx from API: {idx_for_read}")
+                    except Exception as resolved_idx_exc:
+                        print(f"[DarkMatter][WARN] openvisus resolved idx unavailable, using direct URL: {resolved_idx_exc}")
+
+                # Preserve HTTPS datasets as HTTPS.
+                # For s3:// datasets, build HTTPS URL with inline credentials so
+                # OpenVisus can use the same auth context for bin reads.
+                s3_idx_uri = self.runtime_dataset["idx_uri"] if self.runtime_dataset["idx_uri"].startswith("s3://") else ""
+                if s3_idx_uri and idx_for_read == self.runtime_dataset["idx_uri"]:
+                    override = self.s3_auth_override or {}
+                    gateway_base = (
+                        override.get("endpoint_url")
+                        or get_s3_http_gateway_base()
+                    )
+                    http_idx = s3_uri_to_http_url(s3_idx_uri, gateway_base) if gateway_base else ""
+                    if http_idx:
+                        idx_for_read = with_query_params(
+                            http_idx,
+                            {
+                                "access_key": override.get("aws_access_key_id", ""),
+                                "secret_key": override.get("aws_secret_access_key", ""),
+                                "region_name": override.get("region_name", "us-east-1"),
+                            },
+                        )
+                        print("[DarkMatter][DEBUG] using HTTPS idx URL with inline credentials for OpenVisus")
+                    try:
                         signed_idx = resolve_s3_url_via_api(
                             s3_idx_uri,
                             access_key=override.get("aws_access_key_id", ""),
@@ -843,40 +1079,60 @@ class AppState:
                     except Exception as presign_exc:
                         print(f"[DarkMatter][DEBUG] dataset presign unavailable, using direct URL: {presign_exc}")
 
+                if self.runtime_dataset["mode"] == "http_explicit" and idx_for_read == self.runtime_dataset["idx_uri"]:
+                    # Primary path must stay full HTTPS idx URL (with query keys).
+                    idx_for_read = self.runtime_dataset["idx_uri"]
+                    print(f"[DarkMatter][DEBUG] using HTTPS idx URL for OpenVisus: {idx_for_read}")
+
                 print(f"[DarkMatter][DEBUG] LoadDataset input={idx_for_read}")
                 self.scene_data = ov.LoadDataset(idx_for_read).read(field="data")
-                txt_lines, csv_lines = [], []
-                try:
-                    if self.runtime_dataset["mode"] == "http_explicit":
+                if self.runtime_dataset["mode"] == "http_explicit":
+                    try:
                         txt_lines = read_text_lines_from_url(self.runtime_dataset["txt_uri"])
                         csv_lines = read_text_lines_from_url(self.runtime_dataset["csv_uri"])
-                    else:
-                        txt_lines = read_s3_text_lines(self.runtime_dataset["txt_uri"], auth_override=self.s3_auth_override)
-                        csv_lines = read_s3_text_lines(self.runtime_dataset["csv_uri"], auth_override=self.s3_auth_override)
-                except Exception as sidecar_exc:
-                    # Sidecar metadata can be protected separately from IDX blocks.
-                    # Keep dashboard usable for volume rendering even without metadata.
-                    print(f"[DarkMatter][WARN] sidecar metadata unavailable, continuing without txt/csv: {sidecar_exc}")
+                    except Exception as http_sidecar_exc:
+                        print(f"[DarkMatter][WARN] HTTP sidecar fetch failed; attempting S3 fallback: {http_sidecar_exc}")
+                        txt_s3_uri = http_object_url_to_s3_uri(self.runtime_dataset["txt_uri"])
+                        csv_s3_uri = http_object_url_to_s3_uri(self.runtime_dataset["csv_uri"])
+                        if not txt_s3_uri or not csv_s3_uri:
+                            raise RuntimeError(
+                                "DarkMatter requires .txt/.csv metadata files, and HTTP sidecar URLs "
+                                "could not be converted to s3:// URIs for fallback reads."
+                            ) from http_sidecar_exc
+                        txt_lines = read_s3_text_lines(txt_s3_uri, auth_override=self.s3_auth_override)
+                        csv_lines = read_s3_text_lines(csv_s3_uri, auth_override=self.s3_auth_override)
+                else:
+                    txt_lines = read_s3_text_lines(self.runtime_dataset["txt_uri"], auth_override=self.s3_auth_override)
+                    csv_lines = read_s3_text_lines(self.runtime_dataset["csv_uri"], auth_override=self.s3_auth_override)
                 self.detector_to_channels = create_channel_metadata_map_from_lines(txt_lines)
                 self.event_to_metadata = create_event_metadata_map_from_lines(csv_lines)
                 arr = np.asarray(self.scene_data)
                 arr_min = np.nanmin(arr) if arr.size else np.nan
                 arr_max = np.nanmax(arr) if arr.size else np.nan
+                arr_sample = arr[0, :16].tolist() if arr.ndim == 2 and arr.shape[0] > 0 else []
+                nonzero_count = int(np.count_nonzero(arr)) if arr.size else 0
                 print(
                     f"[DarkMatter][DEBUG] s3 scene_data dtype={arr.dtype} shape={arr.shape} "
                     f"min={arr_min} max={arr_max}"
                 )
                 print(
+                    f"[DarkMatter][DEBUG] s3 nonzero_count={nonzero_count} "
+                    f"sample_first_row_16={arr_sample}"
+                )
+                print(
                     f"[DarkMatter][DEBUG] s3 txt_lines={len(txt_lines)} csv_lines={len(csv_lines)} "
                     f"channels={len(self.detector_to_channels)} events={len(self.event_to_metadata)}"
                 )
-                # Remote metadata can load while data blocks are unauthorized/unreadable.
-                # Treat all-zero payload as probable auth failure so UI can prompt for creds.
-                if self.runtime_dataset["mode"] in ("s3_explicit", "http_explicit") and arr.size and arr_min == 0 and arr_max == 0:
+                # For explicit S3 URIs without inline query credentials, an all-zero payload
+                # often indicates data block auth failures; keep this as a warning/error path.
+                # For http_explicit links, all-zero can be legitimate data, so do not hard-fail.
+                if self.runtime_dataset["mode"] == "s3_explicit" and arr.size and arr_min == 0 and arr_max == 0:
                     raise RuntimeError(
                         "Potential authorization failure while reading remote data blocks "
                         "(scene_data min=0 max=0). Please provide S3 credentials."
                     )
+                if self.runtime_dataset["mode"] == "http_explicit" and arr.size and arr_min == 0 and arr_max == 0:
+                    print("[DarkMatter][WARN] scene_data min=0 max=0 for http_explicit; continuing (may be valid dataset values).")
                 return
 
         # In ScientistCloud-served mode we should never download/copy data locally.

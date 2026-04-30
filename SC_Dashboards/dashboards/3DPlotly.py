@@ -12,6 +12,7 @@ import numpy as np
 import vtk
 from vtk.util import numpy_support
 from flask import Flask, redirect, request, jsonify
+import requests
 
 # Import shared MongoDB connection manager
 from mongo_connection import get_mongo_client, close_all_connections
@@ -34,6 +35,53 @@ sys.path.append('/home/ViSOAR/dataportal/openvisuspy/src')
 stored_uuid = None
 stored_server = None
 stored_name = None
+
+
+def _is_remote_identifier(value):
+    candidate = str(value or "").strip().lower()
+    return candidate.startswith("s3://") or candidate.startswith("http://") or candidate.startswith("https://")
+
+
+def _http_object_url_to_s3_uri(url):
+    parsed = requests.utils.urlparse(str(url or "").strip())
+    if parsed.scheme not in ("http", "https"):
+        return ""
+    path_parts = [segment for segment in (parsed.path or "").split("/") if segment]
+    if len(path_parts) < 2:
+        return ""
+    return f"s3://{path_parts[0]}/{'/'.join(path_parts[1:])}"
+
+
+def resolve_openvisus_resolved_idx_via_api(dataset_identifier, s3_uri=None, user_email=None):
+    dataset_api_base = (
+        os.getenv("SCLIB_DATASET_URL")
+        or os.getenv("SCLIB_API_URL")
+        or "http://sclib_fastapi:5001"
+    ).rstrip("/")
+    endpoint = f"{dataset_api_base}/api/v1/datasets/s3/openvisus-resolved-idx"
+    payload = {
+        "dataset_identifier": dataset_identifier if dataset_identifier and not _is_remote_identifier(dataset_identifier) else None,
+        "s3_uri": s3_uri,
+        "user_email": user_email,
+        "endpoint_url": os.getenv("S3_ENDPOINT_URL", ""),
+        "region_name": os.getenv("AWS_S3_REGION", "us-east-1"),
+        "path_style": True,
+        "cache_credentials": False,
+        "use_cached_credentials": True,
+        "output_filename": "visus.idx",
+    }
+    response = requests.post(endpoint, json=payload, timeout=30)
+    if response.status_code >= 400:
+        try:
+            detail = response.json().get("detail")
+        except Exception:
+            detail = response.text
+        raise RuntimeError(detail or f"HTTP {response.status_code}")
+    data = response.json()
+    resolved_idx_path = str(data.get("resolved_idx_path") or "").strip()
+    if not data.get("success") or not resolved_idx_path:
+        raise RuntimeError(data.get("detail") or "Resolved idx endpoint returned no path")
+    return resolved_idx_path
 
 def get_cookie(request, cookie_name):
     cookies = request.headers.get('Cookie')
@@ -373,10 +421,19 @@ def initialize_dataset(n_intervals,search):
   
 
     if server and server.strip().lower() in ['true', '%20true', ' true']:
+        orig_identifier = uuid
         document = collection.find_one({'uuid': uuid})
         if document and 'google_drive_link' in document:
             uuid = document['google_drive_link']
         print(f"Server is true, UUID modified to link: {uuid}")
+        s3_uri = uuid if str(uuid).startswith("s3://") else _http_object_url_to_s3_uri(uuid)
+        if s3_uri:
+            try:
+                resolved_idx = resolve_openvisus_resolved_idx_via_api(orig_identifier, s3_uri=s3_uri)
+                uuid = resolved_idx
+                print(f"[3DPlotly][DEBUG] using resolved idx: {uuid}")
+            except Exception as ex:
+                print(f"[3DPlotly][WARN] resolved idx unavailable, using direct remote URL: {ex}")
     else:
         print(f"Server is not true, UUID remains: {uuid}")
     dataset_url=uuid
