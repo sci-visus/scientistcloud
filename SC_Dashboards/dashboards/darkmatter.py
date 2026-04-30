@@ -40,6 +40,7 @@ if SHARED_UTILS_DIR not in sys.path and os.path.isdir(SHARED_UTILS_DIR):
 
 from utils_bokeh_dashboard import initialize_dashboard
 from utils_bokeh_mongodb import cleanup_mongodb
+from utils_bokeh_param import parse_remote_dataset_uri
 from utils_darkmatter import get_aws_bucket, check_if_key_exists, PREFIX
 try:
     from SCLib_Dashboards import create_header_banner
@@ -366,31 +367,7 @@ def resolve_s3_url_via_api(
 
 
 def derive_dataset_from_remote_uri(remote_uri: str):
-    uri = str(remote_uri or "").strip()
-    is_s3 = uri.startswith("s3://")
-    is_http = uri.startswith("http://") or uri.startswith("https://")
-    if not is_s3 and not is_http:
-        return None
-
-    if uri.endswith("/"):
-        uri = uri[:-1]
-
-    if uri.endswith(".idx"):
-        idx_uri = uri
-        base_uri = uri[:-4]
-    else:
-        mid_name = uri.split("/")[-1]
-        base_uri = f"{uri}/{mid_name}"
-        idx_uri = f"{base_uri}.idx"
-
-    mid_file = base_uri.split("/")[-1]
-    return {
-        "mode": "s3_explicit" if is_s3 else "http_explicit",
-        "mid_file": mid_file,
-        "idx_uri": idx_uri,
-        "txt_uri": f"{base_uri}.txt",
-        "csv_uri": f"{base_uri}.csv",
-    }
+    return parse_remote_dataset_uri(remote_uri)
 
 
 def derive_dataset_from_local_dir(dataset_dir: str):
