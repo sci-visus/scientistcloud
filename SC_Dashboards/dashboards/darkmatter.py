@@ -1192,13 +1192,12 @@ class AppState:
                     f"[DarkMatter][DEBUG] s3 txt_lines={len(txt_lines)} csv_lines={len(csv_lines)} "
                     f"channels={len(self.detector_to_channels)} events={len(self.event_to_metadata)}"
                 )
-                # For explicit S3 URIs without inline query credentials, an all-zero payload
-                # often indicates data block auth failures; keep this as a warning/error path.
-                # For http_explicit links, all-zero can be legitimate data, so do not hard-fail.
+                # All-zero scene_data can be legitimate or indicate bin read issues; do not
+                # raise (that triggered a misleading S3 credential UI). Logs carry the signal.
                 if self.runtime_dataset["mode"] == "s3_explicit" and arr.size and arr_min == 0 and arr_max == 0:
-                    raise RuntimeError(
-                        "Potential authorization failure while reading remote data blocks "
-                        "(scene_data min=0 max=0). Please provide S3 credentials."
+                    print(
+                        "[DarkMatter][WARN] scene_data min=0 max=0 for s3_explicit; "
+                        "continuing (bins use resolved idx / object-proxy; verify OpenVisus load if plot is empty)."
                     )
                 if self.runtime_dataset["mode"] == "http_explicit" and arr.size and arr_min == 0 and arr_max == 0:
                     print("[DarkMatter][WARN] scene_data min=0 max=0 for http_explicit; continuing (may be valid dataset values).")
@@ -1616,9 +1615,10 @@ def main():
                 or "missing aws credentials" in error_text.lower()
                 or "unable to locate credentials" in error_text.lower()
                 or "access denied" in error_text.lower()
-                or "authorization failure" in error_text.lower()
             )
-            if auth_failed:
+            # ScientistCloud portal passes no user secrets; S3 access is server-side (Mongo + proxy).
+            # Only show manual credential UI for local/dev runs without URL args.
+            if auth_failed and not has_args:
                 s3_auth_panel.visible = True
                 s3_auth_status.text = "<span style='color:#b35c00;'>Authorization failed. Enter credentials and retry.</span>"
                 s3_auth_status.visible = True
