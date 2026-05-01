@@ -419,6 +419,41 @@ def derive_dataset_from_remote_uri(remote_uri: str):
     return parse_remote_dataset_uri(remote_uri)
 
 
+def derive_dataset_from_uuid(dataset_uuid: str):
+    """
+    Resolve runtime dataset from Mongo metadata when dashboard receives a UUID.
+    This is the standard ScientistCloud served flow for remote-link datasets.
+    """
+    dataset_uuid = str(dataset_uuid or "").strip()
+    if not dataset_uuid or collection is None:
+        return None
+
+    try:
+        doc = collection.find_one({"uuid": dataset_uuid})
+    except Exception as ex:
+        print(f"[DarkMatter][WARN] failed to query dataset doc for uuid={dataset_uuid}: {ex}")
+        return None
+
+    if not doc:
+        return None
+
+    for field in ("source_path", "google_drive_link"):
+        candidate = str(doc.get(field) or "").strip()
+        if not candidate:
+            continue
+        ds = derive_dataset_from_local_dir(candidate)
+        if ds is None:
+            ds = derive_dataset_from_remote_uri(candidate)
+        if ds is not None:
+            print(
+                f"[DarkMatter][DEBUG] resolved runtime_dataset from dataset doc field={field}: "
+                f"mode={ds['mode']} mid={ds['mid_file']}"
+            )
+            return ds
+
+    return None
+
+
 def derive_dataset_from_local_dir(dataset_dir: str):
     path = os.path.abspath(str(dataset_dir or "").strip())
     idx_path = ""
@@ -1402,6 +1437,13 @@ def main():
                     f"mode={ds['mode']} mid={ds['mid_file']}"
                 )
                 break
+
+    # UUID-only launches for remote-link datasets usually need Mongo lookup
+    # (source_path/google_drive_link) to map to explicit s3/http dataset URIs.
+    if runtime_dataset is None and has_args:
+        runtime_dataset = derive_dataset_from_uuid(uuid)
+        if runtime_dataset is not None:
+            runtime_remote_url = str(uuid or "").strip() or runtime_remote_url
 
     if init_failed:
         return
