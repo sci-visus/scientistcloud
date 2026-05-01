@@ -437,6 +437,13 @@ def derive_dataset_from_uuid(dataset_uuid: str):
     if not doc:
         return None
 
+    auth_override = {
+        "endpoint_url": str(doc.get("s3_endpoint_url") or "").strip() or None,
+        "aws_access_key_id": str(doc.get("s3_access_key_id") or "").strip() or None,
+        "aws_secret_access_key": str(doc.get("s3_secret_access_key") or "").strip() or None,
+        "region_name": str(doc.get("s3_region_name") or "us-east-1").strip() or "us-east-1",
+    }
+
     for field in ("source_path", "google_drive_link"):
         candidate = str(doc.get(field) or "").strip()
         if not candidate:
@@ -445,6 +452,8 @@ def derive_dataset_from_uuid(dataset_uuid: str):
         if ds is None:
             ds = derive_dataset_from_remote_uri(candidate)
         if ds is not None:
+            if auth_override.get("aws_access_key_id") and auth_override.get("aws_secret_access_key"):
+                ds["auth_override"] = auth_override
             print(
                 f"[DarkMatter][DEBUG] resolved runtime_dataset from dataset doc field={field}: "
                 f"mode={ds['mode']} mid={ds['mid_file']}"
@@ -932,6 +941,18 @@ class AppState:
         self.event_metadata: EventMetadata
         self.runtime_dataset = runtime_dataset
         self.s3_auth_override = None
+        # Preload dataset-scoped S3 credentials from Mongo when available.
+        if self.runtime_dataset and isinstance(self.runtime_dataset, dict):
+            override = self.runtime_dataset.get("auth_override") or {}
+            if override.get("aws_access_key_id") and override.get("aws_secret_access_key"):
+                self.set_s3_auth_override(
+                    override.get("endpoint_url") or "",
+                    override.get("aws_access_key_id") or "",
+                    override.get("aws_secret_access_key") or "",
+                )
+                if override.get("region_name"):
+                    os.environ["AWS_DEFAULT_REGION"] = str(override.get("region_name"))
+                print("[DarkMatter][DEBUG] loaded S3 auth override from dataset document")
         # widgets
         self.fig = self.new_fig("")
         self.load_mid_files(url)
