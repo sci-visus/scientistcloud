@@ -24,6 +24,14 @@ class PublicDatasetManager {
         return this.getRemoteLinkSchemes().some((scheme) => normalizedLink.startsWith(scheme));
     }
 
+    isModVisusHttpLink(link) {
+        const normalizedLink = (link || '').trim().toLowerCase();
+        return (
+            (normalizedLink.startsWith('http://') || normalizedLink.startsWith('https://')) &&
+            normalizedLink.includes('mod_visus')
+        );
+    }
+
     constructor() {
         this.currentDataset = null;
         this.datasets = [];
@@ -654,9 +662,12 @@ class PublicDatasetManager {
      */
     resolveDatasetConnection(dataset) {
         const link = dataset?.google_drive_link || dataset?.download_url || dataset?.viewer_url || '';
+        const sensor = String(dataset?.sensor || '').trim().toUpperCase();
         const explicitServer = String(dataset?.server || '').trim().toLowerCase() === 'true';
         const datasetServer = (explicitServer || this.isRemoteLinkedDataset(link)) ? 'true' : 'false';
-        const effectiveUuid = (datasetServer === 'true' && link) ? link : (dataset?.uuid || dataset?.id || '');
+        // Keep legacy behavior only for mod_visus HTTP IDX links.
+        const useRemoteLinkAsUuid = sensor === 'IDX' && this.isModVisusHttpLink(link);
+        const effectiveUuid = useRemoteLinkAsUuid ? link : (dataset?.uuid || dataset?.id || '');
         return { datasetServer, effectiveUuid, link };
     }
 }

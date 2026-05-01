@@ -673,12 +673,23 @@ class DatasetManager {
         return this.getRemoteLinkSchemes().some((scheme) => normalizedLink.startsWith(scheme));
     }
 
+    isModVisusHttpLink(link) {
+        const normalizedLink = (link || '').trim().toLowerCase();
+        return (
+            (normalizedLink.startsWith('http://') || normalizedLink.startsWith('https://')) &&
+            normalizedLink.includes('mod_visus')
+        );
+    }
+
     resolveDatasetConnection(dataset = {}) {
         const link = dataset.google_drive_link || dataset.download_url || dataset.viewer_url || '';
+        const sensor = String(dataset.sensor || '').trim().toUpperCase();
         const explicitServer = String(dataset.server || '').trim().toLowerCase() === 'true';
         const isRemote = explicitServer || this.isRemoteLinkedDataset(link);
         const datasetServer = isRemote ? 'true' : 'false';
-        const effectiveUuid = (isRemote && link) ? link : (dataset.uuid || dataset.id || '');
+        // Keep legacy behavior only for mod_visus HTTP IDX links.
+        const useRemoteLinkAsUuid = sensor === 'IDX' && this.isModVisusHttpLink(link);
+        const effectiveUuid = useRemoteLinkAsUuid ? link : (dataset.uuid || dataset.id || '');
         return { datasetServer, effectiveUuid, link };
     }
 
@@ -1609,7 +1620,7 @@ class DatasetManager {
                 this.currentDataset.uuid = resolvedConnection.effectiveUuid || this.currentDataset.uuid;
                 this.currentDataset.server = resolvedConnection.datasetServer;
                 if (resolvedConnection.datasetServer === 'true') {
-                    console.log('Using remote dataset link as UUID:', resolvedConnection.link);
+                    console.log('Using remote dataset with canonical UUID:', this.currentDataset.uuid);
                 }
                 
                 console.log('Dataset details fetched:', {
@@ -1657,7 +1668,7 @@ class DatasetManager {
 
         // Use smart dashboard selection FIRST, before loading
         // This ensures we get the best dashboard based on dimension, not the toolbar value
-        // Use currentDataset.uuid which may have been updated with google_drive_link
+        // Use canonical dataset UUID for all dataset API calls and dashboard params.
         const effectiveUuid = this.currentDataset?.uuid || datasetUuid;
         const effectiveServer = this.currentDataset?.server || datasetServer;
         
