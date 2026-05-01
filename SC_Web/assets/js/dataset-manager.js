@@ -2494,11 +2494,62 @@ class DatasetManager {
      */
     async selectDashboardForDataset(datasetId, datasetUuid, preferredDashboardId = null) {
         try {
+            const normalizePreferredDashboardId = (preferredValue) => {
+                const raw = String(preferredValue || '').trim();
+                if (!raw) return null;
+                const dashboardNameMapping = {
+                    '4D_Dashboard': '4d_dashboardLite',
+                    '4d_dashboard': '4d_dashboardLite',
+                    '4D_dashboard': '4d_dashboardLite',
+                    'Magicscan': 'magicscan',
+                    'magicscan': 'magicscan',
+                    '3D Plotly Explorer': '3DPlotly',
+                    '3D Plotly Dashboard': '3DPlotly',
+                    '3d plotly explorer': '3DPlotly',
+                    '3d plotly dashboard': '3DPlotly',
+                    '3D Plotly': '3DPlotly',
+                    '3d plotly': '3DPlotly',
+                    'plotly': '3DPlotly',
+                    '3D VTK Dashboard': '3DVTK',
+                    '3d vtk dashboard': '3DVTK',
+                    '3D VTK': '3DVTK',
+                    '3d vtk': '3DVTK',
+                    '4D Dashboard (New)': '4d_dashboardLite',
+                    '4D Dashboard': '4d_dashboardLite',
+                    '4d dashboard (new)': '4d_dashboardLite',
+                    '4d dashboard': '4d_dashboardLite',
+                    'OpenVisus Slice Dashboard': 'OpenVisusSlice',
+                    'openvisus slice dashboard': 'OpenVisusSlice',
+                    'OpenVisus Slice': 'OpenVisusSlice',
+                    'openvisus slice': 'OpenVisusSlice',
+                    'DarkMatter Dashboard': 'DarkMatter',
+                    'darkmatter dashboard': 'DarkMatter',
+                    'DarkMatter': 'DarkMatter',
+                    'darkmatter': 'DarkMatter',
+                    'MagicScan Dashboard': 'magicscan',
+                    'magicscan dashboard': 'magicscan',
+                    'MagicScan': 'magicscan'
+                };
+                return dashboardNameMapping[raw] || dashboardNameMapping[raw.toLowerCase()] || raw;
+            };
+
+            const preferredNormalized = normalizePreferredDashboardId(preferredDashboardId);
+            if (preferredNormalized) {
+                // Explicit user/dataset preference should win over auto-selection.
+                console.log(`✅ Using preferred dashboard override: ${preferredDashboardId} -> ${preferredNormalized}`);
+                return preferredNormalized;
+            }
+
             // Step 1: Get dataset dimension
             const datasetDimension = await this.getDatasetDimension(datasetId, datasetUuid);
             console.log(`📊 Dataset dimension: ${datasetDimension}D`);
             
             if (!datasetDimension) {
+                const preferredOnUnknownDim = normalizePreferredDashboardId(preferredDashboardId);
+                if (preferredOnUnknownDim) {
+                    console.log(`✅ Using preferred dashboard when dimension unavailable: ${preferredOnUnknownDim}`);
+                    return preferredOnUnknownDim;
+                }
                 console.warn('⚠️ Could not determine dataset dimension, using OpenVisusSlice as default/general dashboard');
                 // OpenVisusSlice is the most general dashboard - use it as default
                 if (window.viewerManager && window.viewerManager.viewers && window.viewerManager.viewers['OpenVisusSlice']) {
@@ -2575,6 +2626,7 @@ class DatasetManager {
                 if (!mappedName) {
                     mappedName = preferredDashboardId;
                 }
+                mappedName = normalizePreferredDashboardId(mappedName) || mappedName;
                 
                 // Try multiple matching strategies
                 const preferredDashboard = compatibleDashboards.find(d => {
