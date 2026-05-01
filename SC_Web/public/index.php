@@ -111,9 +111,9 @@ $publicDatasets = getPublicDatasets();
     window.IS_PUBLIC_PORTAL = true;
     window.API_BASE_PATH = '../api';
   </script>
-  <script src="../assets/js/main.js"></script>
-  <script src="../assets/js/public-dataset-manager.js"></script>
-  <script src="../assets/js/viewer-manager.js"></script>
+  <script src="../assets/js/main.js?v=<?php echo @filemtime(__DIR__ . '/../assets/js/main.js') ?: time(); ?>"></script>
+  <script src="../assets/js/public-dataset-manager.js?v=<?php echo @filemtime(__DIR__ . '/../assets/js/public-dataset-manager.js') ?: time(); ?>"></script>
+  <script src="../assets/js/viewer-manager.js?v=<?php echo @filemtime(__DIR__ . '/../assets/js/viewer-manager.js') ?: time(); ?>"></script>
 </body>
 </html>
 

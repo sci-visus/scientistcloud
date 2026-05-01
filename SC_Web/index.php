@@ -136,10 +136,10 @@ $preferredDashboard = getUserPreferredDashboard($user['id']);
     window.S3_DEFAULT_REGION = <?php echo json_encode((defined('S3_DEFAULT_REGION') ? S3_DEFAULT_REGION : 'us-east-1')); ?>;
     window.S3_DEFAULT_PATH_STYLE = <?php echo json_encode((defined('S3_DEFAULT_PATH_STYLE') ? S3_DEFAULT_PATH_STYLE : true)); ?>;
   </script>
-  <script src="assets/js/main.js"></script>
-  <script src="assets/js/dataset-manager.js"></script>
-  <script src="assets/js/viewer-manager.js"></script>
-  <script src="assets/js/upload-manager.js"></script>
-  <script src="assets/js/job-manager.js"></script>
+  <script src="assets/js/main.js?v=<?php echo @filemtime(__DIR__ . '/assets/js/main.js') ?: time(); ?>"></script>
+  <script src="assets/js/dataset-manager.js?v=<?php echo @filemtime(__DIR__ . '/assets/js/dataset-manager.js') ?: time(); ?>"></script>
+  <script src="assets/js/viewer-manager.js?v=<?php echo @filemtime(__DIR__ . '/assets/js/viewer-manager.js') ?: time(); ?>"></script>
+  <script src="assets/js/upload-manager.js?v=<?php echo @filemtime(__DIR__ . '/assets/js/upload-manager.js') ?: time(); ?>"></script>
+  <script src="assets/js/job-manager.js?v=<?php echo @filemtime(__DIR__ . '/assets/js/job-manager.js') ?: time(); ?>"></script>
 </body>
 </html>

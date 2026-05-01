@@ -2741,8 +2741,19 @@ class DatasetManager {
                 
                 // Try to get dimension from API endpoint that can read nexus file
                 try {
-                    console.log(`🔍 Trying get_dataset_dimension.php for uuid: ${datasetUuid}`);
-                    const dimensionResponse = await fetch(`${getApiBasePath()}/get_dataset_dimension.php?uuid=${datasetUuid}`);
+                    const uuidForDimension = (() => {
+                        const raw = String(datasetUuid || '').trim();
+                        const lower = raw.toLowerCase();
+                        const isHttp = lower.startsWith('http://') || lower.startsWith('https://');
+                        const isModVisus = this.isModVisusHttpLink(raw);
+                        if (isHttp && !isModVisus) {
+                            // Defensive guard: non-mod_visus HTTP links should not be used as uuid.
+                            return String(datasetId || '').trim();
+                        }
+                        return raw;
+                    })();
+                    console.log(`🔍 Trying get_dataset_dimension.php for uuid: ${uuidForDimension}`);
+                    const dimensionResponse = await fetch(`${getApiBasePath()}/get_dataset_dimension.php?uuid=${encodeURIComponent(uuidForDimension)}`);
                     if (dimensionResponse.ok) {
                         const dimensionData = await dimensionResponse.json();
                         console.log('🔍 get_dataset_dimension.php response:', dimensionData);
