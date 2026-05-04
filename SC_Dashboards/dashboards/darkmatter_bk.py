@@ -7,7 +7,10 @@ import atexit
 from collections import defaultdict
 import csv
 import traceback
+import re
+import zlib
 import requests
+import time
 from dotenv import load_dotenv
 from botocore.client import Config
 from boto3.session import Session
@@ -310,6 +313,369 @@ def parse_s3_uri(uri: str):
     return bucket, key
 
 
+def _valid_email_or_none(value):
+    if not value:
+        return None
+    candidate = str(value).strip()
+    if not candidate:
+        return None
+    if re.match(r"^[^@\s]+@[^@\s]+\.[^@\s]+$", candidate):
+        return candidate
+    return None
+
+
+def resolve_s3_url_via_api(
+    s3_uri: str,
+    access_key="",
+    secret_key="",
+    endpoint_url="",
+    region_name="us-east-1",
+    path_style=True,
+    dataset_identifier=None,
+    user_email=None,
+    cache_credentials=False,
+    use_cached_credentials=True,
+):
+    dataset_api_base = (
+        os.getenv("SCLIB_DATASET_URL")
+        or os.getenv("SCLIB_API_URL")
+        or "http://sclib_fastapi:5001"
+    ).rstrip("/")
+    endpoint = f"{dataset_api_base}/api/v1/datasets/s3/presign"
+    payload = {
+        "s3_uri": s3_uri,
+        "access_key_id": access_key or None,
+        "secret_access_key": secret_key or None,
+        "endpoint_url": endpoint_url or os.getenv("S3_ENDPOINT_URL", "") or None,
+        "region_name": region_name or "us-east-1",
+        "path_style": bool(path_style),
+        "expires_in": 3600,
+        "dataset_identifier": dataset_identifier,
+        "user_email": _valid_email_or_none(user_email),
+        "cache_credentials": bool(cache_credentials),
+        "use_cached_credentials": bool(use_cached_credentials),
+    }
+    response = requests.post(endpoint, json=payload, timeout=20)
+    if response.status_code >= 400:
+        try:
+            detail = response.json().get("detail")
+        except Exception:
+            detail = response.text
+        raise RuntimeError(detail or f"HTTP {response.status_code}")
+    data = response.json()
+    if not data.get("success") or not data.get("url"):
+        raise RuntimeError(data.get("detail") or "Presign endpoint returned no URL")
+    return data["url"]
+
+
+def resolve_openvisus_idx_via_api(
+    s3_uri: str,
+    dataset_identifier: Optional[str] = None,
+    user_email: Optional[str] = None,
+    auth_override=None,
+):
+    dataset_api_base = (
+        os.getenv("SCLIB_DATASET_URL")
+        or os.getenv("SCLIB_API_URL")
+        or "http://sclib_fastapi:5001"
+    ).rstrip("/")
+    endpoint = f"{dataset_api_base}/api/v1/datasets/s3/openvisus-resolved-idx"
+    override = auth_override or {}
+    payload = {
+        "s3_uri": s3_uri,
+        "dataset_identifier": dataset_identifier,
+        "user_email": _valid_email_or_none(user_email),
+        "access_key_id": override.get("aws_access_key_id", ""),
+        "secret_access_key": override.get("aws_secret_access_key", ""),
+        "endpoint_url": override.get("endpoint_url", "") or os.getenv("S3_ENDPOINT_URL", "") or None,
+        "region_name": override.get("region_name", "us-east-1"),
+        "path_style": True,
+        "cache_credentials": bool(override.get("aws_access_key_id") and override.get("aws_secret_access_key")),
+        "use_cached_credentials": True,
+        "output_filename": "visus.idx",
+    }
+    last_detail = "Resolved idx endpoint returned no path"
+    for _ in range(15):
+        response = requests.post(endpoint, json=payload, timeout=30)
+        if response.status_code >= 400:
+            try:
+                detail = response.json().get("detail")
+            except Exception:
+                detail = response.text
+            raise RuntimeError(detail or f"HTTP {response.status_code}")
+        data = response.json()
+        resolved_idx_path = str(data.get("resolved_idx_path") or "").strip()
+        resolved_idx_http_url = str(data.get("resolved_idx_http_url") or "").strip()
+        status = str(data.get("status") or "").lower()
+        if data.get("success") and resolved_idx_path:
+            return resolved_idx_path, resolved_idx_http_url
+        if status == "pending" and resolved_idx_path:
+            time.sleep(1.0)
+            continue
+        last_detail = str(data.get("detail") or last_detail)
+        break
+    raise RuntimeError(last_detail)
+
+
+def _read_filename_template_line(local_idx_path: str) -> str:
+    """Return the filename_template line from a resolved visus.idx on disk (may be HTTPS URL)."""
+    try:
+        with open(local_idx_path, "r", encoding="utf-8", errors="replace") as f:
+            lines = [ln.rstrip("\n") for ln in f]
+    except Exception:
+        return ""
+    for i, line in enumerate(lines):
+        if line.strip() == "(filename_template)" and i + 1 < len(lines):
+            return lines[i + 1].strip()
+    return ""
+
+
+def _s3_uri_first_block_bin(idx_s3_uri: str) -> str:
+    """Map dataset idx s3:// URI to sibling 0000.bin under the same folder."""
+    bucket, key = parse_s3_uri(idx_s3_uri)
+    if not bucket or not key or "/" not in key:
+        return ""
+    parent = key.rsplit("/", 1)[0]
+    return f"s3://{bucket}/{parent}/0000.bin"
+
+
+def read_s3_object_range_bytes(s3_uri: str, byte_range: str, auth_override=None) -> Optional[bytes]:
+    """
+    Fetch the first matching byte span via S3 API (same credential discovery as read_s3_text_lines).
+    byte_range example: 'bytes=0-4095'
+    """
+    bucket_name, key = parse_s3_uri(s3_uri)
+    if not bucket_name or not key:
+        return None
+
+    dotenv_candidates = [
+        os.path.join(PROJECT_ROOT, ".env"),
+        os.path.join(PROJECT_ROOT, "SC_Docker", ".env"),
+        os.path.join(PROJECT_ROOT, "SC_Docker", "env.scientistcloud.com"),
+        os.path.join(PROJECT_ROOT, "..", "VisusDataPortalPrivate", "Docker", ".env"),
+    ]
+    load_dotenv()
+    for dotenv_path in dotenv_candidates:
+        if os.path.exists(dotenv_path):
+            load_dotenv(dotenv_path=dotenv_path, override=False)
+
+    endpoint_url = os.getenv("ENDPOINT_URL")
+    aws_access_key_id = os.getenv("AWS_ACCESS_KEY_ID")
+    aws_secret_access_key = os.getenv("AWS_SECRET_ACCESS_KEY")
+    region_name = os.getenv("AWS_S3_REGION", "us-east-1")
+    if auth_override:
+        endpoint_url = auth_override.get("endpoint_url") or endpoint_url
+        aws_access_key_id = auth_override.get("aws_access_key_id") or aws_access_key_id
+        aws_secret_access_key = auth_override.get("aws_secret_access_key") or aws_secret_access_key
+        region_name = auth_override.get("region_name") or region_name
+
+    if not aws_access_key_id or not aws_secret_access_key:
+        return None
+
+    endpoint_candidates = []
+    for candidate in [
+        endpoint_url,
+        os.getenv("S3_ENDPOINT_URL"),
+        os.getenv("S3_PUBLIC_ENDPOINT_URL"),
+        os.getenv("ENDPOINT_URL"),
+        None,
+    ]:
+        if candidate not in endpoint_candidates:
+            endpoint_candidates.append(candidate)
+
+    last_error = None
+    for candidate_endpoint in endpoint_candidates:
+        for addr_style in ["path", "virtual"]:
+            try:
+                config = Config(
+                    signature_version="s3v4",
+                    s3={"addressing_style": addr_style},
+                )
+                s3_client = Session().client(
+                    "s3",
+                    endpoint_url=candidate_endpoint,
+                    region_name=region_name,
+                    config=config,
+                    aws_access_key_id=aws_access_key_id,
+                    aws_secret_access_key=aws_secret_access_key,
+                )
+                resp = s3_client.get_object(
+                    Bucket=bucket_name, Key=key, Range=byte_range
+                )
+                return resp["Body"].read()
+            except Exception as exc:
+                last_error = exc
+                continue
+    if last_error:
+        raise last_error
+    return None
+
+
+def _darkmatter_sniff_zip_block_bytes(label: str, body: bytes) -> bool:
+    """
+    visus idx often has default_compression(zip); .bin data is not a raw uint16 array.
+    Try zlib/gzip/deflate on typical skips so logs distinguish compressed payloads from bad proxy reads.
+    Returns True if a zlib/gzip stream was decompressed.
+    """
+    if not body or len(body) < 2:
+        return False
+    print(
+        f"[DarkMatter][DIAG] {label} compression sniff: first8_hex={body[:8].hex()} "
+        "(if idx uses zip compression, raw uint16 min/max above are not decoded samples)"
+    )
+    for skip in (0, 1, 2, 4, 8, 16, 32, 64, 128, 256):
+        if skip >= len(body):
+            break
+        chunk = body[skip:]
+        for wbits in (
+            zlib.MAX_WBITS,  # zlib header (often starts with 78 xx)
+            -zlib.MAX_WBITS,  # raw deflate
+            zlib.MAX_WBITS | 16,  # gzip wrapper (31)
+            32,  # zlib or gzip header autodetect (Python 3)
+        ):
+            try:
+                dec = zlib.decompress(chunk, wbits)
+                if len(dec) < 2:
+                    continue
+                u2 = np.frombuffer(dec[: len(dec) - (len(dec) % 2)], dtype=np.uint16)
+                print(
+                    f"[DarkMatter][DIAG] {label} zlib decompress ok: skip={skip} wbits={wbits} "
+                    f"out_len={len(dec)} uint16_min={int(u2.min())} uint16_max={int(u2.max())} "
+                    f"uint16_nonzero={int(np.count_nonzero(u2))}"
+                )
+                return True
+            except Exception:
+                continue
+    print(
+        f"[DarkMatter][DIAG] {label} zlib sniff: no decompress succeeded in this span "
+        f"(large .bin files often use per-block layout; try larger Range below)"
+    )
+    return False
+
+
+def diagnose_darkmatter_zero_scene(
+    idx_s3_uri: str,
+    resolved_local_idx_path: str,
+    auth_override,
+) -> None:
+    """
+    When OpenVisus scene_data is all zeros, compare:
+    (1) HTTP GET of block 0 via the same object-proxy URL as in resolved visus.idx
+    (2) S3 get_object Range on 0000.bin
+
+    If (2) is non-zero but (1) fails or is zero → proxy/OpenVisus HTTP path.
+    If both are zero → object may be empty at head (or wrong key).
+    Set DARKMATTER_DISABLE_ZERO_DIAG=1 to skip.
+    """
+    if str(os.getenv("DARKMATTER_DISABLE_ZERO_DIAG", "") or "").strip().lower() in (
+        "1",
+        "true",
+        "yes",
+        "on",
+    ):
+        return
+
+    tpl = ""
+    if resolved_local_idx_path and os.path.isfile(resolved_local_idx_path):
+        tpl = _read_filename_template_line(resolved_local_idx_path)
+
+    sniff_body: Optional[bytes] = None
+
+    if tpl.startswith("http://") or tpl.startswith("https://"):
+        bin_url = tpl.replace("%04x", "0000").replace("%04X", "0000")
+        try:
+            r = requests.get(
+                bin_url,
+                headers={"Range": "bytes=0-4095"},
+                timeout=35,
+            )
+            body = r.content
+            sniff_body = body
+            aligned = body[: len(body) - (len(body) % 2)]
+            u16 = np.frombuffer(aligned, dtype=np.uint16) if len(aligned) >= 2 else np.array([], dtype=np.uint16)
+            print(
+                "[DarkMatter][DIAG] object-proxy bin 0000 (HTTP Range): "
+                f"status={r.status_code} nbytes={len(body)} "
+                f"content_range={r.headers.get('Content-Range')!r} "
+                f"uint16_min={int(u16.min()) if u16.size else 'n/a'} "
+                f"uint16_max={int(u16.max()) if u16.size else 'n/a'} "
+                f"uint16_nonzero={int(np.count_nonzero(u16)) if u16.size else 0} "
+                f"head_hex={body[:32].hex()}"
+            )
+        except Exception as exc:
+            print(f"[DarkMatter][DIAG] object-proxy HTTP probe failed: {exc}")
+
+    if idx_s3_uri.startswith("s3://"):
+        bin_uri = _s3_uri_first_block_bin(idx_s3_uri)
+        if bin_uri:
+            try:
+                raw = read_s3_object_range_bytes(
+                    bin_uri, "bytes=0-4095", auth_override=auth_override
+                )
+                if raw is None:
+                    print("[DarkMatter][DIAG] S3 direct probe skipped (no credentials)")
+                else:
+                    if sniff_body is None:
+                        sniff_body = raw
+                    aligned = raw[: len(raw) - (len(raw) % 2)]
+                    u16 = (
+                        np.frombuffer(aligned, dtype=np.uint16)
+                        if len(aligned) >= 2
+                        else np.array([], dtype=np.uint16)
+                    )
+                    print(
+                        "[DarkMatter][DIAG] S3 direct bin 0000 (Range): "
+                        f"nbytes={len(raw)} uri={bin_uri} "
+                        f"uint16_min={int(u16.min()) if u16.size else 'n/a'} "
+                        f"uint16_max={int(u16.max()) if u16.size else 'n/a'} "
+                        f"uint16_nonzero={int(np.count_nonzero(u16)) if u16.size else 0} "
+                        f"head_hex={raw[:32].hex()}"
+                    )
+            except Exception as exc:
+                print(f"[DarkMatter][DIAG] S3 direct probe failed: {exc}")
+
+    zlib_ok = False
+    if sniff_body:
+        zlib_ok = _darkmatter_sniff_zip_block_bytes("bin0000 first 4KiB", sniff_body)
+
+    # Multi-megabyte bin files (blocksperfile * compressed chunks): first 4KiB may be header/padding only.
+    if not zlib_ok and idx_s3_uri.startswith("s3://"):
+        bin_uri = _s3_uri_first_block_bin(idx_s3_uri)
+        if bin_uri:
+            try:
+                big = read_s3_object_range_bytes(
+                    bin_uri, "bytes=0-262143", auth_override=auth_override
+                )
+                if big and len(big) >= 512:
+                    print(
+                        "[DarkMatter][DIAG] zlib sniff retry with S3 Range bytes=0-262143 "
+                        f"(nbytes={len(big)})"
+                    )
+                    zlib_ok = _darkmatter_sniff_zip_block_bytes(
+                        "bin0000 first 256KiB (S3)", big
+                    )
+            except Exception as exc:
+                print(f"[DarkMatter][DIAG] large-range zlib sniff (S3) failed: {exc}")
+
+    if not zlib_ok and (tpl.startswith("http://") or tpl.startswith("https://")):
+        bin_url = tpl.replace("%04x", "0000").replace("%04X", "0000")
+        try:
+            r2 = requests.get(
+                bin_url,
+                headers={"Range": "bytes=0-262143"},
+                timeout=45,
+            )
+            big = r2.content
+            if r2.status_code == 206 and len(big) >= 512:
+                print(
+                    "[DarkMatter][DIAG] zlib sniff retry with HTTP Range bytes=0-262143 "
+                    f"status={r2.status_code} nbytes={len(big)}"
+                )
+                _darkmatter_sniff_zip_block_bytes("bin0000 first 256KiB (HTTP)", big)
+        except Exception as exc:
+            print(f"[DarkMatter][DIAG] large-range zlib sniff (HTTP) failed: {exc}")
+
+
 def read_openvisus_field(idx_url_or_path: str, field: str = "data"):
     """
     Read an OpenVisus field using full dataset resolution when the binding supports it
@@ -367,8 +733,7 @@ def derive_dataset_from_uuid(dataset_uuid: str):
         "region_name": str(doc.get("s3_region_name") or "us-east-1").strip() or "us-east-1",
     }
 
-    # Prefer stored HTTPS object-gateway URL (google_drive_link for S3 uploads) over raw s3://.
-    for field in ("google_drive_link", "source_path"):
+    for field in ("source_path", "google_drive_link"):
         candidate = str(doc.get(field) or "").strip()
         if not candidate:
             continue
@@ -590,6 +955,146 @@ def with_query_params(url: str, params: dict) -> str:
     return urlunsplit((parts.scheme, parts.netloc, parts.path, query, parts.fragment))
 
 
+def materialize_http_idx_for_openvisus(idx_url: str, mid_file: str) -> str:
+    """
+    Build a local idx file with an authenticated HTTP filename_template.
+    This ensures OpenVisus block reads (%04x.bin) use the same query credentials.
+    """
+    try:
+        response = requests.get(idx_url, timeout=20)
+        response.raise_for_status()
+        lines = [f"{line}\n" for line in response.text.splitlines()]
+    except Exception as http_idx_exc:
+        # Some gateways deny direct HTTP idx download even with query keys.
+        # Fall back to S3 API read using provided runtime credentials.
+        s3_idx_uri = http_object_url_to_s3_uri(idx_url)
+        if not s3_idx_uri:
+            raise RuntimeError(
+                f"HTTP idx fetch failed and URL could not be converted to s3:// URI: {idx_url}"
+            ) from http_idx_exc
+        print(
+            "[DarkMatter][WARN] HTTP idx fetch failed; attempting S3 fallback for idx materialization: "
+            f"{http_idx_exc}"
+        )
+        idx_lines = read_s3_text_lines(s3_idx_uri)
+        lines = [f"{line}\n" for line in idx_lines]
+
+    parts = urlsplit(idx_url)
+    idx_path = (parts.path or "").rstrip("/")
+    base_path = idx_path[:-4] if idx_path.lower().endswith(".idx") else idx_path
+    parent_path = base_path.rsplit("/", 1)[0] if "/" in base_path else base_path
+
+    def _build_candidate(path_value: str) -> str:
+        return urlunsplit((parts.scheme, parts.netloc, path_value, parts.query, parts.fragment))
+
+    # Try both common layouts for 0000.bin relative to idx.
+    template_candidates = [
+        _build_candidate(f"{base_path}/%04x.bin"),
+        _build_candidate(f"{parent_path}/%04x.bin"),
+    ]
+    s3_template_candidates = [
+        http_object_url_to_s3_uri(_build_candidate(f"{base_path}/%04x.bin")),
+        http_object_url_to_s3_uri(_build_candidate(f"{parent_path}/%04x.bin")),
+    ]
+
+    # Prefer resolving the original idx filename_template when present.
+    source_template = ""
+    template_idx = -1
+    for i, line in enumerate(lines):
+        if line.strip() == "(filename_template)" and i + 1 < len(lines):
+            template_idx = i + 1
+            source_template = lines[template_idx].strip()
+            break
+
+    if source_template and "%04x" in source_template:
+        if source_template.startswith("http://") or source_template.startswith("https://"):
+            src_parts = urlsplit(source_template)
+            src_query = src_parts.query or parts.query
+            template_candidates.insert(
+                0,
+                urlunsplit((src_parts.scheme, src_parts.netloc, src_parts.path, src_query, src_parts.fragment)),
+            )
+            s3_from_http = http_object_url_to_s3_uri(
+                urlunsplit((src_parts.scheme, src_parts.netloc, src_parts.path, "", src_parts.fragment))
+            )
+            if s3_from_http:
+                s3_template_candidates.insert(0, s3_from_http)
+        elif source_template.startswith("s3://"):
+            gateway_base = f"{parts.scheme}://{parts.netloc}"
+            as_http = s3_uri_to_http_url(source_template, gateway_base)
+            if as_http:
+                if parts.query:
+                    src_http_parts = urlsplit(as_http)
+                    as_http = urlunsplit(
+                        (
+                            src_http_parts.scheme,
+                            src_http_parts.netloc,
+                            src_http_parts.path,
+                            parts.query,
+                            src_http_parts.fragment,
+                        )
+                    )
+                template_candidates.insert(0, as_http)
+            s3_template_candidates.insert(0, source_template)
+        else:
+            relative = source_template.lstrip("./")
+            rel_path = f"{parent_path}/{relative}" if relative else f"{parent_path}/%04x.bin"
+            template_candidates.insert(0, _build_candidate(rel_path))
+            s3_rel = http_object_url_to_s3_uri(_build_candidate(rel_path))
+            if s3_rel:
+                s3_template_candidates.insert(0, s3_rel)
+
+    selected_template = template_candidates[0]
+    for candidate in template_candidates:
+        probe = candidate.replace("%04x", "0000")
+        if http_url_exists(probe):
+            selected_template = candidate
+            break
+    else:
+        for s3_candidate in s3_template_candidates:
+            if not s3_candidate:
+                continue
+            probe = s3_candidate.replace("%04x", "0000")
+            if s3_key_exists(probe):
+                selected_template = s3_candidate
+                break
+
+    if template_idx >= 0:
+        lines[template_idx] = f"{selected_template}\n"
+    else:
+        lines.extend(["(filename_template)\n", f"{selected_template}\n"])
+
+    os.makedirs(FILES_VOLUME, exist_ok=True)
+    local_idx_path = os.path.join(FILES_VOLUME, f"{mid_file}.http.resolved.idx")
+    with open(local_idx_path, "w") as fp:
+        fp.writelines(lines)
+    return local_idx_path
+
+
+def s3_key_exists(s3_uri: str) -> bool:
+    bucket_name, key = parse_s3_uri(s3_uri)
+    if not bucket_name or not key:
+        return False
+
+    load_dotenv()
+    endpoint_url = os.getenv("ENDPOINT_URL")
+    aws_access_key_id = os.getenv("AWS_ACCESS_KEY_ID")
+    aws_secret_access_key = os.getenv("AWS_SECRET_ACCESS_KEY")
+    config = Config(signature_version="s3v4")
+    s3_client = Session().client(
+        "s3",
+        endpoint_url=endpoint_url,
+        config=config,
+        aws_access_key_id=aws_access_key_id,
+        aws_secret_access_key=aws_secret_access_key,
+    )
+    try:
+        s3_client.head_object(Bucket=bucket_name, Key=key)
+        return True
+    except Exception:
+        return False
+
+
 def get_s3_http_gateway_base() -> str:
     # Prefer public gateway for object URLs; fall back to configured S3 endpoint.
     endpoint = (
@@ -611,6 +1116,20 @@ def s3_uri_to_http_url(s3_uri: str, endpoint_base: str) -> str:
         return ""
     # Path-style URL expected by current object gateway deployment.
     return f"{endpoint_base}/{bucket_name}/{key}"
+
+
+def http_url_exists(url: str) -> bool:
+    if not url:
+        return False
+    try:
+        resp = requests.head(url, timeout=10, allow_redirects=True)
+        if resp.status_code < 400:
+            return True
+        # Some gateways block HEAD; fallback to lightweight GET.
+        resp = requests.get(url, timeout=10, stream=True)
+        return resp.status_code < 400
+    except Exception:
+        return False
 
 
 # def materialize_idx_for_s3(idx_uri: str, mid_file: str) -> str:
@@ -850,11 +1369,12 @@ class AppState:
                 return
 
             if self.runtime_dataset["mode"] in ("s3_explicit", "http_explicit"):
-                # Remote: OpenVisus LoadDataset(idx_url) — prefer HTTPS idx URL with gateway query keys.
+                # For HTTP datasets we may rewrite idx locally so block URLs carry auth query.
                 print(f"[DarkMatter][DEBUG] {self.runtime_dataset['mode']} mid={mid_file}")
                 print(f"[DarkMatter][DEBUG] idx_uri={self.runtime_dataset['idx_uri']}")
                 print(f"[DarkMatter][DEBUG] txt_uri={self.runtime_dataset['txt_uri']}")
                 print(f"[DarkMatter][DEBUG] csv_uri={self.runtime_dataset['csv_uri']}")
+                idx_for_read = self.runtime_dataset["idx_uri"]
                 if self.runtime_dataset["mode"] == "http_explicit" and not self.s3_auth_override:
                     idx_parts = urlsplit(self.runtime_dataset["idx_uri"])
                     idx_query = parse_qs(idx_parts.query or "")
@@ -864,12 +1384,69 @@ class AppState:
                     if access_from_query and secret_from_query:
                         self.set_s3_auth_override(endpoint_from_query, access_from_query, secret_from_query)
                         print("[DarkMatter][DEBUG] loaded S3 auth override from idx URL query credentials")
+                dataset_identifier = None
+                if uuid:
+                    uuid_str = str(uuid).strip().lower()
+                    if not (uuid_str.startswith("s3://") or uuid_str.startswith("http://") or uuid_str.startswith("https://")):
+                        dataset_identifier = uuid
 
-                idx_for_read = self.runtime_dataset["idx_uri"]
-                if str(idx_for_read).startswith("s3://"):
+                # Stable server pattern: ask backend to generate/store resolved idx at converted/<uuid>/visus.idx.
+                s3_idx_for_resolve = (
+                    self.runtime_dataset["idx_uri"]
+                    if self.runtime_dataset["idx_uri"].startswith("s3://")
+                    else http_object_url_to_s3_uri(self.runtime_dataset["idx_uri"])
+                )
+                resolved_local_idx_path = ""
+                if s3_idx_for_resolve:
+                    try:
+                        resolved_idx_path, resolved_idx_http_url = resolve_openvisus_idx_via_api(
+                            s3_uri=s3_idx_for_resolve,
+                            dataset_identifier=dataset_identifier,
+                            user_email=user_email,
+                            auth_override=self.s3_auth_override,
+                        )
+                        resolved_local_idx_path = str(resolved_idx_path or "").strip()
+                        preferred = str(resolved_idx_http_url or "").strip()
+                        # Dataset-relative ./%04x.bin loads work locally because OpenVisus opens the idx
+                        # from disk and reads bins beside it. Here, resolved visus.idx still lists full
+                        # HTTPS object-proxy URLs in (filename_template)—bins are remote either way.
+                        # Prefer the local file path when mounted (e.g. /mnt/visus_datasets/converted/.../visus.idx)
+                        # so LoadDataset uses the same filesystem idx semantics as a working local workflow;
+                        # object-proxy Range reads are unchanged (they come from the template lines).
+                        # Set DARKMATTER_PREFER_HTTPS_RESOLVED_IDX=1 to use the HTTPS idx URL first instead.
+                        prefer_https_idx = str(
+                            os.getenv("DARKMATTER_PREFER_HTTPS_RESOLVED_IDX", "0")
+                        ).strip().lower() in ("1", "true", "yes", "on")
+                        local_idx_ok = bool(
+                            resolved_local_idx_path
+                            and os.path.isfile(resolved_local_idx_path)
+                        )
+                        if prefer_https_idx and preferred:
+                            idx_for_read = preferred
+                        elif local_idx_ok:
+                            idx_for_read = resolved_local_idx_path
+                        elif preferred:
+                            idx_for_read = preferred
+                        else:
+                            idx_for_read = resolved_local_idx_path
+                        print(
+                            f"[DarkMatter][DEBUG] using resolved idx from API: {idx_for_read} "
+                            f"(local={resolved_local_idx_path}, prefer_https_idx={prefer_https_idx})"
+                        )
+                    except Exception as resolved_idx_exc:
+                        print(f"[DarkMatter][WARN] openvisus resolved idx unavailable, using direct URL: {resolved_idx_exc}")
+
+                # Preserve HTTPS datasets as HTTPS.
+                # For s3:// datasets, build HTTPS URL with inline credentials so
+                # OpenVisus can use the same auth context for bin reads.
+                s3_idx_uri = self.runtime_dataset["idx_uri"] if self.runtime_dataset["idx_uri"].startswith("s3://") else ""
+                if s3_idx_uri and idx_for_read == self.runtime_dataset["idx_uri"]:
                     override = self.s3_auth_override or {}
-                    gateway_base = override.get("endpoint_url") or get_s3_http_gateway_base()
-                    http_idx = s3_uri_to_http_url(idx_for_read, gateway_base) if gateway_base else ""
+                    gateway_base = (
+                        override.get("endpoint_url")
+                        or get_s3_http_gateway_base()
+                    )
+                    http_idx = s3_uri_to_http_url(s3_idx_uri, gateway_base) if gateway_base else ""
                     if http_idx:
                         idx_for_read = with_query_params(
                             http_idx,
@@ -879,15 +1456,124 @@ class AppState:
                                 "region_name": override.get("region_name", "us-east-1"),
                             },
                         )
-                        print("[DarkMatter][DEBUG] LoadDataset uses HTTPS idx URL built from s3:// with inline credentials")
-                    else:
-                        print(
-                            "[DarkMatter][WARN] No S3 gateway base URL in env; "
-                            "LoadDataset may fail on raw s3:// idx_uri"
+                        print("[DarkMatter][DEBUG] using HTTPS idx URL with inline credentials for OpenVisus")
+                    try:
+                        signed_idx = resolve_s3_url_via_api(
+                            s3_idx_uri,
+                            access_key=override.get("aws_access_key_id", ""),
+                            secret_key=override.get("aws_secret_access_key", ""),
+                            endpoint_url=override.get("endpoint_url", ""),
+                            region_name=override.get("region_name", "us-east-1"),
+                            path_style=True,
+                            dataset_identifier=dataset_identifier,
+                            user_email=user_email,
+                            cache_credentials=bool(override.get("aws_access_key_id") and override.get("aws_secret_access_key")),
+                            use_cached_credentials=True,
                         )
+                        idx_for_read = signed_idx
+                        print("[DarkMatter][DEBUG] using presigned URL for OpenVisus dataset load")
+                    except Exception as presign_exc:
+                        print(f"[DarkMatter][DEBUG] dataset presign unavailable, using direct URL: {presign_exc}")
+
+                if self.runtime_dataset["mode"] == "http_explicit" and idx_for_read == self.runtime_dataset["idx_uri"]:
+                    # Primary path must stay full HTTPS idx URL (with query keys).
+                    idx_for_read = self.runtime_dataset["idx_uri"]
+                    print(f"[DarkMatter][DEBUG] using HTTPS idx URL for OpenVisus: {idx_for_read}")
 
                 print(f"[DarkMatter][DEBUG] LoadDataset input={idx_for_read}")
                 self.scene_data = read_openvisus_field(idx_for_read)
+                # If we used the server-generated resolved idx (local path and/or HTTPS serve URL),
+                # optionally retry with presigned / gateway idx when the first load is all zeros.
+                # Default is OFF so we can observe pure object-proxy behavior first.
+                enable_cmip6_fallback = str(
+                    os.getenv("DARKMATTER_ENABLE_CMIP6_FALLBACK", "0")
+                ).strip().lower() in ("1", "true", "yes", "on")
+                if (
+                    self.runtime_dataset["mode"] == "s3_explicit"
+                    and resolved_local_idx_path
+                ):
+                    try:
+                        arr0 = np.asarray(self.scene_data)
+                        if (
+                            arr0.size
+                            and int(np.count_nonzero(arr0)) == 0
+                            and float(np.nanmin(arr0)) == 0.0
+                            and float(np.nanmax(arr0)) == 0.0
+                        ):
+                            override = self.s3_auth_override or {}
+                            s3_idx_uri = (
+                                self.runtime_dataset["idx_uri"]
+                                if self.runtime_dataset["idx_uri"].startswith("s3://")
+                                else ""
+                            )
+                            if s3_idx_uri and not enable_cmip6_fallback:
+                                print(
+                                    "[DarkMatter][WARN] resolved idx load returned all zeros; "
+                                    "CMIP6 fallback is DISABLED (DARKMATTER_ENABLE_CMIP6_FALLBACK=0). "
+                                    "Keeping object-proxy result for this test."
+                                )
+                            elif s3_idx_uri:
+                                print(
+                                    "[DarkMatter][WARN] resolved idx load returned all zeros "
+                                    f"(LoadDataset input was {'HTTP' if str(idx_for_read).startswith(('http://', 'https://')) else 'local'}); "
+                                    "retrying OpenVisus with presigned HTTPS idx URL (CMIP6-style fallback)"
+                                )
+                                try:
+                                    print(
+                                        f"[DarkMatter][DEBUG] fallback candidate source s3_idx_uri={s3_idx_uri}"
+                                    )
+                                    signed_idx = resolve_s3_url_via_api(
+                                        s3_idx_uri,
+                                        access_key=override.get("aws_access_key_id", ""),
+                                        secret_key=override.get("aws_secret_access_key", ""),
+                                        endpoint_url=override.get("endpoint_url", ""),
+                                        region_name=override.get("region_name", "us-east-1"),
+                                        path_style=True,
+                                        dataset_identifier=dataset_identifier,
+                                        user_email=user_email,
+                                        cache_credentials=bool(
+                                            override.get("aws_access_key_id")
+                                            and override.get("aws_secret_access_key")
+                                        ),
+                                        use_cached_credentials=True,
+                                    )
+                                    print(f"[DarkMatter][DEBUG] LoadDataset fallback (presign) input={signed_idx}")
+                                    print(
+                                        f"[DarkMatter][DEBUG] fallback presign endpoint={urlsplit(signed_idx).scheme}://{urlsplit(signed_idx).netloc}"
+                                    )
+                                    self.scene_data = read_openvisus_field(signed_idx)
+                                except Exception as presign_fb_exc:
+                                    gateway_base = (
+                                        override.get("endpoint_url")
+                                        or get_s3_http_gateway_base()
+                                    )
+                                    http_idx = (
+                                        s3_uri_to_http_url(s3_idx_uri, gateway_base)
+                                        if gateway_base
+                                        else ""
+                                    )
+                                    if not http_idx:
+                                        raise
+                                    http_idx = with_query_params(
+                                        http_idx,
+                                        {
+                                            "access_key": override.get("aws_access_key_id", ""),
+                                            "secret_key": override.get("aws_secret_access_key", ""),
+                                            "region_name": override.get("region_name", "us-east-1"),
+                                        },
+                                    )
+                                    print(
+                                        f"[DarkMatter][DEBUG] presign fallback failed ({presign_fb_exc}); "
+                                        f"LoadDataset fallback (inline gateway) input={http_idx}"
+                                    )
+                                    print(
+                                        f"[DarkMatter][DEBUG] fallback inline endpoint={urlsplit(http_idx).scheme}://{urlsplit(http_idx).netloc}"
+                                    )
+                                    self.scene_data = read_openvisus_field(http_idx)
+                    except Exception as fallback_exc:
+                        print(
+                            f"[DarkMatter][WARN] OpenVisus CMIP6-style fallback failed: {fallback_exc}"
+                        )
                 if self.runtime_dataset["mode"] == "http_explicit":
                     try:
                         txt_lines = read_text_lines_from_url(self.runtime_dataset["txt_uri"])
@@ -925,12 +1611,22 @@ class AppState:
                     f"[DarkMatter][DEBUG] s3 txt_lines={len(txt_lines)} csv_lines={len(csv_lines)} "
                     f"channels={len(self.detector_to_channels)} events={len(self.event_to_metadata)}"
                 )
+                if (
+                    self.runtime_dataset["mode"] == "s3_explicit"
+                    and arr.size
+                    and nonzero_count == 0
+                ):
+                    diagnose_darkmatter_zero_scene(
+                        self.runtime_dataset["idx_uri"],
+                        resolved_local_idx_path,
+                        self.s3_auth_override,
+                    )
                 # All-zero scene_data can be legitimate or indicate bin read issues; do not
                 # raise (that triggered a misleading S3 credential UI). Logs carry the signal.
                 if self.runtime_dataset["mode"] == "s3_explicit" and arr.size and arr_min == 0 and arr_max == 0:
                     print(
                         "[DarkMatter][WARN] scene_data min=0 max=0 for s3_explicit; "
-                        "continuing (verify HTTPS idx URL / OpenVisus load if plot is empty)."
+                        "continuing (bins use resolved idx / object-proxy; verify OpenVisus load if plot is empty)."
                     )
                 if self.runtime_dataset["mode"] == "http_explicit" and arr.size and arr_min == 0 and arr_max == 0:
                     print("[DarkMatter][WARN] scene_data min=0 max=0 for http_explicit; continuing (may be valid dataset values).")

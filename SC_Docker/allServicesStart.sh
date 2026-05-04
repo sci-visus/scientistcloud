@@ -7,6 +7,7 @@
 #   -w or --web-only: Rebuild only SC_Web portal container (when SC_Web Dockerfile or dependencies change)
 #   -s or --sclib-only: Rebuild only SCLib services (when SCLib code changes)
 #   -sw or --sclib-web: Rebuild both SCLib and SC_Web (when both change)
+#   -dm or --darkmatter-only: Dashboard phase only — init/build/start DarkMatter (registry key: darkmatter)
 #
 # IMPORTANT NOTES - OPTIMIZATION GUIDE:
 #   ✅ ALL CODE IS MOUNTED AS VOLUMES (no rebuild needed for code changes):
@@ -29,12 +30,15 @@
 #      ./allServicesStart.sh -s                 # Rebuild SCLib (Dockerfile/requirements changed)
 #      ./allServicesStart.sh -w                 # Rebuild SC_Web (Dockerfile/composer.json changed)
 #      ./allServicesStart.sh -sw                # Rebuild both (both Dockerfiles changed)
+#      ./allServicesStart.sh -dm                # Init/build/start only DarkMatter dashboard
+#      ./allServicesStart.sh --dashboards-only -dm   # Dashboard steps only, DarkMatter only
 
 # Parse command line arguments
 SKIP_MAIN_SERVICES=false
 DASHBOARDS_ONLY=false
 REBUILD_WEB=false
 REBUILD_SCLIB=false
+DARKMATTER_DASHBOARD_ONLY=false
 
 for arg in "$@"; do
     case $arg in
@@ -59,6 +63,10 @@ for arg in "$@"; do
             REBUILD_WEB=true
             REBUILD_SCLIB=true
             echo "🔄 Will rebuild both SCLib and SC_Web containers"
+            ;;
+        -dm|--darkmatter-only)
+            DARKMATTER_DASHBOARD_ONLY=true
+            echo "📈 DarkMatter-only: dashboard init/build/docker up will target only darkmatter (see dashboard-registry.json)"
             ;;
     esac
 done
@@ -453,6 +461,16 @@ if [ -d "$DASHBOARDS_DIR" ]; then
     # Regenerate to ensure latest fixes are applied (Dockerfiles and nginx configs)
     echo "   Initializing dashboards..."
     DASHBOARDS=$(jq -r '.dashboards | to_entries[] | select(.value.enabled == true) | .key' config/dashboard-registry.json 2>/dev/null || echo "")
+    if [ "$DARKMATTER_DASHBOARD_ONLY" = true ]; then
+        DM_EN=$(jq -r '.dashboards["darkmatter"].enabled // false' config/dashboard-registry.json 2>/dev/null || echo "false")
+        if [ "$DM_EN" != "true" ]; then
+            echo "   ❌ -dm requires darkmatter to be enabled in config/dashboard-registry.json"
+            popd
+            exit 1
+        fi
+        DASHBOARDS="darkmatter"
+        echo "   (DarkMatter-only: other dashboards skipped for init/build/start)"
+    fi
     if [ -n "$DASHBOARDS" ]; then
         while IFS= read -r DASHBOARD_NAME; do
             echo "   📦 Initializing $DASHBOARD_NAME..."
@@ -485,16 +503,18 @@ if [ -d "$DASHBOARDS_DIR" ]; then
             docker network create docker_visstore_web || echo "   ⚠️  Network creation failed (may already exist)"
         fi
         
-        # Remove old dashboard containers to avoid ContainerConfig errors
-        echo "   Cleaning up old dashboard containers..."
-        OLD_CONTAINERS=$(docker ps -a --filter "name=dashboard_" --format "{{.Names}}" 2>/dev/null || true)
-        if [ -n "$OLD_CONTAINERS" ]; then
-            echo "$OLD_CONTAINERS" | while read -r container; do
-                if [ -n "$container" ]; then
-                    echo "   🗑️  Removing old container: $container"
-                    docker rm -f "$container" 2>/dev/null || true
-                fi
-            done
+        # Remove old dashboard containers to avoid ContainerConfig errors (-dm keeps other dashboards)
+        if [ "$DARKMATTER_DASHBOARD_ONLY" != true ]; then
+            echo "   Cleaning up old dashboard containers..."
+            OLD_CONTAINERS=$(docker ps -a --filter "name=dashboard_" --format "{{.Names}}" 2>/dev/null || true)
+            if [ -n "$OLD_CONTAINERS" ]; then
+                echo "$OLD_CONTAINERS" | while read -r container; do
+                    if [ -n "$container" ]; then
+                        echo "   🗑️  Removing old container: $container"
+                        docker rm -f "$container" 2>/dev/null || true
+                    fi
+                done
+            fi
         fi
         
         # Find .env file - check SC_Docker first (where env.scientistcloud is copied), then VisusDataPortalPrivate
@@ -509,27 +529,50 @@ if [ -d "$DASHBOARDS_DIR" ]; then
             echo "   Using .env file from VisusDataPortalPrivate: $ENV_FILE"
         fi
         
-        # Stop and remove any existing containers defined in docker-compose first
-        echo "   Stopping existing dashboard containers..."
-        docker-compose -f dashboards-docker-compose.yml down 2>/dev/null || true
-        
-        # Start containers
+        # Stop / remove existing dashboard containers (full stack, or only DarkMatter with -dm)
+        if [ "$DARKMATTER_DASHBOARD_ONLY" = true ]; then
+            echo "   Replacing only DarkMatter dashboard container (other dashboard containers left running)..."
+            docker rm -f dashboard_darkmatter 2>/dev/null || true
+        else
+            echo "   Stopping existing dashboard containers..."
+            docker-compose -f dashboards-docker-compose.yml down 2>/dev/null || true
+        fi
+
+        # Start containers (all services, or only darkmatter when -dm)
         if [ -n "$ENV_FILE" ]; then
-            if docker-compose -f dashboards-docker-compose.yml --env-file "$ENV_FILE" up -d; then
-                echo "   ✅ Dashboard containers started"
+            if [ "$DARKMATTER_DASHBOARD_ONLY" = true ]; then
+                if docker-compose -f dashboards-docker-compose.yml --env-file "$ENV_FILE" up -d --build darkmatter; then
+                    echo "   ✅ DarkMatter dashboard container started"
+                else
+                    echo "   ❌ Failed to start DarkMatter dashboard"
+                    docker-compose -f dashboards-docker-compose.yml ps || true
+                fi
             else
-                echo "   ❌ Failed to start dashboard containers"
-                echo "   Checking container status..."
-                docker-compose -f dashboards-docker-compose.yml ps || true
+                if docker-compose -f dashboards-docker-compose.yml --env-file "$ENV_FILE" up -d; then
+                    echo "   ✅ Dashboard containers started"
+                else
+                    echo "   ❌ Failed to start dashboard containers"
+                    echo "   Checking container status..."
+                    docker-compose -f dashboards-docker-compose.yml ps || true
+                fi
             fi
         else
             echo "   ⚠️  No .env file found - trying without explicit env-file"
-            if docker-compose -f dashboards-docker-compose.yml up -d; then
-                echo "   ✅ Dashboard containers started"
+            if [ "$DARKMATTER_DASHBOARD_ONLY" = true ]; then
+                if docker-compose -f dashboards-docker-compose.yml up -d --build darkmatter; then
+                    echo "   ✅ DarkMatter dashboard container started"
+                else
+                    echo "   ❌ Failed to start DarkMatter dashboard"
+                    docker-compose -f dashboards-docker-compose.yml ps || true
+                fi
             else
-                echo "   ❌ Failed to start dashboard containers"
-                echo "   Checking container status..."
-                docker-compose -f dashboards-docker-compose.yml ps || true
+                if docker-compose -f dashboards-docker-compose.yml up -d; then
+                    echo "   ✅ Dashboard containers started"
+                else
+                    echo "   ❌ Failed to start dashboard containers"
+                    echo "   Checking container status..."
+                    docker-compose -f dashboards-docker-compose.yml ps || true
+                fi
             fi
         fi
         
