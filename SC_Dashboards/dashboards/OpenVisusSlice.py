@@ -326,8 +326,9 @@ else:
         collection1 = None
         team_collection = None
     
-print(f"base_dir: {base_dir}")
-print(f"save_dir: {save_dir}")
+if has_args:
+    print(f"base_dir: {base_dir}")
+    print(f"save_dir: {save_dir}")
 
 # Set dataset URL
 if not has_args:
@@ -353,10 +354,15 @@ elif server in ['true', '%20true', ' true']:
                 print(f"🔍 DEBUG: Has google_drive_link: {'google_drive_link' in document}")
                 source_path = str(document.get('source_path') or '').strip()
                 source_type = str(document.get('source_type') or '').strip().lower()
+                google_drive_link = str(document.get('google_drive_link') or '').strip()
 
-                # Prefer canonical S3 URI path when available so OpenVisus can resolve blocks correctly.
-                # This avoids relying on gateway HTTPS links that can return all-zero data blocks.
-                if source_type == 's3' and is_s3_uri(source_path):
+                # Prefer stored HTTPS Data Link (google_drive_link) over raw s3:// source_path.
+                if google_drive_link.startswith(('http://', 'https://')):
+                    old_uuid = uuid
+                    uuid = google_drive_link
+                    dataset_url = uuid
+                    print(f"🔍 DEBUG: Replaced uuid '{old_uuid}' with google_drive_link (HTTPS) '{uuid}'")
+                elif source_type == 's3' and is_s3_uri(source_path):
                     old_uuid = uuid
                     uuid = source_path
                     dataset_url = uuid
@@ -366,13 +372,13 @@ elif server in ['true', '%20true', ' true']:
                     uuid = name.strip()
                     dataset_url = uuid
                     print(f"🔍 DEBUG: Using S3 URI from name, replaced uuid '{old_uuid}' with '{uuid}'")
-                elif 'google_drive_link' in document and document['google_drive_link']:
+                elif google_drive_link:
                     old_uuid = uuid
-                    uuid = document['google_drive_link']
+                    uuid = google_drive_link
                     dataset_url = uuid
                     print(f"🔍 DEBUG: Replaced uuid '{old_uuid}' with google_drive_link '{uuid}'")
                 else:
-                    print(f"🔍 DEBUG: No google_drive_link field found, using uuid as dataset_url")
+                    print(f"🔍 DEBUG: No remote link in document, using uuid as dataset_url")
                     dataset_url = uuid
             else:
                 print(f"🔍 DEBUG: No document found with uuid: {uuid}")
