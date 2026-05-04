@@ -1176,9 +1176,11 @@ class AppState:
                 print(f"[DarkMatter][DEBUG] LoadDataset input={idx_for_read}")
                 self.scene_data = ov.LoadDataset(idx_for_read).read(field="data")
                 # If we used the server-generated resolved idx (local path and/or HTTPS serve URL),
-                # retry with presigned / gateway idx when the first load is all zeros. When the
-                # primary load is `resolved_idx_http_url`, idx_for_read != resolved_local_idx_path,
-                # so we must not require equality — otherwise CMIP6 fallback never runs.
+                # optionally retry with presigned / gateway idx when the first load is all zeros.
+                # Default is OFF so we can observe pure object-proxy behavior first.
+                enable_cmip6_fallback = str(
+                    os.getenv("DARKMATTER_ENABLE_CMIP6_FALLBACK", "0")
+                ).strip().lower() in ("1", "true", "yes", "on")
                 if (
                     self.runtime_dataset["mode"] == "s3_explicit"
                     and resolved_local_idx_path
@@ -1197,13 +1199,22 @@ class AppState:
                                 if self.runtime_dataset["idx_uri"].startswith("s3://")
                                 else ""
                             )
-                            if s3_idx_uri:
+                            if s3_idx_uri and not enable_cmip6_fallback:
+                                print(
+                                    "[DarkMatter][WARN] resolved idx load returned all zeros; "
+                                    "CMIP6 fallback is DISABLED (DARKMATTER_ENABLE_CMIP6_FALLBACK=0). "
+                                    "Keeping object-proxy result for this test."
+                                )
+                            elif s3_idx_uri:
                                 print(
                                     "[DarkMatter][WARN] resolved idx load returned all zeros "
                                     f"(LoadDataset input was {'HTTP' if str(idx_for_read).startswith(('http://', 'https://')) else 'local'}); "
                                     "retrying OpenVisus with presigned HTTPS idx URL (CMIP6-style fallback)"
                                 )
                                 try:
+                                    print(
+                                        f"[DarkMatter][DEBUG] fallback candidate source s3_idx_uri={s3_idx_uri}"
+                                    )
                                     signed_idx = resolve_s3_url_via_api(
                                         s3_idx_uri,
                                         access_key=override.get("aws_access_key_id", ""),
@@ -1220,6 +1231,9 @@ class AppState:
                                         use_cached_credentials=True,
                                     )
                                     print(f"[DarkMatter][DEBUG] LoadDataset fallback (presign) input={signed_idx}")
+                                    print(
+                                        f"[DarkMatter][DEBUG] fallback presign endpoint={urlsplit(signed_idx).scheme}://{urlsplit(signed_idx).netloc}"
+                                    )
                                     self.scene_data = ov.LoadDataset(signed_idx).read(field="data")
                                 except Exception as presign_fb_exc:
                                     gateway_base = (
@@ -1244,6 +1258,9 @@ class AppState:
                                     print(
                                         f"[DarkMatter][DEBUG] presign fallback failed ({presign_fb_exc}); "
                                         f"LoadDataset fallback (inline gateway) input={http_idx}"
+                                    )
+                                    print(
+                                        f"[DarkMatter][DEBUG] fallback inline endpoint={urlsplit(http_idx).scheme}://{urlsplit(http_idx).netloc}"
                                     )
                                     self.scene_data = ov.LoadDataset(http_idx).read(field="data")
                     except Exception as fallback_exc:
