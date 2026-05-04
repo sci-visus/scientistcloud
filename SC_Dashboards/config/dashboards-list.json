@@ -73,6 +73,18 @@
       "url_template": "/dashboard/4d_dashboardLite/?uuid={uuid}&server={server}&name={name}",
       "enabled": true,
       "config_file": "../dashboards/4d_dashboardLite.json"
+    },
+    {
+      "id": "DarkMatter",
+      "name": "darkmatter",
+      "type": "bokeh",
+      "display_name": "Dark Matter Dashboard",
+      "description": "Interactive SLAC Dark Matter visualization using OpenVisus",
+      "port": 8058,
+      "nginx_path": "/dashboard/darkmatter",
+      "url_template": "/dashboard/darkmatter/?uuid={uuid}&server={server}&name={name}",
+      "enabled": true,
+      "config_file": "../dashboards/darkmatter.json"
     }
   ]
 }

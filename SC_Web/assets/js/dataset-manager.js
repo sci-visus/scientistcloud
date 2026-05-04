@@ -1541,23 +1541,6 @@ class DatasetManager {
     }
 
     /**
-     * Select dataset - public method that can be called directly
-     * This is an alias for handleDatasetSelection that accepts parameters directly
-     */
-    async selectDataset(datasetId, datasetName, datasetUuid, datasetServer) {
-        // Create a fake dataset link object to pass to handleDatasetSelection
-        const fakeLink = {
-            dataset: {
-                datasetId: datasetId,
-                datasetName: datasetName,
-                datasetUuid: datasetUuid,
-                datasetServer: datasetServer
-            }
-        };
-        return this.handleDatasetSelection(fakeLink);
-    }
-
-    /**
      * Handle dataset selection
      */
     async handleDatasetSelection(datasetLink) {
