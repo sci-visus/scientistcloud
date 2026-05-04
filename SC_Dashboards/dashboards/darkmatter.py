@@ -404,9 +404,10 @@ def resolve_openvisus_idx_via_api(
             raise RuntimeError(detail or f"HTTP {response.status_code}")
         data = response.json()
         resolved_idx_path = str(data.get("resolved_idx_path") or "").strip()
+        resolved_idx_http_url = str(data.get("resolved_idx_http_url") or "").strip()
         status = str(data.get("status") or "").lower()
         if data.get("success") and resolved_idx_path:
-            return resolved_idx_path
+            return resolved_idx_path, resolved_idx_http_url
         if status == "pending" and resolved_idx_path:
             time.sleep(1.0)
             continue
@@ -1048,9 +1049,20 @@ class AppState:
                     self.runtime_dataset["csv_path"]
                 )
                 print(f"[DarkMatter][DEBUG] LoadDataset input={idx_for_read}")
-                self.scene_data = ov.LoadDataset(
-                    idx_for_read
-                ).read(field="data")
+                # OpenVisus commonly resolves relative filename_template paths (e.g. ./%04x.bin)
+                # against the process cwd, not the .idx directory — so `bokeh serve` must not
+                # depend on the shell's working directory. Temporarily chdir to the dataset root.
+                _dataset_root = os.path.dirname(os.path.abspath(idx_for_read))
+                _prev_cwd = os.getcwd()
+                try:
+                    os.chdir(_dataset_root)
+                    print(f"[DarkMatter][DEBUG] cwd for OpenVisus load={_dataset_root}")
+                    self.scene_data = ov.LoadDataset(idx_for_read).read(field="data")
+                finally:
+                    try:
+                        os.chdir(_prev_cwd)
+                    except OSError:
+                        pass
                 arr = np.asarray(self.scene_data)
                 arr_sample = arr[0, :16].tolist() if arr.ndim == 2 and arr.shape[0] > 0 else []
                 nonzero_count = int(np.count_nonzero(arr)) if arr.size else 0
@@ -1099,15 +1111,21 @@ class AppState:
                 resolved_local_idx_path = ""
                 if s3_idx_for_resolve:
                     try:
-                        resolved_idx_path = resolve_openvisus_idx_via_api(
+                        resolved_idx_path, resolved_idx_http_url = resolve_openvisus_idx_via_api(
                             s3_uri=s3_idx_for_resolve,
                             dataset_identifier=dataset_identifier,
                             user_email=user_email,
                             auth_override=self.s3_auth_override,
                         )
-                        idx_for_read = resolved_idx_path
                         resolved_local_idx_path = str(resolved_idx_path or "").strip()
-                        print(f"[DarkMatter][DEBUG] using resolved idx from API: {idx_for_read}")
+                        preferred = str(resolved_idx_http_url or "").strip()
+                        # Prefer HTTPS resolved idx URL: OpenVisus may not issue object-proxy
+                        # bin fetches when the dataset is opened from a local filesystem path.
+                        idx_for_read = preferred or resolved_local_idx_path
+                        print(
+                            f"[DarkMatter][DEBUG] using resolved idx from API: {idx_for_read} "
+                            f"(local={resolved_local_idx_path})"
+                        )
                     except Exception as resolved_idx_exc:
                         print(f"[DarkMatter][WARN] openvisus resolved idx unavailable, using direct URL: {resolved_idx_exc}")
 
