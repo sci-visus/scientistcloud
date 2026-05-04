@@ -1175,10 +1175,13 @@ class AppState:
 
                 print(f"[DarkMatter][DEBUG] LoadDataset input={idx_for_read}")
                 self.scene_data = ov.LoadDataset(idx_for_read).read(field="data")
+                # If we used the server-generated resolved idx (local path and/or HTTPS serve URL),
+                # retry with presigned / gateway idx when the first load is all zeros. When the
+                # primary load is `resolved_idx_http_url`, idx_for_read != resolved_local_idx_path,
+                # so we must not require equality — otherwise CMIP6 fallback never runs.
                 if (
                     self.runtime_dataset["mode"] == "s3_explicit"
                     and resolved_local_idx_path
-                    and str(idx_for_read) == resolved_local_idx_path
                 ):
                     try:
                         arr0 = np.asarray(self.scene_data)
@@ -1196,7 +1199,8 @@ class AppState:
                             )
                             if s3_idx_uri:
                                 print(
-                                    "[DarkMatter][WARN] resolved local idx load returned all zeros; "
+                                    "[DarkMatter][WARN] resolved idx load returned all zeros "
+                                    f"(LoadDataset input was {'HTTP' if str(idx_for_read).startswith(('http://', 'https://')) else 'local'}); "
                                     "retrying OpenVisus with presigned HTTPS idx URL (CMIP6-style fallback)"
                                 )
                                 try:
