@@ -8,6 +8,7 @@ from collections import defaultdict
 import csv
 import traceback
 import re
+import zlib
 import requests
 import time
 from dotenv import load_dotenv
@@ -510,6 +511,43 @@ def read_s3_object_range_bytes(s3_uri: str, byte_range: str, auth_override=None)
     return None
 
 
+def _darkmatter_sniff_zip_block_bytes(label: str, body: bytes) -> None:
+    """
+    visus idx often has default_compression(zip); .bin data is not a raw uint16 array.
+    Try zlib/gzip/deflate on typical skips so logs distinguish compressed payloads from bad proxy reads.
+    """
+    if not body or len(body) < 2:
+        return
+    print(
+        f"[DarkMatter][DIAG] {label} compression sniff: first8_hex={body[:8].hex()} "
+        "(if idx uses zip compression, raw uint16 min/max above are not decoded samples)"
+    )
+    for skip in (0, 1, 2, 4, 8, 16, 32, 64, 128, 256):
+        if skip >= len(body):
+            break
+        chunk = body[skip:]
+        for wbits in (
+            zlib.MAX_WBITS,  # zlib header (often starts with 78 xx)
+            -zlib.MAX_WBITS,  # raw deflate
+            zlib.MAX_WBITS | 16,  # gzip wrapper (31)
+            32,  # zlib or gzip header autodetect (Python 3)
+        ):
+            try:
+                dec = zlib.decompress(chunk, wbits)
+                if len(dec) < 2:
+                    continue
+                u2 = np.frombuffer(dec[: len(dec) - (len(dec) % 2)], dtype=np.uint16)
+                print(
+                    f"[DarkMatter][DIAG] {label} zlib decompress ok: skip={skip} wbits={wbits} "
+                    f"out_len={len(dec)} uint16_min={int(u2.min())} uint16_max={int(u2.max())} "
+                    f"uint16_nonzero={int(np.count_nonzero(u2))}"
+                )
+                return
+            except Exception:
+                continue
+    print(f"[DarkMatter][DIAG] {label} zlib sniff: no decompress succeeded (per-block layout may need larger Range)")
+
+
 def diagnose_darkmatter_zero_scene(
     idx_s3_uri: str,
     resolved_local_idx_path: str,
@@ -536,6 +574,8 @@ def diagnose_darkmatter_zero_scene(
     if resolved_local_idx_path and os.path.isfile(resolved_local_idx_path):
         tpl = _read_filename_template_line(resolved_local_idx_path)
 
+    sniff_body: Optional[bytes] = None
+
     if tpl.startswith("http://") or tpl.startswith("https://"):
         bin_url = tpl.replace("%04x", "0000").replace("%04X", "0000")
         try:
@@ -545,6 +585,7 @@ def diagnose_darkmatter_zero_scene(
                 timeout=35,
             )
             body = r.content
+            sniff_body = body
             aligned = body[: len(body) - (len(body) % 2)]
             u16 = np.frombuffer(aligned, dtype=np.uint16) if len(aligned) >= 2 else np.array([], dtype=np.uint16)
             print(
@@ -569,6 +610,8 @@ def diagnose_darkmatter_zero_scene(
                 if raw is None:
                     print("[DarkMatter][DIAG] S3 direct probe skipped (no credentials)")
                 else:
+                    if sniff_body is None:
+                        sniff_body = raw
                     aligned = raw[: len(raw) - (len(raw) % 2)]
                     u16 = (
                         np.frombuffer(aligned, dtype=np.uint16)
@@ -585,6 +628,9 @@ def diagnose_darkmatter_zero_scene(
                     )
             except Exception as exc:
                 print(f"[DarkMatter][DIAG] S3 direct probe failed: {exc}")
+
+    if sniff_body:
+        _darkmatter_sniff_zip_block_bytes("bin0000 first 4KiB", sniff_body)
 
 
 def read_openvisus_field(idx_url_or_path: str, field: str = "data"):
@@ -1318,12 +1364,31 @@ class AppState:
                         )
                         resolved_local_idx_path = str(resolved_idx_path or "").strip()
                         preferred = str(resolved_idx_http_url or "").strip()
-                        # Prefer HTTPS resolved idx URL: OpenVisus may not issue object-proxy
-                        # bin fetches when the dataset is opened from a local filesystem path.
-                        idx_for_read = preferred or resolved_local_idx_path
+                        # Dataset-relative ./%04x.bin loads work locally because OpenVisus opens the idx
+                        # from disk and reads bins beside it. Here, resolved visus.idx still lists full
+                        # HTTPS object-proxy URLs in (filename_template)—bins are remote either way.
+                        # Prefer the local file path when mounted (e.g. /mnt/visus_datasets/converted/.../visus.idx)
+                        # so LoadDataset uses the same filesystem idx semantics as a working local workflow;
+                        # object-proxy Range reads are unchanged (they come from the template lines).
+                        # Set DARKMATTER_PREFER_HTTPS_RESOLVED_IDX=1 to use the HTTPS idx URL first instead.
+                        prefer_https_idx = str(
+                            os.getenv("DARKMATTER_PREFER_HTTPS_RESOLVED_IDX", "0")
+                        ).strip().lower() in ("1", "true", "yes", "on")
+                        local_idx_ok = bool(
+                            resolved_local_idx_path
+                            and os.path.isfile(resolved_local_idx_path)
+                        )
+                        if prefer_https_idx and preferred:
+                            idx_for_read = preferred
+                        elif local_idx_ok:
+                            idx_for_read = resolved_local_idx_path
+                        elif preferred:
+                            idx_for_read = preferred
+                        else:
+                            idx_for_read = resolved_local_idx_path
                         print(
                             f"[DarkMatter][DEBUG] using resolved idx from API: {idx_for_read} "
-                            f"(local={resolved_local_idx_path})"
+                            f"(local={resolved_local_idx_path}, prefer_https_idx={prefer_https_idx})"
                         )
                     except Exception as resolved_idx_exc:
                         print(f"[DarkMatter][WARN] openvisus resolved idx unavailable, using direct URL: {resolved_idx_exc}")
