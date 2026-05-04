@@ -416,6 +416,177 @@ def resolve_openvisus_idx_via_api(
     raise RuntimeError(last_detail)
 
 
+def _read_filename_template_line(local_idx_path: str) -> str:
+    """Return the filename_template line from a resolved visus.idx on disk (may be HTTPS URL)."""
+    try:
+        with open(local_idx_path, "r", encoding="utf-8", errors="replace") as f:
+            lines = [ln.rstrip("\n") for ln in f]
+    except Exception:
+        return ""
+    for i, line in enumerate(lines):
+        if line.strip() == "(filename_template)" and i + 1 < len(lines):
+            return lines[i + 1].strip()
+    return ""
+
+
+def _s3_uri_first_block_bin(idx_s3_uri: str) -> str:
+    """Map dataset idx s3:// URI to sibling 0000.bin under the same folder."""
+    bucket, key = parse_s3_uri(idx_s3_uri)
+    if not bucket or not key or "/" not in key:
+        return ""
+    parent = key.rsplit("/", 1)[0]
+    return f"s3://{bucket}/{parent}/0000.bin"
+
+
+def read_s3_object_range_bytes(s3_uri: str, byte_range: str, auth_override=None) -> Optional[bytes]:
+    """
+    Fetch the first matching byte span via S3 API (same credential discovery as read_s3_text_lines).
+    byte_range example: 'bytes=0-4095'
+    """
+    bucket_name, key = parse_s3_uri(s3_uri)
+    if not bucket_name or not key:
+        return None
+
+    dotenv_candidates = [
+        os.path.join(PROJECT_ROOT, ".env"),
+        os.path.join(PROJECT_ROOT, "SC_Docker", ".env"),
+        os.path.join(PROJECT_ROOT, "SC_Docker", "env.scientistcloud.com"),
+        os.path.join(PROJECT_ROOT, "..", "VisusDataPortalPrivate", "Docker", ".env"),
+    ]
+    load_dotenv()
+    for dotenv_path in dotenv_candidates:
+        if os.path.exists(dotenv_path):
+            load_dotenv(dotenv_path=dotenv_path, override=False)
+
+    endpoint_url = os.getenv("ENDPOINT_URL")
+    aws_access_key_id = os.getenv("AWS_ACCESS_KEY_ID")
+    aws_secret_access_key = os.getenv("AWS_SECRET_ACCESS_KEY")
+    region_name = os.getenv("AWS_S3_REGION", "us-east-1")
+    if auth_override:
+        endpoint_url = auth_override.get("endpoint_url") or endpoint_url
+        aws_access_key_id = auth_override.get("aws_access_key_id") or aws_access_key_id
+        aws_secret_access_key = auth_override.get("aws_secret_access_key") or aws_secret_access_key
+        region_name = auth_override.get("region_name") or region_name
+
+    if not aws_access_key_id or not aws_secret_access_key:
+        return None
+
+    endpoint_candidates = []
+    for candidate in [
+        endpoint_url,
+        os.getenv("S3_ENDPOINT_URL"),
+        os.getenv("S3_PUBLIC_ENDPOINT_URL"),
+        os.getenv("ENDPOINT_URL"),
+        None,
+    ]:
+        if candidate not in endpoint_candidates:
+            endpoint_candidates.append(candidate)
+
+    last_error = None
+    for candidate_endpoint in endpoint_candidates:
+        for addr_style in ["path", "virtual"]:
+            try:
+                config = Config(
+                    signature_version="s3v4",
+                    s3={"addressing_style": addr_style},
+                )
+                s3_client = Session().client(
+                    "s3",
+                    endpoint_url=candidate_endpoint,
+                    region_name=region_name,
+                    config=config,
+                    aws_access_key_id=aws_access_key_id,
+                    aws_secret_access_key=aws_secret_access_key,
+                )
+                resp = s3_client.get_object(
+                    Bucket=bucket_name, Key=key, Range=byte_range
+                )
+                return resp["Body"].read()
+            except Exception as exc:
+                last_error = exc
+                continue
+    if last_error:
+        raise last_error
+    return None
+
+
+def diagnose_darkmatter_zero_scene(
+    idx_s3_uri: str,
+    resolved_local_idx_path: str,
+    auth_override,
+) -> None:
+    """
+    When OpenVisus scene_data is all zeros, compare:
+    (1) HTTP GET of block 0 via the same object-proxy URL as in resolved visus.idx
+    (2) S3 get_object Range on 0000.bin
+
+    If (2) is non-zero but (1) fails or is zero → proxy/OpenVisus HTTP path.
+    If both are zero → object may be empty at head (or wrong key).
+    Set DARKMATTER_DISABLE_ZERO_DIAG=1 to skip.
+    """
+    if str(os.getenv("DARKMATTER_DISABLE_ZERO_DIAG", "") or "").strip().lower() in (
+        "1",
+        "true",
+        "yes",
+        "on",
+    ):
+        return
+
+    tpl = ""
+    if resolved_local_idx_path and os.path.isfile(resolved_local_idx_path):
+        tpl = _read_filename_template_line(resolved_local_idx_path)
+
+    if tpl.startswith("http://") or tpl.startswith("https://"):
+        bin_url = tpl.replace("%04x", "0000").replace("%04X", "0000")
+        try:
+            r = requests.get(
+                bin_url,
+                headers={"Range": "bytes=0-4095"},
+                timeout=35,
+            )
+            body = r.content
+            aligned = body[: len(body) - (len(body) % 2)]
+            u16 = np.frombuffer(aligned, dtype=np.uint16) if len(aligned) >= 2 else np.array([], dtype=np.uint16)
+            print(
+                "[DarkMatter][DIAG] object-proxy bin 0000 (HTTP Range): "
+                f"status={r.status_code} nbytes={len(body)} "
+                f"content_range={r.headers.get('Content-Range')!r} "
+                f"uint16_min={int(u16.min()) if u16.size else 'n/a'} "
+                f"uint16_max={int(u16.max()) if u16.size else 'n/a'} "
+                f"uint16_nonzero={int(np.count_nonzero(u16)) if u16.size else 0} "
+                f"head_hex={body[:32].hex()}"
+            )
+        except Exception as exc:
+            print(f"[DarkMatter][DIAG] object-proxy HTTP probe failed: {exc}")
+
+    if idx_s3_uri.startswith("s3://"):
+        bin_uri = _s3_uri_first_block_bin(idx_s3_uri)
+        if bin_uri:
+            try:
+                raw = read_s3_object_range_bytes(
+                    bin_uri, "bytes=0-4095", auth_override=auth_override
+                )
+                if raw is None:
+                    print("[DarkMatter][DIAG] S3 direct probe skipped (no credentials)")
+                else:
+                    aligned = raw[: len(raw) - (len(raw) % 2)]
+                    u16 = (
+                        np.frombuffer(aligned, dtype=np.uint16)
+                        if len(aligned) >= 2
+                        else np.array([], dtype=np.uint16)
+                    )
+                    print(
+                        "[DarkMatter][DIAG] S3 direct bin 0000 (Range): "
+                        f"nbytes={len(raw)} uri={bin_uri} "
+                        f"uint16_min={int(u16.min()) if u16.size else 'n/a'} "
+                        f"uint16_max={int(u16.max()) if u16.size else 'n/a'} "
+                        f"uint16_nonzero={int(np.count_nonzero(u16)) if u16.size else 0} "
+                        f"head_hex={raw[:32].hex()}"
+                    )
+            except Exception as exc:
+                print(f"[DarkMatter][DIAG] S3 direct probe failed: {exc}")
+
+
 def read_openvisus_field(idx_url_or_path: str, field: str = "data"):
     """
     Read an OpenVisus field using full dataset resolution when the binding supports it
@@ -1332,6 +1503,16 @@ class AppState:
                     f"[DarkMatter][DEBUG] s3 txt_lines={len(txt_lines)} csv_lines={len(csv_lines)} "
                     f"channels={len(self.detector_to_channels)} events={len(self.event_to_metadata)}"
                 )
+                if (
+                    self.runtime_dataset["mode"] == "s3_explicit"
+                    and arr.size
+                    and nonzero_count == 0
+                ):
+                    diagnose_darkmatter_zero_scene(
+                        self.runtime_dataset["idx_uri"],
+                        resolved_local_idx_path,
+                        self.s3_auth_override,
+                    )
                 # All-zero scene_data can be legitimate or indicate bin read issues; do not
                 # raise (that triggered a misleading S3 credential UI). Logs carry the signal.
                 if self.runtime_dataset["mode"] == "s3_explicit" and arr.size and arr_min == 0 and arr_max == 0:
