@@ -416,6 +416,34 @@ def resolve_openvisus_idx_via_api(
     raise RuntimeError(last_detail)
 
 
+def read_openvisus_field(idx_url_or_path: str, field: str = "data"):
+    """
+    Read an OpenVisus field using full dataset resolution when the binding supports it
+    (same pattern as 3DVTK: getMaxResolution + read(max_resolution=...)). Without that,
+    multiresolution idx can yield an all-zero coarse slice from read(field=...) alone.
+    """
+    db = ov.LoadDataset(idx_url_or_path)
+    mr = None
+    try:
+        gmr = getattr(db, "getMaxResolution", None)
+        if callable(gmr):
+            raw = gmr()
+            mr = int(raw) if raw is not None else None
+    except Exception:
+        mr = None
+    if mr is not None:
+        for kwargs in (
+            {"field": field, "max_resolution": mr},
+            {"max_resolution": mr, "field": field},
+        ):
+            try:
+                print(f"[DarkMatter][DEBUG] OpenVisus read using max_resolution={mr}")
+                return db.read(**kwargs)
+            except TypeError:
+                continue
+    return db.read(field=field)
+
+
 def derive_dataset_from_remote_uri(remote_uri: str):
     return parse_remote_dataset_uri(remote_uri)
 
@@ -1057,7 +1085,7 @@ class AppState:
                 try:
                     os.chdir(_dataset_root)
                     print(f"[DarkMatter][DEBUG] cwd for OpenVisus load={_dataset_root}")
-                    self.scene_data = ov.LoadDataset(idx_for_read).read(field="data")
+                    self.scene_data = read_openvisus_field(idx_for_read)
                 finally:
                     try:
                         os.chdir(_prev_cwd)
@@ -1174,7 +1202,7 @@ class AppState:
                     print(f"[DarkMatter][DEBUG] using HTTPS idx URL for OpenVisus: {idx_for_read}")
 
                 print(f"[DarkMatter][DEBUG] LoadDataset input={idx_for_read}")
-                self.scene_data = ov.LoadDataset(idx_for_read).read(field="data")
+                self.scene_data = read_openvisus_field(idx_for_read)
                 # If we used the server-generated resolved idx (local path and/or HTTPS serve URL),
                 # optionally retry with presigned / gateway idx when the first load is all zeros.
                 # Default is OFF so we can observe pure object-proxy behavior first.
@@ -1234,7 +1262,7 @@ class AppState:
                                     print(
                                         f"[DarkMatter][DEBUG] fallback presign endpoint={urlsplit(signed_idx).scheme}://{urlsplit(signed_idx).netloc}"
                                     )
-                                    self.scene_data = ov.LoadDataset(signed_idx).read(field="data")
+                                    self.scene_data = read_openvisus_field(signed_idx)
                                 except Exception as presign_fb_exc:
                                     gateway_base = (
                                         override.get("endpoint_url")
@@ -1262,7 +1290,7 @@ class AppState:
                                     print(
                                         f"[DarkMatter][DEBUG] fallback inline endpoint={urlsplit(http_idx).scheme}://{urlsplit(http_idx).netloc}"
                                     )
-                                    self.scene_data = ov.LoadDataset(http_idx).read(field="data")
+                                    self.scene_data = read_openvisus_field(http_idx)
                     except Exception as fallback_exc:
                         print(
                             f"[DarkMatter][WARN] OpenVisus CMIP6-style fallback failed: {fallback_exc}"
@@ -1338,9 +1366,7 @@ class AppState:
         )
         idx_for_read = os.path.join(FILES_VOLUME, mid_file, f"{mid_file}.idx")
         print(f"[DarkMatter][DEBUG] LoadDataset input={idx_for_read}")
-        self.scene_data = ov.LoadDataset(
-            idx_for_read
-        ).read(field="data")
+        self.scene_data = read_openvisus_field(idx_for_read)
 
     def load_events(self):
         if self.has_scene_data():
