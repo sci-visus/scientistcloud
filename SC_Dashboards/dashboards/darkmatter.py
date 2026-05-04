@@ -1096,6 +1096,7 @@ class AppState:
                     if self.runtime_dataset["idx_uri"].startswith("s3://")
                     else http_object_url_to_s3_uri(self.runtime_dataset["idx_uri"])
                 )
+                resolved_local_idx_path = ""
                 if s3_idx_for_resolve:
                     try:
                         resolved_idx_path = resolve_openvisus_idx_via_api(
@@ -1105,6 +1106,7 @@ class AppState:
                             auth_override=self.s3_auth_override,
                         )
                         idx_for_read = resolved_idx_path
+                        resolved_local_idx_path = str(resolved_idx_path or "").strip()
                         print(f"[DarkMatter][DEBUG] using resolved idx from API: {idx_for_read}")
                     except Exception as resolved_idx_exc:
                         print(f"[DarkMatter][WARN] openvisus resolved idx unavailable, using direct URL: {resolved_idx_exc}")
@@ -1155,6 +1157,77 @@ class AppState:
 
                 print(f"[DarkMatter][DEBUG] LoadDataset input={idx_for_read}")
                 self.scene_data = ov.LoadDataset(idx_for_read).read(field="data")
+                if (
+                    self.runtime_dataset["mode"] == "s3_explicit"
+                    and resolved_local_idx_path
+                    and str(idx_for_read) == resolved_local_idx_path
+                ):
+                    try:
+                        arr0 = np.asarray(self.scene_data)
+                        if (
+                            arr0.size
+                            and int(np.count_nonzero(arr0)) == 0
+                            and float(np.nanmin(arr0)) == 0.0
+                            and float(np.nanmax(arr0)) == 0.0
+                        ):
+                            override = self.s3_auth_override or {}
+                            s3_idx_uri = (
+                                self.runtime_dataset["idx_uri"]
+                                if self.runtime_dataset["idx_uri"].startswith("s3://")
+                                else ""
+                            )
+                            if s3_idx_uri:
+                                print(
+                                    "[DarkMatter][WARN] resolved local idx load returned all zeros; "
+                                    "retrying OpenVisus with presigned HTTPS idx URL (CMIP6-style fallback)"
+                                )
+                                try:
+                                    signed_idx = resolve_s3_url_via_api(
+                                        s3_idx_uri,
+                                        access_key=override.get("aws_access_key_id", ""),
+                                        secret_key=override.get("aws_secret_access_key", ""),
+                                        endpoint_url=override.get("endpoint_url", ""),
+                                        region_name=override.get("region_name", "us-east-1"),
+                                        path_style=True,
+                                        dataset_identifier=dataset_identifier,
+                                        user_email=user_email,
+                                        cache_credentials=bool(
+                                            override.get("aws_access_key_id")
+                                            and override.get("aws_secret_access_key")
+                                        ),
+                                        use_cached_credentials=True,
+                                    )
+                                    print(f"[DarkMatter][DEBUG] LoadDataset fallback (presign) input={signed_idx}")
+                                    self.scene_data = ov.LoadDataset(signed_idx).read(field="data")
+                                except Exception as presign_fb_exc:
+                                    gateway_base = (
+                                        override.get("endpoint_url")
+                                        or get_s3_http_gateway_base()
+                                    )
+                                    http_idx = (
+                                        s3_uri_to_http_url(s3_idx_uri, gateway_base)
+                                        if gateway_base
+                                        else ""
+                                    )
+                                    if not http_idx:
+                                        raise
+                                    http_idx = with_query_params(
+                                        http_idx,
+                                        {
+                                            "access_key": override.get("aws_access_key_id", ""),
+                                            "secret_key": override.get("aws_secret_access_key", ""),
+                                            "region_name": override.get("region_name", "us-east-1"),
+                                        },
+                                    )
+                                    print(
+                                        f"[DarkMatter][DEBUG] presign fallback failed ({presign_fb_exc}); "
+                                        f"LoadDataset fallback (inline gateway) input={http_idx}"
+                                    )
+                                    self.scene_data = ov.LoadDataset(http_idx).read(field="data")
+                    except Exception as fallback_exc:
+                        print(
+                            f"[DarkMatter][WARN] OpenVisus CMIP6-style fallback failed: {fallback_exc}"
+                        )
                 if self.runtime_dataset["mode"] == "http_explicit":
                     try:
                         txt_lines = read_text_lines_from_url(self.runtime_dataset["txt_uri"])
