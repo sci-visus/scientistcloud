@@ -672,3 +672,6 @@ if [ "$DASHBOARDS_ONLY" = false ]; then
         echo "   💡 Use -s, -w, or -sw flags only when Dockerfiles or requirements change"
     fi
 fi
+
+echo ""
+echo "🕒 allServicesStart.sh finished at: $(date '+%Y-%m-%d %H:%M:%S %Z')"

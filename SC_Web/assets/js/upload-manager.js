@@ -1218,10 +1218,27 @@ class UploadManager {
     }
 
     resolveS3Source(formData) {
+        const normalizeDatasetPrefix = (value) => {
+            const raw = (value || '').toString().trim();
+            if (!raw) return '';
+            // If user selected/pasted an IDX file, treat dataset source as its parent prefix
+            // so upload pulls idx + bins + sidecars from that directory.
+            if (raw.toLowerCase().endsWith('.idx')) {
+                const slash = raw.lastIndexOf('/');
+                if (slash === -1) return '';
+                return raw.slice(0, slash + 1);
+            }
+            // For explicit prefixes, ensure folder-like keys remain recursive.
+            if (raw.endsWith('/')) return raw;
+            const leaf = raw.split('/').pop() || '';
+            if (leaf.includes('.')) return raw;
+            return `${raw}/`;
+        };
+
         const mode = (formData.get('s3_source_mode') || 'link').toString();
         if (mode === 'fields') {
             const bucket = (formData.get('bucket') || '').toString().trim();
-            const prefix = (formData.get('prefix') || '').toString().trim();
+            const prefix = normalizeDatasetPrefix(formData.get('prefix'));
             const endpointUrl = (formData.get('endpoint_url') || '').toString().trim();
             return { bucket, prefix, endpointUrl, rawLink: '' };
         }
@@ -1235,7 +1252,7 @@ class UploadManager {
             const noScheme = rawLink.slice(5);
             const slash = noScheme.indexOf('/');
             const bucket = slash === -1 ? noScheme : noScheme.slice(0, slash);
-            const prefix = slash === -1 ? '' : noScheme.slice(slash + 1);
+            const prefix = slash === -1 ? '' : normalizeDatasetPrefix(noScheme.slice(slash + 1));
             if (!bucket) return { error: 'Invalid s3:// link (missing bucket).' };
             return { bucket, prefix, endpointUrl: '', rawLink };
         }
@@ -1247,7 +1264,7 @@ class UploadManager {
                 return { error: 'HTTP S3 link must include bucket and object path.' };
             }
             const bucket = segments[0];
-            const prefix = segments.slice(1).join('/');
+            const prefix = normalizeDatasetPrefix(segments.slice(1).join('/'));
             const endpointUrl = `${u.protocol}//${u.host}`;
             return { bucket, prefix, endpointUrl, rawLink };
         } catch (_e) {
