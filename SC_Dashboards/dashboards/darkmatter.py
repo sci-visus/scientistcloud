@@ -338,6 +338,58 @@ def read_openvisus_field(idx_url_or_path: str, field: str = "data"):
     return db.read(field=field)
 
 
+def resolve_openvisus_resolved_idx_via_api(
+    *,
+    dataset_identifier: Optional[str],
+    user_email: Optional[str],
+    auth_override: Optional[dict] = None,
+    output_filename: str = "visus.idx",
+    region_name: str = "us-east-1",
+):
+    """
+    Ask SCLib fastapi to generate (and cache) a local resolved idx under
+    /mnt/visus_datasets/converted/<dataset_uuid>/ for OpenVisus.
+
+    The API will also convert to ARCO when the source idx has (arco) == 0.
+    """
+    dataset_api_base = (
+        os.getenv("SCLIB_DATASET_URL")
+        or os.getenv("SCLIB_API_URL")
+        or "http://sclib_fastapi:5001"
+    ).rstrip("/")
+    endpoint = f"{dataset_api_base}/api/v1/datasets/s3/openvisus-resolved-idx"
+
+    override = auth_override or {}
+    payload = {
+        "dataset_identifier": dataset_identifier,
+        "s3_uri": None,
+        "user_email": _valid_email_or_none(user_email),
+        "access_key_id": override.get("aws_access_key_id") or None,
+        "secret_access_key": override.get("aws_secret_access_key") or None,
+        "endpoint_url": override.get("endpoint_url") or None,
+        "region_name": override.get("region_name") or region_name,
+        "path_style": True,
+        "cache_credentials": True,
+        "use_cached_credentials": True,
+        "output_filename": output_filename,
+    }
+
+    resp = requests.post(endpoint, json=payload, timeout=60)
+    if resp.status_code >= 400:
+        try:
+            detail = resp.json().get("detail")
+        except Exception:
+            detail = resp.text
+        raise RuntimeError(detail or f"HTTP {resp.status_code}")
+
+    data = resp.json() or {}
+    resolved_idx_path = str(data.get("resolved_idx_path") or "").strip()
+    if not data.get("success") or not resolved_idx_path:
+        raise RuntimeError(data.get("detail") or "Resolved idx endpoint returned no path")
+
+    return resolved_idx_path, data.get("resolved_idx_http_url")
+
+
 def derive_dataset_from_remote_uri(remote_uri: str):
     return parse_remote_dataset_uri(remote_uri)
 
@@ -886,23 +938,69 @@ class AppState:
                             "LoadDataset may fail on raw s3:// idx_uri"
                         )
 
+                # Prefer local converted idx first so users do not wait on dashboard load.
+                # Fallback to resolved-idx API only if local file is missing.
+                resolved_local_idx = ""
+                dataset_identifier = str(uuid or "").strip()
+                if dataset_identifier and not dataset_identifier.startswith(("http://", "https://", "s3://")):
+                    local_candidates = []
+                    if save_dir:
+                        local_candidates.append(os.path.join(save_dir, "visus.idx"))
+                    local_candidates.append(f"/mnt/visus_datasets/converted/{dataset_identifier}/visus.idx")
+                    for candidate in local_candidates:
+                        candidate_path = str(candidate or "").strip()
+                        if candidate_path and os.path.isfile(candidate_path):
+                            resolved_local_idx = candidate_path
+                            idx_for_read = resolved_local_idx
+                            print("[DarkMatter][DEBUG] using pre-converted local idx for OpenVisus load")
+                            break
+
+                    if not resolved_local_idx:
+                        try:
+                            resolved_local_idx, _ = resolve_openvisus_resolved_idx_via_api(
+                                dataset_identifier=dataset_identifier,
+                                user_email=user_email,
+                                auth_override=self.s3_auth_override or {},
+                            )
+                            idx_for_read = resolved_local_idx
+                            print("[DarkMatter][DEBUG] local converted idx not found; using resolved-idx API result")
+                        except Exception as ex:
+                            print(f"[DarkMatter][WARN] resolved idx unavailable; using idx_for_read: {ex}")
+
                 print(f"[DarkMatter][DEBUG] LoadDataset input={idx_for_read}")
                 self.scene_data = read_openvisus_field(idx_for_read)
                 if self.runtime_dataset["mode"] == "http_explicit":
-                    try:
-                        txt_lines = read_text_lines_from_url(self.runtime_dataset["txt_uri"])
-                        csv_lines = read_text_lines_from_url(self.runtime_dataset["csv_uri"])
-                    except Exception as http_sidecar_exc:
-                        print(f"[DarkMatter][WARN] HTTP sidecar fetch failed; attempting S3 fallback: {http_sidecar_exc}")
-                        txt_s3_uri = http_object_url_to_s3_uri(self.runtime_dataset["txt_uri"])
-                        csv_s3_uri = http_object_url_to_s3_uri(self.runtime_dataset["csv_uri"])
-                        if not txt_s3_uri or not csv_s3_uri:
-                            raise RuntimeError(
-                                "DarkMatter requires .txt/.csv metadata files, and HTTP sidecar URLs "
-                                "could not be converted to s3:// URIs for fallback reads."
-                            ) from http_sidecar_exc
-                        txt_lines = read_s3_text_lines(txt_s3_uri, auth_override=self.s3_auth_override)
-                        csv_lines = read_s3_text_lines(csv_s3_uri, auth_override=self.s3_auth_override)
+                    txt_s3_uri = http_object_url_to_s3_uri(self.runtime_dataset["txt_uri"])
+                    csv_s3_uri = http_object_url_to_s3_uri(self.runtime_dataset["csv_uri"])
+                    # Many gateways return 403 on authenticated GET for .txt/.csv while S3 API reads work.
+                    if self.s3_auth_override and txt_s3_uri and csv_s3_uri:
+                        try:
+                            txt_lines = read_s3_text_lines(txt_s3_uri, auth_override=self.s3_auth_override)
+                            csv_lines = read_s3_text_lines(csv_s3_uri, auth_override=self.s3_auth_override)
+                            print("[DarkMatter][DEBUG] sidecar metadata read via S3 API (skipped gateway HTTP)")
+                        except Exception as s3_sidecar_exc:
+                            print(f"[DarkMatter][WARN] S3 sidecar read failed; trying HTTP URLs: {s3_sidecar_exc}")
+                            try:
+                                txt_lines = read_text_lines_from_url(self.runtime_dataset["txt_uri"])
+                                csv_lines = read_text_lines_from_url(self.runtime_dataset["csv_uri"])
+                            except Exception as http_sidecar_exc:
+                                print(f"[DarkMatter][WARN] HTTP sidecar fetch failed: {http_sidecar_exc}")
+                                raise RuntimeError(
+                                    "DarkMatter requires .txt/.csv metadata files; S3 and HTTP reads both failed."
+                                ) from http_sidecar_exc
+                    else:
+                        try:
+                            txt_lines = read_text_lines_from_url(self.runtime_dataset["txt_uri"])
+                            csv_lines = read_text_lines_from_url(self.runtime_dataset["csv_uri"])
+                        except Exception as http_sidecar_exc:
+                            print(f"[DarkMatter][WARN] HTTP sidecar fetch failed; attempting S3 fallback: {http_sidecar_exc}")
+                            if not txt_s3_uri or not csv_s3_uri:
+                                raise RuntimeError(
+                                    "DarkMatter requires .txt/.csv metadata files, and HTTP sidecar URLs "
+                                    "could not be converted to s3:// URIs for fallback reads."
+                                ) from http_sidecar_exc
+                            txt_lines = read_s3_text_lines(txt_s3_uri, auth_override=self.s3_auth_override)
+                            csv_lines = read_s3_text_lines(csv_s3_uri, auth_override=self.s3_auth_override)
                 else:
                     txt_lines = read_s3_text_lines(self.runtime_dataset["txt_uri"], auth_override=self.s3_auth_override)
                     csv_lines = read_s3_text_lines(self.runtime_dataset["csv_uri"], auth_override=self.s3_auth_override)

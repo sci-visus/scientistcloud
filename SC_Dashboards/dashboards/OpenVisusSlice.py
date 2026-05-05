@@ -250,6 +250,7 @@ if not has_args:
     
     # Set up local parameters directly
     uuid = 'local'
+    portal_uuid_param = None  # original ?uuid= from portal (for resolved-idx API)
     server = 'false'
     name = 'Data Explorer LOCAL TEST'
     is_authorized = True
@@ -307,6 +308,8 @@ else:
     
     # Set global variables from initialization
     uuid = params['uuid']
+    # Keep portal dataset UUID for OpenVisus resolved-idx API (do not overwrite when swapping in google_drive_link).
+    portal_uuid_param = str(params.get('uuid') or '').strip()
     server = params['server']
     name = params['name']
     base_dir = params.get('base_dir')
@@ -558,7 +561,7 @@ if __name__.startswith('bokeh'):
         s3_auto_loaded = False
         try:
             resolved_idx_path, response_meta = resolve_openvisus_resolved_idx_via_api(
-                dataset_identifier=uuid if uuid and not is_remote_link(uuid) else None,
+                dataset_identifier=portal_uuid_param if portal_uuid_param and not is_remote_link(portal_uuid_param) else None,
                 s3_uri=dataset_url,
                 user_email=user_email,
                 endpoint_url=os.getenv("S3_ENDPOINT_URL", ""),
@@ -590,7 +593,7 @@ if __name__.startswith('bokeh'):
             def _connect_s3_dataset():
                 try:
                     resolved_idx_path, _response_meta = resolve_openvisus_resolved_idx_via_api(
-                        dataset_identifier=uuid if uuid and not is_remote_link(uuid) else None,
+                        dataset_identifier=portal_uuid_param if portal_uuid_param and not is_remote_link(portal_uuid_param) else None,
                         s3_uri=dataset_url,
                         user_email=user_email,
                         access_key=s3_access.value.strip(),
@@ -612,7 +615,7 @@ if __name__.startswith('bokeh'):
         s3_auth_panel = None
         try:
             resolved_idx_path, _meta = resolve_openvisus_resolved_idx_via_api(
-                dataset_identifier=uuid if uuid and not is_remote_link(uuid) else None,
+                dataset_identifier=portal_uuid_param if portal_uuid_param and not is_remote_link(portal_uuid_param) else None,
                 s3_uri=http_object_url_to_s3_uri(dataset_url),
                 user_email=user_email,
                 endpoint_url=os.getenv("S3_ENDPOINT_URL", ""),
