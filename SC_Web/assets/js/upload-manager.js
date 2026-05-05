@@ -608,6 +608,18 @@ class UploadManager {
                 </div>
 
                 <div class="mb-3">
+                    <div class="form-check mb-2">
+                        <input class="form-check-input" type="checkbox" name="convert" id="s3ConvertIdx" checked>
+                        <label class="form-check-label" for="s3ConvertIdx">
+                            Download dataset from S3 and queue background conversion (IDX → ARCO when applicable)
+                        </label>
+                    </div>
+                    <small class="form-text text-muted d-block">
+                        Uncheck only if you want a remote link only with no files copied to the portal server.
+                    </small>
+                </div>
+
+                <div class="mb-3">
                     <label class="form-label">Sensor: <span class="text-danger">*</span></label>
                     <select class="form-select" name="sensor" required>
                         <option value="">-- Select Sensor --</option>

@@ -654,8 +654,8 @@ if ($defaultShareSeconds > $shareMaxSeconds) {
               <label class="form-check-label" for="s3ConnectPublic">Public Data Access Granted</label>
             </div>
             <div class="form-check mt-1">
-              <input class="form-check-input" type="checkbox" name="convert" id="s3ConnectConvert">
-              <label class="form-check-label" for="s3ConnectConvert">Convert To IDX</label>
+              <input class="form-check-input" type="checkbox" name="convert" id="s3ConnectConvert" checked>
+              <label class="form-check-label" for="s3ConnectConvert">Download from S3 to server &amp; queue conversion (uncheck for link-only registration)</label>
             </div>
             <div class="mt-3 d-flex align-items-center gap-2">
               <button type="submit" class="btn btn-success" id="s3ConnectSubmit">
