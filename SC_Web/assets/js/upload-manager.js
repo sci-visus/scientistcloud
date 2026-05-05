@@ -1221,14 +1221,8 @@ class UploadManager {
         const normalizeDatasetPrefix = (value) => {
             const raw = (value || '').toString().trim();
             if (!raw) return '';
-            // If user selected/pasted an IDX file, treat dataset source as its parent prefix
-            // so upload pulls idx + bins + sidecars from that directory.
-            if (raw.toLowerCase().endsWith('.idx')) {
-                const slash = raw.lastIndexOf('/');
-                if (slash === -1) return '';
-                return raw.slice(0, slash + 1);
-            }
-            // For explicit prefixes, ensure folder-like keys remain recursive.
+            // Keep the exact object key (including `.../something.idx`). The backend derives
+            // the recursive download prefix from the parent folder when the key ends in `.idx`.
             if (raw.endsWith('/')) return raw;
             const leaf = raw.split('/').pop() || '';
             if (leaf.includes('.')) return raw;
