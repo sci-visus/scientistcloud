@@ -2533,20 +2533,25 @@ class UploadManager {
         let html = '';
         renderItems.forEach((upload) => {
             console.log(`  Rendering upload: key=${upload.key}, file=${upload.file_name}, dataset=${upload.dataset_name}, status=${upload.status}, progress=${upload.progress}`);
-            const statusColor = upload.status === 'completed' ? 'success' :
-                              upload.status === 'done' ? 'success' :
-                              upload.status === 'ready' ? 'success' :
-                              upload.status === 'failed' ? 'danger' :
-                              upload.status === 'error' ? 'danger' : 'primary';
+            const rawStatus = String(upload.status || '').toLowerCase();
+            const isUploadComplete = rawStatus === 'completed' || rawStatus === 'done' || rawStatus === 'ready';
+            const conversionInProgress = !!upload.will_convert && isUploadComplete;
+
+            // "completed" previously looked like the whole pipeline was done.
+            // For IDX flows, upload completion is only phase 1; conversion follows.
+            const displayStatus = conversionInProgress ? 'uploaded' : (upload.status || 'queued');
+            const statusColor = conversionInProgress ? 'info' :
+                              rawStatus === 'completed' || rawStatus === 'done' || rawStatus === 'ready' ? 'success' :
+                              rawStatus === 'failed' || rawStatus === 'error' ? 'danger' : 'primary';
             
             // Show file name (preferred) or dataset name as fallback
             const displayName = upload.file_name || upload.dataset_name;
             
             // Add completion message if upload is done
             let completionMessage = '';
-            if (upload.status === 'completed') {
+            if (isUploadComplete) {
                 if (upload.will_convert) {
-                    completionMessage = '<small class="text-success d-block mt-1"><i class="fas fa-info-circle"></i> Upload complete. Conversion in progress...</small>';
+                    completionMessage = '<small class="text-info d-block mt-1"><i class="fas fa-sync-alt"></i> Upload complete. Conversion in progress...</small>';
                 } else {
                     completionMessage = '<small class="text-success d-block mt-1"><i class="fas fa-check-circle"></i> Ready to view</small>';
                 }
@@ -2556,7 +2561,7 @@ class UploadManager {
                 <div class="upload-progress-item mb-2">
                     <div class="d-flex justify-content-between align-items-center">
                         <span class="small" title="${this.escapeHtml(upload.dataset_name)}">${this.escapeHtml(displayName)}</span>
-                        <span class="badge bg-${statusColor}">${upload.status}</span>
+                        <span class="badge bg-${statusColor}">${this.escapeHtml(displayStatus)}</span>
                     </div>
                     ${upload.dataset_uuid ? `<small class="text-muted d-block">Dataset UUID: ${this.escapeHtml(upload.dataset_uuid)}</small>` : ''}
                     ${upload.job_id ? `<small class="text-muted d-block">Job ID: ${this.escapeHtml(upload.job_id)}</small>` : ''}
