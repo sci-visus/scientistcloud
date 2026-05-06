@@ -60,42 +60,20 @@ try {
     $limit = isset($_GET['limit']) ? intval($_GET['limit']) : 50;
     $offset = isset($_GET['offset']) ? intval($_GET['offset']) : 0;
 
-    // Get jobs from MongoDB
-    // Conversion jobs don't have user_email, so we need to find them via datasets
-    $jobs = getJobsFromMongoDB($userEmail, $status, $limit, $offset);
-
-    // Also get conversion jobs from job queue (these don't have user_email field)
-    try {
-        $conversionJobs = getConversionJobs($userEmail, $limit);
-        // Merge conversion jobs with upload jobs
-        $jobs = array_merge($jobs, $conversionJobs);
-    } catch (Exception $e) {
-        error_log("Error getting conversion jobs: " . $e->getMessage());
-    }
-
-    // Also get datasets with "conversion queued" or "converting" status (jobs may not exist yet)
+    // Canonical job view from visstoredatas only (single source of truth).
+    $jobs = [];
     try {
         $queuedDatasets = getQueuedConversionDatasets($userEmail, $limit);
-        // Convert dataset status to job-like format
         foreach ($queuedDatasets as $dataset) {
-            $status = $dataset['status'] ?? 'unknown';
-            // Map status to job status
-            $jobStatus = 'queued';
-            if ($status === 'converting') {
-                $jobStatus = 'converting';
-            } elseif ($status === 'conversion queued') {
-                $jobStatus = 'queued';
-            } elseif ($status === 'conversion failed' || $status === 'error') {
-                $jobStatus = 'failed';
-            }
-            
+            $state = $dataset['canonical_state'] ?? $dataset['status'] ?? 'unknown';
             $jobs[] = [
                 'job_id' => 'dataset_' . $dataset['uuid'],
                 'id' => 'dataset_' . $dataset['uuid'],
                 'job_type' => 'dataset_conversion',
-                'status' => $jobStatus,
+                'status' => $state,
+                'canonical_state' => $state,
                 'dataset_uuid' => $dataset['uuid'],
-                'dataset_name' => $dataset['name'] ?? $dataset['dataset_name'] ?? 'Unnamed Dataset',
+                'dataset_name' => $dataset['name'] ?? 'Unnamed Dataset',
                 'created_at' => isset($dataset['created_at']) ? (is_object($dataset['created_at']) ? $dataset['created_at']->toDateTime()->format('c') : $dataset['created_at']) : null,
                 'updated_at' => isset($dataset['updated_at']) ? (is_object($dataset['updated_at']) ? $dataset['updated_at']->toDateTime()->format('c') : $dataset['updated_at']) : null,
                 'completed_at' => null,
@@ -103,26 +81,19 @@ try {
                 'error' => $dataset['conversion_last_error'] ?? $dataset['error_message'] ?? null
             ];
         }
-    } catch (Exception $e) {
-        error_log("Error getting queued conversion datasets: " . $e->getMessage());
-    }
 
-    // Also get datasets with "uploading" status (status-based upload jobs)
-    try {
         $uploadDatasets = getQueuedUploadDatasets($userEmail, $limit);
-        // Convert dataset status to job-like format
         foreach ($uploadDatasets as $dataset) {
-            $status = $dataset['status'] ?? 'unknown';
-            // Use job_id from dataset if available, otherwise use dataset UUID
+            $state = $dataset['canonical_state'] ?? $dataset['status'] ?? 'uploading';
             $jobId = $dataset['job_id'] ?? ('upload_' . $dataset['uuid']);
-            
             $jobs[] = [
                 'job_id' => $jobId,
                 'id' => $jobId,
-                'job_type' => 'upload',  // Mark as upload job
-                'status' => 'uploading',  // Status is "uploading"
+                'job_type' => 'upload',
+                'status' => $state,
+                'canonical_state' => $state,
                 'dataset_uuid' => $dataset['uuid'],
-                'dataset_name' => $dataset['name'] ?? $dataset['dataset_name'] ?? 'Unnamed Dataset',
+                'dataset_name' => $dataset['name'] ?? 'Unnamed Dataset',
                 'created_at' => isset($dataset['created_at']) ? (is_object($dataset['created_at']) ? $dataset['created_at']->toDateTime()->format('c') : $dataset['created_at']) : null,
                 'updated_at' => isset($dataset['updated_at']) ? (is_object($dataset['updated_at']) ? $dataset['updated_at']->toDateTime()->format('c') : $dataset['updated_at']) : null,
                 'completed_at' => null,
@@ -131,7 +102,7 @@ try {
             ];
         }
     } catch (Exception $e) {
-        error_log("Error getting queued upload datasets: " . $e->getMessage());
+        error_log("Error getting jobs from visstoredatas: " . $e->getMessage());
     }
 
     // Sort by created_at (most recent first)

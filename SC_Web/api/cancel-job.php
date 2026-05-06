@@ -88,7 +88,7 @@ try {
             ]);
         }
     } catch (Exception $e) {
-        // If FastAPI fails, try MongoDB directly
+        // If FastAPI fails, try visstoredatas directly
         error_log("FastAPI cancel endpoint failed, trying MongoDB: " . $e->getMessage());
         
         $result = cancelJobInMongoDB($jobId, $user['email']);
@@ -150,33 +150,30 @@ function cancelJobInMongoDB($jobId, $userEmail) {
         // Use MongoDB PHP extension
         $mongo_client = new MongoDB\Client($mongo_url);
         $db = $mongo_client->selectDatabase($db_name);
-        $jobs_collection = $db->selectCollection('jobs');
         $datasets_collection = $db->selectCollection('visstoredatas');
-        
-        // Find job and verify ownership
-        $job = $jobs_collection->findOne(['job_id' => $jobId]);
-        if (!$job) {
+
+        $dataset = $datasets_collection->findOne([
+            '$or' => [
+                ['job_id' => $jobId],
+                ['files.job_id' => $jobId],
+            ]
+        ]);
+        if (!$dataset) {
             return ['success' => false, 'error' => 'Job not found'];
         }
-        
-        // Verify user owns the dataset
-        if (isset($job['dataset_uuid'])) {
-            $datasets_collection = $db->visstoredatas;
-            $dataset = $datasets_collection->findOne(['uuid' => $job['dataset_uuid']]);
-            if ($dataset && ($dataset['user_id'] !== $userEmail && $dataset['user_id'] !== $userEmail)) {
-                return ['success' => false, 'error' => 'You do not have permission to cancel this job'];
-            }
+        $owner = $dataset['user'] ?? $dataset['user_id'] ?? null;
+        if ($owner !== $userEmail) {
+            return ['success' => false, 'error' => 'You do not have permission to cancel this job'];
         }
-        
-        // Update job status to cancelled
-        $result = $jobs_collection->updateOne(
-            ['job_id' => $jobId],
-            [
-                '$set' => [
-                    'status' => 'cancelled',
-                    'updated_at' => new MongoDB\BSON\UTCDateTime()
-                ]
-            ]
+
+        $result = $datasets_collection->updateOne(
+            ['uuid' => $dataset['uuid']],
+            ['$set' => [
+                'status' => 'cancelled',
+                'canonical_state' => 'cancelled',
+                'updated_at' => new MongoDB\BSON\UTCDateTime(),
+                'error_message' => 'Cancelled by user'
+            ]]
         );
         
         if ($result->getModifiedCount() > 0) {

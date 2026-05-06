@@ -2373,8 +2373,10 @@ class UploadManager {
      * Poll upload progress
      */
     async pollUploadProgress(jobId) {
-        const maxAttempts = 600; // Poll for up to 10 minutes (1 second intervals)
+        const maxAttempts = 2400; // Allows multi-hour jobs with adaptive backoff
         let attempts = 0;
+        let delayMs = 1000;
+        const maxDelayMs = 30000;
 
         const poll = async () => {
             if (attempts >= maxAttempts) {
@@ -2390,7 +2392,8 @@ class UploadManager {
                         console.warn(`⚠️ Job ${jobId} not found (404). It may not have been created yet or job_id is incorrect.`);
                         // Continue polling - job might be created shortly
                         attempts++;
-                        setTimeout(poll, 1000);
+                        delayMs = Math.min(maxDelayMs, Math.floor(delayMs * 1.25));
+                        setTimeout(poll, delayMs);
                         return;
                     }
                     throw new Error(`HTTP ${response.status}: ${response.statusText}`);
@@ -2400,7 +2403,7 @@ class UploadManager {
                 if (data.job_id) {
                     const upload = this.activeUploads.get(jobId);
                     if (upload) {
-                        upload.status = data.status;
+                        upload.status = data.canonical_state || data.status;
                         upload.progress = data.progress_percentage || 0;
                         upload.message = data.message;
                         if (!upload.dataset_uuid && data.dataset_uuid) {
@@ -2410,13 +2413,15 @@ class UploadManager {
                         this.updateProgressWidget();
 
                         // Continue polling only while status is active/in-progress.
-                        const status = String(data.status || '').toLowerCase();
-                        const terminalStatuses = new Set(['completed', 'done', 'ready', 'failed', 'error', 'cancelled', 'canceled']);
+                        const status = String(data.canonical_state || data.status || '').toLowerCase();
+                        const terminalStatuses = new Set(['ready', 'failed', 'error', 'cancelled', 'canceled']);
                         if (!terminalStatuses.has(status)) {
-                            setTimeout(poll, 1000);
+                            // Back off for long-running uploads/conversions to reduce API load.
+                            delayMs = Math.min(maxDelayMs, Math.floor(delayMs * 1.2));
+                            setTimeout(poll, delayMs);
                         } else {
                             // Upload finished
-                            if (status === 'completed' || status === 'done' || status === 'ready') {
+                            if (status === 'ready') {
                                 // Update widget to show completion message
                                 this.updateProgressWidget();
                                 
@@ -2430,6 +2435,10 @@ class UploadManager {
                 }
             } catch (error) {
                 console.error('Error polling upload progress:', error);
+                delayMs = Math.min(maxDelayMs, Math.floor(delayMs * 1.3));
+                setTimeout(poll, delayMs);
+                attempts++;
+                return;
             }
 
             attempts++;
