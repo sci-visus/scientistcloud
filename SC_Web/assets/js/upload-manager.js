@@ -2424,18 +2424,66 @@ class UploadManager {
             return;
         }
 
-        console.log(`🔄 updateProgressWidget called: ${this.activeUploads.size} upload(s) in activeUploads`);
-        
-        if (this.activeUploads.size === 0) {
+        const renderItems = [];
+
+        // 1) Tracked jobs (have job_id and polling status)
+        this.activeUploads.forEach((upload, jobId) => {
+            renderItems.push({
+                key: `job:${jobId}`,
+                dataset_name: upload.dataset_name,
+                file_name: upload.file_name || upload.dataset_name,
+                will_convert: !!upload.will_convert,
+                status: upload.status || 'queued',
+                progress: Number(upload.progress || 0),
+                message: upload.message || ''
+            });
+        });
+
+        // 2) Current modal session files (queued/uploading rows often appear here first)
+        // Include them so closing the modal does not make file list "disappear".
+        if (this.currentUploadSession && Array.isArray(this.currentUploadSession.files)) {
+            const sessionDataset = this.currentUploadSession.datasetName || 'Current upload';
+            const sessionWillConvert = !!this.currentUploadSession.willConvert;
+            this.currentUploadSession.files.forEach((file, idx) => {
+                const jobId = file.jobId || '';
+                // If we already track this job in activeUploads, avoid duplicate row.
+                if (jobId && this.activeUploads.has(jobId)) return;
+
+                const fileStatus = String(file.status || 'queued').toLowerCase();
+                let inferredProgress = 0;
+                if (fileStatus === 'completed' || fileStatus === 'done' || fileStatus === 'ready') {
+                    inferredProgress = 100;
+                } else if (fileStatus === 'uploading' || fileStatus === 'processing' || fileStatus === 'retrying') {
+                    inferredProgress = 50;
+                }
+
+                renderItems.push({
+                    key: `session:${idx}:${file.name || 'file'}`,
+                    dataset_name: sessionDataset,
+                    file_name: file.name || sessionDataset,
+                    will_convert: sessionWillConvert,
+                    status: fileStatus || 'queued',
+                    progress: inferredProgress,
+                    message: file.error || ''
+                });
+            });
+        }
+
+        console.log(`🔄 updateProgressWidget called: ${renderItems.length} render item(s), ${this.activeUploads.size} tracked job(s)`);
+
+        if (renderItems.length === 0) {
             progressList.innerHTML = '<p class="text-muted small">No active uploads</p>';
             return;
         }
 
         let html = '';
-        this.activeUploads.forEach((upload, jobId) => {
-            console.log(`  Rendering upload: jobId=${jobId}, file=${upload.file_name}, dataset=${upload.dataset_name}, status=${upload.status}, progress=${upload.progress}`);
-            const statusColor = upload.status === 'completed' ? 'success' : 
-                              upload.status === 'failed' ? 'danger' : 'primary';
+        renderItems.forEach((upload) => {
+            console.log(`  Rendering upload: key=${upload.key}, file=${upload.file_name}, dataset=${upload.dataset_name}, status=${upload.status}, progress=${upload.progress}`);
+            const statusColor = upload.status === 'completed' ? 'success' :
+                              upload.status === 'done' ? 'success' :
+                              upload.status === 'ready' ? 'success' :
+                              upload.status === 'failed' ? 'danger' :
+                              upload.status === 'error' ? 'danger' : 'primary';
             
             // Show file name (preferred) or dataset name as fallback
             const displayName = upload.file_name || upload.dataset_name;
@@ -2472,7 +2520,7 @@ class UploadManager {
         });
 
         progressList.innerHTML = html;
-        console.log(`✅ Progress widget updated with ${this.activeUploads.size} upload(s)`);
+        console.log(`✅ Progress widget updated with ${renderItems.length} item(s)`);
     }
 
     /**
@@ -2640,6 +2688,8 @@ class UploadManager {
 
         // Update modal display
         this.renderUploadModal();
+        // Keep the lower-right widget in sync immediately, even when modal is closed.
+        this.updateProgressWidget();
     }
 
     /**
