@@ -418,6 +418,7 @@ def derive_dataset_from_uuid(dataset_uuid: str):
         "aws_secret_access_key": str(doc.get("s3_secret_access_key") or "").strip() or None,
         "region_name": str(doc.get("s3_region_name") or "us-east-1").strip() or "us-east-1",
     }
+    converted_idx_path = str(doc.get("converted_idx_path") or "").strip()
 
     # Prefer stored HTTPS object-gateway URL (google_drive_link for S3 uploads) over raw s3://.
     for field in ("google_drive_link", "source_path"):
@@ -430,6 +431,8 @@ def derive_dataset_from_uuid(dataset_uuid: str):
         if ds is not None:
             if auth_override.get("aws_access_key_id") and auth_override.get("aws_secret_access_key"):
                 ds["auth_override"] = auth_override
+            if converted_idx_path:
+                ds["converted_idx_path"] = converted_idx_path
             print(
                 f"[DarkMatter][DEBUG] resolved runtime_dataset from dataset doc field={field}: "
                 f"mode={ds['mode']} mid={ds['mid_file']}"
@@ -944,9 +947,17 @@ class AppState:
                 dataset_identifier = str(uuid or "").strip()
                 if dataset_identifier and not dataset_identifier.startswith(("http://", "https://", "s3://")):
                     local_candidates = []
+                    converted_idx_from_metadata = str((self.runtime_dataset or {}).get("converted_idx_path") or "").strip()
+                    if converted_idx_from_metadata:
+                        local_candidates.append(converted_idx_from_metadata)
                     if save_dir:
                         local_candidates.append(os.path.join(save_dir, "visus.idx"))
                     local_candidates.append(f"/mnt/visus_datasets/converted/{dataset_identifier}/visus.idx")
+                    converted_root = f"/mnt/visus_datasets/converted/{dataset_identifier}"
+                    if os.path.isdir(converted_root):
+                        for name in sorted(os.listdir(converted_root)):
+                            if name.lower().endswith(".idx"):
+                                local_candidates.append(os.path.join(converted_root, name))
                     for candidate in local_candidates:
                         candidate_path = str(candidate or "").strip()
                         if candidate_path and os.path.isfile(candidate_path):
