@@ -420,6 +420,39 @@ def derive_dataset_from_uuid(dataset_uuid: str):
     }
     converted_idx_path = str(doc.get("converted_idx_path") or "").strip()
 
+    # Prefer explicit converted idx recorded by background conversion.
+    if converted_idx_path and os.path.isfile(converted_idx_path):
+        ds = derive_dataset_from_local_dir(converted_idx_path)
+        if ds is not None:
+            ds["converted_idx_path"] = converted_idx_path
+            print(
+                f"[DarkMatter][DEBUG] resolved runtime_dataset from converted_idx_path: "
+                f"mode={ds['mode']} mid={ds['mid_file']}"
+            )
+            return ds
+
+    # Fallback: discover a local converted idx by UUID directory even without metadata pointer.
+    converted_root = f"/mnt/visus_datasets/converted/{dataset_uuid}"
+    if os.path.isdir(converted_root):
+        candidate_paths = []
+        visus_idx = os.path.join(converted_root, "visus.idx")
+        if os.path.isfile(visus_idx):
+            candidate_paths.append(visus_idx)
+        for name in sorted(os.listdir(converted_root)):
+            if name.lower().endswith(".idx"):
+                candidate_paths.append(os.path.join(converted_root, name))
+        # de-dup, keep order
+        candidate_paths = list(dict.fromkeys(candidate_paths))
+        for candidate in candidate_paths:
+            ds = derive_dataset_from_local_dir(candidate)
+            if ds is not None:
+                ds["converted_idx_path"] = candidate
+                print(
+                    f"[DarkMatter][DEBUG] resolved runtime_dataset from converted dir: "
+                    f"mode={ds['mode']} mid={ds['mid_file']}"
+                )
+                return ds
+
     # Prefer stored HTTPS object-gateway URL (google_drive_link for S3 uploads) over raw s3://.
     for field in ("google_drive_link", "source_path"):
         candidate = str(doc.get(field) or "").strip()
