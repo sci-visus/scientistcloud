@@ -1521,10 +1521,14 @@ class UploadManager {
      */
     async handleLocalUpload(form) {
         const formData = new FormData(form);
-        const files = document.getElementById('localFileInput').files;
+        const rawFiles = document.getElementById('localFileInput').files;
+        const files = Array.from(rawFiles || []).filter((file) => {
+            const name = String(file?.name || '').trim();
+            return name && name !== '.DS_Store';
+        });
 
         if (!files || files.length === 0) {
-            alert('Please select at least one file');
+            alert('Please select at least one file (excluding .DS_Store)');
             return;
         }
 
