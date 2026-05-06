@@ -295,12 +295,18 @@ class UploadManager {
                     <label class="form-label">Local Source (file, folder, or zip): <span class="text-danger">*</span></label>
                     <div class="d-flex gap-2 mb-2">
                         <button type="button" class="btn btn-sm btn-outline-secondary" id="toggleFileModeBtn" title="Switch to directory selection">
-                            <i class="fas fa-folder"></i> Select Folder
+                            <i class="fas fa-exchange-alt"></i> Mode: Select Files
                         </button>
-                        <span class="align-self-center small text-muted" id="fileModeIndicator">File selection mode</span>
+                        <span class="align-self-center small text-muted" id="fileModeIndicator">Current mode: files</span>
+                    </div>
+                    <div class="input-group mb-2">
+                        <button type="button" class="btn btn-outline-secondary" id="openFilePickerBtn">
+                            Choose Files
+                        </button>
+                        <input type="text" class="form-control" id="localFileSelectionLabel" value="No file chosen" readonly>
                     </div>
                     <input type="file" class="form-control" id="localFileInput" 
-                           name="files" multiple>
+                           name="files" multiple style="display:none;">
                     <small class="form-text text-muted">
                         Select files or a folder. Use the button above to switch between file and folder selection.
                     </small>
@@ -1285,35 +1291,58 @@ class UploadManager {
         const fileInput = document.getElementById('localFileInput');
         const toggleBtn = document.getElementById('toggleFileModeBtn');
         const modeIndicator = document.getElementById('fileModeIndicator');
+        const openPickerBtn = document.getElementById('openFilePickerBtn');
+        const selectionLabel = document.getElementById('localFileSelectionLabel');
         let isDirectoryMode = false;
+
+        const updatePickerUi = () => {
+            if (isDirectoryMode) {
+                fileInput.setAttribute('webkitdirectory', '');
+                fileInput.setAttribute('directory', '');
+                if (toggleBtn) {
+                    toggleBtn.innerHTML = '<i class="fas fa-exchange-alt"></i> Mode: Select Folder';
+                    toggleBtn.title = 'Switch to file selection mode';
+                }
+                if (modeIndicator) {
+                    modeIndicator.textContent = 'Current mode: folder';
+                }
+                if (openPickerBtn) {
+                    openPickerBtn.textContent = 'Choose Folder';
+                }
+            } else {
+                fileInput.removeAttribute('webkitdirectory');
+                fileInput.removeAttribute('directory');
+                if (toggleBtn) {
+                    toggleBtn.innerHTML = '<i class="fas fa-exchange-alt"></i> Mode: Select Files';
+                    toggleBtn.title = 'Switch to folder selection mode';
+                }
+                if (modeIndicator) {
+                    modeIndicator.textContent = 'Current mode: files';
+                }
+                if (openPickerBtn) {
+                    openPickerBtn.textContent = 'Choose Files';
+                }
+            }
+
+            if (selectionLabel) {
+                selectionLabel.value = 'No file chosen';
+            }
+        };
 
         // Setup toggle button to switch between file and directory modes
         if (toggleBtn && fileInput) {
             toggleBtn.addEventListener('click', () => {
                 isDirectoryMode = !isDirectoryMode;
-                
+
                 // Clear current selection
                 fileInput.value = '';
-                
-                if (isDirectoryMode) {
-                    // Enable directory selection
-                    fileInput.setAttribute('webkitdirectory', '');
-                    fileInput.setAttribute('directory', '');
-                    toggleBtn.innerHTML = '<i class="fas fa-file"></i> Select Files';
-                    toggleBtn.title = 'Switch to file selection';
-                    if (modeIndicator) {
-                        modeIndicator.textContent = 'Directory selection mode';
-                    }
-                } else {
-                    // Enable file selection
-                    fileInput.removeAttribute('webkitdirectory');
-                    fileInput.removeAttribute('directory');
-                    toggleBtn.innerHTML = '<i class="fas fa-folder"></i> Select Folder';
-                    toggleBtn.title = 'Switch to directory selection';
-                    if (modeIndicator) {
-                        modeIndicator.textContent = 'File selection mode';
-                    }
-                }
+                updatePickerUi();
+            });
+        }
+
+        if (openPickerBtn && fileInput) {
+            openPickerBtn.addEventListener('click', () => {
+                fileInput.click();
             });
         }
 
@@ -1322,6 +1351,16 @@ class UploadManager {
             fileInput.addEventListener('change', (e) => {
                 const files = e.target.files;
                 if (files.length > 0) {
+                    if (selectionLabel) {
+                        if (isDirectoryMode) {
+                            const rootName = (files[0].webkitRelativePath || '').split('/')[0] || 'folder';
+                            selectionLabel.value = `${rootName} (${files.length} files)`;
+                        } else if (files.length === 1) {
+                            selectionLabel.value = files[0].name;
+                        } else {
+                            selectionLabel.value = `${files.length} files selected`;
+                        }
+                    }
                     console.log(`Selected ${files.length} file(s) for upload`);
                     // Log file types to help debug
                     const fileTypes = Array.from(files).map(f => ({
@@ -1350,6 +1389,8 @@ class UploadManager {
                 }
             });
         }
+
+        updatePickerUi();
 
         // Setup sensor change listener to check for .nxs files when NEXUS is selected
         const sensorSelect = document.querySelector('select[name="sensor"]');
@@ -1530,6 +1571,9 @@ class UploadManager {
             // Generate a single UUID for all files to group them in the same dataset
             const datasetUuid = this.generateUUID();
             console.log(`Grouping ${files.length} file(s) under dataset UUID: ${datasetUuid}`);
+            if (this.currentUploadSession) {
+                this.currentUploadSession.datasetUuid = datasetUuid;
+            }
             
             const uploadPromises = [];
             
@@ -1759,7 +1803,7 @@ class UploadManager {
                     fileName = files[idx].name;
                 }
                 console.log(`Adding to activeUploads: job_id=${result.job_id}, file=${fileName}, dataset=${uploadData.dataset_name}`);
-                this.trackUpload(result.job_id, uploadData.dataset_name, fileName, uploadData.convert);
+                this.trackUpload(result.job_id, uploadData.dataset_name, fileName, uploadData.convert, datasetUuid);
                 // Note: trackUpload() already calls pollUploadProgress() automatically
             });
             
@@ -2268,7 +2312,8 @@ class UploadManager {
                     jobId,
                     datasetName,
                     fileName,
-                    false // We don't know if conversion was requested from job data
+                    false, // We don't know if conversion was requested from job data
+                    job.dataset_uuid || job.datasetUuid || job.uuid || null
                 );
                 
                 // Update with current status and progress from server
@@ -2296,7 +2341,7 @@ class UploadManager {
      * @param {string} fileName - The individual file name (optional, defaults to dataset name)
      * @param {boolean} willConvert - Whether conversion was requested (optional)
      */
-    trackUpload(jobId, datasetName, fileName = null, willConvert = false) {
+    trackUpload(jobId, datasetName, fileName = null, willConvert = false, datasetUuid = null) {
         // Don't duplicate if already tracking
         if (this.activeUploads.has(jobId)) {
             console.log(`ℹ️ Already tracking upload: ${jobId}`);
@@ -2306,6 +2351,7 @@ class UploadManager {
         this.activeUploads.set(jobId, {
             job_id: jobId,
             dataset_name: datasetName,
+            dataset_uuid: datasetUuid || null,
             file_name: fileName || datasetName, // Use file name if provided, otherwise dataset name
             will_convert: willConvert,
             status: 'queued',
@@ -2353,6 +2399,9 @@ class UploadManager {
                         upload.status = data.status;
                         upload.progress = data.progress_percentage || 0;
                         upload.message = data.message;
+                        if (!upload.dataset_uuid && data.dataset_uuid) {
+                            upload.dataset_uuid = data.dataset_uuid;
+                        }
                         
                         this.updateProgressWidget();
 
@@ -2430,7 +2479,9 @@ class UploadManager {
         this.activeUploads.forEach((upload, jobId) => {
             renderItems.push({
                 key: `job:${jobId}`,
+                job_id: jobId,
                 dataset_name: upload.dataset_name,
+                dataset_uuid: upload.dataset_uuid || null,
                 file_name: upload.file_name || upload.dataset_name,
                 will_convert: !!upload.will_convert,
                 status: upload.status || 'queued',
@@ -2444,6 +2495,7 @@ class UploadManager {
         if (this.currentUploadSession && Array.isArray(this.currentUploadSession.files)) {
             const sessionDataset = this.currentUploadSession.datasetName || 'Current upload';
             const sessionWillConvert = !!this.currentUploadSession.willConvert;
+            const sessionDatasetUuid = this.currentUploadSession.datasetUuid || null;
             this.currentUploadSession.files.forEach((file, idx) => {
                 const jobId = file.jobId || '';
                 // If we already track this job in activeUploads, avoid duplicate row.
@@ -2459,7 +2511,9 @@ class UploadManager {
 
                 renderItems.push({
                     key: `session:${idx}:${file.name || 'file'}`,
+                    job_id: jobId || null,
                     dataset_name: sessionDataset,
+                    dataset_uuid: sessionDatasetUuid,
                     file_name: file.name || sessionDataset,
                     will_convert: sessionWillConvert,
                     status: fileStatus || 'queued',
@@ -2504,6 +2558,8 @@ class UploadManager {
                         <span class="small" title="${this.escapeHtml(upload.dataset_name)}">${this.escapeHtml(displayName)}</span>
                         <span class="badge bg-${statusColor}">${upload.status}</span>
                     </div>
+                    ${upload.dataset_uuid ? `<small class="text-muted d-block">Dataset UUID: ${this.escapeHtml(upload.dataset_uuid)}</small>` : ''}
+                    ${upload.job_id ? `<small class="text-muted d-block">Job ID: ${this.escapeHtml(upload.job_id)}</small>` : ''}
                     <div class="progress mt-1" style="height: 5px;">
                         <div class="progress-bar bg-${statusColor}" 
                              role="progressbar" 
@@ -2936,7 +2992,7 @@ class UploadManager {
                     if (result.job_id && response.status === 200) {
                         // Success!
                         this.updateUploadModalFile(fileIndex, fileName, 'completed', result.job_id, null, attempt);
-                        this.trackUpload(result.job_id, uploadData.dataset_name, fileName, uploadData.convert);
+                        this.trackUpload(result.job_id, uploadData.dataset_name, fileName, uploadData.convert, datasetUuid);
                         return { success: true, fileIndex, result };
                     } else {
                         // Still failed
