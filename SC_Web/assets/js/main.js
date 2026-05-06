@@ -887,29 +887,30 @@ function initializeResizeHandles() {
             // When dragging left (e.clientX < startX), diff is negative, sidebar should shrink
             const diff = e.clientX - startX;
             const newWidth = Math.max(200, Math.min(startWidth + diff, window.innerWidth * 0.8));
-            // Apply width directly to element during resize for immediate feedback
+            // Inline width only during drag; persist on mouseup (avoids localStorage jank / sticky feel)
             sidebar.style.width = newWidth + 'px';
-            saveSidebarWidth(newWidth);
         }
         
         if (isResizingRight) {
             const diff = startX - e.clientX; // Inverted for right sidebar (dragging right = negative diff)
             const newWidth = Math.max(200, Math.min(startWidth + diff, window.innerWidth * 0.8));
-            // Apply width directly to element during resize for immediate feedback
             details.style.width = newWidth + 'px';
-            saveDetailsWidth(newWidth);
         }
     });
     
-    // Mouse up handler
     const stopResizing = () => {
+        if (!isResizingLeft && !isResizingRight) {
+            return;
+        }
         if (isResizingLeft) {
+            saveSidebarWidth(sidebar.offsetWidth);
             isResizingLeft = false;
             resizeHandleLeft.classList.remove('resizing');
             sidebar.classList.remove('resizing'); // Remove class to re-enable transition
             sidebar.style.width = ''; // Clear inline style to use CSS variable
         }
         if (isResizingRight) {
+            saveDetailsWidth(details.offsetWidth);
             isResizingRight = false;
             resizeHandleRight.classList.remove('resizing');
             details.classList.remove('resizing'); // Remove class to re-enable transition
@@ -919,10 +920,9 @@ function initializeResizeHandles() {
         document.body.style.userSelect = '';
     };
     
-    document.addEventListener('mouseup', stopResizing);
-    
-    // Also stop resizing if mouse leaves the window
-    document.addEventListener('mouseleave', stopResizing);
+    // Capture phase so we still see mouseup when released outside the handle / over iframes
+    window.addEventListener('mouseup', stopResizing, true);
+    window.addEventListener('blur', stopResizing);
 }
 
 // Export functions for global access
