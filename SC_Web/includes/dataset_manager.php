@@ -182,7 +182,13 @@ function formatDataset($dataset) {
         'updated_at' => $dataset['date_updated'] ?? $dataset['updated_at'] ?? null,
         'viewer_url' => $dataset['viewer_url'] ?? '',
         'download_url' => $dataset['download_url'] ?? '',
-        'server' => $dataset['server'] ?? $dataset['metadata']['server'] ?? ''
+        'server' => $dataset['server'] ?? $dataset['metadata']['server'] ?? '',
+        'canonical_state' => $dataset['canonical_state'] ?? null,
+        'error_message' => $dataset['error_message'] ?? null,
+        'status_message' => $dataset['status_message'] ?? null,
+        'conversion_last_error' => $dataset['conversion_last_error'] ?? null,
+        'upload_interrupted' => $dataset['upload_interrupted'] ?? false,
+        'interrupted_at' => $dataset['interrupted_at'] ?? null
     ];
     
     return $formatted;

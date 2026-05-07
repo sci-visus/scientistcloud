@@ -1862,6 +1862,25 @@ class DatasetManager {
         
         // Get folder name for display
         const folderName = folders.find(f => f.uuid === dataset.folder_uuid)?.name || (dataset.folder_uuid || 'None');
+        const datasetMessage = dataset.status_message || dataset.error_message || dataset.conversion_last_error || '';
+        const isInterruptedUpload = dataset.upload_interrupted || (
+            (dataset.status || '').toLowerCase() === 'failed' &&
+            datasetMessage.toLowerCase().includes('upload interrupted')
+        );
+        const statusNoticeHtml = datasetMessage ? `
+            <div class="alert alert-${isInterruptedUpload ? 'warning' : 'danger'} py-2 small mb-3">
+                <div class="fw-semibold mb-1">
+                    <i class="fas fa-${isInterruptedUpload ? 'exclamation-triangle' : 'exclamation-circle'}"></i>
+                    ${isInterruptedUpload ? 'Upload interrupted' : 'Processing message'}
+                </div>
+                <div>${this.escapeHtml(datasetMessage)}</div>
+                ${isInterruptedUpload ? `
+                    <div class="mt-2">
+                        Delete this incomplete dataset, then reselect the same local folder/files and upload again.
+                    </div>
+                ` : ''}
+            </div>
+        ` : '';
         
         const html = `
             <div class="dataset-details">
@@ -1915,6 +1934,7 @@ class DatasetManager {
                     
                     <!-- View Mode (Read-only) -->
                     <div id="datasetViewMode" class="dataset-view-mode">
+                        ${statusNoticeHtml}
                         <div class="detail-item mb-2">
                             <span class="detail-label">Name:</span>
                             <span class="detail-value">${this.escapeHtml(dataset.name || '')}</span>
