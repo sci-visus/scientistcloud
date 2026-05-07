@@ -1760,6 +1760,14 @@ class UploadManager {
                             }
                             
                             const result = JSON.parse(cleanedText);
+
+                            if (!response.ok) {
+                                const errorMsg = result.error || result.message || `Upload rejected by server (HTTP ${response.status})`;
+                                this.updateUploadModalFile(fileIndex, fileName, 'failed', null, errorMsg);
+                                const uploadError = new Error(errorMsg);
+                                uploadError.nonRetryable = response.status >= 400 && response.status < 500 && response.status !== 408 && response.status !== 429;
+                                throw uploadError;
+                            }
                             
                             // Check if upload was successful
                             if (result.job_id && response.status === 200) {
@@ -1830,6 +1838,7 @@ class UploadManager {
                         fileIndex: index,
                         file: files[index],
                         error: result.status === 'rejected' ? result.reason?.message : 'Upload failed',
+                        nonRetryable: result.status === 'rejected' ? !!result.reason?.nonRetryable : false,
                         result: result.value
                     });
                 }
@@ -1885,14 +1894,24 @@ class UploadManager {
 
             // Retry failed uploads automatically (in background)
             if (failedFiles.length > 0) {
+                const retryableFailedFiles = failedFiles.filter(file => !file.nonRetryable);
+                if (retryableFailedFiles.length === 0) {
+                    this.localBrowserUploadInProgress = false;
+                    const statusText = document.getElementById('uploadModalStatusText');
+                    if (statusText) {
+                        statusText.textContent = 'Upload was rejected by the server. Check the error above and try again after fixing it.';
+                        document.getElementById('uploadModalStatusMessage').className = 'flex-grow-1 text-danger small';
+                    }
+                } else {
                 // Don't await - let retries happen in background
-                this.retryFailedUploads(failedFiles, uploadData, userEmail, datasetUuid, isDirectoryUpload, baseDirectoryName)
+                this.retryFailedUploads(retryableFailedFiles, uploadData, userEmail, datasetUuid, isDirectoryUpload, baseDirectoryName)
                     .finally(() => {
                         this.localBrowserUploadInProgress = false;
                     })
                     .catch(error => {
                         console.error('Error during retry process:', error);
                     });
+                }
             } else {
                 this.localBrowserUploadInProgress = false;
             }
