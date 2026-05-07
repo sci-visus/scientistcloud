@@ -88,7 +88,11 @@ try {
             'id' => $dataset['id'],
             'name' => $dataset['name'],
             'status' => $dataset['status'],
-            'compression_status' => $dataset['compression_status']
+            'compression_status' => $dataset['compression_status'],
+            'canonical_state' => $dataset['canonical_state'] ?? null,
+            'status_message' => $dataset['status_message'] ?? null,
+            'error_message' => $dataset['error_message'] ?? null,
+            'upload_interrupted' => $dataset['upload_interrupted'] ?? false
         ],
         'dashboard' => [
             'type' => $dashboardType,

@@ -444,6 +444,10 @@ class ViewerManager {
                 // Clear loading flag
                 this.isLoading = false;
                 this.currentLoadingKey = null;
+            } else if (status === 'interrupted') {
+                this.showInterruptedUploadDashboard(datasetId, datasetName);
+                this.isLoading = false;
+                this.currentLoadingKey = null;
             } else if (status === 'unsupported') {
                 // Instead of showing error, automatically find and load a compatible dashboard
                 console.log(`⚠️ Dashboard ${dashboardType} is not supported for this dataset. Automatically selecting compatible dashboard...`);
@@ -805,6 +809,32 @@ class ViewerManager {
                         <button class="btn btn-primary mt-3" onclick="checkProcessingStatus('${datasetId}')">
                             Check Status
                         </button>
+                    </div>
+                </div>
+            </div>
+        `;
+    }
+
+    /**
+     * Show interrupted upload message (no spinner).
+     */
+    showInterruptedUploadDashboard(datasetId, datasetName) {
+        const viewerContainer = document.getElementById('viewerContainer');
+        if (!viewerContainer) return;
+
+        viewerContainer.innerHTML = `
+            <div class="dashboard-container">
+                <div class="dashboard-content error-content">
+                    <div class="text-center" style="max-width: 520px; margin: 0 auto;">
+                        <i class="fas fa-exclamation-triangle fa-3x text-warning mb-3"></i>
+                        <h5>Upload was interrupted</h5>
+                        <p class="text-muted">
+                            "${datasetName}" is incomplete. Some local files did not finish uploading before the page changed,
+                            so ScientistCloud cannot prepare this dataset for visualization.
+                        </p>
+                        <p class="text-muted">
+                            Please delete this incomplete dataset and upload the same folder/files again.
+                        </p>
                     </div>
                 </div>
             </div>

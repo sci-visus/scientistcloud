@@ -447,6 +447,23 @@ function getDashboardStatus($datasetId, $dashboardType) {
         // Check if dataset is explicitly processing
         // Only return 'processing' if status explicitly indicates processing
         $status = strtolower(trim($dataset['status'] ?? ''));
+        $message = strtolower(trim(
+            ($dataset['status_message'] ?? '') . ' ' .
+            ($dataset['error_message'] ?? '') . ' ' .
+            ($dataset['conversion_last_error'] ?? '')
+        ));
+
+        if (!empty($dataset['upload_interrupted']) ||
+            strpos($message, 'upload interrupted') !== false ||
+            strpos($message, 'idx dataset is incomplete') !== false ||
+            strpos($message, 'missing .idx/.bin') !== false) {
+            return 'interrupted';
+        }
+
+        if (strpos($status, 'failed') !== false || strpos($status, 'error') !== false) {
+            return 'error';
+        }
+
         if (in_array($status, ['processing', 'pending', 'converting', 'uploading', 'queued'])) {
             return 'processing';
         }

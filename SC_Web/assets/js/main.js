@@ -766,6 +766,11 @@ function checkProcessingStatus(datasetId) {
         .then(data => {
             if (data.status === 'ready') {
                 location.reload();
+            } else if (data.status === 'interrupted') {
+                alert('Upload was interrupted. Please delete this incomplete dataset and upload the folder/files again.');
+            } else if (data.status === 'error') {
+                const message = data.dataset?.error_message || data.dataset?.status_message || 'Dataset processing failed.';
+                alert(message);
             } else {
                 alert('Dataset is still processing. Please wait.');
             }
