@@ -1726,8 +1726,9 @@ class UploadManager {
                 const fileIndex = i;
                 const fileName = file.name;
                 
-                // Mark file as queued
-                this.updateUploadModalFile(fileIndex, fileName, 'queued');
+                // The browser starts sending bytes as soon as fetch begins. Apache/PHP
+                // logs often appear only after the full request body is received.
+                this.updateUploadModalFile(fileIndex, fileName, 'uploading');
                 
                 uploadPromises.push(
                     fetch(uploadUrl, {
@@ -1736,9 +1737,6 @@ class UploadManager {
                         // Add timeout: 5 minutes for small files, up to 10 minutes for larger files
                         signal: AbortSignal.timeout(Math.min(600000, 300000 + (file.size / 1024 / 1024) * 1000)) // 5-10 min based on file size
                     }).then(async response => {
-                        // Mark file as uploading
-                        this.updateUploadModalFile(fileIndex, fileName, 'uploading');
-                        
                         const text = await response.text();
                         
                         // Log response for debugging
