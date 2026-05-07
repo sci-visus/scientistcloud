@@ -180,7 +180,9 @@ body {
 
 .sidebar.collapsed, .details.collapsed {
   width: 0;
+  flex: 0 0 0 !important;
   min-width: 0;
+  max-width: 0;
   overflow: visible; /* Allow collapse button to be visible outside */
 }
 
