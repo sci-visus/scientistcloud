@@ -805,12 +805,23 @@ function loadSidebarWidths() {
     const savedDetailsWidth = localStorage.getItem('detailsWidth');
     
     if (savedSidebarWidth) {
-        document.documentElement.style.setProperty('--sidebar-width', savedSidebarWidth + 'px');
+        document.documentElement.style.setProperty('--sidebar-width', `${savedSidebarWidth}px`);
     }
     
     if (savedDetailsWidth) {
-        document.documentElement.style.setProperty('--details-width', savedDetailsWidth + 'px');
+        document.documentElement.style.setProperty('--details-width', `${savedDetailsWidth}px`);
     }
+}
+
+function applyPanelWidth(panel, width) {
+    const widthPx = `${width}px`;
+    panel.style.width = widthPx;
+    panel.style.flexBasis = widthPx;
+}
+
+function clearPanelDragWidth(panel) {
+    panel.style.width = '';
+    panel.style.flexBasis = '';
 }
 
 /**
@@ -818,7 +829,7 @@ function loadSidebarWidths() {
  */
 function saveSidebarWidth(width) {
     localStorage.setItem('sidebarWidth', width);
-    document.documentElement.style.setProperty('--sidebar-width', width + 'px');
+    document.documentElement.style.setProperty('--sidebar-width', `${width}px`);
 }
 
 /**
@@ -826,7 +837,7 @@ function saveSidebarWidth(width) {
  */
 function saveDetailsWidth(width) {
     localStorage.setItem('detailsWidth', width);
-    document.documentElement.style.setProperty('--details-width', width + 'px');
+    document.documentElement.style.setProperty('--details-width', `${width}px`);
 }
 
 /**
@@ -888,13 +899,13 @@ function initializeResizeHandles() {
             const diff = e.clientX - startX;
             const newWidth = Math.max(200, Math.min(startWidth + diff, window.innerWidth * 0.8));
             // Inline width only during drag; persist on mouseup (avoids localStorage jank / sticky feel)
-            sidebar.style.width = newWidth + 'px';
+            applyPanelWidth(sidebar, newWidth);
         }
         
         if (isResizingRight) {
             const diff = startX - e.clientX; // Inverted for right sidebar (dragging right = negative diff)
             const newWidth = Math.max(200, Math.min(startWidth + diff, window.innerWidth * 0.8));
-            details.style.width = newWidth + 'px';
+            applyPanelWidth(details, newWidth);
         }
     });
     
@@ -907,14 +918,14 @@ function initializeResizeHandles() {
             isResizingLeft = false;
             resizeHandleLeft.classList.remove('resizing');
             sidebar.classList.remove('resizing'); // Remove class to re-enable transition
-            sidebar.style.width = ''; // Clear inline style to use CSS variable
+            clearPanelDragWidth(sidebar); // Clear inline styles to use CSS variables
         }
         if (isResizingRight) {
             saveDetailsWidth(details.offsetWidth);
             isResizingRight = false;
             resizeHandleRight.classList.remove('resizing');
             details.classList.remove('resizing'); // Remove class to re-enable transition
-            details.style.width = ''; // Clear inline style to use CSS variable
+            clearPanelDragWidth(details); // Clear inline styles to use CSS variables
         }
         document.body.style.cursor = '';
         document.body.style.userSelect = '';
