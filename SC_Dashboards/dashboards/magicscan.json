@@ -18,6 +18,7 @@
     "utils_bokeh_dashboard.py",
     "utils_bokeh_auth.py",
     "utils_bokeh_param.py",
+    "SCDash_dataset_resolver.py",
     "msc_py.cpython-310-x86_64-linux-gnu.so"
   ],
   "environment_variables": {

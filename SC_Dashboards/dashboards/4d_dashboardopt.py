@@ -156,6 +156,8 @@ try:
     create_status_display,
     create_initialization_layout,
     create_header_banner,
+    get_local_dataset_roots,
+    resolve_local_nexus_and_mmap,
     # State synchronization
     sync_all_plot_ui,
     sync_plot_to_range_inputs,
@@ -272,56 +274,34 @@ def find_nxs_files(directory):
     return nxs_files
 
 
+def get_local_data_dirs():
+    """Return local dataset directories in dashboard contract order."""
+    return get_local_dataset_roots(uuid, converted_dir=save_dir, upload_dir=base_dir)
+
+
 def find_nexus_and_mmap_files():
     """Find nexus and memmap files"""
-    global base_dir, save_dir
+    global base_dir, save_dir, uuid
     
     print("=" * 80)
     print("🔍 DEBUG: find_nexus_and_mmap_files() called")
     print(f"🔍 DEBUG: base_dir = {base_dir}")
     print(f"🔍 DEBUG: save_dir = {save_dir}")
+    print(f"🔍 DEBUG: local search order = {get_local_data_dirs()}")
     
-    if base_dir is None:
-        print("❌ DEBUG: base_dir is None, returning None, None")
-        return None, None
-    
-    print(f"🔍 DEBUG: Checking if base_dir exists: {os.path.exists(base_dir)}")
-    if not os.path.exists(base_dir):
-        print(f"❌ DEBUG: base_dir does not exist: {base_dir}")
-    else:
-        print(f"🔍 DEBUG: base_dir is a directory: {os.path.isdir(base_dir)}")
-    
-    nxs_files = find_nxs_files(base_dir)
-    print(f"🔍 DEBUG: Found {len(nxs_files)} .nxs files in base_dir")
-    if nxs_files:
-        print(f"🔍 DEBUG: First few .nxs files: {nxs_files[:3]}")
-    
-    if len(nxs_files) > 0:
-        nexus_filename = nxs_files[0]
-        mmap_filename = nexus_filename.replace('.nxs', '.float32.dat')
-        print(f"✅ DEBUG: Using nexus file from base_dir: {nexus_filename}")
+    nexus_filename, mmap_filename = resolve_local_nexus_and_mmap(
+        uuid,
+        converted_dir=save_dir,
+        upload_dir=base_dir,
+    )
+    if nexus_filename:
+        print(f"✅ DEBUG: Using nexus file from shared resolver: {nexus_filename}")
         print(f"🔍 DEBUG: Corresponding mmap file: {mmap_filename}")
         print(f"🔍 DEBUG: Checking if nexus file exists: {os.path.exists(nexus_filename)}")
         print(f"🔍 DEBUG: Checking if mmap file exists: {os.path.exists(mmap_filename)}")
         return nexus_filename, mmap_filename
-    else:
-        print(f"🔍 DEBUG: No .nxs files in base_dir, checking save_dir: {save_dir}")
-        if save_dir:
-            print(f"🔍 DEBUG: Checking if save_dir exists: {os.path.exists(save_dir)}")
-            nxs_files = find_nxs_files(save_dir)
-            print(f"🔍 DEBUG: Found {len(nxs_files)} .nxs files in save_dir")
-            if nxs_files:
-                print(f"🔍 DEBUG: First few .nxs files: {nxs_files[:3]}")
-            if len(nxs_files) > 0:
-                nexus_filename = nxs_files[0]
-                mmap_filename = nexus_filename.replace('.nxs', '.float32.dat')
-                print(f"✅ DEBUG: Using nexus file from save_dir: {nexus_filename}")
-                print(f"🔍 DEBUG: Corresponding mmap file: {mmap_filename}")
-                print(f"🔍 DEBUG: Checking if nexus file exists: {os.path.exists(nexus_filename)}")
-                print(f"🔍 DEBUG: Checking if mmap file exists: {os.path.exists(mmap_filename)}")
-                return nexus_filename, mmap_filename
     
-    print("❌ DEBUG: No .nxs files found in base_dir or save_dir")
+    print("❌ DEBUG: No .nxs files found in converted or upload directories")
     print("=" * 80)
     return None, None
 

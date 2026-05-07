@@ -19,8 +19,12 @@ from utils_bokeh_param import parse_url_parameters, setup_directory_paths
 
 # Import header banner from SCLib_Dashboards
 try:
-    from SCLib_Dashboards import create_header_banner
+    from SCLib_Dashboards import create_header_banner, resolve_local_idx_file
 except ImportError:
+    try:
+        from SCDash_dataset_resolver import resolve_local_idx_file
+    except ImportError:
+        resolve_local_idx_file = None
     # Fallback if SCLib_Dashboards not available
     def create_header_banner(dataset_name="", dashboard_type="Dashboard"):
         from bokeh.models import Div
@@ -122,6 +126,22 @@ def normalize_remote_dataset_url(url):
     normalized = urlunsplit((parts.scheme, parts.netloc, normalized_path, parts.query, parts.fragment))
     print(f"[OpenVisusSlice][DEBUG] normalized remote URL to visus.idx: {normalized}")
     return normalized
+
+def resolve_local_idx_for_uuid(dataset_uuid, save_dir=None, base_dir=None):
+    """
+    Resolve local dashboard input in contract order:
+    converted/<uuid> first, then upload/<uuid>.
+    """
+    if resolve_local_idx_file is None:
+        return None
+    idx_path = resolve_local_idx_file(
+        dataset_uuid,
+        converted_dir=save_dir,
+        upload_dir=base_dir,
+    )
+    if idx_path:
+        print(f"[OpenVisusSlice][DEBUG] resolved local IDX: {idx_path}")
+    return idx_path
 
 def _valid_email_or_none(value):
     if not value:
@@ -341,7 +361,12 @@ elif server in ['true', '%20true', ' true']:
     # When server=true, the uuid parameter is already the google_drive_link (or remote URL)
     # This is set by the frontend when google_drive_link exists and doesn't contain 'google.com'
     # So we can use it directly as the dataset_url
-    if not DATA_IS_LOCAL and collection is not None:
+    local_idx = None if is_remote_link(uuid) else resolve_local_idx_for_uuid(uuid, save_dir=save_dir, base_dir=base_dir)
+    if local_idx:
+        dataset_url = local_idx
+        server = 'false'
+        print(f"🔍 DEBUG: server=true launch has local dashboard data; using {dataset_url}")
+    elif not DATA_IS_LOCAL and collection is not None:
         # Check if uuid looks like a URL (contains http)
         if uuid and 'http' in uuid:
             # UUID is already the link, use it directly
@@ -427,44 +452,18 @@ else:
 
     if dataset_url is not None:
         dataset_url = dataset_url.strip()
-    elif save_dir:
-        # Construct full path to visus.idx file in the converted directory
-        idx_path = os.path.join(save_dir, 'visus.idx')
-        if os.path.exists(idx_path):
-            dataset_url = idx_path
-            print(f'Using converted IDX file: {dataset_url}')
-        else:
-            # If visus.idx doesn't exist, try using the directory (OpenVisus might find it)
-            dataset_url = save_dir
-            print(f'⚠️ visus.idx not found in {save_dir}, using directory path: {dataset_url}')
-    elif base_dir:
-        # Construct full path to visus.idx file in the converted directory
-        idx_path = os.path.join(base_dir, 'visus.idx')
-        if os.path.exists(idx_path):
-            dataset_url = idx_path
-            print(f'Using converted IDX file: {dataset_url}')
-        else:
-            # If visus.idx doesn't exist, try using the directory (OpenVisus might find it)
-            dataset_url = base_dir
-            print(f'⚠️ visus.idx not found in {save_dir}, using directory path: {dataset_url}')
     else:
-        # Fallback: construct path from UUID
-        converted_path = f"/mnt/visus_datasets/converted/{uuid}"
-        idx_path = os.path.join(converted_path, 'visus.idx')
-        if os.path.exists(idx_path):
-            dataset_url = idx_path
-            print(f'Using constructed converted IDX path: {dataset_url}')
-        elif os.path.exists(converted_path):
-            dataset_url = converted_path
-            print(f'Using constructed converted directory: {dataset_url}')
+        local_idx = resolve_local_idx_for_uuid(uuid, save_dir=save_dir, base_dir=base_dir)
+        if local_idx:
+            dataset_url = local_idx
+            print(f'Using local IDX file: {dataset_url}')
         else:
             # Last resort: try mod_visus URL (may not work in Docker)
             if deploy_server and 'localhost' in deploy_server:
                 dataset_url = f"http://host.docker.internal/mod_visus?dataset={uuid}"
             else:
                 dataset_url = f"{deploy_server}/mod_visus?dataset={uuid}"
-            print(f'⚠️ Converted directory not found, using mod_visus URL: {dataset_url}')
-            print(f'⚠️ Note: Dataset may need to be converted first')
+            print(f'⚠️ No local IDX found in converted/ or upload/ for {uuid}; using mod_visus URL: {dataset_url}')
 
 print(f'Data Explorer: UUID: {uuid}, server: {server}, name: {name}')
 

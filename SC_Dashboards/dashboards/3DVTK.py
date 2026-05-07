@@ -42,8 +42,12 @@ from utils_bokeh_param import parse_url_parameters, setup_directory_paths
 
 # Import header banner from SCLib_Dashboards
 try:
-    from SCLib_Dashboards import create_header_banner
+    from SCLib_Dashboards import create_header_banner, resolve_local_idx_file
 except ImportError:
+    try:
+        from SCDash_dataset_resolver import resolve_local_idx_file
+    except ImportError:
+        resolve_local_idx_file = None
     # Fallback if SCLib_Dashboards not available
     def create_header_banner(dataset_name="", dashboard_type="Dashboard"):
         from bokeh.models import Div
@@ -191,10 +195,21 @@ def resolve_openvisus_resolved_idx_via_api(dataset_identifier, s3_uri=None, user
     raise RuntimeError(last_detail)
 
 
+def _resolve_local_idx_for_uuid(dataset_identifier):
+    if resolve_local_idx_file is None:
+        return None
+    return resolve_local_idx_file(dataset_identifier)
+
+
 def resolve_dataset_path_for_openvisus(dataset_identifier: str, server_flag: str) -> str:
     identifier = str(dataset_identifier or "").strip()
     if DATA_IS_LOCAL:
         return f"{local_base_dir}/visus.idx"
+    if not _is_remote_identifier(identifier):
+        local_idx = _resolve_local_idx_for_uuid(identifier)
+        if local_idx:
+            print(f"[3DVTK][DEBUG] using local IDX: {local_idx}")
+            return local_idx
     if server_flag in ("false", "%20false", " false"):
         return f"/mnt/visus_datasets/converted/{identifier}/visus.idx"
 

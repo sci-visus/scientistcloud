@@ -14,6 +14,13 @@ from vtk.util import numpy_support
 from flask import Flask, redirect, request, jsonify
 import requests
 import time
+try:
+    from SCLib_Dashboards import resolve_local_idx_file
+except ImportError:
+    try:
+        from SCDash_dataset_resolver import resolve_local_idx_file
+    except ImportError:
+        resolve_local_idx_file = None
 
 # Import shared MongoDB connection manager
 from mongo_connection import get_mongo_client, close_all_connections
@@ -91,6 +98,12 @@ def resolve_openvisus_resolved_idx_via_api(dataset_identifier, s3_uri=None, user
         last_detail = str(data.get("detail") or last_detail)
         break
     raise RuntimeError(last_detail)
+
+
+def _resolve_local_idx_for_uuid(dataset_identifier):
+    if resolve_local_idx_file is None:
+        return None
+    return resolve_local_idx_file(dataset_identifier)
 
 def get_cookie(request, cookie_name):
     cookies = request.headers.get('Cookie')
@@ -429,7 +442,12 @@ def initialize_dataset(n_intervals,search):
     
   
 
-    if server and server.strip().lower() in ['true', '%20true', ' true']:
+    local_idx = None if _is_remote_identifier(uuid) else _resolve_local_idx_for_uuid(uuid)
+    if local_idx:
+        uuid = local_idx
+        server = 'false'
+        print(f"[3DPlotly][DEBUG] using local IDX before remote fallback: {uuid}")
+    elif server and server.strip().lower() in ['true', '%20true', ' true']:
         orig_identifier = uuid
         document = collection.find_one({'uuid': uuid})
         if document and 'google_drive_link' in document:
@@ -477,23 +495,11 @@ def initialize_dataset(n_intervals,search):
             dataset_path = f"{deploy_server}/mod_visus?dataset={uuid}"
         dataset_url=dataset_path
         
-        # Try to find the visus.idx file
-        possible_paths = [
-            dataset_path,
-            f"/mnt/visus_datasets/converted/{uuid}/visus.idx",
-            f"/mnt/visus_datasets/upload/{uuid}/visus.idx"
-        ]
-        
-        found_path = None
-        for path in possible_paths:
-            if os.path.exists(path):
-                found_path = path
-                print(f"Found dataset at: {path}")
-                break
-        
+        found_path = uuid if str(uuid).lower().endswith(".idx") and os.path.exists(uuid) else _resolve_local_idx_for_uuid(uuid)
         if found_path:
             dataset_url = found_path
             dataset_path = found_path
+            print(f"Found dataset at: {found_path}")
         else:
             # Try to find using find_visus_idx_file if it exists
             try:

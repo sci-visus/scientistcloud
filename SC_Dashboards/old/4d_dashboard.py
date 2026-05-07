@@ -30,6 +30,13 @@ from utils_bokeh_dashboard import initialize_dashboard
 from utils_bokeh_mongodb import cleanup_mongodb
 from utils_bokeh_auth import authenticate_user
 from utils_bokeh_param import parse_url_parameters, setup_directory_paths
+try:
+    from SCLib_Dashboards import resolve_local_nexus_and_mmap
+except ImportError:
+    try:
+        from SCDash_dataset_resolver import resolve_local_nexus_and_mmap
+    except ImportError:
+        resolve_local_nexus_and_mmap = None
 
 # //////////////////////////////////////////////////////////////////////////
 # Global variables for local testing and loading parameters from the URL 
@@ -4607,29 +4614,22 @@ def find_nxs_files(directory):
     return nxs_files
 
 def find_nexus_and_mmap_files():
-    global base_dir
+    global base_dir, save_dir, uuid
     print(f"🔍 DEBUG: find_nexus_and_mmap_files() called")
     print(f"🔍 DEBUG: base_dir = {base_dir}")
+    print(f"🔍 DEBUG: save_dir = {save_dir}")
     print(f"🔍 DEBUG: base_dir type = {type(base_dir)}")
-    
-    if base_dir is None:
-        print("❌ ERROR: base_dir is None!")
+
+    if resolve_local_nexus_and_mmap is None:
+        print("No shared Nexus resolver found")
         return None, None
-    
-    print(f"🔍 DEBUG: Searching for .nxs files in: {base_dir}")
-    nxs_files = find_nxs_files(base_dir)
-    print(f"🔍 DEBUG: Found {len(nxs_files)} .nxs files")
-    
-    if len(nxs_files) > 0:
-        nexus_filename = nxs_files[0]
-        mmap_filename = nexus_filename.replace('.nxs', '.float32.dat')
-    else:
-        nxs_files = find_nxs_files(save_dir)
-        if len(nxs_files) > 0:
-            nexus_filename = nxs_files[0]
-            mmap_filename = nexus_filename.replace('.nxs', '.float32.dat')
-        else:
-            nxs_files = find_nxs_files(save_dir)
+
+    nexus_filename, mmap_filename = resolve_local_nexus_and_mmap(
+        uuid,
+        converted_dir=save_dir,
+        upload_dir=base_dir,
+    )
+    if not nexus_filename:
         print("No Nexus files found")
         return None, None
    

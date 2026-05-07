@@ -42,8 +42,12 @@ from utils_bokeh_mongodb import cleanup_mongodb
 from utils_bokeh_param import parse_remote_dataset_uri
 from utils_darkmatter import get_aws_bucket, check_if_key_exists, PREFIX
 try:
-    from SCLib_Dashboards import create_header_banner
+    from SCLib_Dashboards import create_header_banner, resolve_local_idx_file
 except Exception:
+    try:
+        from SCDash_dataset_resolver import resolve_local_idx_file
+    except Exception:
+        resolve_local_idx_file = None
     def create_header_banner(dataset_name: str = "", dashboard_type: str = "Dashboard"):
         sc_blue = "#4E477F"
         title_text = (
@@ -431,27 +435,18 @@ def derive_dataset_from_uuid(dataset_uuid: str):
             )
             return ds
 
-    # Fallback: discover a local converted idx by UUID directory even without metadata pointer.
-    converted_root = f"/mnt/visus_datasets/converted/{dataset_uuid}"
-    if os.path.isdir(converted_root):
-        candidate_paths = []
-        visus_idx = os.path.join(converted_root, "visus.idx")
-        if os.path.isfile(visus_idx):
-            candidate_paths.append(visus_idx)
-        for name in sorted(os.listdir(converted_root)):
-            if name.lower().endswith(".idx"):
-                candidate_paths.append(os.path.join(converted_root, name))
-        # de-dup, keep order
-        candidate_paths = list(dict.fromkeys(candidate_paths))
-        for candidate in candidate_paths:
-            ds = derive_dataset_from_local_dir(candidate)
-            if ds is not None:
-                ds["converted_idx_path"] = candidate
-                print(
-                    f"[DarkMatter][DEBUG] resolved runtime_dataset from converted dir: "
-                    f"mode={ds['mode']} mid={ds['mid_file']}"
-                )
-                return ds
+    # Local dashboard contract: converted/<uuid> first, then upload/<uuid>.
+    local_idx = resolve_local_idx_file(dataset_uuid) if resolve_local_idx_file else None
+    if local_idx:
+        ds = derive_dataset_from_local_dir(local_idx)
+        if ds is not None:
+            if "/converted/" in local_idx:
+                ds["converted_idx_path"] = ds["idx_path"]
+            print(
+                f"[DarkMatter][DEBUG] resolved runtime_dataset from local resolver: "
+                f"mode={ds['mode']} mid={ds['mid_file']} idx={ds['idx_path']}"
+            )
+            return ds
 
     # Prefer stored HTTPS object-gateway URL (google_drive_link for S3 uploads) over raw s3://.
     for field in ("google_drive_link", "source_path"):
@@ -491,7 +486,20 @@ def derive_dataset_from_local_dir(dataset_dir: str):
         mid_file = os.path.basename(path.rstrip("/"))
         idx_path = os.path.join(dataset_root, f"{mid_file}.idx")
         if not os.path.exists(idx_path):
-            return None
+            preferred = os.path.join(dataset_root, "visus.idx")
+            if os.path.isfile(preferred):
+                idx_path = preferred
+            else:
+                idx_matches = []
+                for current_root, _dirs, files in os.walk(dataset_root):
+                    for filename in files:
+                        if filename.lower().endswith(".idx"):
+                            idx_matches.append(os.path.join(current_root, filename))
+                if not idx_matches:
+                    return None
+                idx_path = sorted(idx_matches)[0]
+            mid_file = os.path.splitext(os.path.basename(idx_path))[0]
+            dataset_root = os.path.dirname(idx_path)
     else:
         return None
 

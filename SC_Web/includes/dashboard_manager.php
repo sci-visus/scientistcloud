@@ -305,6 +305,9 @@ function generateViewerUrl($dataset, $dashboardType) {
     if (strpos($link_lc, 'google.com') !== false) {
         $is_remote = false;
     }
+    if (datasetHasLocalDashboardFiles($dataset)) {
+        $is_remote = false;
+    }
     $server = $is_remote ? 'true' : 'false';
     
     $datasetName = $dataset['name'] ?? '';
@@ -316,6 +319,36 @@ function generateViewerUrl($dataset, $dashboardType) {
     );
     
     return SC_SERVER_URL . $url;
+}
+
+function datasetHasLocalDashboardFiles($dataset) {
+    $uuid = trim((string)($dataset['uuid'] ?? $dataset['id'] ?? ''));
+    if ($uuid === '') {
+        return false;
+    }
+
+    $roots = [
+        rtrim(getenv('JOB_OUT_DATA_DIR') ?: '/mnt/visus_datasets/converted', '/') . '/' . $uuid,
+        rtrim(getenv('JOB_IN_DATA_DIR') ?: '/mnt/visus_datasets/upload', '/') . '/' . $uuid
+    ];
+
+    foreach ($roots as $root) {
+        if (!is_dir($root)) {
+            continue;
+        }
+        $iterator = new RecursiveIteratorIterator(new RecursiveDirectoryIterator($root, FilesystemIterator::SKIP_DOTS));
+        foreach ($iterator as $fileInfo) {
+            if (!$fileInfo->isFile()) {
+                continue;
+            }
+            $ext = strtolower($fileInfo->getExtension());
+            if (in_array($ext, ['idx', 'nxs', 'h5', 'hdf5'], true)) {
+                return true;
+            }
+        }
+    }
+
+    return false;
 }
 
 /**

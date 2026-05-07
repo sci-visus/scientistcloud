@@ -17,6 +17,7 @@
     "utils_bokeh_dashboard.py",
     "utils_bokeh_auth.py",
     "utils_bokeh_param.py",
+    "SCDash_dataset_resolver.py",
     "process_4dnexus.py"
   ],
   "environment_variables": {

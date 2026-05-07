@@ -30,12 +30,16 @@ import panel as pn
 
 # Import header banner from SCLib_Dashboards
 try:
-    from SCLib_Dashboards import create_header_banner
+    from SCLib_Dashboards import create_header_banner, resolve_local_idx_file
     def create_panel_header_banner(dataset_name="", dashboard_type="Dashboard"):
         """Convert Bokeh header banner to Panel component"""
         bokeh_banner = create_header_banner(dataset_name=dataset_name, dashboard_type=dashboard_type)
         return pn.pane.Bokeh(bokeh_banner)
 except ImportError:
+    try:
+        from SCDash_dataset_resolver import resolve_local_idx_file
+    except ImportError:
+        resolve_local_idx_file = None
     # Fallback if SCLib_Dashboards not available
     def create_panel_header_banner(dataset_name="", dashboard_type="Dashboard"):
         sc_blue = "#4E477F"
@@ -129,6 +133,16 @@ def _http_object_url_to_s3_uri(url):
     if len(path_parts) < 2:
         return ""
     return f"s3://{path_parts[0]}/{'/'.join(path_parts[1:])}"
+
+
+def _resolve_local_idx_for_uuid(dataset_uuid):
+    if resolve_local_idx_file is None:
+        return None
+    return resolve_local_idx_file(
+        dataset_uuid,
+        converted_dir=save_dir,
+        upload_dir=base_dir,
+    )
 
 
 def resolve_openvisus_resolved_idx_via_api(dataset_identifier, s3_uri=None, user_email=None):
@@ -329,7 +343,11 @@ if __name__.startswith('bokeh'):
         pass
     elif server in ['true', '%20true', ' true']:
         original_identifier = uuid
-        if not DATA_IS_LOCAL and collection is not None:
+        local_idx = None if _is_remote_identifier(uuid) else _resolve_local_idx_for_uuid(uuid)
+        if local_idx:
+            dataset_url = local_idx
+            print(f"[magicscan][DEBUG] using local IDX before remote fallback: {dataset_url}")
+        elif not DATA_IS_LOCAL and collection is not None:
             print(f"🔍 DEBUG: Looking for dataset with uuid: {uuid}")
             document = collection.find_one({'uuid': uuid})
             print(f"🔍 DEBUG: Document found: {document is not None}")
@@ -351,19 +369,20 @@ if __name__.startswith('bokeh'):
                     print(f"🔍 DEBUG: Document keys: {list(alt_document.keys())}")
                 else:
                     print(f"🔍 DEBUG: No document found with google_drive_link: {uuid}")
-        dataset_url = uuid
-        s3_uri = dataset_url if str(dataset_url).startswith("s3://") else _http_object_url_to_s3_uri(dataset_url)
-        if s3_uri:
-            try:
-                dataset_url = resolve_openvisus_resolved_idx_via_api(original_identifier, s3_uri=s3_uri, user_email=user_email)
-                print(f"[magicscan][DEBUG] using resolved idx path: {dataset_url}")
-            except Exception as ex:
-                print(f"[magicscan][WARN] resolved idx unavailable, using direct remote URL: {ex}")
+            dataset_url = uuid
+            s3_uri = dataset_url if str(dataset_url).startswith("s3://") else _http_object_url_to_s3_uri(dataset_url)
+            if s3_uri:
+                try:
+                    dataset_url = resolve_openvisus_resolved_idx_via_api(original_identifier, s3_uri=s3_uri, user_email=user_email)
+                    print(f"[magicscan][DEBUG] using resolved idx path: {dataset_url}")
+                except Exception as ex:
+                    print(f"[magicscan][WARN] resolved idx unavailable, using direct remote URL: {ex}")
+        else:
+            dataset_url = uuid
         print(f'🔍 DEBUG: Final dataset_url: {dataset_url}')
         print('loading server data...')
     else:
-        # Use the local converted dataset file
-        dataset_url = f"{save_dir}/visus.idx"
+        dataset_url = _resolve_local_idx_for_uuid(uuid) or f"{save_dir}/visus.idx"
     print(f"dataset_url: {dataset_url}")
     print(f"uuid: {uuid}")
     
