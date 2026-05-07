@@ -60,8 +60,8 @@ $dimensions = trim((string)($input['dimensions'] ?? ''));
 $preferredDashboard = trim((string)($input['preferred_dashboard'] ?? ''));
 $isPublic = !empty($input['is_public']);
 $isDownloadable = trim((string)($input['is_downloadable'] ?? 'only owner'));
-// Default true so Inspect S3 registrations mirror data unless the client explicitly sends convert=false.
-$convert = array_key_exists('convert', $input) ? !empty($input['convert']) : true;
+// Conversion is user-directed. Register/link remote datasets without converting unless requested.
+$convert = array_key_exists('convert', $input) ? !empty($input['convert']) : false;
 
 if ($key === '' || $datasetName === '') {
     http_response_code(400);

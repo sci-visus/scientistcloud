@@ -79,6 +79,7 @@ try {
     // Get dashboard status
     $dashboardType = $_GET['dashboard'] ?? 'OpenVisusSlice';
     $status = getDashboardStatus($datasetId, $dashboardType);
+    $viewability = getDatasetViewability($dataset, $dashboardType);
 
     // Format response
     $response = [
@@ -96,7 +97,10 @@ try {
         ],
         'dashboard' => [
             'type' => $dashboardType,
-            'status' => $status
+            'status' => $status,
+            'required_formats' => $viewability['required_formats'] ?? [],
+            'available_formats' => $viewability['available_formats'] ?? [],
+            'remote_requirements' => $viewability['remote_requirements'] ?? []
         ]
     ];
 

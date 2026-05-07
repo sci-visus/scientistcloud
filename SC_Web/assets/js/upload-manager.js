@@ -16,6 +16,7 @@ class UploadManager {
         this.uploadModal = null; // Upload progress modal
         this.currentUploadSession = null; // Current upload session data
         this.dashboards = []; // Cached dashboard list from API
+        this.localBrowserUploadInProgress = false;
         this.initialize();
     }
     
@@ -145,6 +146,14 @@ class UploadManager {
                 await this.showCreateTeamPage();
             });
         }
+
+        window.addEventListener('beforeunload', (event) => {
+            if (!this.localBrowserUploadInProgress) {
+                return;
+            }
+            event.preventDefault();
+            event.returnValue = 'A local upload is still sending files. Leaving now may interrupt the upload.';
+        });
     }
 
     /**
@@ -390,7 +399,7 @@ class UploadManager {
 
                 <div class="mb-3">
                     <div class="form-check">
-                        <input class="form-check-input" type="checkbox" name="convert" id="localConvert" checked>
+                        <input class="form-check-input" type="checkbox" name="convert" id="localConvert">
                         <label class="form-check-label" for="localConvert">
                             Convert To IDX
                         </label>
@@ -514,7 +523,7 @@ class UploadManager {
 
                 <div class="mb-3">
                     <div class="form-check">
-                        <input class="form-check-input" type="checkbox" name="convert" id="googleConvert" checked>
+                        <input class="form-check-input" type="checkbox" name="convert" id="googleConvert">
                         <label class="form-check-label" for="googleConvert">
                             Convert To IDX
                         </label>
@@ -615,13 +624,13 @@ class UploadManager {
 
                 <div class="mb-3">
                     <div class="form-check mb-2">
-                        <input class="form-check-input" type="checkbox" name="convert" id="s3ConvertIdx" checked>
+                        <input class="form-check-input" type="checkbox" name="convert" id="s3ConvertIdx">
                         <label class="form-check-label" for="s3ConvertIdx">
                             Download dataset from S3 and queue background conversion (IDX → ARCO when applicable)
                         </label>
                     </div>
                     <small class="form-text text-muted d-block">
-                        Uncheck only if you want a remote link only with no files copied to the portal server.
+                        Leave unchecked to register a remote link only. Check when you want the portal to materialize and convert a local copy.
                     </small>
                 </div>
 
@@ -1556,13 +1565,28 @@ class UploadManager {
             preferred_dashboard: formData.get('preferred_dashboard') || 'OpenVisusSlice'
         };
 
+        const selectedExtensions = files.map(f => (f.name.split('.').pop() || '').toLowerCase());
+        const selectedExtensionSet = new Set(selectedExtensions);
+        const sensorUpper = String(uploadData.sensor || '').trim().toUpperCase();
+
+        if (sensorUpper === 'IDX' && (selectedExtensionSet.has('tif') || selectedExtensionSet.has('tiff')) && !selectedExtensionSet.has('idx')) {
+            const proceed = confirm(
+                'The selected files look like TIFF data, but Sensor is set to IDX.\n\n' +
+                'You can still upload raw data to ScientistCloud. Choose Sensor = TIFF if you want the selection labeled as TIFF, or continue if IDX is intentional.'
+            );
+            if (!proceed) {
+                return;
+            }
+        }
+
         // Upload files - handle multiple files by uploading them sequentially
         // For directories, the browser will provide all files
         try {
             const submitBtn = form.querySelector('button[type="submit"]');
             const originalText = submitBtn.innerHTML;
             submitBtn.disabled = true;
-            submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Uploading...';
+            this.localBrowserUploadInProgress = true;
+            submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Uploading - keep this page open';
 
             // Show upload progress modal
             this.showUploadModal(uploadData.dataset_name, files.length);
@@ -1592,11 +1616,29 @@ class UploadManager {
                 baseDirectoryName = firstPath.split('/')[0];
                 console.log(`Directory upload detected. Base directory: ${baseDirectoryName}`);
             }
+
+            const expectedFiles = files.map((file) => {
+                let relativePath = file.name;
+                if (isDirectoryUpload && file.webkitRelativePath) {
+                    const fullPath = file.webkitRelativePath;
+                    relativePath = fullPath.startsWith(baseDirectoryName + '/')
+                        ? fullPath.substring(baseDirectoryName.length + 1)
+                        : fullPath;
+                }
+                return {
+                    relative_path: relativePath.replace(/^\/+/, ''),
+                    name: file.name,
+                    size: file.size || 0,
+                    last_modified: file.lastModified || null,
+                    type: file.type || ''
+                };
+            });
+            const expectedFilesJson = JSON.stringify(expectedFiles);
+            uploadData.expected_files_json = expectedFilesJson;
             
             // Log all files being processed
             console.log(`Processing ${files.length} file(s) for upload`);
-            const fileExtensions = Array.from(files).map(f => f.name.split('.').pop().toLowerCase());
-            console.log('File extensions:', [...new Set(fileExtensions)]);
+            console.log('File extensions:', [...selectedExtensionSet]);
             
             // Check for .nxs files only if sensor contains NEXUS
             const isNexusSensor = uploadData.sensor && uploadData.sensor.toUpperCase().includes('NEXUS');
@@ -1644,6 +1686,7 @@ class UploadManager {
                 uploadFormData.append('sensor', uploadData.sensor);
                 uploadFormData.append('convert', uploadData.convert);
                 uploadFormData.append('is_public', uploadData.is_public);
+                uploadFormData.append('expected_files', expectedFilesJson);
                 
                 // Folder is ONLY for UI organization (metadata from dropdown), NOT for file system structure
                 // For directory uploads, directory structure is preserved via the relative path mechanism
@@ -1831,16 +1874,12 @@ class UploadManager {
                 }
             }
 
-            // Reset button immediately after queueing - uploads continue in background
-            submitBtn.disabled = false;
-            submitBtn.innerHTML = originalText;
-
             // Update status message - uploads are queued
             if (this.currentUploadSession) {
                 const statusText = document.getElementById('uploadModalStatusText');
                 if (statusText) {
                     if (successful.length > 0) {
-                        statusText.textContent = `✅ ${successful.length} file(s) queued successfully. Uploads continue in background - you can safely navigate away or close this window.`;
+                        statusText.textContent = `✅ ${successful.length} file(s) reached the server. You can navigate away after all selected files are listed as completed.`;
                         document.getElementById('uploadModalStatusMessage').className = 'flex-grow-1 text-success small';
                     }
                 }
@@ -1850,10 +1889,19 @@ class UploadManager {
             if (failedFiles.length > 0) {
                 // Don't await - let retries happen in background
                 this.retryFailedUploads(failedFiles, uploadData, userEmail, datasetUuid, isDirectoryUpload, baseDirectoryName)
+                    .finally(() => {
+                        this.localBrowserUploadInProgress = false;
+                    })
                     .catch(error => {
                         console.error('Error during retry process:', error);
                     });
+            } else {
+                this.localBrowserUploadInProgress = false;
             }
+
+            // Reset button after browser-to-server upload requests have settled.
+            submitBtn.disabled = false;
+            submitBtn.innerHTML = originalText;
 
             // Don't close upload interface automatically - let user see the modal
             // The modal will show all results and allow user to close when ready
@@ -1863,6 +1911,7 @@ class UploadManager {
             }
         } catch (error) {
             console.error('Error uploading file:', error);
+            this.localBrowserUploadInProgress = false;
             alert('Error uploading file: ' + error.message);
             
             const submitBtn = form.querySelector('button[type="submit"]');
@@ -2656,7 +2705,7 @@ class UploadManager {
                     </div>
                     <div class="modal-footer">
                         <div class="flex-grow-1 text-muted small" id="uploadModalStatusMessage">
-                            <i class="fas fa-info-circle"></i> <span id="uploadModalStatusText">Uploads are queued and will continue in the background. You can safely close this window.</span>
+                            <i class="fas fa-info-circle"></i> <span id="uploadModalStatusText">Keep this browser tab open until all selected files finish sending to the server.</span>
                         </div>
                         <button type="button" class="btn btn-secondary" data-bs-dismiss="modal" id="uploadModalCloseBtn">
                             Close
@@ -2701,10 +2750,10 @@ class UploadManager {
         document.getElementById('uploadModalOverallStatus').textContent = 'Initializing...';
         document.getElementById('uploadModalOverallStatus').className = 'badge bg-info';
         document.getElementById('uploadModalFileList').innerHTML = '<p class="text-muted text-center">Preparing uploads...</p>';
-        document.getElementById('uploadModalCloseBtn').disabled = false; // Allow closing - uploads continue in background
+        document.getElementById('uploadModalCloseBtn').disabled = false; // Closing the dialog is ok; leaving the page is not.
         document.getElementById('uploadModalViewJobsBtn').style.display = 'none';
-        document.getElementById('uploadModalStatusText').textContent = 'Preparing uploads... You can safely close this window at any time - uploads will continue in the background.';
-        document.getElementById('uploadModalStatusMessage').className = 'flex-grow-1 text-info small';
+        document.getElementById('uploadModalStatusText').textContent = 'Preparing uploads... Keep this page open until every selected file is completed.';
+        document.getElementById('uploadModalStatusMessage').className = 'flex-grow-1 text-warning small';
 
         // Show modal
         this.uploadModal.show();
@@ -2894,17 +2943,17 @@ class UploadManager {
             // Uploads still in progress
             const retrying = session.files.filter(f => f.status === 'retrying').length;
             if (retrying > 0) {
-                statusText.textContent = `🔄 Retrying ${retrying} file(s)... Uploads continue in background. Safe to close.`;
+                statusText.textContent = `🔄 Retrying ${retrying} file(s)... Keep this page open until retries finish.`;
                 statusMessage.className = 'flex-grow-1 text-warning small';
             } else {
-                statusText.textContent = `📤 ${inProgress} upload(s) in progress. Uploads continue in background. Safe to close.`;
-                statusMessage.className = 'flex-grow-1 text-info small';
+                statusText.textContent = `📤 ${inProgress} file(s) still sending. Do not navigate away or reload this page yet.`;
+                statusMessage.className = 'flex-grow-1 text-warning small';
             }
-            document.getElementById('uploadModalCloseBtn').disabled = false; // Always allow closing
+            document.getElementById('uploadModalCloseBtn').disabled = false; // Dialog can close; browser tab must stay open.
         } else {
             // Initial state or all queued
-            statusText.textContent = '✅ Uploads are queued and will continue in the background. You can safely close this window.';
-            statusMessage.className = 'flex-grow-1 text-success small';
+            statusText.textContent = 'Preparing upload requests. Keep this page open until files are marked completed.';
+            statusMessage.className = 'flex-grow-1 text-warning small';
             document.getElementById('uploadModalCloseBtn').disabled = false;
         }
     }
@@ -2956,6 +3005,9 @@ class UploadManager {
                     uploadFormData.append('sensor', uploadData.sensor);
                     uploadFormData.append('convert', uploadData.convert);
                     uploadFormData.append('is_public', uploadData.is_public);
+                    if (uploadData.expected_files_json) {
+                        uploadFormData.append('expected_files', uploadData.expected_files_json);
+                    }
                     
                     if (uploadData.folder) {
                         uploadFormData.append('folder', uploadData.folder);

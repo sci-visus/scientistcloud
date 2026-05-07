@@ -434,6 +434,112 @@ function isDatasetSupported($dataset, $config) {
     return false;
 }
 
+function getViewableFormatConfig() {
+    $default = [
+        'viewable_formats' => ['IDX', '4D_NEXUS'],
+        'dashboard_formats' => [
+            '4d_dashboardLite' => ['4D_NEXUS'],
+            '4D_Dashboard' => ['4D_NEXUS'],
+            '4d_dashboard' => ['4D_NEXUS'],
+            'default' => ['IDX']
+        ],
+        'remote_viewable_requirements' => [
+            'IDX' => ['requires_arco' => true],
+            '4D_NEXUS' => ['remote_supported' => false]
+        ]
+    ];
+
+    $paths = [
+        getenv('SC_VIEWABLE_FORMATS_CONFIG') ?: null,
+        __DIR__ . '/../../SC_Dashboards/config/viewable-formats.json',
+        '/var/www/SC_Dashboards/config/viewable-formats.json'
+    ];
+    foreach ($paths as $path) {
+        if ($path && file_exists($path)) {
+            $decoded = json_decode(file_get_contents($path), true);
+            if (is_array($decoded)) {
+                return array_replace_recursive($default, $decoded);
+            }
+        }
+    }
+    return $default;
+}
+
+function getDashboardRequiredFormats($dashboardType) {
+    $config = getViewableFormatConfig();
+    $dashboardFormats = $config['dashboard_formats'] ?? [];
+    $aliases = [
+        '4D_Dashboard' => '4d_dashboardLite',
+        '4d_dashboard' => '4d_dashboardLite',
+        '4D_dashboard' => '4d_dashboardLite'
+    ];
+    $keys = array_filter([$dashboardType, $aliases[$dashboardType] ?? null, strtolower((string)$dashboardType), 'default']);
+    foreach ($keys as $key) {
+        if (isset($dashboardFormats[$key]) && is_array($dashboardFormats[$key])) {
+            return array_values(array_unique(array_map('strtoupper', $dashboardFormats[$key])));
+        }
+    }
+    return array_values(array_unique(array_map('strtoupper', $config['viewable_formats'] ?? ['IDX', '4D_NEXUS'])));
+}
+
+function getDatasetAvailableFormats($dataset) {
+    $formats = [];
+    $sensor = strtoupper(trim((string)($dataset['sensor'] ?? '')));
+    $link = strtolower(trim((string)($dataset['download_url'] ?? $dataset['viewer_url'] ?? $dataset['google_drive_link'] ?? '')));
+    $isRemote = preg_match('/^(s3|http|https|pelican):\/\//', $link) === 1;
+    if ($isRemote && $sensor === 'IDX') {
+        $formats[] = 'IDX';
+    }
+    if ($isRemote && ($sensor === '4D_NEXUS' || strpos($sensor, 'NEXUS') !== false)) {
+        $formats[] = '4D_NEXUS';
+    }
+
+    $uuid = trim((string)($dataset['uuid'] ?? $dataset['id'] ?? ''));
+    if ($uuid !== '') {
+        $roots = [
+            rtrim(getenv('JOB_OUT_DATA_DIR') ?: '/mnt/visus_datasets/converted', '/') . '/' . $uuid,
+            rtrim(getenv('JOB_IN_DATA_DIR') ?: '/mnt/visus_datasets/upload', '/') . '/' . $uuid
+        ];
+        foreach ($roots as $root) {
+            if (!is_dir($root)) {
+                continue;
+            }
+            $iterator = new RecursiveIteratorIterator(new RecursiveDirectoryIterator($root, FilesystemIterator::SKIP_DOTS));
+            foreach ($iterator as $fileInfo) {
+                if (!$fileInfo->isFile()) {
+                    continue;
+                }
+                $extension = strtolower($fileInfo->getExtension());
+                if ($extension === 'idx') {
+                    $formats[] = 'IDX';
+                }
+                if (in_array($extension, ['nxs', 'h5', 'hdf5'], true)) {
+                    $formats[] = '4D_NEXUS';
+                }
+            }
+        }
+    }
+    return array_values(array_unique($formats));
+}
+
+function getDatasetViewability($dataset, $dashboardType) {
+    $required = getDashboardRequiredFormats($dashboardType);
+    $available = getDatasetAvailableFormats($dataset);
+    $hasRequired = false;
+    foreach ($required as $format) {
+        if (in_array(strtoupper($format), $available, true)) {
+            $hasRequired = true;
+            break;
+        }
+    }
+    return [
+        'viewable' => $hasRequired,
+        'required_formats' => $required,
+        'available_formats' => $available,
+        'remote_requirements' => getViewableFormatConfig()['remote_viewable_requirements'] ?? []
+    ];
+}
+
 /**
  * Get dashboard status
  */
@@ -480,9 +586,8 @@ function getDashboardStatus($datasetId, $dashboardType) {
         // If it exists, allow it to load and let the dashboard handle format checking
         $config = getDashboardConfig($dashboardType);
         if ($config) {
-            // Dashboard config exists - allow it to load
-            // The dashboard itself can handle format/dimension checking
-            return 'ready';
+            $viewability = getDatasetViewability($dataset, $dashboardType);
+            return $viewability['viewable'] ? 'ready' : 'convert_required';
         }
         
         // If config doesn't exist, check if dashboard is available for this dataset

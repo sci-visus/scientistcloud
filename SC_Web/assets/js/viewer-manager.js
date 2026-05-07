@@ -448,6 +448,10 @@ class ViewerManager {
                 this.showInterruptedUploadDashboard(datasetId, datasetName);
                 this.isLoading = false;
                 this.currentLoadingKey = null;
+            } else if (status === 'convert_required') {
+                this.showConvertRequiredDashboard(datasetId, datasetName, datasetUuid, dashboardType, this.lastDatasetStatusDetails?.dashboard || {});
+                this.isLoading = false;
+                this.currentLoadingKey = null;
             } else if (status === 'unsupported') {
                 // Instead of showing error, automatically find and load a compatible dashboard
                 console.log(`⚠️ Dashboard ${dashboardType} is not supported for this dataset. Automatically selecting compatible dashboard...`);
@@ -558,11 +562,91 @@ class ViewerManager {
             }
             
             const data = await response.json();
+            this.lastDatasetStatusDetails = data;
             return data.status || 'unknown';
         } catch (error) {
             console.error('Error checking dataset status:', error);
             return 'error';
         }
+    }
+
+    showConvertRequiredDashboard(datasetId, datasetName, datasetUuid, dashboardType, dashboardInfo = {}) {
+        const viewerContainer = document.getElementById('viewerContainer');
+        if (!viewerContainer) return;
+
+        const required = (dashboardInfo.required_formats || ['IDX']).join(' or ');
+        const available = (dashboardInfo.available_formats || []);
+        viewerContainer.innerHTML = `
+            <div class="d-flex align-items-center justify-content-center h-100">
+                <div class="text-center p-4" style="max-width: 560px;">
+                    <i class="fas fa-exchange-alt text-primary mb-3" style="font-size: 3rem;"></i>
+                    <h5>Conversion Required</h5>
+                    <p class="text-muted mb-2">
+                        This dashboard requires ${this.escapeHtml(required)} before it can display
+                        ${this.escapeHtml(datasetName)}.
+                    </p>
+                    <p class="small text-muted mb-4">
+                        Available viewable formats: ${available.length ? this.escapeHtml(available.join(', ')) : 'none detected'}.
+                    </p>
+                    <button type="button" class="btn btn-primary" id="convertDatasetForDashboardBtn">
+                        <i class="fas fa-cogs"></i> Convert Dataset
+                    </button>
+                    <button type="button" class="btn btn-outline-secondary ms-2" onclick="window.datasetManager?.showDatasetDetails?.('${datasetId}')">
+                        Cancel
+                    </button>
+                </div>
+            </div>
+        `;
+
+        const convertBtn = document.getElementById('convertDatasetForDashboardBtn');
+        if (convertBtn) {
+            convertBtn.addEventListener('click', () => this.requestDatasetConversion(datasetUuid || datasetId, convertBtn));
+        }
+    }
+
+    async requestDatasetConversion(datasetUuid, button) {
+        if (!datasetUuid) {
+            alert('Dataset UUID is missing; cannot start conversion.');
+            return;
+        }
+        const originalHtml = button?.innerHTML;
+        if (button) {
+            button.disabled = true;
+            button.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Queueing...';
+        }
+        try {
+            const getApiBasePath = () => {
+                const isLocal = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+                return isLocal ? '/api' : '/portal/api';
+            };
+            const response = await fetch(`${getApiBasePath()}/retry-conversion.php`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                credentials: 'include',
+                body: JSON.stringify({ dataset_uuid: datasetUuid })
+            });
+            const result = await response.json().catch(() => ({}));
+            if (!response.ok || result.success === false) {
+                throw new Error(result.message || result.error || 'Failed to queue conversion');
+            }
+            this.showProcessingDashboard(datasetUuid, 'Dataset');
+            if (window.datasetManager) {
+                window.datasetManager.loadDatasets();
+            }
+        } catch (error) {
+            console.error('Failed to queue conversion:', error);
+            alert('Failed to queue conversion: ' + error.message);
+            if (button) {
+                button.disabled = false;
+                button.innerHTML = originalHtml;
+            }
+        }
+    }
+
+    escapeHtml(value) {
+        const div = document.createElement('div');
+        div.textContent = value == null ? '' : String(value);
+        return div.innerHTML;
     }
 
     /**

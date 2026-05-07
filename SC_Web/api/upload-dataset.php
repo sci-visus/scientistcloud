@@ -109,7 +109,7 @@ try {
     $userEmail = $_POST['user_email'] ?? $user['email'];
     $datasetName = $_POST['dataset_name'] ?? 'Unnamed Dataset';
     $sensor = $_POST['sensor'] ?? 'OTHER';
-    $convert = isset($_POST['convert']) ? filter_var($_POST['convert'], FILTER_VALIDATE_BOOLEAN) : true;
+    $convert = isset($_POST['convert']) ? filter_var($_POST['convert'], FILTER_VALIDATE_BOOLEAN) : false;
     $isPublic = isset($_POST['is_public']) ? filter_var($_POST['is_public'], FILTER_VALIDATE_BOOLEAN) : false;
     $isDownloadable = $_POST['is_downloadable'] ?? 'only owner';  // Download permission: 'only owner', 'only team', or 'public'
     $folder = $_POST['folder'] ?? null;  // UI organization metadata only, NOT for file system structure
@@ -118,6 +118,7 @@ try {
     $tags = $_POST['tags'] ?? '';
     $datasetIdentifier = $_POST['dataset_identifier'] ?? null;
     $addToExisting = isset($_POST['add_to_existing']) ? filter_var($_POST['add_to_existing'], FILTER_VALIDATE_BOOLEAN) : false;
+    $expectedFiles = $_POST['expected_files'] ?? null;
 
     // Get SCLib Upload API URL from config
     // Priority: SCLIB_UPLOAD_URL (from env) > SCLIB_API_URL > EXISTING_API_URL > fallback
@@ -223,6 +224,9 @@ try {
     }
     if ($addToExisting) {
         $postData['add_to_existing'] = 'true';
+    }
+    if ($expectedFiles) {
+        $postData['expected_files'] = $expectedFiles;
     }
 
     // Forward request to SCLib Upload API
@@ -337,6 +341,9 @@ try {
             }
             if ($addToExisting) {
                 $postData['add_to_existing'] = 'true';
+            }
+            if ($expectedFiles) {
+                $postData['expected_files'] = $expectedFiles;
             }
 
             $ch = curl_init();
