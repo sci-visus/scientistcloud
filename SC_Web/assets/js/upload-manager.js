@@ -2463,14 +2463,17 @@ class UploadManager {
 
                         // Continue polling only while status is active/in-progress.
                         const status = String(data.canonical_state || data.status || '').toLowerCase();
-                        const terminalStatuses = new Set(['ready', 'failed', 'error', 'cancelled', 'canceled']);
+                        const terminalStatuses = new Set(['ready', 'uploaded', 'completed', 'done', 'failed', 'error', 'cancelled', 'canceled']);
                         if (!terminalStatuses.has(status)) {
                             // Back off for long-running uploads/conversions to reduce API load.
                             delayMs = Math.min(maxDelayMs, Math.floor(delayMs * 1.2));
                             setTimeout(poll, delayMs);
                         } else {
                             // Upload finished
-                            if (status === 'ready') {
+                            if (['ready', 'uploaded', 'completed', 'done'].includes(status)) {
+                                upload.progress = 100;
+                                upload.status = status === 'uploaded' ? 'completed' : status;
+                                this.markCurrentSessionJobComplete(jobId);
                                 // Update widget to show completion message
                                 this.updateProgressWidget();
                                 
@@ -2494,6 +2497,16 @@ class UploadManager {
         };
 
         poll();
+    }
+
+    markCurrentSessionJobComplete(jobId) {
+        if (!this.currentUploadSession || !jobId) return;
+        const fileInfo = this.currentUploadSession.files.find(file => file.jobId === jobId);
+        if (!fileInfo || fileInfo.status === 'completed') return;
+        this.updateUploadModalFile(fileInfo.index, fileInfo.name, 'completed', jobId);
+        if (this.currentUploadSession.completedFiles + this.currentUploadSession.failedFiles >= this.currentUploadSession.totalFiles) {
+            this.localBrowserUploadInProgress = false;
+        }
     }
 
     /**
