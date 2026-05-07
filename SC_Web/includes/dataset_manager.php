@@ -160,13 +160,28 @@ function formatDataset($dataset) {
         }
     }
     
+    $status = $dataset['status'] ?? $dataset['processing_status'] ?? 'unknown';
+    $canonicalState = $dataset['canonical_state'] ?? null;
+    $statusMessage = $dataset['status_message'] ?? null;
+    $errorMessage = $dataset['error_message'] ?? null;
+    $conversionLastError = $dataset['conversion_last_error'] ?? null;
+    $uploadInterrupted = $dataset['upload_interrupted'] ?? false;
+    $terminalReadyStatuses = ['done', 'ready', 'completed', 'uploaded'];
+    $statusLower = strtolower(trim((string)$status));
+    $canonicalLower = strtolower(trim((string)$canonicalState));
+    $staleUploadWaitMessage = stripos((string)$statusMessage . ' ' . (string)$errorMessage, 'Waiting for the rest of the selected local files') !== false;
+    if (!$uploadInterrupted && $staleUploadWaitMessage && (in_array($statusLower, $terminalReadyStatuses, true) || $canonicalLower === 'ready')) {
+        $statusMessage = null;
+        $errorMessage = null;
+    }
+
     // Base dataset structure
     $formatted = [
         'id' => $dataset['uuid'] ?? $dataset['id'] ?? '',
         'name' => $dataset['name'] ?? 'Unnamed Dataset',
         'uuid' => $dataset['uuid'] ?? $dataset['id'] ?? '',
         'sensor' => $dataset['sensor'] ?? $dataset['metadata']['sensor'] ?? 'Unknown',
-        'status' => $dataset['status'] ?? $dataset['processing_status'] ?? 'unknown',
+        'status' => $status,
         'compression_status' => $dataset['compression_status'] ?? $dataset['metadata']['compression_status'] ?? 'unknown',
         'time' => $created_at,
         'data_size' => $data_size,
@@ -183,11 +198,11 @@ function formatDataset($dataset) {
         'viewer_url' => $dataset['viewer_url'] ?? '',
         'download_url' => $dataset['download_url'] ?? '',
         'server' => $dataset['server'] ?? $dataset['metadata']['server'] ?? '',
-        'canonical_state' => $dataset['canonical_state'] ?? null,
-        'error_message' => $dataset['error_message'] ?? null,
-        'status_message' => $dataset['status_message'] ?? null,
-        'conversion_last_error' => $dataset['conversion_last_error'] ?? null,
-        'upload_interrupted' => $dataset['upload_interrupted'] ?? false,
+        'canonical_state' => $canonicalState,
+        'error_message' => $errorMessage,
+        'status_message' => $statusMessage,
+        'conversion_last_error' => $conversionLastError,
+        'upload_interrupted' => $uploadInterrupted,
         'interrupted_at' => $dataset['interrupted_at'] ?? null
     ];
     

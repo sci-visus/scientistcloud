@@ -32,6 +32,7 @@ from bokeh.events import ButtonClick
 from bokeh.layouts import column, row
 from dotenv import load_dotenv
 from OpenVisus import *
+import panel as pn
 load_dotenv()  # Load environment variables from .env file
 
 # Import utility modules
@@ -265,9 +266,6 @@ def show_info(event):
     info_div.visible = not info_div.visible
 
 info_button.on_click(show_info)
-# Create header banner
-header_banner = create_header_banner(dataset_name=name if 'name' in globals() else "", dashboard_type="3D VTK Dashboard")
-curdoc().add_root(column(header_banner, row(home_button, info_button), info_div))
 
 
 # In[ ]:
@@ -276,12 +274,6 @@ curdoc().add_root(column(header_banner, row(home_button, info_button), info_div)
 import OpenVisus as  ov
 os.environ["VISUS_NETSERVICE_VERBOSE"]="0"
 
-# IMPORTANT: Panel must be initialized BEFORE importing other Panel components
-# and it must be initialized with the Bokeh document context
-from bokeh.plotting import curdoc
-doc = curdoc()
-
-import panel as pn
 import numpy as np
 
 # Set up headless rendering environment
@@ -304,9 +296,8 @@ except Exception as e:
     print("🔄 Falling back to Panel's native VTK volume rendering")
     PYVISTA_AVAILABLE = False
 
-# Enable PyVista for Panel
-# Use the same simple initialization as the working Visus.py
-pn.extension('vtk')
+# Enable Panel/VTK before adding any dashboard roots to the Bokeh document.
+pn.extension('vtk', sizing_mode='stretch_width')
 
 
 # In[ ]:
@@ -322,10 +313,6 @@ myTitle = pn.pane.Markdown(f'''
 # ScientistCloud Explorer: {name}
 ''')
 myTitlePanel=pn.panel(myTitle, name='header')
-
-# Initialize PyVista plotter
-plotter = pv.Plotter(notebook=True, off_screen=True)
-plotter.set_background('black')
 
 # Create volume and slice placeholders
 volume_pane = pn.pane.Markdown('### Volume loading...')
@@ -856,9 +843,28 @@ volumeCtrls = initial_volume.controls(jslink=True, parameters=[
     'slice_i', 'slice_j', 'slice_k', 'rescale'
 ])
 
-# Create the initial layout
-Tools = pn.Column( myTitlePanel, uuid_selection, uuid_reload_button, resolution_slider, volumeCtrls, notifications )
-Viz = pn.Row( Tools, pn.Row( initial_volume, name=uuid_arg))
+# Create the initial layout as a single Panel root. Keeping everything in one
+# Panel tree ensures the VTK JavaScript extension is loaded for embedded use.
+header_banner = create_header_banner(dataset_name=name if 'name' in globals() else "", dashboard_type="3D VTK Dashboard")
+header_panel = pn.pane.Bokeh(header_banner)
+button_panel = pn.pane.Bokeh(row(home_button, info_button))
+info_panel = pn.pane.Bokeh(info_div)
+Tools = pn.Column(
+    myTitlePanel,
+    button_panel,
+    info_panel,
+    uuid_selection,
+    uuid_reload_button,
+    resolution_slider,
+    volumeCtrls,
+    notifications,
+    width=320,
+)
+Viz = pn.Column(
+    header_panel,
+    pn.Row(Tools, initial_volume, sizing_mode='stretch_both'),
+    sizing_mode='stretch_both',
+)
 
 # Use Panel's .servable() method - this is how the working Visus.py does it
 # Panel's .servable() automatically handles Bokeh integration when running under bokeh serve

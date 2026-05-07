@@ -1862,7 +1862,14 @@ class DatasetManager {
         
         // Get folder name for display
         const folderName = folders.find(f => f.uuid === dataset.folder_uuid)?.name || (dataset.folder_uuid || 'None');
-        const datasetMessage = dataset.status_message || dataset.error_message || dataset.conversion_last_error || '';
+        const rawDatasetMessage = dataset.status_message || dataset.error_message || dataset.conversion_last_error || '';
+        const datasetStatus = String(dataset.status || '').toLowerCase().trim();
+        const canonicalState = String(dataset.canonical_state || '').toLowerCase().trim();
+        const readyStatuses = new Set(['done', 'ready', 'completed', 'uploaded']);
+        const isStaleUploadWaitMessage = rawDatasetMessage.toLowerCase().includes('waiting for the rest of the selected local files');
+        const datasetMessage = (!dataset.upload_interrupted && isStaleUploadWaitMessage && (readyStatuses.has(datasetStatus) || canonicalState === 'ready'))
+            ? ''
+            : rawDatasetMessage;
         const isInterruptedUpload = dataset.upload_interrupted || (
             (dataset.status || '').toLowerCase() === 'failed' &&
             datasetMessage.toLowerCase().includes('upload interrupted')
