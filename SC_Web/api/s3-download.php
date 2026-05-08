@@ -88,8 +88,24 @@ try {
         'Key' => $key,
     ];
     if ($previewMode) {
-        // Keep previews fast and bounded.
-        $params['Range'] = 'bytes=0-262143'; // 256 KB
+        // Keep previews fast and bounded. Some S3-compatible gateways return 206
+        // for ranged reads in a way the SDK reports as an error, so avoid Range
+        // for small text objects like .idx descriptors.
+        $isIdxPreview = str_ends_with(strtolower(parse_url($key, PHP_URL_PATH) ?: $key), '.idx');
+        try {
+            $head = $client->headObject([
+                'Bucket' => $session['bucket'],
+                'Key' => $key,
+            ]);
+            $contentLength = isset($head['ContentLength']) ? (int) $head['ContentLength'] : 0;
+            if ($contentLength > 262144) {
+                $params['Range'] = 'bytes=0-262143'; // 256 KB
+            }
+        } catch (Throwable $e) {
+            if (!$isIdxPreview) {
+                $params['Range'] = 'bytes=0-262143'; // 256 KB fallback
+            }
+        }
     }
     $rangeHeader = isset($_SERVER['HTTP_RANGE']) ? trim((string) $_SERVER['HTTP_RANGE']) : '';
     if ($rangeHeader !== '' && preg_match('/^bytes=\d*-\d*$/', $rangeHeader)) {

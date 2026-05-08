@@ -553,13 +553,110 @@ function getDashboardRequiredFormats($dashboardType) {
     return array_values(array_unique(array_map('strtoupper', $config['viewable_formats'] ?? ['IDX', '4D_NEXUS'])));
 }
 
+function getDatasetRemoteLink($dataset) {
+    $links = getDatasetRemoteLinks($dataset);
+    return $links[0] ?? '';
+}
+
+function getDatasetRemoteLinks($dataset) {
+    $links = [];
+    foreach (['download_url', 'viewer_url', 'google_drive_link', 'source_path'] as $field) {
+        $value = trim((string)($dataset[$field] ?? ''));
+        if ($value !== '' && preg_match('/^(s3|http|https|pelican):\/\//i', $value)) {
+            $links[] = $value;
+        }
+    }
+    return array_values(array_unique($links));
+}
+
+function idxTextHasArco($text) {
+    if (!is_string($text) || trim($text) === '') {
+        return false;
+    }
+    $lines = preg_split('/\R/', $text);
+    foreach ($lines as $index => $line) {
+        $trimmed = strtolower(trim((string)$line));
+        if (strpos($trimmed, '(arco)') !== 0) {
+            continue;
+        }
+
+        $rest = trim(substr((string)$line, strlen('(arco)')));
+        if ($rest !== '' && preg_match('/-?\d+/', $rest, $matches)) {
+            return ((int)$matches[0]) > 0;
+        }
+
+        for ($i = $index + 1; $i < count($lines); $i++) {
+            $next = trim((string)$lines[$i]);
+            if ($next === '') {
+                continue;
+            }
+            if (preg_match('/-?\d+/', $next, $matches)) {
+                return ((int)$matches[0]) > 0;
+            }
+            break;
+        }
+        return false;
+    }
+    return false;
+}
+
+function remoteHttpIdxHasArco($url) {
+    $raw = trim((string)$url);
+    if ($raw === '' || !preg_match('/^https?:\/\//i', $raw)) {
+        return null;
+    }
+    $path = strtolower((string)(parse_url($raw, PHP_URL_PATH) ?? ''));
+    if (!str_ends_with($path, '.idx')) {
+        return null;
+    }
+
+    if (!function_exists('curl_init')) {
+        return null;
+    }
+
+    $ch = curl_init($raw);
+    if (!$ch) {
+        return null;
+    }
+    curl_setopt_array($ch, [
+        CURLOPT_RETURNTRANSFER => true,
+        CURLOPT_FOLLOWLOCATION => true,
+        CURLOPT_CONNECTTIMEOUT => 5,
+        CURLOPT_TIMEOUT => 12,
+        CURLOPT_RANGE => '0-262143',
+        CURLOPT_USERAGENT => 'ScientistCloud-Portal/remote-idx-check',
+    ]);
+    $body = curl_exec($ch);
+    $httpCode = (int)curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    curl_close($ch);
+
+    if (!is_string($body) || $body === '' || !in_array($httpCode, [200, 206], true)) {
+        return null;
+    }
+    return idxTextHasArco($body);
+}
+
 function getDatasetAvailableFormats($dataset) {
     $formats = [];
     $sensor = strtoupper(trim((string)($dataset['sensor'] ?? '')));
-    $link = strtolower(trim((string)($dataset['download_url'] ?? $dataset['viewer_url'] ?? $dataset['google_drive_link'] ?? '')));
-    $isRemote = preg_match('/^(s3|http|https|pelican):\/\//', $link) === 1;
+    $remoteLinks = getDatasetRemoteLinks($dataset);
+    $linkRaw = $remoteLinks[0] ?? '';
+    $link = strtolower($linkRaw);
+    $isRemote = $remoteLinks !== [];
     if ($isRemote && $sensor === 'IDX') {
-        $formats[] = 'IDX';
+        $requiresArco = (bool)(getViewableFormatConfig()['remote_viewable_requirements']['IDX']['requires_arco'] ?? false);
+        $remoteIdxViewable = !$requiresArco;
+        foreach ($remoteLinks as $candidateLink) {
+            $candidateLower = strtolower($candidateLink);
+            $remoteArco = remoteHttpIdxHasArco($candidateLink);
+            if ($remoteArco === true || ($remoteArco === null && preg_match('/^s3:\/\//', $candidateLower) === 1)) {
+                $remoteIdxViewable = true;
+                break;
+            }
+        }
+        if ($remoteIdxViewable) {
+            $formats[] = 'IDX';
+        }
     }
     if ($isRemote && ($sensor === '4D_NEXUS' || strpos($sensor, 'NEXUS') !== false)) {
         $formats[] = '4D_NEXUS';

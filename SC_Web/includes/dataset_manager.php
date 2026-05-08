@@ -197,6 +197,7 @@ function formatDataset($dataset) {
         'updated_at' => $dataset['date_updated'] ?? $dataset['updated_at'] ?? null,
         'viewer_url' => $dataset['viewer_url'] ?? '',
         'download_url' => $dataset['download_url'] ?? '',
+        'source_path' => $dataset['source_path'] ?? $dataset['metadata']['source_path'] ?? '',
         'server' => $dataset['server'] ?? $dataset['metadata']['server'] ?? '',
         'canonical_state' => $canonicalState,
         'error_message' => $errorMessage,
