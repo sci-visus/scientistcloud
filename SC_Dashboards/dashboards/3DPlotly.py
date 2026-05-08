@@ -272,7 +272,13 @@ def index():
     # Don't close MongoDB connection - it's needed for the app
     return app.index()  
 
-app = Dash(__name__, server=server, routes_pathname_prefix='/plotly/', assets_url_path='/plotly/assets', requests_pathname_prefix="/plotly/")
+app = Dash(
+    __name__,
+    server=server,
+    routes_pathname_prefix='/plotly/',
+    assets_url_path='/assets',
+    requests_pathname_prefix='/dashboard/plotly/'
+)
 app.config.suppress_callback_exceptions=True
 
 @server.route('/check-auth')
@@ -433,7 +439,7 @@ app.layout = html.Div("Initializing...")
 app.layout = html.Div([
     create_header_banner(),
     dcc.Location(id='url', refresh=False),
-    dcc.Interval(id='interval-component', interval=5*1000000, n_intervals=0),
+    dcc.Interval(id='interval-component', interval=1000, n_intervals=0, max_intervals=1),
 
     html.Div(id='dynamic-content', children=[
         html.Div(className='spinner'),  
