@@ -151,11 +151,53 @@ class ViewerManager {
         console.log('✅ Populated viewer selector with', viewerType.options.length, 'dashboards');
     }
 
+    resolveDashboardId(dashboardType) {
+        const raw = String(dashboardType || '').trim();
+        if (!raw) {
+            return '';
+        }
+        if (this.viewers[raw]) {
+            return raw;
+        }
+
+        const normalized = raw.toLowerCase();
+        const aliases = {
+            'dark matter dashboard': 'DarkMatter',
+            'dark matter': 'DarkMatter',
+            'darkmatter dashboard': 'DarkMatter',
+            'darkmatter': 'DarkMatter',
+            '3d plotly dashboard': '3DPlotly',
+            '3d plotly explorer': '3DPlotly',
+            '3d plotly': '3DPlotly',
+            '3d vtk dashboard': '3DVTK',
+            '3d vtk': '3DVTK',
+            'openvisus slice dashboard': 'OpenVisusSlice',
+            'openvisus slice': 'OpenVisusSlice',
+            'magicscan dashboard': 'magicscan',
+            'magicscan': 'magicscan',
+            '4d dashboard (new)': '4d_dashboardLite',
+            '4d dashboard': '4d_dashboard'
+        };
+        if (aliases[normalized] && this.viewers[aliases[normalized]]) {
+            return aliases[normalized];
+        }
+
+        const matchingViewer = Object.values(this.viewers).find(viewer => {
+            const id = String(viewer.id || '').toLowerCase();
+            const name = String(viewer.name || '').toLowerCase();
+            const type = String(viewer.type || '').toLowerCase();
+            const description = String(viewer.description || '').toLowerCase();
+            return id === normalized || name === normalized || type === normalized || description === normalized;
+        });
+        return matchingViewer ? (matchingViewer.id || raw) : raw;
+    }
+
     /**
      * Update the viewer toolbar selector to match the selected dashboard
      * @param {string} dashboardId - The dashboard ID to set in the selector
      */
     updateViewerSelector(dashboardId) {
+        dashboardId = this.resolveDashboardId(dashboardId);
         // Store the current dashboard type
         this.currentDashboard = dashboardId;
         
@@ -192,7 +234,9 @@ class ViewerManager {
         if (!matchingOption) {
             matchingOption = Array.from(viewerType.options).find(opt => {
                 const optValue = opt.value.toLowerCase();
-                return optValue.includes(normalizedId) || normalizedId.includes(optValue);
+                const optText = opt.text.toLowerCase();
+                return optValue.includes(normalizedId) || normalizedId.includes(optValue) ||
+                       optText === normalizedId || optText.includes(normalizedId) || normalizedId.includes(optText);
             });
         }
 
@@ -354,6 +398,7 @@ class ViewerManager {
 
         // Hard rule: remote links must always load with server=true.
         datasetServer = this.normalizeServerFlag(datasetUuid, datasetServer, datasetName);
+        dashboardType = this.resolveDashboardId(dashboardType) || 'OpenVisusSlice';
 
         // Validate dashboardType - it should be a dashboard ID, not a dataset name
         // If dashboardType looks like a dataset name (contains spaces, is too long, etc.), use default

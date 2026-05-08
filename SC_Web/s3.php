@@ -959,6 +959,7 @@ if ($defaultShareSeconds > $shareMaxSeconds) {
             if (createdDatasetId) portalParams.set('dataset_id', String(createdDatasetId));
             if (json.job_id) portalParams.set('job_id', String(json.job_id));
             if (payload.dataset_name) portalParams.set('dataset_name', String(payload.dataset_name));
+            if (payload.preferred_dashboard) portalParams.set('dashboard', String(payload.preferred_dashboard));
             if (payload.convert) portalParams.set('convert', '1');
             const portalQuery = portalParams.toString();
             const portalUrl = portalQuery ? `${PORTAL_INDEX_PATH}?${portalQuery}` : PORTAL_INDEX_PATH;
