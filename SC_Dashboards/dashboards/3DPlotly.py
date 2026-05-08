@@ -342,29 +342,29 @@ def create_header_banner(dataset_name=None):
     title_text = f"ScientistCloud | 3D Plotly Dashboard: {dataset_name}" if dataset_name else "ScientistCloud | 3D Plotly Dashboard"
     header_banner = html.Div(
         style={
-            'background-color': sc_blue,
+            'backgroundColor': sc_blue,
             'padding': '10px 20px',
             'display': 'flex',
-            'align-items': 'center',
+            'alignItems': 'center',
             'width': '100vw',
-            'max-width': '100vw',
+            'maxWidth': '100vw',
             'margin': '0',
-            'border-bottom': '3px solid #75c0de',
-            'margin-bottom': '20px',
+            'borderBottom': '3px solid #75c0de',
+            'marginBottom': '20px',
         },
         children=[
             html.Img(
                 src='https://scientistcloud.com/portal/assets/images/scientistCloudLogo_noText.png',
-                style={'height': '40px', 'margin-right': '15px'}
+                style={'height': '40px', 'marginRight': '15px'}
             ),
             html.Span(
                 title_text,
                 style={
                     'color': 'white',
-                    'font-family': 'sans-serif',
-                    'font-size': '1.5em',
-                    'font-weight': 'bold',
-                    'text-shadow': '1px 1px 2px rgba(0,0,0,0.1)'
+                    'fontFamily': 'sans-serif',
+                    'fontSize': '1.5em',
+                    'fontWeight': 'bold',
+                    'textShadow': '1px 1px 2px rgba(0,0,0,0.1)'
                 }
             )
         ]
@@ -397,7 +397,7 @@ def serve_layout():
         return html.Div([
             header_banner,
             dcc.Location(id='url', refresh=False),
-            html.Div(style={"width": "100%", "height": "600px", "margin-top": "20px"}, children=[
+            html.Div(style={"width": "100%", "height": "600px", "marginTop": "20px"}, children=[
                 dash_vtk.View([
                     dash_vtk.VolumeRepresentation([
                         dash_vtk.VolumeController(),
@@ -606,8 +606,8 @@ def initialize_dataset(n_intervals,search):
                 children=[
                     html.Div(style={
                         'border': '4px solid rgba(0, 0, 0, .1)',
-                        'border-radius': '50%',
-                        'border-top': '4px solid #007bff',
+                        'borderRadius': '50%',
+                        'borderTop': '4px solid #007bff',
                         'width': '40px',
                         'height': '40px',
                         'animation': 'spin 2s linear infinite'
