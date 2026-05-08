@@ -117,6 +117,99 @@ else
     echo "   Continuing without custom environment variables..."
 fi
 
+if [ "$NGINX_ONLY" = true ]; then
+    echo "🔄 Nginx-only mode: refreshing portal/dashboard nginx configs and restarting nginx via scientistCloud_docker_start_fresh.sh x..."
+
+    VISUS_DOCKER_PATH=""
+    if [ -n "$VISUS_DOCKER" ]; then
+        VISUS_DOCKER_PATH="${VISUS_DOCKER%/ag-explorer}"
+        VISUS_DOCKER_PATH="${VISUS_DOCKER_PATH%/ag-explorer/}"
+        if [[ "$VISUS_DOCKER_PATH" != */Docker ]] && [ -n "$VISUS_CODE" ]; then
+            VISUS_DOCKER_PATH="$VISUS_CODE/Docker"
+        fi
+    fi
+    if [ -z "$VISUS_DOCKER_PATH" ] && [ -n "$VISUS_CODE" ]; then
+        VISUS_DOCKER_PATH="$VISUS_CODE/Docker"
+    fi
+    if [ -z "$VISUS_DOCKER_PATH" ] || [ ! -d "$VISUS_DOCKER_PATH" ]; then
+        for path in \
+            "$HOME/VisStoreClone/visus-dataportal-private/Docker" \
+            "$HOME/visus-dataportal-private/Docker" \
+            "$HOME/VisStoreCode/visus-dataportal-private/Docker" \
+            "/home/amy/VisStoreClone/visus-dataportal-private/Docker" \
+            "/home/amy/VisStoreCode/visus-dataportal-private/Docker"; do
+            if [ -d "$path" ]; then
+                VISUS_DOCKER_PATH="$path"
+                break
+            fi
+        done
+    fi
+    if [ -z "$VISUS_DOCKER_PATH" ] || [ ! -d "$VISUS_DOCKER_PATH" ]; then
+        NGINX_CONF_PATH=$(docker inspect visstore_nginx 2>/dev/null | grep -o '"/[^"]*/nginx/conf\.d"' | head -1 | tr -d '"' 2>/dev/null)
+        if [ -n "$NGINX_CONF_PATH" ] && [ -d "$NGINX_CONF_PATH" ]; then
+            VISUS_DOCKER_PATH=$(dirname "$NGINX_CONF_PATH" 2>/dev/null || echo "")
+        fi
+    fi
+
+    DASHBOARDS_DIR=""
+    if [ -d "$(pwd)/../SC_Dashboards" ]; then
+        DASHBOARDS_DIR="$(cd "$(pwd)/../SC_Dashboards" && pwd)"
+    elif [ -d "$HOME/ScientistCloud2.0/scientistcloud/SC_Dashboards" ]; then
+        DASHBOARDS_DIR="$HOME/ScientistCloud2.0/scientistcloud/SC_Dashboards"
+    elif [ -d "$HOME/ScientistCloud_2.0/scientistcloud/SC_Dashboards" ]; then
+        DASHBOARDS_DIR="$HOME/ScientistCloud_2.0/scientistcloud/SC_Dashboards"
+    elif [ -d "$(dirname "$(dirname "$(dirname "$(pwd)")")")/scientistcloud/SC_Dashboards" ]; then
+        DASHBOARDS_DIR="$(cd "$(dirname "$(dirname "$(dirname "$(pwd)")")")/scientistcloud/SC_Dashboards" && pwd)"
+    fi
+
+    if [ -z "$VISUS_DOCKER_PATH" ] || [ ! -d "$VISUS_DOCKER_PATH" ]; then
+        echo "❌ VisusDataPortalPrivate Docker directory not found"
+        echo "   Set VISUS_DOCKER or VISUS_CODE in env.scientistcloud"
+        exit 1
+    fi
+    if [ -z "$DASHBOARDS_DIR" ] || [ ! -d "$DASHBOARDS_DIR" ]; then
+        echo "❌ SC_Dashboards directory not found"
+        exit 1
+    fi
+
+    if [ -f "$VISUS_DOCKER_PATH/setup_portal_nginx.sh" ]; then
+        echo "🔧 Refreshing portal nginx configuration..."
+        pushd "$VISUS_DOCKER_PATH"
+        ./setup_portal_nginx.sh || true
+        popd
+    fi
+
+    echo "📊 Regenerating dashboard nginx configurations..."
+    pushd "$DASHBOARDS_DIR"
+    if [ -f "./scripts/regenerate_registry.sh" ]; then
+        ./scripts/regenerate_registry.sh 2>&1 | grep -E "(✅|⚠️|❌|Error|Registering|Port registry)" || true
+    fi
+    DASHBOARDS=$(jq -r '.dashboards | to_entries[] | select(.value.enabled == true) | .key' config/dashboard-registry.json 2>/dev/null || echo "")
+    if [ -n "$DASHBOARDS" ]; then
+        while IFS= read -r DASHBOARD_NAME; do
+            [ -n "$DASHBOARD_NAME" ] || continue
+            ./scripts/generate_nginx_config.sh "$DASHBOARD_NAME" 2>&1 | grep -E "(✅|⚠️|❌|Error|Generated)" || true
+        done <<< "$DASHBOARDS"
+    fi
+    ./scripts/setup_dashboards_nginx.sh "$VISUS_DOCKER_PATH" 2>&1 | grep -E "(✅|⚠️|❌|Error|Copied|Config not found)" || true
+    popd
+
+    if [ -f "$VISUS_DOCKER_PATH/scientistCloud_docker_start_fresh.sh" ]; then
+        echo "🔄 Restarting nginx with ScientistCloud Docker restart script..."
+        pushd "$VISUS_DOCKER_PATH"
+        ./scientistCloud_docker_start_fresh.sh x
+        popd
+        echo "✅ Nginx restart script completed"
+    else
+        echo "❌ scientistCloud_docker_start_fresh.sh not found in $VISUS_DOCKER_PATH"
+        exit 1
+    fi
+
+    echo ""
+    echo "🕒 allServicesStart.sh finished at: $(date '+%Y-%m-%d %H:%M:%S %Z')"
+    exit 0
+fi
+
 # Always update GitHub repos (even in dashboards-only mode)
 # Start Update SCLib_TryTest
 echo "📦 Update SCLib_TryTest and copy environment to SCLib and SC Website..."
@@ -444,47 +537,6 @@ else
     echo "⏭️  Skipping portal nginx setup (portal container not running)"
 fi
 
-if [ "$NGINX_ONLY" = true ]; then
-    echo "🔄 Nginx-only mode: refreshing dashboard nginx configs and reloading nginx..."
-
-    NGINX_DASHBOARDS_DIR=""
-    if [ -d "$(pwd)/../SC_Dashboards" ]; then
-        NGINX_DASHBOARDS_DIR="$(cd "$(pwd)/../SC_Dashboards" && pwd)"
-    elif [ -d "$HOME/ScientistCloud2.0/scientistcloud/SC_Dashboards" ]; then
-        NGINX_DASHBOARDS_DIR="$HOME/ScientistCloud2.0/scientistcloud/SC_Dashboards"
-    elif [ -d "$HOME/ScientistCloud_2.0/scientistcloud/SC_Dashboards" ]; then
-        NGINX_DASHBOARDS_DIR="$HOME/ScientistCloud_2.0/scientistcloud/SC_Dashboards"
-    elif [ -d "$(dirname "$(dirname "$(dirname "$(pwd)")")")/scientistcloud/SC_Dashboards" ]; then
-        NGINX_DASHBOARDS_DIR="$(cd "$(dirname "$(dirname "$(dirname "$(pwd)")")")/scientistcloud/SC_Dashboards" && pwd)"
-    fi
-
-    if [ -n "$VISUS_DOCKER_PATH" ] && [ -d "$VISUS_DOCKER_PATH" ] && [ -d "$NGINX_DASHBOARDS_DIR" ]; then
-        pushd "$NGINX_DASHBOARDS_DIR"
-        ./scripts/setup_dashboards_nginx.sh "$VISUS_DOCKER_PATH" 2>&1 | grep -E "(✅|⚠️|❌|Error)" || true
-        popd
-    else
-        echo "⚠️  Could not refresh dashboard nginx configs"
-        echo "   VISUS_DOCKER_PATH=$VISUS_DOCKER_PATH"
-        echo "   NGINX_DASHBOARDS_DIR=$NGINX_DASHBOARDS_DIR"
-    fi
-
-    if docker ps --format "{{.Names}}" | grep -q "visstore_nginx"; then
-        if docker exec visstore_nginx nginx -t; then
-            docker exec visstore_nginx nginx -s reload
-            echo "✅ Nginx configuration tested and reloaded"
-        else
-            echo "❌ Nginx configuration test failed; not reloading"
-            exit 1
-        fi
-    else
-        echo "⚠️  visstore_nginx is not running"
-    fi
-
-    echo ""
-    echo "🕒 allServicesStart.sh finished at: $(date '+%Y-%m-%d %H:%M:%S %Z')"
-    exit 0
-fi
-
 # Setup and build dashboards
 # NOTE: New dashboards use separate .conf files in nginx/conf.d/ (automatically included)
 # Old dashboards are embedded in default.conf.https/default.conf.template inside server blocks
@@ -605,10 +657,14 @@ if [ -d "$DASHBOARDS_DIR" ]; then
             docker-compose -f dashboards-docker-compose.yml down 2>/dev/null || true
         fi
 
-        # Start containers (all services, or the selected dashboard-only target)
+        # Start containers (all services, or the selected dashboard-only target).
+        # Targeted dashboard images are already built by build_dashboard.sh using a
+        # temporary context that includes requirements.txt and shared utilities.
+        # Do not pass --build here, because compose uses the raw dashboards/
+        # directory as context and cannot see those staged files.
         if [ -n "$ENV_FILE" ]; then
             if [ -n "$DASHBOARD_ONLY_SERVICE" ]; then
-                if docker-compose -f dashboards-docker-compose.yml --env-file "$ENV_FILE" up -d --build "$DASHBOARD_ONLY_SERVICE"; then
+                if docker-compose -f dashboards-docker-compose.yml --env-file "$ENV_FILE" up -d "$DASHBOARD_ONLY_SERVICE"; then
                     echo "   ✅ $DASHBOARD_ONLY_REGISTRY_KEY dashboard container started"
                 else
                     echo "   ❌ Failed to start $DASHBOARD_ONLY_REGISTRY_KEY dashboard"
@@ -626,7 +682,7 @@ if [ -d "$DASHBOARDS_DIR" ]; then
         else
             echo "   ⚠️  No .env file found - trying without explicit env-file"
             if [ -n "$DASHBOARD_ONLY_SERVICE" ]; then
-                if docker-compose -f dashboards-docker-compose.yml up -d --build "$DASHBOARD_ONLY_SERVICE"; then
+                if docker-compose -f dashboards-docker-compose.yml up -d "$DASHBOARD_ONLY_SERVICE"; then
                     echo "   ✅ $DASHBOARD_ONLY_REGISTRY_KEY dashboard container started"
                 else
                     echo "   ❌ Failed to start $DASHBOARD_ONLY_REGISTRY_KEY dashboard"
