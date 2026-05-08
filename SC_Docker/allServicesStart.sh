@@ -9,6 +9,7 @@
 #   -sw or --sclib-web: Rebuild both SCLib and SC_Web (when both change)
 #   -dm or --darkmatter-only: Dashboard phase only — init/build/start DarkMatter (registry key: darkmatter)
 #   -vtk or --vtk-only: Dashboard phase only — init/build/start 3DVTK (registry key: 3DVTK)
+#   -plotly or --plotly-only: Dashboard phase only — init/build/start 3DPlotly (registry key: 3DPlotly)
 #   -x or --nginx-only: Refresh portal/dashboard nginx configs and reload visstore_nginx only
 #
 # IMPORTANT NOTES - OPTIMIZATION GUIDE:
@@ -34,6 +35,7 @@
 #      ./allServicesStart.sh -sw                # Rebuild both (both Dockerfiles changed)
 #      ./allServicesStart.sh -dm                # Init/build/start only DarkMatter dashboard
 #      ./allServicesStart.sh -vtk               # Init/build/start only 3DVTK dashboard
+#      ./allServicesStart.sh -plotly            # Init/build/start only 3DPlotly dashboard
 #      ./allServicesStart.sh -x                 # Refresh nginx config and reload nginx only
 #      ./allServicesStart.sh --dashboards-only -dm   # Dashboard steps only, DarkMatter only
 
@@ -86,6 +88,14 @@ for arg in "$@"; do
             DASHBOARD_ONLY_SERVICE="3dvtk"
             DASHBOARD_ONLY_CONTAINER="dashboard_3dvtk"
             echo "🧊 3DVTK-only: dashboard init/build/docker up will target only 3DVTK"
+            ;;
+        -plotly|--plotly-only|--3dplotly-only)
+            DASHBOARDS_ONLY=true
+            SKIP_MAIN_SERVICES=true
+            DASHBOARD_ONLY_REGISTRY_KEY="3DPlotly"
+            DASHBOARD_ONLY_SERVICE="3dplotly"
+            DASHBOARD_ONLY_CONTAINER="dashboard_3dplotly"
+            echo "📊 3DPlotly-only: dashboard init/build/docker up will target only 3DPlotly"
             ;;
         -x|--nginx-only)
             NGINX_ONLY=true
