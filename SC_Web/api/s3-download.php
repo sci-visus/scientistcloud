@@ -134,9 +134,60 @@ try {
         }
     }
 
-    $result = $client->getObject($params);
-
     if ($previewMode) {
+        // Bypass SDK response validation for preview reads. Some S3-compatible
+        // gateways return "206 OK" for valid object reads, which the SDK reports
+        // as an AwsException even though the body is usable.
+        if (function_exists('curl_init')) {
+            $signedParams = [
+                'Bucket' => $session['bucket'],
+                'Key' => $key,
+            ];
+            $cmd = $client->getCommand('GetObject', $signedParams);
+            $signed = $client->createPresignedRequest($cmd, '+60 seconds');
+            $signedUrl = (string) $signed->getUri();
+
+            $chPreview = curl_init($signedUrl);
+            if ($chPreview) {
+                curl_setopt_array($chPreview, [
+                    CURLOPT_RETURNTRANSFER => true,
+                    CURLOPT_FOLLOWLOCATION => true,
+                    CURLOPT_CONNECTTIMEOUT => 8,
+                    CURLOPT_TIMEOUT => 25,
+                    CURLOPT_USERAGENT => 'ScientistCloud-Portal/s3-preview',
+                ]);
+                if (isset($params['Range'])) {
+                    curl_setopt($chPreview, CURLOPT_RANGE, '0-262143');
+                }
+                $content = curl_exec($chPreview);
+                $httpCode = (int) curl_getinfo($chPreview, CURLINFO_HTTP_CODE);
+                $curlError = curl_error($chPreview);
+                curl_close($chPreview);
+
+                if (is_string($content) && $content !== '' && in_array($httpCode, [200, 206], true)) {
+                    $truncated = strlen($content) >= 262144 || $httpCode === 206;
+                    header('Content-Type: application/json; charset=UTF-8');
+                    echo json_encode([
+                        'ok' => true,
+                        'key' => $key,
+                        'content' => $content,
+                        'truncated' => $truncated,
+                        'bytes' => strlen($content),
+                    ], JSON_UNESCAPED_SLASHES);
+                    exit;
+                }
+
+                http_response_code(400);
+                header('Content-Type: application/json; charset=UTF-8');
+                echo json_encode([
+                    'ok' => false,
+                    'error' => $curlError !== '' ? $curlError : 'Preview request failed with HTTP ' . $httpCode,
+                ], JSON_UNESCAPED_SLASHES);
+                exit;
+            }
+        }
+
+        $result = $client->getObject($params);
         $body = $result['Body'];
         $content = is_resource($body) ? stream_get_contents($body) : (string) $body;
         $truncated = strlen($content) >= 262144;
@@ -150,6 +201,8 @@ try {
         ], JSON_UNESCAPED_SLASHES);
         exit;
     }
+
+    $result = $client->getObject($params);
 
     $filename = basename($key);
     $contentType = $result['ContentType'] ?? 'application/octet-stream';

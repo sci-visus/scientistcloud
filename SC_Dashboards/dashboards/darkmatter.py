@@ -7,6 +7,7 @@ import atexit
 from collections import defaultdict
 import csv
 import traceback
+import re
 import requests
 from dotenv import load_dotenv
 from botocore.client import Config
@@ -86,6 +87,18 @@ except Exception:
 INFO = "INFO"
 ERROR = "ERROR"
 SUCCESS = "SUCCESS"
+
+
+def _valid_email_or_none(value):
+    if not value:
+        return None
+    candidate = str(value).strip()
+    if not candidate:
+        return None
+    # Avoid sending placeholders like "auth0_session_user" to strict API validators.
+    if re.match(r"^[^@\s]+@[^@\s]+\.[^@\s]+$", candidate):
+        return candidate
+    return None
 
 LEFT_ARROW = """
 <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="size-6">
