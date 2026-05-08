@@ -284,5 +284,4 @@ curl https://scientistcloud.com/health
 
 - See [Upload API](?page=api-upload) for authenticated uploads
 - Check [Curl Scripts](?page=curl-scripts) for complete examples
-- Review [Python Examples](?page=python-examples) for programmatic access
 

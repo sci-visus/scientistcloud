@@ -73,7 +73,7 @@ curl -X POST "https://scientistcloud.com/api/upload/upload" \
 |-----------|----------|-------------|---------|
 | `file` | Yes | File to upload | `@/path/to/file.nxs` |
 | `dataset_name` | Yes | Name for the dataset | `"My Dataset"` |
-| `sensor` | No | Sensor type | `4D_NEXUS`, `TIFF`, `OTHER` |
+| `sensor` | No | Sensor type | `IDX`, `4D_NEXUS`, `TIFF`, `TIFF RGB`, `NETCDF`, `HDF5`, `RGB`, `MAPIR`, `OTHER`. [Contact Us if your sensor is not in the list](mailto:support@visus.net) |
 | `convert` | No | Convert to IDX format | `true` or `false` |
 | `is_public` | No | Make dataset public | `true` or `false` |
 | `folder` | No | Folder name for organization | `"CHESS_4D"` |
@@ -164,7 +164,6 @@ For convenience, you can use the provided curl scripts. See the [Curl Scripts do
 
 - Read the [API Overview](?page=api) for complete API documentation
 - Check out [Curl Scripts](?page=curl-scripts) for automation examples
-- Explore [Python Examples](?page=python-examples) for programmatic access
 - Review [Upload API](?page=api-upload) for advanced upload options
 
 ## Troubleshooting

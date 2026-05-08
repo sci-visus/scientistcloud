@@ -442,6 +442,5 @@ Usage: `./minimal.sh email@example.com /path/to/file.nxs "Dataset Name"`
 ## Next Steps
 
 - See [Upload API](?page=api-upload) for detailed API documentation
-- Check [Python Examples](?page=python-examples) for programmatic access
 - Review [Getting Started](?page=getting-started) for setup instructions
 

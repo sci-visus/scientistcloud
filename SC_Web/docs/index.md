@@ -76,7 +76,6 @@ Both portals share the same visualization dashboards and support the same datase
 
 ### Examples and Tools
 - [Curl Scripts](?page=curl-scripts) - Command-line scripts for uploads and automation
-- [Python Examples](?page=python-examples) - Python code examples and SDK usage
 
 ## Base URL
 
@@ -140,7 +139,6 @@ curl -X GET "https://scientistcloud.com/api/upload/status/JOB_ID" \
 - Check the [Getting Started Guide](?page=getting-started) for setup instructions
 - Review the [API documentation](?page=api) for endpoint details
 - See [Curl Scripts](?page=curl-scripts) for ready-to-use automation scripts
-- Explore [Python Examples](?page=python-examples) for programmatic access
 
 ## API Status
 
