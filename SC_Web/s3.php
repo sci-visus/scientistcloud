@@ -955,12 +955,13 @@ if ($defaultShareSeconds > $shareMaxSeconds) {
             }
             if (connectStatus) connectStatus.textContent = 'Created. Opening Data Portal...';
             const createdDatasetId = json.dataset_id || json.dataset_uuid || json.uuid || '';
-            let portalUrl = PORTAL_INDEX_PATH;
-            if (createdDatasetId) {
-              portalUrl += '?dataset_id=' + encodeURIComponent(String(createdDatasetId));
-            } else if (json.job_id) {
-              portalUrl += '?job_id=' + encodeURIComponent(String(json.job_id));
-            }
+            const portalParams = new URLSearchParams();
+            if (createdDatasetId) portalParams.set('dataset_id', String(createdDatasetId));
+            if (json.job_id) portalParams.set('job_id', String(json.job_id));
+            if (payload.dataset_name) portalParams.set('dataset_name', String(payload.dataset_name));
+            if (payload.convert) portalParams.set('convert', '1');
+            const portalQuery = portalParams.toString();
+            const portalUrl = portalQuery ? `${PORTAL_INDEX_PATH}?${portalQuery}` : PORTAL_INDEX_PATH;
             window.open(portalUrl, '_blank', 'noopener,noreferrer');
           } catch (err) {
             if (connectStatus) connectStatus.textContent = 'Failed: ' + (err && err.message ? err.message : 'Unknown error');

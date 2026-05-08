@@ -117,8 +117,27 @@ class UploadManager {
         this.setupEventListeners();
         this.createProgressWidget();
         this.createUploadModal();
+        this.bootstrapUploadFromUrl();
         // Restore active uploads from server (in case page was refreshed)
         this.restoreActiveUploads();
+    }
+
+    /**
+     * Track an upload that was initiated from another page, such as Inspect S3.
+     */
+    bootstrapUploadFromUrl() {
+        const params = new URLSearchParams(window.location.search || '');
+        const jobId = params.get('job_id');
+        if (!jobId) {
+            return;
+        }
+
+        const datasetUuid = params.get('dataset_id') || params.get('dataset_uuid') || null;
+        const datasetName = params.get('dataset_name') || 'S3 Dataset';
+        const willConvert = ['1', 'true', 'yes', 'on'].includes(String(params.get('convert') || '').toLowerCase());
+
+        this.trackUpload(jobId, datasetName, datasetName, willConvert, datasetUuid);
+        console.log(`✅ Tracking upload from URL: ${jobId}`);
     }
 
     /**
