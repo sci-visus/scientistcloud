@@ -436,11 +436,15 @@ def derive_dataset_from_uuid(dataset_uuid: str):
         "region_name": str(doc.get("s3_region_name") or "us-east-1").strip() or "us-east-1",
     }
     converted_idx_path = str(doc.get("converted_idx_path") or "").strip()
+    has_remote_link = any(
+        str(doc.get(field) or "").strip().startswith(("http://", "https://", "s3://"))
+        for field in ("google_drive_link", "source_path")
+    )
 
     # Prefer explicit converted idx recorded by background conversion.
     if converted_idx_path and os.path.isfile(converted_idx_path):
         ds = derive_dataset_from_local_dir(converted_idx_path)
-        if ds is not None:
+        if ds is not None and (not has_remote_link or (os.path.isfile(ds["txt_path"]) and os.path.isfile(ds["csv_path"]))):
             ds["converted_idx_path"] = converted_idx_path
             print(
                 f"[DarkMatter][DEBUG] resolved runtime_dataset from converted_idx_path: "
@@ -452,7 +456,7 @@ def derive_dataset_from_uuid(dataset_uuid: str):
     local_idx = resolve_local_idx_file(dataset_uuid) if resolve_local_idx_file else None
     if local_idx:
         ds = derive_dataset_from_local_dir(local_idx)
-        if ds is not None:
+        if ds is not None and (not has_remote_link or (os.path.isfile(ds["txt_path"]) and os.path.isfile(ds["csv_path"]))):
             if "/converted/" in local_idx:
                 ds["converted_idx_path"] = ds["idx_path"]
             print(
@@ -460,6 +464,11 @@ def derive_dataset_from_uuid(dataset_uuid: str):
                 f"mode={ds['mode']} mid={ds['mid_file']} idx={ds['idx_path']}"
             )
             return ds
+        if ds is not None and has_remote_link:
+            print(
+                f"[DarkMatter][DEBUG] local idx exists without DarkMatter sidecars; "
+                f"using remote dataset metadata instead: idx={local_idx}"
+            )
 
     # Prefer stored HTTPS object-gateway URL (google_drive_link for S3 uploads) over raw s3://.
     for field in ("google_drive_link", "source_path"):
@@ -994,43 +1003,6 @@ class AppState:
                             "[DarkMatter][WARN] No S3 gateway base URL in env; "
                             "LoadDataset may fail on raw s3:// idx_uri"
                         )
-
-                # Prefer local converted idx first so users do not wait on dashboard load.
-                # Fallback to resolved-idx API only if local file is missing.
-                resolved_local_idx = ""
-                dataset_identifier = str(uuid or "").strip()
-                if dataset_identifier and not dataset_identifier.startswith(("http://", "https://", "s3://")):
-                    local_candidates = []
-                    converted_idx_from_metadata = str((self.runtime_dataset or {}).get("converted_idx_path") or "").strip()
-                    if converted_idx_from_metadata:
-                        local_candidates.append(converted_idx_from_metadata)
-                    if save_dir:
-                        local_candidates.append(os.path.join(save_dir, "visus.idx"))
-                    local_candidates.append(f"/mnt/visus_datasets/converted/{dataset_identifier}/visus.idx")
-                    converted_root = f"/mnt/visus_datasets/converted/{dataset_identifier}"
-                    if os.path.isdir(converted_root):
-                        for name in sorted(os.listdir(converted_root)):
-                            if name.lower().endswith(".idx"):
-                                local_candidates.append(os.path.join(converted_root, name))
-                    for candidate in local_candidates:
-                        candidate_path = str(candidate or "").strip()
-                        if candidate_path and os.path.isfile(candidate_path):
-                            resolved_local_idx = candidate_path
-                            idx_for_read = resolved_local_idx
-                            print("[DarkMatter][DEBUG] using pre-converted local idx for OpenVisus load")
-                            break
-
-                    if not resolved_local_idx:
-                        try:
-                            resolved_local_idx, _ = resolve_openvisus_resolved_idx_via_api(
-                                dataset_identifier=dataset_identifier,
-                                user_email=user_email,
-                                auth_override=self.s3_auth_override or {},
-                            )
-                            idx_for_read = resolved_local_idx
-                            print("[DarkMatter][DEBUG] local converted idx not found; using resolved-idx API result")
-                        except Exception as ex:
-                            print(f"[DarkMatter][WARN] resolved idx unavailable; using idx_for_read: {ex}")
 
                 print(f"[DarkMatter][DEBUG] LoadDataset input={idx_for_read}")
                 self.scene_data = read_openvisus_field(idx_for_read)
