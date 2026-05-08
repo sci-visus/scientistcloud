@@ -836,6 +836,20 @@ if ($defaultShareSeconds > $shareMaxSeconds) {
       const connectButtons = document.querySelectorAll('.js-connect-portal');
       let connectMetadataLoaded = false;
 
+      function formatApiError(value) {
+        if (!value) return 'Unknown error';
+        if (typeof value === 'string') return value;
+        if (Array.isArray(value)) {
+          return value.map(formatApiError).filter(Boolean).join('; ');
+        }
+        if (typeof value === 'object') {
+          const loc = Array.isArray(value.loc) ? value.loc.join('.') : '';
+          const msg = value.msg || value.message || value.error || JSON.stringify(value);
+          return loc ? (loc + ': ' + msg) : String(msg);
+        }
+        return String(value);
+      }
+
       async function loadConnectMetadata() {
         if (connectMetadataLoaded) return;
         connectMetadataLoaded = true;
@@ -937,7 +951,7 @@ if ($defaultShareSeconds > $shareMaxSeconds) {
             });
             const json = await res.json();
             if (!res.ok || !(json.job_id || json.success)) {
-              throw new Error((json && (json.error || json.detail || json.message)) || 'Could not create dataset entry');
+              throw new Error(formatApiError(json && (json.error || json.detail || json.message)) || 'Could not create dataset entry');
             }
             if (connectStatus) connectStatus.textContent = 'Created. Opening Data Portal...';
             const createdDatasetId = json.dataset_id || json.dataset_uuid || json.uuid || '';

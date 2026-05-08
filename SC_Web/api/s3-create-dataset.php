@@ -113,7 +113,8 @@ $requestData = [
 ];
 
 if ($tags !== '') {
-    $requestData['tags'] = array_values(array_filter(array_map('trim', explode(',', $tags))));
+    // UploadRequest accepts comma-separated tags; keep this as a string for API compatibility.
+    $requestData['tags'] = $tags;
 }
 if ($dimensions !== '') {
     $requestData['dimensions'] = $dimensions;
