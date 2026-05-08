@@ -1,6 +1,7 @@
 import OpenVisus as ov
 from dash import Dash, Input, Output, dcc, html, State
 import os, sys
+import traceback
 os.environ["BOKEH_ALLOW_WS_ORIGIN"] = "*"
 
 import dash_vtk
@@ -123,6 +124,23 @@ def numpy_to_vtk_image_data(numpy_array):
     vtk_array = numpy_support.numpy_to_vtk(num_array=flat_array, deep=True, array_type=vtk.VTK_FLOAT)
     image_data.GetPointData().SetScalars(vtk_array)   
     return image_data
+
+
+def render_error_panel(title, message, dataset_name=None):
+    return html.Div([
+        create_header_banner(dataset_name),
+        html.Div(
+            style={'textAlign': 'center', 'margin': '24px', 'padding': '20px'},
+            children=[
+                html.H3(title, style={'color': '#dc3545', 'marginBottom': '15px'}),
+                html.Div(str(message), style={'color': '#666', 'marginBottom': '15px', 'whiteSpace': 'pre-wrap'}),
+                html.Div(
+                    'Try OpenVisus Slice for large IDX datasets, or check the dashboard container logs for details.',
+                    style={'color': '#666'}
+                )
+            ]
+        )
+    ])
 
 dataset_url = None
 timesteps = None
@@ -258,6 +276,7 @@ app = Dash(__name__, server=server, routes_pathname_prefix='/plotly/', assets_ur
 app.config.suppress_callback_exceptions=True
 
 @server.route('/check-auth')
+@server.route('/plotly/check-auth')
 def check_auth():
 
     auth_token = request.cookies.get('auth_token')
@@ -304,6 +323,7 @@ def check_auth():
         print('hit_exception')
         is_authorized=False
         return jsonify({'authorized': is_authorized})
+    return jsonify({'authorized': bool(is_authorized)})
 
 
 # Global variables
@@ -349,9 +369,21 @@ def create_header_banner(dataset_name=None):
 def serve_layout():
     global dataset_url, timesteps, stored_name
     if dataset_url and timesteps:
-        db = ov.LoadDataset(dataset_url)
-        dataset = db.read(time=timesteps[0], quality=-6)
-        initial_volume_state = to_volume_state(numpy_to_vtk_image_data(dataset))
+        try:
+            db = ov.LoadDataset(dataset_url)
+            dataset = db.read(time=timesteps[0], quality=-6)
+            if dataset is None:
+                raise RuntimeError("OpenVisus returned no data for the selected timestep.")
+            dataset = np.asarray(dataset)
+            if dataset.size == 0:
+                raise RuntimeError("OpenVisus returned an empty array for the selected timestep.")
+            if dataset.ndim != 3:
+                raise RuntimeError(f"3D Plotly requires a 3D volume, but this read returned {dataset.ndim}D data with shape {dataset.shape}.")
+            initial_volume_state = to_volume_state(numpy_to_vtk_image_data(dataset))
+        except Exception as ex:
+            print(f"[3DPlotly][ERROR] Failed to create initial volume: {ex}")
+            traceback.print_exc()
+            return render_error_panel("3D Plotly could not render this dataset", ex, stored_name)
 
         # Create header banner
         header_banner = create_header_banner(stored_name)
@@ -410,12 +442,13 @@ app.layout = html.Div([
 
     html.Script('''
         function checkAuth() {
-            fetch('/check-auth')
-                .then(response => response.json())
+            const authUrl = window.location.pathname.replace(/\\/$/, '') + '/check-auth';
+            fetch(authUrl)
+                .then(response => response.ok ? response.json() : {authorized: true})
                 .then(data => {
                     if (!data.authorized) {
                         // Redirect to the login page if not authorized
-                        window.location.href = '{deploy_server}}';
+                        window.top.location.href = '/portal/login.php';
                     }
                 })
                 .catch(error => console.error('Error:', error));

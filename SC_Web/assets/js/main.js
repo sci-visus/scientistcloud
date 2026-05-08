@@ -592,6 +592,12 @@ function loadDashboard(datasetId, datasetName, datasetUuid, datasetServer) {
 function handleViewerTypeChange(event) {
     const viewerType = event.target.value;
     console.log('Viewer type changed to:', viewerType);
+
+    // viewer-manager.js owns dashboard switching when it is loaded. Keeping this
+    // legacy fallback from also loading dashboards can create duplicate iframe loads.
+    if (window.viewerManager && typeof window.viewerManager.loadDashboard === 'function') {
+        return;
+    }
     
     // Update dashboard based on viewer type
     if (AppState.currentDataset) {

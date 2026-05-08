@@ -50,6 +50,41 @@ function setUserPreferredDashboard($userId, $dashboard) {
 }
 
 /**
+ * Normalize dashboard display names and historical ids to the registry id.
+ */
+function normalizeDashboardType($dashboardType) {
+    $raw = trim((string)($dashboardType ?? ''));
+    if ($raw === '') {
+        return null;
+    }
+
+    $aliases = [
+        'dark matter dashboard' => 'DarkMatter',
+        'dark matter' => 'DarkMatter',
+        'darkmatter dashboard' => 'DarkMatter',
+        'darkmatter' => 'DarkMatter',
+        '3d plotly dashboard' => '3DPlotly',
+        '3d plotly explorer' => '3DPlotly',
+        '3d plotly' => '3DPlotly',
+        '3d vtk dashboard' => '3DVTK',
+        '3d vtk' => '3DVTK',
+        'openvisus slice dashboard' => 'OpenVisusSlice',
+        'openvisus slice' => 'OpenVisusSlice',
+        'magicscan dashboard' => 'magicscan',
+        'magicscan' => 'magicscan',
+        'magic scan dashboard' => 'magicscan',
+        'magic scan' => 'magicscan',
+        '4d dashboard (new)' => '4d_dashboardLite',
+        '4d dashboard lite' => '4d_dashboardLite',
+        '4d_dashboardlite' => '4d_dashboardLite',
+        '4d_dashboard' => '4d_dashboard',
+        '4d dashboard' => '4d_dashboard',
+    ];
+
+    return $aliases[strtolower($raw)] ?? $raw;
+}
+
+/**
  * Load dashboard for dataset
  */
 function loadDashboard($datasetId, $dashboardType = null) {
@@ -60,8 +95,11 @@ function loadDashboard($datasetId, $dashboardType = null) {
         }
         
         if (!$dashboardType) {
-            $dashboardType = getUserPreferredDashboard($dataset['user_id']);
+            $dashboardType = $dataset['preferred_dashboard']
+                ?? ($dataset['metadata']['preferred_dashboard'] ?? null)
+                ?? getUserPreferredDashboard($dataset['user_id']);
         }
+        $dashboardType = normalizeDashboardType($dashboardType);
         
         $dashboardConfig = getDashboardConfig($dashboardType);
         if (!$dashboardConfig) {
