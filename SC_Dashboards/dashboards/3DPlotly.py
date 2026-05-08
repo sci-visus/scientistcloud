@@ -126,6 +126,27 @@ def numpy_to_vtk_image_data(numpy_array):
     return image_data
 
 
+def get_logic_shape(db):
+    """Return the dataset logic-box shape as a tuple, or None if unavailable."""
+    logic_box = db.getLogicBox()
+    try:
+        p1 = list(logic_box[0])
+        p2 = list(logic_box[1])
+    except Exception:
+        try:
+            p1 = [int(logic_box.p1[i]) for i in range(logic_box.getPointDim())]
+            p2 = [int(logic_box.p2[i]) for i in range(logic_box.getPointDim())]
+        except Exception:
+            print(f"[3DPlotly][WARN] Could not parse logic box: {logic_box}")
+            return None
+
+    shape = []
+    for start, end in zip(p1, p2):
+        delta = abs(int(end) - int(start))
+        shape.append(max(delta, 1))
+    return tuple(shape)
+
+
 def render_error_panel(title, message, dataset_name=None):
     return html.Div([
         create_header_banner(dataset_name),
@@ -135,7 +156,7 @@ def render_error_panel(title, message, dataset_name=None):
                 html.H3(title, style={'color': '#dc3545', 'marginBottom': '15px'}),
                 html.Div(str(message), style={'color': '#666', 'marginBottom': '15px', 'whiteSpace': 'pre-wrap'}),
                 html.Div(
-                    'Try OpenVisus Slice for large IDX datasets, or check the dashboard container logs for details.',
+                    'Try OpenVisus Slice for large IDX datasets, or 3D VTK if you need a 3D volume-oriented view.',
                     style={'color': '#666'}
                 )
             ]
@@ -377,6 +398,22 @@ def serve_layout():
     if dataset_url and timesteps:
         try:
             db = ov.LoadDataset(dataset_url)
+            logic_shape = get_logic_shape(db)
+            print(f"[3DPlotly][DEBUG] logic_shape={logic_shape}")
+            if logic_shape and len(logic_shape) != 3:
+                raise RuntimeError(
+                    f"3D Plotly requires a 3D IDX volume, but this dataset appears to be {len(logic_shape)}D "
+                    f"with logic shape {logic_shape}."
+                )
+            if logic_shape:
+                estimated_voxels = int(np.prod(logic_shape))
+                max_voxels = int(os.getenv("SC_3DPLOTLY_MAX_VOXELS", "20000000"))
+                if estimated_voxels > max_voxels:
+                    raise RuntimeError(
+                        f"3D Plotly currently reads the selected volume into memory. "
+                        f"This dataset has about {estimated_voxels:,} voxels at full resolution "
+                        f"(limit {max_voxels:,}). Use OpenVisus Slice or 3D VTK for this dataset."
+                    )
             dataset = db.read(time=timesteps[0], quality=-6)
             if dataset is None:
                 raise RuntimeError("OpenVisus returned no data for the selected timestep.")
