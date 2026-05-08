@@ -8,6 +8,8 @@
 #   -s or --sclib-only: Rebuild only SCLib services (when SCLib code changes)
 #   -sw or --sclib-web: Rebuild both SCLib and SC_Web (when both change)
 #   -dm or --darkmatter-only: Dashboard phase only — init/build/start DarkMatter (registry key: darkmatter)
+#   -vtk or --vtk-only: Dashboard phase only — init/build/start 3DVTK (registry key: 3DVTK)
+#   -x or --nginx-only: Refresh portal/dashboard nginx configs and reload visstore_nginx only
 #
 # IMPORTANT NOTES - OPTIMIZATION GUIDE:
 #   ✅ ALL CODE IS MOUNTED AS VOLUMES (no rebuild needed for code changes):
@@ -31,6 +33,8 @@
 #      ./allServicesStart.sh -w                 # Rebuild SC_Web (Dockerfile/composer.json changed)
 #      ./allServicesStart.sh -sw                # Rebuild both (both Dockerfiles changed)
 #      ./allServicesStart.sh -dm                # Init/build/start only DarkMatter dashboard
+#      ./allServicesStart.sh -vtk               # Init/build/start only 3DVTK dashboard
+#      ./allServicesStart.sh -x                 # Refresh nginx config and reload nginx only
 #      ./allServicesStart.sh --dashboards-only -dm   # Dashboard steps only, DarkMatter only
 
 # Parse command line arguments
@@ -38,7 +42,10 @@ SKIP_MAIN_SERVICES=false
 DASHBOARDS_ONLY=false
 REBUILD_WEB=false
 REBUILD_SCLIB=false
-DARKMATTER_DASHBOARD_ONLY=false
+DASHBOARD_ONLY_REGISTRY_KEY=""
+DASHBOARD_ONLY_SERVICE=""
+DASHBOARD_ONLY_CONTAINER=""
+NGINX_ONLY=false
 
 for arg in "$@"; do
     case $arg in
@@ -65,8 +72,26 @@ for arg in "$@"; do
             echo "🔄 Will rebuild both SCLib and SC_Web containers"
             ;;
         -dm|--darkmatter-only)
-            DARKMATTER_DASHBOARD_ONLY=true
-            echo "📈 DarkMatter-only: dashboard init/build/docker up will target only darkmatter (see dashboard-registry.json)"
+            DASHBOARDS_ONLY=true
+            SKIP_MAIN_SERVICES=true
+            DASHBOARD_ONLY_REGISTRY_KEY="darkmatter"
+            DASHBOARD_ONLY_SERVICE="darkmatter"
+            DASHBOARD_ONLY_CONTAINER="dashboard_darkmatter"
+            echo "📈 DarkMatter-only: dashboard init/build/docker up will target only darkmatter"
+            ;;
+        -vtk|--vtk-only|--3dvtk-only)
+            DASHBOARDS_ONLY=true
+            SKIP_MAIN_SERVICES=true
+            DASHBOARD_ONLY_REGISTRY_KEY="3DVTK"
+            DASHBOARD_ONLY_SERVICE="3dvtk"
+            DASHBOARD_ONLY_CONTAINER="dashboard_3dvtk"
+            echo "🧊 3DVTK-only: dashboard init/build/docker up will target only 3DVTK"
+            ;;
+        -x|--nginx-only)
+            NGINX_ONLY=true
+            DASHBOARDS_ONLY=true
+            SKIP_MAIN_SERVICES=true
+            echo "🔄 Nginx-only: will refresh portal/dashboard nginx configs and reload visstore_nginx"
             ;;
     esac
 done
@@ -419,6 +444,47 @@ else
     echo "⏭️  Skipping portal nginx setup (portal container not running)"
 fi
 
+if [ "$NGINX_ONLY" = true ]; then
+    echo "🔄 Nginx-only mode: refreshing dashboard nginx configs and reloading nginx..."
+
+    NGINX_DASHBOARDS_DIR=""
+    if [ -d "$(pwd)/../SC_Dashboards" ]; then
+        NGINX_DASHBOARDS_DIR="$(cd "$(pwd)/../SC_Dashboards" && pwd)"
+    elif [ -d "$HOME/ScientistCloud2.0/scientistcloud/SC_Dashboards" ]; then
+        NGINX_DASHBOARDS_DIR="$HOME/ScientistCloud2.0/scientistcloud/SC_Dashboards"
+    elif [ -d "$HOME/ScientistCloud_2.0/scientistcloud/SC_Dashboards" ]; then
+        NGINX_DASHBOARDS_DIR="$HOME/ScientistCloud_2.0/scientistcloud/SC_Dashboards"
+    elif [ -d "$(dirname "$(dirname "$(dirname "$(pwd)")")")/scientistcloud/SC_Dashboards" ]; then
+        NGINX_DASHBOARDS_DIR="$(cd "$(dirname "$(dirname "$(dirname "$(pwd)")")")/scientistcloud/SC_Dashboards" && pwd)"
+    fi
+
+    if [ -n "$VISUS_DOCKER_PATH" ] && [ -d "$VISUS_DOCKER_PATH" ] && [ -d "$NGINX_DASHBOARDS_DIR" ]; then
+        pushd "$NGINX_DASHBOARDS_DIR"
+        ./scripts/setup_dashboards_nginx.sh "$VISUS_DOCKER_PATH" 2>&1 | grep -E "(✅|⚠️|❌|Error)" || true
+        popd
+    else
+        echo "⚠️  Could not refresh dashboard nginx configs"
+        echo "   VISUS_DOCKER_PATH=$VISUS_DOCKER_PATH"
+        echo "   NGINX_DASHBOARDS_DIR=$NGINX_DASHBOARDS_DIR"
+    fi
+
+    if docker ps --format "{{.Names}}" | grep -q "visstore_nginx"; then
+        if docker exec visstore_nginx nginx -t; then
+            docker exec visstore_nginx nginx -s reload
+            echo "✅ Nginx configuration tested and reloaded"
+        else
+            echo "❌ Nginx configuration test failed; not reloading"
+            exit 1
+        fi
+    else
+        echo "⚠️  visstore_nginx is not running"
+    fi
+
+    echo ""
+    echo "🕒 allServicesStart.sh finished at: $(date '+%Y-%m-%d %H:%M:%S %Z')"
+    exit 0
+fi
+
 # Setup and build dashboards
 # NOTE: New dashboards use separate .conf files in nginx/conf.d/ (automatically included)
 # Old dashboards are embedded in default.conf.https/default.conf.template inside server blocks
@@ -461,15 +527,15 @@ if [ -d "$DASHBOARDS_DIR" ]; then
     # Regenerate to ensure latest fixes are applied (Dockerfiles and nginx configs)
     echo "   Initializing dashboards..."
     DASHBOARDS=$(jq -r '.dashboards | to_entries[] | select(.value.enabled == true) | .key' config/dashboard-registry.json 2>/dev/null || echo "")
-    if [ "$DARKMATTER_DASHBOARD_ONLY" = true ]; then
-        DM_EN=$(jq -r '.dashboards["darkmatter"].enabled // false' config/dashboard-registry.json 2>/dev/null || echo "false")
-        if [ "$DM_EN" != "true" ]; then
-            echo "   ❌ -dm requires darkmatter to be enabled in config/dashboard-registry.json"
+    if [ -n "$DASHBOARD_ONLY_REGISTRY_KEY" ]; then
+        DASHBOARD_ENABLED=$(jq -r ".dashboards[\"$DASHBOARD_ONLY_REGISTRY_KEY\"].enabled // false" config/dashboard-registry.json 2>/dev/null || echo "false")
+        if [ "$DASHBOARD_ENABLED" != "true" ]; then
+            echo "   ❌ Dashboard-only mode requires $DASHBOARD_ONLY_REGISTRY_KEY to be enabled in config/dashboard-registry.json"
             popd
             exit 1
         fi
-        DASHBOARDS="darkmatter"
-        echo "   (DarkMatter-only: other dashboards skipped for init/build/start)"
+        DASHBOARDS="$DASHBOARD_ONLY_REGISTRY_KEY"
+        echo "   (Dashboard-only: other dashboards skipped; target=$DASHBOARD_ONLY_REGISTRY_KEY)"
     fi
     if [ -n "$DASHBOARDS" ]; then
         while IFS= read -r DASHBOARD_NAME; do
@@ -503,8 +569,9 @@ if [ -d "$DASHBOARDS_DIR" ]; then
             docker network create docker_visstore_web || echo "   ⚠️  Network creation failed (may already exist)"
         fi
         
-        # Remove old dashboard containers to avoid ContainerConfig errors (-dm keeps other dashboards)
-        if [ "$DARKMATTER_DASHBOARD_ONLY" != true ]; then
+        # Remove old dashboard containers to avoid ContainerConfig errors.
+        # Dashboard-only modes keep other dashboards running.
+        if [ -z "$DASHBOARD_ONLY_CONTAINER" ]; then
             echo "   Cleaning up old dashboard containers..."
             OLD_CONTAINERS=$(docker ps -a --filter "name=dashboard_" --format "{{.Names}}" 2>/dev/null || true)
             if [ -n "$OLD_CONTAINERS" ]; then
@@ -529,22 +596,22 @@ if [ -d "$DASHBOARDS_DIR" ]; then
             echo "   Using .env file from VisusDataPortalPrivate: $ENV_FILE"
         fi
         
-        # Stop / remove existing dashboard containers (full stack, or only DarkMatter with -dm)
-        if [ "$DARKMATTER_DASHBOARD_ONLY" = true ]; then
-            echo "   Replacing only DarkMatter dashboard container (other dashboard containers left running)..."
-            docker rm -f dashboard_darkmatter 2>/dev/null || true
+        # Stop / remove existing dashboard containers (full stack, or targeted dashboard-only mode)
+        if [ -n "$DASHBOARD_ONLY_CONTAINER" ]; then
+            echo "   Replacing only $DASHBOARD_ONLY_REGISTRY_KEY dashboard container (other dashboard containers left running)..."
+            docker rm -f "$DASHBOARD_ONLY_CONTAINER" 2>/dev/null || true
         else
             echo "   Stopping existing dashboard containers..."
             docker-compose -f dashboards-docker-compose.yml down 2>/dev/null || true
         fi
 
-        # Start containers (all services, or only darkmatter when -dm)
+        # Start containers (all services, or the selected dashboard-only target)
         if [ -n "$ENV_FILE" ]; then
-            if [ "$DARKMATTER_DASHBOARD_ONLY" = true ]; then
-                if docker-compose -f dashboards-docker-compose.yml --env-file "$ENV_FILE" up -d --build darkmatter; then
-                    echo "   ✅ DarkMatter dashboard container started"
+            if [ -n "$DASHBOARD_ONLY_SERVICE" ]; then
+                if docker-compose -f dashboards-docker-compose.yml --env-file "$ENV_FILE" up -d --build "$DASHBOARD_ONLY_SERVICE"; then
+                    echo "   ✅ $DASHBOARD_ONLY_REGISTRY_KEY dashboard container started"
                 else
-                    echo "   ❌ Failed to start DarkMatter dashboard"
+                    echo "   ❌ Failed to start $DASHBOARD_ONLY_REGISTRY_KEY dashboard"
                     docker-compose -f dashboards-docker-compose.yml ps || true
                 fi
             else
@@ -558,11 +625,11 @@ if [ -d "$DASHBOARDS_DIR" ]; then
             fi
         else
             echo "   ⚠️  No .env file found - trying without explicit env-file"
-            if [ "$DARKMATTER_DASHBOARD_ONLY" = true ]; then
-                if docker-compose -f dashboards-docker-compose.yml up -d --build darkmatter; then
-                    echo "   ✅ DarkMatter dashboard container started"
+            if [ -n "$DASHBOARD_ONLY_SERVICE" ]; then
+                if docker-compose -f dashboards-docker-compose.yml up -d --build "$DASHBOARD_ONLY_SERVICE"; then
+                    echo "   ✅ $DASHBOARD_ONLY_REGISTRY_KEY dashboard container started"
                 else
-                    echo "   ❌ Failed to start DarkMatter dashboard"
+                    echo "   ❌ Failed to start $DASHBOARD_ONLY_REGISTRY_KEY dashboard"
                     docker-compose -f dashboards-docker-compose.yml ps || true
                 fi
             else

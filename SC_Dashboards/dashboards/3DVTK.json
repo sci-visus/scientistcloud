@@ -32,7 +32,6 @@
     "MONGO_URL": "${MONGO_URL}"
   },
   "nginx_path": "/dashboard/3DVTK",
-  "panel_static_proxy": true,
   "health_check_path": "/health",
   "supported_dimensions": ["3D"],
   "build_args": {

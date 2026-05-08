@@ -53,7 +53,6 @@ DASHBOARD_PORT=$(jq -r '.port' "$CONFIG_FILE")
 DASHBOARD_TYPE=$(jq -r '.type // "dash"' "$CONFIG_FILE")
 HEALTH_CHECK_PATH=$(jq -r '.health_check_path // empty' "$CONFIG_FILE")
 ENABLE_CORS=$(jq -r '.enable_cors // false' "$CONFIG_FILE")
-PANEL_STATIC_PROXY=$(jq -r '.panel_static_proxy // false' "$CONFIG_FILE")
 # Get app_path (where the dashboard app is mounted, e.g., /plotly/ for Dash, /3DVTK/ for Bokeh)
 APP_PATH=$(jq -r '.app_path // empty' "$CONFIG_FILE")
 # If app_path is not specified, determine it based on dashboard type
@@ -205,28 +204,6 @@ elif [[ "$DASHBOARD_TYPE" == "bokeh" ]]; then
     # Bokeh uses /static/ for static files (shared across all apps, served from root).
     # Always include Panel extension routes for Bokeh dashboards, since Panel may come
     # from the base image rather than dashboard-specific requirements.
-    ROOT_PANEL_STATIC_SECTION=""
-    if [[ "$PANEL_STATIC_PROXY" == "true" ]]; then
-        ROOT_PANEL_STATIC_SECTION=$(cat << ROOTPANELEOF
-
-# Root Panel static files. Panel-generated Bokeh pages request these as
-# /static/extensions/panel/... even when the app itself is mounted below
-# /dashboard/<name>/, so this root route is required for Panel dashboards.
-location /static/extensions/panel/ {
-    set \$upstream_host "dashboard_${CONTAINER_NAME_SERVICE}";
-    set \$upstream_port "${DASHBOARD_PORT}";
-    proxy_pass http://\$upstream_host:\$upstream_port/static/extensions/panel/;
-    proxy_set_header Host \$host;
-    proxy_set_header X-Real-IP \$remote_addr;
-    proxy_set_header X-Forwarded-For "\$proxy_add_x_forwarded_for";
-    proxy_set_header X-Forwarded-Proto \$scheme;
-
-    expires 1y;
-    add_header Cache-Control "public, immutable";
-}
-ROOTPANELEOF
-)
-    fi
     cat > "$STATIC_TEMP" << STATICEOF
 # Static files (Bokeh - uses static/ at root level, not app path)
 location ${NGINX_PATH}static/ {
@@ -259,7 +236,6 @@ location ${NGINX_PATH}static/extensions/panel/ {
     expires 1y;
     add_header Cache-Control "public, immutable";
 }
-${ROOT_PANEL_STATIC_SECTION}
 STATICEOF
 else
     # Other types (vtk, etc.) - no static file section
