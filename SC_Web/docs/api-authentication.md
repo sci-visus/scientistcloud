@@ -39,6 +39,7 @@ curl -X POST "https://scientistcloud.com/api/auth/login" \
   "message": "Login successful",
   "data": {
     "access_token": "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9...",
+    "refresh_token": "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9...",
     "expires_in": 86400,
     "token_type": "Bearer",
     "user": {
@@ -86,12 +87,10 @@ curl -H "Authorization: Bearer $TOKEN" \
 
 ```json
 {
-  "success": true,
-  "message": "Token is valid",
-  "user": {
-    "email": "user@example.com",
-    "name": "User Name"
-  }
+  "is_authenticated": true,
+  "user_email": "user@example.com",
+  "access_type": "direct",
+  "error": null
 }
 ```
 
@@ -112,13 +111,10 @@ curl -H "Authorization: Bearer $TOKEN" \
 
 ```json
 {
-  "success": true,
-  "user": {
-    "user_id": "user_abc123",
-    "email": "user@example.com",
-    "name": "User Name",
-    "email_verified": true
-  }
+  "user_id": "user_abc123",
+  "email": "user@example.com",
+  "name": "User Name",
+  "email_verified": true
 }
 ```
 
@@ -154,14 +150,14 @@ curl -X POST "https://scientistcloud.com/api/auth/refresh" \
 
 ### POST `/api/auth/logout`
 
-Logout and revoke the current token.
+Logout endpoint accepts a token in the JSON request body.
 
 **Request:**
 
 ```bash
 curl -X POST "https://scientistcloud.com/api/auth/logout" \
-     -H "Authorization: Bearer $TOKEN" \
-     -H "Content-Type: application/json"
+     -H "Content-Type: application/json" \
+     -d "{\"token\":\"$TOKEN\"}"
 ```
 
 **Response:**
@@ -279,7 +275,7 @@ TOKEN=$(curl -s -X POST "https://scientistcloud.com/api/auth/login" \
 
 ```bash
 # Check service health
-curl https://scientistcloud.com/api/auth/health
+curl https://scientistcloud.com/health
 
 # Should return: {"status": "healthy"}
 ```

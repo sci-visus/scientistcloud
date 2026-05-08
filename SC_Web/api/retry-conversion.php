@@ -39,6 +39,48 @@ require_once(__DIR__ . '/../includes/sclib_client.php');
 // MongoDB classes for direct status update
 // Use MongoDB\Client instead of MongoDB\Driver\Manager for better compatibility
 
+function retry_conversion_find_first_idx($dir) {
+    if (!$dir || !is_dir($dir)) {
+        return null;
+    }
+    try {
+        $iterator = new RecursiveIteratorIterator(
+            new RecursiveDirectoryIterator($dir, FilesystemIterator::SKIP_DOTS)
+        );
+        foreach ($iterator as $file) {
+            if ($file->isFile() && strtolower($file->getExtension()) === 'idx') {
+                return $file->getPathname();
+            }
+        }
+    } catch (Exception $e) {
+        error_log("Could not inspect dataset directory for IDX files: " . $e->getMessage());
+    }
+    return null;
+}
+
+function retry_conversion_first_remote_link($dataset) {
+    $candidates = [
+        $dataset['google_drive_link'] ?? null,
+        $dataset['viewer_url'] ?? null,
+        $dataset['download_url'] ?? null,
+        $dataset['source_url'] ?? null,
+        $dataset['source_path'] ?? null,
+        $dataset['metadata']['google_drive_link'] ?? null,
+        $dataset['metadata']['viewer_url'] ?? null,
+        $dataset['metadata']['download_url'] ?? null,
+        $dataset['metadata']['source_url'] ?? null,
+        $dataset['metadata']['original_link'] ?? null,
+        $dataset['metadata']['source_config']['original_link'] ?? null,
+    ];
+    foreach ($candidates as $candidate) {
+        $value = trim((string)($candidate ?? ''));
+        if ($value !== '' && preg_match('/^(s3|https?|pelican):\/\//i', $value)) {
+            return $value;
+        }
+    }
+    return '';
+}
+
 try {
     // Check authentication - support both session and Bearer token
     $user_email = null;
@@ -203,6 +245,7 @@ try {
     curl_close($ch_dataset);
     
     $has_google_drive_link = false;
+    $dataset = null;
     if ($dataset_http_code === 200) {
         $dataset_data = json_decode($dataset_response, true);
         if ($dataset_data && isset($dataset_data['dataset'])) {
@@ -212,6 +255,29 @@ try {
             if (!empty($google_drive_link) && stripos($google_drive_link, 'google') !== false) {
                 $has_google_drive_link = true;
             }
+        }
+    }
+
+    $remote_link = $dataset ? retry_conversion_first_remote_link($dataset) : '';
+    $is_google_remote = $remote_link !== '' && stripos($remote_link, 'google') !== false;
+    $source_type = strtolower(trim((string)($dataset['source_type'] ?? '')));
+    if ($remote_link !== '' && !$is_google_remote && $source_type !== 's3') {
+        $upload_dir = '/mnt/visus_datasets/upload/' . basename($dataset_uuid);
+        $converted_dir = '/mnt/visus_datasets/converted/' . basename($dataset_uuid);
+        $has_upload_idx = retry_conversion_find_first_idx($upload_dir) !== null;
+        $has_converted_idx = retry_conversion_find_first_idx($converted_dir) !== null;
+
+        if (!$has_upload_idx && !$has_converted_idx) {
+            ob_end_clean();
+            http_response_code(409);
+            echo json_encode([
+                'success' => false,
+                'error' => 'Remote linked-only dataset cannot be converted yet',
+                'message' => 'This dataset is linked to remote storage, but its files are not staged on the ScientistCloud server. Conversion requires a local IDX descriptor and data files under /mnt/visus_datasets/upload/' . basename($dataset_uuid) . '. Reconnect/import the S3 dataset with conversion enabled, or upload/download the dataset files first. For large ARCO IDX data, use OpenVisus Slice or 3D VTK.',
+                'dataset_uuid' => $dataset_uuid,
+                'remote_linked_only' => true
+            ]);
+            exit;
         }
     }
     

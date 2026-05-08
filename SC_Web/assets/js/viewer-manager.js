@@ -680,12 +680,32 @@ class ViewerManager {
             }
         } catch (error) {
             console.error('Failed to queue conversion:', error);
-            alert('Failed to queue conversion: ' + error.message);
+            this.showConversionQueueError(error.message);
             if (button) {
                 button.disabled = false;
                 button.innerHTML = originalHtml;
             }
         }
+    }
+
+    showConversionQueueError(message) {
+        const viewerContainer = document.getElementById('viewerContainer');
+        if (!viewerContainer) {
+            alert('Failed to queue conversion: ' + message);
+            return;
+        }
+        viewerContainer.innerHTML = `
+            <div class="d-flex align-items-center justify-content-center h-100">
+                <div class="text-center p-4" style="max-width: 640px;">
+                    <i class="fas fa-exclamation-triangle text-warning mb-3" style="font-size: 3rem;"></i>
+                    <h5>Conversion Could Not Start</h5>
+                    <p class="text-muted mb-3">${this.escapeHtml(message || 'The conversion job could not be queued.')}</p>
+                    <p class="small text-muted mb-0">
+                        Linked remote datasets must be imported or staged locally before ScientistCloud can convert them to IDX/ARCO.
+                    </p>
+                </div>
+            </div>
+        `;
     }
 
     escapeHtml(value) {
