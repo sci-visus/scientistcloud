@@ -36,6 +36,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
 require_once(__DIR__ . '/../config.php');
 require_once(__DIR__ . '/../includes/dataset_manager.php');
 require_once(__DIR__ . '/../includes/sclib_client.php');
+require_once(__DIR__ . '/../includes/url_redact.php');
 
 try {
     // Get dataset ID from request
@@ -81,6 +82,8 @@ try {
             unset($formattedDataset['user_email']);
             unset($formattedDataset['shared_with']);
             unset($formattedDataset['team_id']);
+
+            $formattedDataset = sc_redact_dataset_urls_for_client($formattedDataset);
             
             $response = [
                 'success' => true,

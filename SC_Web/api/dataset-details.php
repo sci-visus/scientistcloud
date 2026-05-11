@@ -36,6 +36,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
 require_once(__DIR__ . '/../config.php');
 require_once(__DIR__ . '/../includes/auth.php');
 require_once(__DIR__ . '/../includes/dataset_manager.php');
+require_once(__DIR__ . '/../includes/url_redact.php');
 
 try {
     // Check authentication
@@ -75,10 +76,10 @@ try {
         exit;
     }
 
-    // Format response
+    // Format response (never expose raw gateway / query-string credentials to the browser)
     $response = [
         'success' => true,
-        'dataset' => $dataset
+        'dataset' => sc_redact_dataset_urls_for_client($dataset),
     ];
 
     // Clean output buffer and send response

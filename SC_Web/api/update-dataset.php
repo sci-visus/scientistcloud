@@ -36,6 +36,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
 require_once(__DIR__ . '/../config.php');
 require_once(__DIR__ . '/../includes/auth.php');
 require_once(__DIR__ . '/../includes/dataset_manager.php');
+require_once(__DIR__ . '/../includes/url_redact.php');
 
 try {
     // Check authentication
@@ -140,7 +141,7 @@ try {
         echo json_encode([
             'success' => true,
             'message' => 'Dataset updated successfully',
-            'dataset' => $updatedDataset
+            'dataset' => sc_redact_dataset_urls_for_client($updatedDataset),
         ]);
     } else {
         ob_end_clean();

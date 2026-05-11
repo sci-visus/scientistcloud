@@ -9,6 +9,31 @@ function getApiBasePath() {
     return isLocal ? '/api' : '/portal/api';
 }
 
+/** Mask query credentials / s3 userinfo for read-only UI (matches server url_redact.php). */
+function redactUrlSecretsForDisplay(url) {
+    let out = String(url == null ? '' : url).trim();
+    if (!out) {
+        return '';
+    }
+    if (/^s3:\/\//i.test(out)) {
+        const rest = out.slice(5);
+        const at = rest.indexOf('@');
+        if (at !== -1 && rest.slice(0, at).includes(':')) {
+            out = 's3://...@' + rest.slice(at + 1);
+        }
+    }
+    const params = [
+        'secret_key', 'access_key', 'secret_access_key', 'access_key_id', 'password', 'token',
+        'api_key', 'apikey', 'signature', 'x-amz-signature', 'x-amz-security-token',
+        'x-amz-credential', 'awsaccesskeyid',
+    ];
+    for (const p of params) {
+        const re = new RegExp(`([?&]${p}=)([^&]*)`, 'gi');
+        out = out.replace(re, '$1...');
+    }
+    return out;
+}
+
 class DatasetManager {
     constructor() {
         this.currentDataset = null;
@@ -2002,7 +2027,7 @@ class DatasetManager {
                         ${dataset.google_drive_link ? `
                         <div class="detail-item mb-2">
                             <span class="detail-label">Data Link:</span>
-                            <span class="detail-value small text-muted" style="word-break: break-all;">${this.escapeHtml(dataset.google_drive_link)}</span>
+                            <span class="detail-value small text-muted" style="word-break: break-all;">${this.escapeHtml(redactUrlSecretsForDisplay(dataset.google_drive_link))}</span>
                         </div>
                         ` : ''}
                         
@@ -2082,9 +2107,16 @@ class DatasetManager {
                         <div class="mb-2">
                             <label class="form-label small">Data Link (Google Drive/Remote):</label>
                             <input type="text" class="form-control form-control-sm" name="google_drive_link" 
-                                   value="${this.escapeHtml(dataset.google_drive_link || '')}" 
-                                   placeholder="http://example.com/mod_visus?dataset=...">
-                            <small class="form-text text-muted">Link to remote data (e.g., S3, external server). If provided and not a Google Drive link, data will be loaded remotely.</small>
+                                   value="${(dataset.google_drive_link || '').trim() ? '' : this.escapeHtml(dataset.google_drive_link || '')}" 
+                                   placeholder="${(dataset.google_drive_link || '').trim()
+                                       ? this.escapeHtml(redactUrlSecretsForDisplay(dataset.google_drive_link))
+                                       : 'https:// or s3:// ...'}"
+                                   title="${(dataset.google_drive_link || '').trim()
+                                       ? 'A link is already stored. Leave blank to keep it, or paste a new URL to replace it (credentials are not shown).'
+                                       : ''}">
+                            <small class="form-text text-muted">${(dataset.google_drive_link || '').trim()
+                                ? 'Credentials in stored URLs are hidden. Leave blank to keep the current link, or paste a new URL to replace it.'
+                                : 'Link to remote data (e.g., S3, external server). If provided and not a Google Drive link, data will be loaded remotely.'}</small>
                         </div>
                         
                         <div class="mb-2">
@@ -2225,10 +2257,13 @@ class DatasetManager {
             team_uuid: formData.get('team_uuid'),
             dimensions: formData.get('dimensions'),
             preferred_dashboard: formData.get('preferred_dashboard'),
-            google_drive_link: (formData.get('google_drive_link') ?? '').trim(),
             is_public: isPublic,
             is_downloadable: isDownloadable
         };
+        const newDriveLink = (formData.get('google_drive_link') ?? '').trim();
+        if (newDriveLink) {
+            updateData.google_drive_link = newDriveLink;
+        }
         
         // If convert_to_idx is checked, set status to "conversion queued"
         if (convertToIdx) {
