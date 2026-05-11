@@ -693,6 +693,7 @@ def derive_dataset_from_uuid(dataset_uuid: str):
                 ds["auth_override"] = auth_override
             if converted_idx_path:
                 ds["converted_idx_path"] = converted_idx_path
+            ensure_http_gateway_credentials_on_dataset(ds)
             print(
                 f"[DarkMatter][DEBUG] resolved runtime_dataset from dataset doc field={field}: "
                 f"mode={ds['mode']} mid={ds['mid_file']}"
@@ -1253,6 +1254,60 @@ def with_query_params(url: str, params: dict) -> str:
             existing[key] = value_str
     query = urlencode(existing, doseq=False)
     return urlunsplit((parts.scheme, parts.netloc, parts.path, query, parts.fragment))
+
+
+def _http_gateway_query_credentials_need_merge(uri: str) -> bool:
+    """True if HTTPS gateway URLs lack real access_key/secret_key (missing, redacted, or empty)."""
+    u = str(uri or "").strip()
+    if not u.startswith("http://") and not u.startswith("https://"):
+        return False
+    qs = parse_qs(urlsplit(u).query or "", keep_blank_values=True)
+    ak = (qs.get("access_key") or [""])[0].strip()
+    sk = (qs.get("secret_key") or [""])[0].strip()
+    if not ak or not sk:
+        return True
+    if ak == "..." or sk == "...":
+        return True
+    return False
+
+
+def ensure_http_gateway_credentials_on_dataset(ds: Optional[dict]) -> bool:
+    """
+    For http_explicit datasets loaded from Mongo: OpenVisus and sidecar HTTP reads need
+    gateway query credentials on idx/txt/csv URLs. If google_drive_link was redacted in DB
+    or stored without query params while s3_access_key_id / s3_secret_access_key exist on
+    the document, merge those keys into the three URIs. No-op for CLI `bokeh serve --args https://...`
+    when URLs already carry real credentials.
+    Returns True if any URI was updated.
+    """
+    if not ds or ds.get("mode") != "http_explicit":
+        return False
+    override = ds.get("auth_override") or {}
+    ak = str(override.get("aws_access_key_id") or "").strip()
+    sk = str(override.get("aws_secret_access_key") or "").strip()
+    if not ak or not sk:
+        return False
+    region = str(override.get("region_name") or "us-east-1").strip() or "us-east-1"
+    changed = False
+    for uri_key in ("idx_uri", "txt_uri", "csv_uri"):
+        u = str(ds.get(uri_key) or "").strip()
+        if not u.startswith("http://") and not u.startswith("https://"):
+            continue
+        if not _http_gateway_query_credentials_need_merge(u):
+            continue
+        parts = urlsplit(u)
+        base = urlunsplit((parts.scheme, parts.netloc, parts.path, "", parts.fragment))
+        ds[uri_key] = with_query_params(
+            base,
+            {"access_key": ak, "secret_key": sk, "region_name": region},
+        )
+        changed = True
+    if changed:
+        print(
+            "[DarkMatter][DEBUG] merged dataset-document S3 keys into HTTPS gateway URLs "
+            "(idx/txt/csv had missing or redacted query credentials)"
+        )
+    return changed
 
 
 def get_s3_http_gateway_base() -> str:
