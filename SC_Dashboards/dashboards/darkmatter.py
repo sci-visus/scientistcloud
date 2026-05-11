@@ -1478,6 +1478,12 @@ class AppState:
         if endpoint:
             os.environ["ENDPOINT_URL"] = endpoint
             os.environ["S3_ENDPOINT_URL"] = endpoint
+            # OpenVisus / AWS SDK for C++ and boto3/botocore read this name; ENDPOINT_URL alone
+            # often leaves native s3:// LoadDataset with "empty content" on custom gateways.
+            os.environ["AWS_ENDPOINT_URL"] = endpoint
+            # Path-style matches Inspect S3 / MinIO-style gateways (bucket in URL path, not subdomain).
+            if "amazonaws.com" not in endpoint.lower():
+                os.environ["AWS_USE_PATH_STYLE_ENDPOINT"] = "true"
         if region:
             os.environ["AWS_DEFAULT_REGION"] = region
 
@@ -1731,6 +1737,20 @@ class AppState:
                     s3_idx = http_object_url_to_s3_uri(idx_http)
                     if s3_idx:
                         try:
+                            ov = self.s3_auth_override or {}
+                            idx_parts_fb = urlsplit(idx_http)
+                            gw_base = (
+                                f"{idx_parts_fb.scheme}://{idx_parts_fb.netloc}"
+                                if idx_parts_fb.scheme and idx_parts_fb.netloc
+                                else ""
+                            )
+                            merged_ep = (str(ov.get("endpoint_url") or "").strip() or gw_base)
+                            if merged_ep:
+                                self.set_s3_auth_override(
+                                    merged_ep,
+                                    str(ov.get("aws_access_key_id") or ""),
+                                    str(ov.get("aws_secret_access_key") or ""),
+                                )
                             print(
                                 f"[DarkMatter][DEBUG] OpenVisus LoadDataset fallback (native s3:// idx): "
                                 f"{s3_idx}"
