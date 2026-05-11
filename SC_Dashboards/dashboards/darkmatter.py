@@ -1352,8 +1352,23 @@ def main():
             if not candidate:
                 continue
             ds = derive_dataset_from_local_dir(candidate)
-            if ds is None:
-                ds = derive_dataset_from_remote_uri(candidate)
+            if ds is not None:
+                # Linked S3 IDX often materializes only visus.idx under converted/<uuid> while
+                # visus.txt / visus.csv remain on object storage. Do not lock in local_explicit here
+                # or we skip derive_dataset_from_uuid(), which falls back to google_drive_link.
+                if os.path.isfile(ds["txt_path"]) and os.path.isfile(ds["csv_path"]):
+                    runtime_dataset = ds
+                    runtime_remote_url = candidate
+                    print(
+                        f"[DarkMatter][DEBUG] resolved runtime_dataset from init params: "
+                        f"mode={ds['mode']} mid={ds['mid_file']}"
+                    )
+                    break
+                print(
+                    f"[DarkMatter][DEBUG] init params path {candidate!r} has idx but missing "
+                    f"txt/csv sidecars; continuing resolution"
+                )
+            ds = derive_dataset_from_remote_uri(candidate)
             if ds is not None:
                 runtime_dataset = ds
                 runtime_remote_url = candidate
