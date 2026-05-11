@@ -338,6 +338,28 @@ def parse_s3_uri(uri: str):
     return bucket, key
 
 
+def _redact_url_secrets(url: str) -> str:
+    out = str(url or "")
+    out = re.sub(r"([?&]secret_key=)[^&]+", r"\1***", out, flags=re.I)
+    out = re.sub(r"([?&]access_key=)[^&]+", r"\1***", out, flags=re.I)
+    return out
+
+
+def _log_openvisus_block0_url_for_diagnostics(db_outer, field_name: str) -> None:
+    """When reads are all-zero, log where OpenVisus expects block 0 (helps HTTPS vs local idx issues in Dozzle)."""
+    try:
+        inner = getattr(db_outer, "db", db_outer)
+        access = inner.createAccessForBlockQuery()
+        fobj = inner.getField(field_name)
+        ts = inner.getTimesteps()
+        t0 = float(ts.getDefault())
+        fn = str(access.getFilename(fobj, t0, 0))
+        safe = _redact_url_secrets(fn)
+        print(f"[DarkMatter][DEBUG] OpenVisus block0 target (redacted): {safe[:1200]}")
+    except Exception as ex:
+        print(f"[DarkMatter][DEBUG] OpenVisus block0 path diagnostic failed: {ex}")
+
+
 def read_openvisus_field(idx_url_or_path: str, field: str = "data"):
     """
     Read an OpenVisus field using full dataset resolution when the binding supports it
@@ -459,6 +481,7 @@ def read_openvisus_field(idx_url_or_path: str, field: str = "data"):
         return best_sample
 
     if last_sample is not None and _nonzero_count(last_sample) == 0:
+        _log_openvisus_block0_url_for_diagnostics(db, field)
         print(
             "[DarkMatter][WARN] OpenVisus read returned all zeros for tried time/resolution combinations; "
             "returning last sample for upstream diagnostics (verify ARCO .bin files match filename_template "
