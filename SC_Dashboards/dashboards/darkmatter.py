@@ -361,6 +361,8 @@ def resolve_openvisus_resolved_idx_via_api(
     user_email: Optional[str],
     auth_override: Optional[dict] = None,
     output_filename: str = "visus.idx",
+    filename_template_mode: str = "proxy",
+    force_refresh: bool = False,
     region_name: str = "us-east-1",
 ):
     """
@@ -389,6 +391,9 @@ def resolve_openvisus_resolved_idx_via_api(
         "cache_credentials": True,
         "use_cached_credentials": True,
         "output_filename": output_filename,
+        "filename_template_mode": filename_template_mode,
+        "force_refresh": bool(force_refresh),
+        "background": False,
     }
 
     resp = requests.post(endpoint, json=payload, timeout=60)
@@ -1006,6 +1011,40 @@ class AppState:
 
                 print(f"[DarkMatter][DEBUG] LoadDataset input={idx_for_read}")
                 self.scene_data = read_openvisus_field(idx_for_read)
+                direct_arr = np.asarray(self.scene_data)
+                if (
+                    self.runtime_dataset["mode"] == "http_explicit"
+                    and self.s3_auth_override
+                    and direct_arr.size
+                    and np.nanmin(direct_arr) == 0
+                    and np.nanmax(direct_arr) == 0
+                ):
+                    # The remote ARCO .idx loaded, but private relative chunk URLs may
+                    # not inherit query credentials. Keep sidecars remote; only use a
+                    # tiny resolved descriptor for the OpenVisus data read fallback.
+                    dataset_identifier = str(uuid or "").strip()
+                    if dataset_identifier and not dataset_identifier.startswith(("http://", "https://", "s3://")):
+                        try:
+                            resolved_idx, _ = resolve_openvisus_resolved_idx_via_api(
+                                dataset_identifier=dataset_identifier,
+                                user_email=user_email,
+                                auth_override=self.s3_auth_override or {},
+                                output_filename="visus.s3.idx",
+                                filename_template_mode="s3",
+                                force_refresh=True,
+                            )
+                            print(f"[DarkMatter][DEBUG] direct remote read was all-zero; retrying with s3-template resolved idx: {resolved_idx}")
+                            fallback_scene_data = read_openvisus_field(resolved_idx)
+                            fallback_arr = np.asarray(fallback_scene_data)
+                            if fallback_arr.size and not (
+                                np.nanmin(fallback_arr) == 0 and np.nanmax(fallback_arr) == 0
+                            ):
+                                self.scene_data = fallback_scene_data
+                                print("[DarkMatter][DEBUG] resolved idx fallback produced non-zero scene data")
+                            else:
+                                print("[DarkMatter][WARN] resolved idx fallback also produced all-zero scene data")
+                        except Exception as ex:
+                            print(f"[DarkMatter][WARN] resolved idx fallback failed; keeping direct remote read: {ex}")
                 if self.runtime_dataset["mode"] == "http_explicit":
                     txt_s3_uri = http_object_url_to_s3_uri(self.runtime_dataset["txt_uri"])
                     csv_s3_uri = http_object_url_to_s3_uri(self.runtime_dataset["csv_uri"])
