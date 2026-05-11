@@ -515,6 +515,11 @@ def read_openvisus_field_with_dataset_cwd(idx_url_or_path: str, field: str = "da
             pass
 
 
+def _darkmatter_disable_resolved_idx_api() -> bool:
+    """When true, never POST to openvisus-resolved-idx (pure HTTPS / no local visus.s3.idx materialization)."""
+    return str(os.getenv("DARKMATTER_DISABLE_RESOLVED_IDX", "")).strip().lower() in ("1", "true", "yes", "on")
+
+
 def resolve_openvisus_resolved_idx_via_api(
     *,
     dataset_identifier: Optional[str],
@@ -530,6 +535,9 @@ def resolve_openvisus_resolved_idx_via_api(
     /mnt/visus_datasets/converted/<dataset_uuid>/ for OpenVisus.
 
     The API will also convert to ARCO when the source idx has (arco) == 0.
+
+    Set DARKMATTER_DISABLE_RESOLVED_IDX=1 in the dashboard container to skip this entirely
+    (e.g. testing linked HTTPS idx only without regenerating visus.s3.idx after deletes).
     """
     # Docker Compose uses sclib_fastapi; local `bokeh serve` has no that DNS name — default to loopback.
     _default_api = (
@@ -1563,28 +1571,34 @@ class AppState:
                     and not dataset_identifier.startswith(("http://", "https://", "s3://"))
                     and (self.s3_auth_override or {}).get("aws_access_key_id")
                 ):
-                    try:
-                        resolved_idx, _ = resolve_openvisus_resolved_idx_via_api(
-                            dataset_identifier=dataset_identifier,
-                            user_email=user_email,
-                            auth_override=self.s3_auth_override or {},
-                            output_filename="visus.s3.idx",
-                            filename_template_mode="s3",
-                            force_refresh=True,
+                    if _darkmatter_disable_resolved_idx_api():
+                        print(
+                            "[DarkMatter][DEBUG] Skipping openvisus-resolved-idx API "
+                            "(DARKMATTER_DISABLE_RESOLVED_IDX) — pure HTTPS / no visus.s3.idx regeneration"
                         )
-                        if resolved_idx and os.path.isfile(resolved_idx):
-                            trial = read_openvisus_field_with_dataset_cwd(resolved_idx)
-                            if self.scene_data is None or not _scene_is_all_zero(trial):
-                                self.scene_data = trial
-                                print(f"[DarkMatter][DEBUG] LoadDataset using resolved s3 idx: {resolved_idx}")
-                            else:
-                                print(
-                                    "[DarkMatter][WARN] resolved s3 idx also all-zero; "
-                                    "keeping prior scene_data if any"
-                                )
-                    except Exception as ex:
-                        last_load_err = ex
-                        print(f"[DarkMatter][WARN] resolved s3 idx API / load failed: {ex}")
+                    else:
+                        try:
+                            resolved_idx, _ = resolve_openvisus_resolved_idx_via_api(
+                                dataset_identifier=dataset_identifier,
+                                user_email=user_email,
+                                auth_override=self.s3_auth_override or {},
+                                output_filename="visus.s3.idx",
+                                filename_template_mode="s3",
+                                force_refresh=True,
+                            )
+                            if resolved_idx and os.path.isfile(resolved_idx):
+                                trial = read_openvisus_field_with_dataset_cwd(resolved_idx)
+                                if self.scene_data is None or not _scene_is_all_zero(trial):
+                                    self.scene_data = trial
+                                    print(f"[DarkMatter][DEBUG] LoadDataset using resolved s3 idx: {resolved_idx}")
+                                else:
+                                    print(
+                                        "[DarkMatter][WARN] resolved s3 idx also all-zero; "
+                                        "keeping prior scene_data if any"
+                                    )
+                        except Exception as ex:
+                            last_load_err = ex
+                            print(f"[DarkMatter][WARN] resolved s3 idx API / load failed: {ex}")
 
                     enable_proxy = str(
                         os.getenv("DARKMATTER_ENABLE_PROXY_RESOLVED_IDX", "false")
@@ -1593,6 +1607,7 @@ class AppState:
                         enable_proxy
                         and self.scene_data is not None
                         and _scene_is_all_zero(self.scene_data)
+                        and not _darkmatter_disable_resolved_idx_api()
                     ):
                         try:
                             resolved_proxy, _ = resolve_openvisus_resolved_idx_via_api(
@@ -1622,21 +1637,27 @@ class AppState:
                     and not dataset_identifier.startswith(("http://", "https://", "s3://"))
                     and (self.s3_auth_override or {}).get("aws_access_key_id")
                 ):
-                    try:
-                        resolved_idx, _ = resolve_openvisus_resolved_idx_via_api(
-                            dataset_identifier=dataset_identifier,
-                            user_email=user_email,
-                            auth_override=self.s3_auth_override or {},
-                            output_filename="visus.s3.idx",
-                            filename_template_mode="s3",
-                            force_refresh=False,
+                    if _darkmatter_disable_resolved_idx_api():
+                        print(
+                            "[DarkMatter][DEBUG] Skipping openvisus-resolved-idx for s3_explicit "
+                            "(DARKMATTER_DISABLE_RESOLVED_IDX)"
                         )
-                        if resolved_idx and os.path.isfile(resolved_idx):
-                            self.scene_data = read_openvisus_field_with_dataset_cwd(resolved_idx)
-                            print(f"[DarkMatter][DEBUG] LoadDataset s3_explicit resolved idx: {resolved_idx}")
-                    except Exception as ex:
-                        last_load_err = ex
-                        print(f"[DarkMatter][WARN] s3_explicit resolved idx failed: {ex}")
+                    else:
+                        try:
+                            resolved_idx, _ = resolve_openvisus_resolved_idx_via_api(
+                                dataset_identifier=dataset_identifier,
+                                user_email=user_email,
+                                auth_override=self.s3_auth_override or {},
+                                output_filename="visus.s3.idx",
+                                filename_template_mode="s3",
+                                force_refresh=False,
+                            )
+                            if resolved_idx and os.path.isfile(resolved_idx):
+                                self.scene_data = read_openvisus_field_with_dataset_cwd(resolved_idx)
+                                print(f"[DarkMatter][DEBUG] LoadDataset s3_explicit resolved idx: {resolved_idx}")
+                        except Exception as ex:
+                            last_load_err = ex
+                            print(f"[DarkMatter][WARN] s3_explicit resolved idx failed: {ex}")
 
                 still_need_materialized = need_resolved_or_local and self.scene_data is None
                 if (
