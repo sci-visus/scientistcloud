@@ -707,6 +707,138 @@ def read_text_lines_from_url(url: str) -> List[str]:
     return resp.text.splitlines()
 
 
+# Nexus-style acquisition folder names often appear in S3 paths while the .idx link uses a
+# generic name (e.g. .../07180827_0000_F0001/arco/arco.idx with sidecars 07180827_0000_F0001.txt).
+_ACQUISITION_STEM_RE = re.compile(r"^\d{8}_\d{4}_F\d+$")
+
+
+def sidecar_stem_hints_from_idx_uri(idx_uri: str) -> List[str]:
+    """Path segments that look like acquisition IDs — likely real .txt/.csv stems."""
+    path = urlsplit(str(idx_uri or "").strip()).path or ""
+    parts = [p for p in path.split("/") if p]
+    out: List[str] = []
+    for p in parts:
+        if _ACQUISITION_STEM_RE.match(p) and p not in out:
+            out.append(p)
+    return out
+
+
+def sidecar_http_urls_for_basename(txt_uri: str, csv_uri: str, base: str) -> tuple:
+    """Same query string as the originals; only the filename stem before .txt/.csv changes."""
+    base = str(base or "").strip()
+    if not base:
+        return "", ""
+    t = urlsplit(str(txt_uri or "").strip())
+    c = urlsplit(str(csv_uri or "").strip())
+    dir_t = (t.path or "").rsplit("/", 1)[0]
+    dir_c = (c.path or "").rsplit("/", 1)[0]
+    if not dir_t or not dir_c:
+        return "", ""
+    new_t = f"{dir_t}/{base}.txt"
+    new_c = f"{dir_c}/{base}.csv"
+    return (
+        urlunsplit((t.scheme, t.netloc, new_t, t.query, t.fragment)),
+        urlunsplit((c.scheme, c.netloc, new_c, c.query, c.fragment)),
+    )
+
+
+def try_read_darkmatter_sidecars_from_disk(
+    mid_file: str,
+    runtime_dataset: dict,
+    save_dir: Optional[str],
+    uuid_str: str,
+) -> Optional[tuple]:
+    """
+    If .txt and .csv exist next to a materialized idx (converted/ or upload/), use them.
+    Tries <mid>.{txt,csv} then visus.{txt,csv} so IDX packages that use visus.* still work
+    when the linked URL basename is different (e.g. arco.idx).
+    """
+    roots: List[str] = []
+    sd = (save_dir or "").strip()
+    if sd and os.path.isdir(sd):
+        roots.append(os.path.abspath(sd))
+    cip = str((runtime_dataset or {}).get("converted_idx_path") or "").strip()
+    if cip and os.path.isfile(cip):
+        roots.append(os.path.dirname(os.path.abspath(cip)))
+    if resolve_local_idx_file and uuid_str:
+        try:
+            rl = resolve_local_idx_file(str(uuid_str).strip())
+            rl = str(rl or "").strip()
+            if rl and os.path.isfile(rl):
+                roots.append(os.path.dirname(os.path.abspath(rl)))
+        except Exception:
+            pass
+    seen = set()
+    ordered_roots: List[str] = []
+    for r in roots:
+        if r and r not in seen:
+            seen.add(r)
+            ordered_roots.append(r)
+    bases: List[str] = []
+    mf = str(mid_file or "").strip()
+    idx_uri = str((runtime_dataset or {}).get("idx_uri") or "").strip()
+    for hint in sidecar_stem_hints_from_idx_uri(idx_uri):
+        if hint not in bases:
+            bases.append(hint)
+    if mf and mf not in bases:
+        bases.append(mf)
+    if not any(b.lower() == "visus" for b in bases):
+        bases.append("visus")
+    for root in ordered_roots:
+        for base in bases:
+            tp = os.path.join(root, f"{base}.txt")
+            cp = os.path.join(root, f"{base}.csv")
+            if os.path.isfile(tp) and os.path.isfile(cp):
+                with open(tp, "r", encoding="utf-8", errors="replace") as tf:
+                    txt_lines = tf.read().splitlines()
+                with open(cp, "r", encoding="utf-8", errors="replace") as cf:
+                    csv_lines = cf.read().splitlines()
+                print(f"[DarkMatter][DEBUG] sidecar metadata read from disk: {tp} + {cp}")
+                return txt_lines, csv_lines
+    return None
+
+
+def load_http_explicit_sidecar_lines(
+    txt_uri: str,
+    csv_uri: str,
+    auth_override: Optional[dict],
+) -> tuple:
+    """
+    Match prior behavior: prefer S3 API when credentials + s3:// mapping exist,
+    else HTTP GET, with the original no-auth branch ordering preserved.
+    """
+    txt_s3_uri = http_object_url_to_s3_uri(txt_uri)
+    csv_s3_uri = http_object_url_to_s3_uri(csv_uri)
+    has_keys = bool((auth_override or {}).get("aws_access_key_id") and (auth_override or {}).get("aws_secret_access_key"))
+    if has_keys and txt_s3_uri and csv_s3_uri:
+        try:
+            tl = read_s3_text_lines(txt_s3_uri, auth_override=auth_override)
+            cl = read_s3_text_lines(csv_s3_uri, auth_override=auth_override)
+            print("[DarkMatter][DEBUG] sidecar metadata read via S3 API (skipped gateway HTTP)")
+            return tl, cl
+        except Exception as s3_sidecar_exc:
+            try:
+                tl = read_text_lines_from_url(txt_uri)
+                cl = read_text_lines_from_url(csv_uri)
+                return tl, cl
+            except Exception as http_sidecar_exc:
+                raise RuntimeError(
+                    f"S3 sidecar read failed ({s3_sidecar_exc}); HTTP read failed ({http_sidecar_exc})"
+                ) from http_sidecar_exc
+    try:
+        return read_text_lines_from_url(txt_uri), read_text_lines_from_url(csv_uri)
+    except Exception as http_sidecar_exc:
+        if not txt_s3_uri or not csv_s3_uri:
+            raise RuntimeError(
+                "DarkMatter requires .txt/.csv metadata files, and HTTP sidecar URLs "
+                "could not be converted to s3:// URIs for fallback reads."
+            ) from http_sidecar_exc
+        tl = read_s3_text_lines(txt_s3_uri, auth_override=auth_override)
+        cl = read_s3_text_lines(csv_s3_uri, auth_override=auth_override)
+        print("[DarkMatter][DEBUG] sidecar metadata read via S3 API after HTTP failure")
+        return tl, cl
+
+
 def http_object_url_to_s3_uri(url: str) -> str:
     """
     Convert path-style HTTP object URL to s3://bucket/key when possible.
@@ -1129,37 +1261,53 @@ class AppState:
                         except Exception as ex:
                             print(f"[DarkMatter][WARN] resolved idx fallback failed; keeping direct remote read: {ex}")
                 if self.runtime_dataset["mode"] == "http_explicit":
-                    txt_s3_uri = http_object_url_to_s3_uri(self.runtime_dataset["txt_uri"])
-                    csv_s3_uri = http_object_url_to_s3_uri(self.runtime_dataset["csv_uri"])
-                    # Many gateways return 403 on authenticated GET for .txt/.csv while S3 API reads work.
-                    if self.s3_auth_override and txt_s3_uri and csv_s3_uri:
-                        try:
-                            txt_lines = read_s3_text_lines(txt_s3_uri, auth_override=self.s3_auth_override)
-                            csv_lines = read_s3_text_lines(csv_s3_uri, auth_override=self.s3_auth_override)
-                            print("[DarkMatter][DEBUG] sidecar metadata read via S3 API (skipped gateway HTTP)")
-                        except Exception as s3_sidecar_exc:
-                            print(f"[DarkMatter][WARN] S3 sidecar read failed; trying HTTP URLs: {s3_sidecar_exc}")
-                            try:
-                                txt_lines = read_text_lines_from_url(self.runtime_dataset["txt_uri"])
-                                csv_lines = read_text_lines_from_url(self.runtime_dataset["csv_uri"])
-                            except Exception as http_sidecar_exc:
-                                print(f"[DarkMatter][WARN] HTTP sidecar fetch failed: {http_sidecar_exc}")
-                                raise RuntimeError(
-                                    "DarkMatter requires .txt/.csv metadata files; S3 and HTTP reads both failed."
-                                ) from http_sidecar_exc
+                    orig_txt_uri = self.runtime_dataset["txt_uri"]
+                    orig_csv_uri = self.runtime_dataset["csv_uri"]
+                    disk_sidecars = try_read_darkmatter_sidecars_from_disk(
+                        mid_file,
+                        self.runtime_dataset,
+                        str(save_dir) if has_args else "",
+                        str(uuid or ""),
+                    )
+                    if disk_sidecars is not None:
+                        txt_lines, csv_lines = disk_sidecars
                     else:
-                        try:
-                            txt_lines = read_text_lines_from_url(self.runtime_dataset["txt_uri"])
-                            csv_lines = read_text_lines_from_url(self.runtime_dataset["csv_uri"])
-                        except Exception as http_sidecar_exc:
-                            print(f"[DarkMatter][WARN] HTTP sidecar fetch failed; attempting S3 fallback: {http_sidecar_exc}")
-                            if not txt_s3_uri or not csv_s3_uri:
-                                raise RuntimeError(
-                                    "DarkMatter requires .txt/.csv metadata files, and HTTP sidecar URLs "
-                                    "could not be converted to s3:// URIs for fallback reads."
-                                ) from http_sidecar_exc
-                            txt_lines = read_s3_text_lines(txt_s3_uri, auth_override=self.s3_auth_override)
-                            csv_lines = read_s3_text_lines(csv_s3_uri, auth_override=self.s3_auth_override)
+                        stem_bases: List[str] = []
+                        mf = str(mid_file or "").strip()
+                        idx_uri_rt = str(self.runtime_dataset.get("idx_uri") or "").strip()
+                        for hint in sidecar_stem_hints_from_idx_uri(idx_uri_rt):
+                            if hint not in stem_bases:
+                                stem_bases.append(hint)
+                        if mf and mf not in stem_bases:
+                            stem_bases.append(mf)
+                        if not any(b.lower() == "visus" for b in stem_bases):
+                            stem_bases.append("visus")
+                        last_sidecar_err: Optional[BaseException] = None
+                        txt_lines = []
+                        csv_lines = []
+                        for base in stem_bases:
+                            tu, cu = sidecar_http_urls_for_basename(orig_txt_uri, orig_csv_uri, base)
+                            if not tu or not cu:
+                                continue
+                            try:
+                                txt_lines, csv_lines = load_http_explicit_sidecar_lines(
+                                    tu, cu, self.s3_auth_override
+                                )
+                                if base != mf:
+                                    print(
+                                        f"[DarkMatter][DEBUG] sidecars loaded using alternate basename {base!r} "
+                                        f"(mid_file={mf!r})"
+                                    )
+                                break
+                            except Exception as exc:
+                                last_sidecar_err = exc
+                                print(f"[DarkMatter][WARN] sidecar load failed for basename {base!r}: {exc}")
+                        if not txt_lines or not csv_lines:
+                            raise RuntimeError(
+                                "DarkMatter requires .txt/.csv metadata files; "
+                                "disk, S3, and HTTP reads failed for all tried basenames "
+                                f"({stem_bases})."
+                            ) from last_sidecar_err
                 else:
                     txt_lines = read_s3_text_lines(self.runtime_dataset["txt_uri"], auth_override=self.s3_auth_override)
                     csv_lines = read_s3_text_lines(self.runtime_dataset["csv_uri"], auth_override=self.s3_auth_override)
