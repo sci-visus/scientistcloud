@@ -1718,6 +1718,38 @@ class AppState:
                         except Exception as pex:
                             print(f"[DarkMatter][WARN] proxy resolved idx failed: {pex}")
 
+                # Docker OpenVisus often resolves HTTPS gateway bins as path-only (/bucket/key), producing all-zero
+                # reads while laptop `bokeh serve --args https://...` works. Native s3:// + AWS keys matches the
+                # upload registration path (s3://scientistcloud/...) and avoids broken gateway HTTP templates.
+                if (
+                    self.runtime_dataset["mode"] == "http_explicit"
+                    and (self.scene_data is None or _scene_is_all_zero(self.scene_data))
+                    and (self.s3_auth_override or {}).get("aws_access_key_id")
+                    and (self.s3_auth_override or {}).get("aws_secret_access_key")
+                ):
+                    idx_http = str(self.runtime_dataset.get("idx_uri") or "").strip()
+                    s3_idx = http_object_url_to_s3_uri(idx_http)
+                    if s3_idx:
+                        try:
+                            print(
+                                f"[DarkMatter][DEBUG] OpenVisus LoadDataset fallback (native s3:// idx): "
+                                f"{s3_idx}"
+                            )
+                            trial = read_openvisus_field(s3_idx)
+                            if not _scene_is_all_zero(trial):
+                                self.scene_data = trial
+                                print(
+                                    "[DarkMatter][DEBUG] native s3:// idx produced non-zero scene data "
+                                    "(HTTPS gateway path was likely mis-resolved in this container)"
+                                )
+                            else:
+                                print(
+                                    "[DarkMatter][WARN] native s3:// idx read also all-zero "
+                                    "(verify ENDPOINT_URL/credentials vs bucket)"
+                                )
+                        except Exception as s3_ld_exc:
+                            print(f"[DarkMatter][WARN] native s3:// LoadDataset fallback failed: {s3_ld_exc}")
+
                 if (
                     self.scene_data is None
                     and self.runtime_dataset["mode"] == "s3_explicit"
