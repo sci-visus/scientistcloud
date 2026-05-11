@@ -313,6 +313,41 @@ def parse_s3_uri(uri: str):
     return bucket, key
 
 
+def _redact_url_secrets(url: str) -> str:
+    """Mask credential-like query params and s3:// userinfo for logs (values become '...')."""
+    out = str(url or "").strip()
+    if not out:
+        return out
+    if out.lower().startswith("s3://"):
+        rest = out[5:]
+        if "@" in rest:
+            userinfo, _, hostpath = rest.partition("@")
+            if ":" in userinfo:
+                out = f"s3://...@{hostpath}"
+    for param in (
+        "secret_key",
+        "access_key",
+        "secret_access_key",
+        "access_key_id",
+        "password",
+        "token",
+        "api_key",
+        "apikey",
+        "signature",
+        "x-amz-signature",
+        "x-amz-security-token",
+        "x-amz-credential",
+        "awsaccesskeyid",
+    ):
+        out = re.sub(
+            rf"([?&]{re.escape(param)}=)[^&]*",
+            r"\1...",
+            out,
+            flags=re.I,
+        )
+    return out
+
+
 def _valid_email_or_none(value):
     if not value:
         return None
@@ -1371,9 +1406,9 @@ class AppState:
             if self.runtime_dataset["mode"] in ("s3_explicit", "http_explicit"):
                 # For HTTP datasets we may rewrite idx locally so block URLs carry auth query.
                 print(f"[DarkMatter][DEBUG] {self.runtime_dataset['mode']} mid={mid_file}")
-                print(f"[DarkMatter][DEBUG] idx_uri={self.runtime_dataset['idx_uri']}")
-                print(f"[DarkMatter][DEBUG] txt_uri={self.runtime_dataset['txt_uri']}")
-                print(f"[DarkMatter][DEBUG] csv_uri={self.runtime_dataset['csv_uri']}")
+                print(f"[DarkMatter][DEBUG] idx_uri={_redact_url_secrets(self.runtime_dataset['idx_uri'])}")
+                print(f"[DarkMatter][DEBUG] txt_uri={_redact_url_secrets(self.runtime_dataset['txt_uri'])}")
+                print(f"[DarkMatter][DEBUG] csv_uri={_redact_url_secrets(self.runtime_dataset['csv_uri'])}")
                 idx_for_read = self.runtime_dataset["idx_uri"]
                 if self.runtime_dataset["mode"] == "http_explicit" and not self.s3_auth_override:
                     idx_parts = urlsplit(self.runtime_dataset["idx_uri"])
@@ -1430,7 +1465,7 @@ class AppState:
                         else:
                             idx_for_read = resolved_local_idx_path
                         print(
-                            f"[DarkMatter][DEBUG] using resolved idx from API: {idx_for_read} "
+                            f"[DarkMatter][DEBUG] using resolved idx from API: {_redact_url_secrets(str(idx_for_read))} "
                             f"(local={resolved_local_idx_path}, prefer_https_idx={prefer_https_idx})"
                         )
                     except Exception as resolved_idx_exc:
@@ -1478,9 +1513,12 @@ class AppState:
                 if self.runtime_dataset["mode"] == "http_explicit" and idx_for_read == self.runtime_dataset["idx_uri"]:
                     # Primary path must stay full HTTPS idx URL (with query keys).
                     idx_for_read = self.runtime_dataset["idx_uri"]
-                    print(f"[DarkMatter][DEBUG] using HTTPS idx URL for OpenVisus: {idx_for_read}")
+                    print(
+                        f"[DarkMatter][DEBUG] using HTTPS idx URL for OpenVisus: "
+                        f"{_redact_url_secrets(str(idx_for_read))}"
+                    )
 
-                print(f"[DarkMatter][DEBUG] LoadDataset input={idx_for_read}")
+                print(f"[DarkMatter][DEBUG] LoadDataset input={_redact_url_secrets(str(idx_for_read))}")
                 self.scene_data = read_openvisus_field(idx_for_read)
                 # If we used the server-generated resolved idx (local path and/or HTTPS serve URL),
                 # optionally retry with presigned / gateway idx when the first load is all zeros.
@@ -1537,7 +1575,10 @@ class AppState:
                                         ),
                                         use_cached_credentials=True,
                                     )
-                                    print(f"[DarkMatter][DEBUG] LoadDataset fallback (presign) input={signed_idx}")
+                                    print(
+                                        f"[DarkMatter][DEBUG] LoadDataset fallback (presign) input="
+                                        f"{_redact_url_secrets(str(signed_idx))}"
+                                    )
                                     print(
                                         f"[DarkMatter][DEBUG] fallback presign endpoint={urlsplit(signed_idx).scheme}://{urlsplit(signed_idx).netloc}"
                                     )
@@ -1564,7 +1605,7 @@ class AppState:
                                     )
                                     print(
                                         f"[DarkMatter][DEBUG] presign fallback failed ({presign_fb_exc}); "
-                                        f"LoadDataset fallback (inline gateway) input={http_idx}"
+                                        f"LoadDataset fallback (inline gateway) input={_redact_url_secrets(str(http_idx))}"
                                     )
                                     print(
                                         f"[DarkMatter][DEBUG] fallback inline endpoint={urlsplit(http_idx).scheme}://{urlsplit(http_idx).netloc}"

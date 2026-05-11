@@ -339,9 +339,39 @@ def parse_s3_uri(uri: str):
 
 
 def _redact_url_secrets(url: str) -> str:
-    out = str(url or "")
-    out = re.sub(r"([?&]secret_key=)[^&]+", r"\1***", out, flags=re.I)
-    out = re.sub(r"([?&]access_key=)[^&]+", r"\1***", out, flags=re.I)
+    """Mask credential-like query params and s3:// userinfo for logs (values become '...')."""
+    out = str(url or "").strip()
+    if not out:
+        return out
+    # s3://access_key:secret_key@bucket/key
+    if out.lower().startswith("s3://"):
+        rest = out[5:]
+        if "@" in rest:
+            userinfo, _, hostpath = rest.partition("@")
+            if ":" in userinfo:
+                out = f"s3://...@{hostpath}"
+    # Common query-string secrets (gateway, AWS, generic)
+    for param in (
+        "secret_key",
+        "access_key",
+        "secret_access_key",
+        "access_key_id",
+        "password",
+        "token",
+        "api_key",
+        "apikey",
+        "signature",
+        "x-amz-signature",
+        "x-amz-security-token",
+        "x-amz-credential",
+        "awsaccesskeyid",
+    ):
+        out = re.sub(
+            rf"([?&]{re.escape(param)}=)[^&]*",
+            r"\1...",
+            out,
+            flags=re.I,
+        )
     return out
 
 
@@ -355,7 +385,7 @@ def _log_openvisus_block0_url_for_diagnostics(db_outer, field_name: str) -> None
         t0 = float(ts.getDefault())
         fn = str(access.getFilename(fobj, t0, 0))
         safe = _redact_url_secrets(fn)
-        print(f"[DarkMatter][DEBUG] OpenVisus block0 target (redacted): {safe[:1200]}")
+        print(f"[DarkMatter][DEBUG] OpenVisus block0 target: {safe[:1200]}")
     except Exception as ex:
         print(f"[DarkMatter][DEBUG] OpenVisus block0 path diagnostic failed: {ex}")
 
@@ -1489,9 +1519,9 @@ class AppState:
             if self.runtime_dataset["mode"] in ("s3_explicit", "http_explicit"):
                 # Remote: OpenVisus LoadDataset(idx_url) — prefer HTTPS idx URL with gateway query keys.
                 print(f"[DarkMatter][DEBUG] {self.runtime_dataset['mode']} mid={mid_file}")
-                print(f"[DarkMatter][DEBUG] idx_uri={self.runtime_dataset['idx_uri']}")
-                print(f"[DarkMatter][DEBUG] txt_uri={self.runtime_dataset['txt_uri']}")
-                print(f"[DarkMatter][DEBUG] csv_uri={self.runtime_dataset['csv_uri']}")
+                print(f"[DarkMatter][DEBUG] idx_uri={_redact_url_secrets(self.runtime_dataset['idx_uri'])}")
+                print(f"[DarkMatter][DEBUG] txt_uri={_redact_url_secrets(self.runtime_dataset['txt_uri'])}")
+                print(f"[DarkMatter][DEBUG] csv_uri={_redact_url_secrets(self.runtime_dataset['csv_uri'])}")
                 if self.runtime_dataset["mode"] == "http_explicit" and not self.s3_auth_override:
                     idx_parts = urlsplit(self.runtime_dataset["idx_uri"])
                     idx_query = parse_qs(idx_parts.query or "")
@@ -1545,7 +1575,10 @@ class AppState:
                     ("http://", "https://")
                 ):
                     try:
-                        print(f"[DarkMatter][DEBUG] primary LoadDataset (linked HTTPS idx): {primary_read}")
+                        print(
+                            f"[DarkMatter][DEBUG] primary LoadDataset (linked HTTPS idx): "
+                            f"{_redact_url_secrets(primary_read)}"
+                        )
                         self.scene_data = read_openvisus_field(primary_read)
                     except Exception as ex:
                         last_load_err = ex
@@ -1758,7 +1791,10 @@ class AppState:
                             "Or start SCLib FastAPI and set SCLIB_DATASET_URL=http://127.0.0.1:5001 "
                             "(openvisus-resolved-idx)."
                         ) from base_err
-                    print(f"[DarkMatter][DEBUG] LoadDataset input (non-HTTPS or last resort)={idx_for_read}")
+                    print(
+                        f"[DarkMatter][DEBUG] LoadDataset input (non-HTTPS or last resort)="
+                        f"{_redact_url_secrets(str(idx_for_read))}"
+                    )
                     self.scene_data = read_openvisus_field(idx_for_read)
 
                 direct_arr = np.asarray(self.scene_data)
