@@ -100,6 +100,17 @@ def _valid_email_or_none(value):
         return candidate
     return None
 
+
+def _looks_like_dataset_uuid(value: str) -> bool:
+    """Portal mode passes a real UUID; local `bokeh serve` leaves uuid as 'local'."""
+    s = str(value or "").strip().lower()
+    if not s or s in ("local", "none"):
+        return False
+    return bool(
+        re.match(r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$", s)
+    )
+
+
 LEFT_ARROW = """
 <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="size-6">
   <path stroke-linecap="round" stroke-linejoin="round" d="M15.75 19.5 8.25 12l7.5-7.5" />
@@ -335,6 +346,9 @@ def read_openvisus_field(idx_url_or_path: str, field: str = "data"):
 
     If every max-resolution attempt returns all zeros, fall back to a plain field read —
     some ARCO + remote-template combinations only populate data on the default read path.
+
+    max_resolution is capped by DARKMATTER_MAX_RESOLUTION (default 15); some ARCO idx builds
+    return misleading data at very high levels (e.g. 26).
     """
     db = ov.LoadDataset(idx_url_or_path)
     mr = None
@@ -346,16 +360,63 @@ def read_openvisus_field(idx_url_or_path: str, field: str = "data"):
     except Exception:
         mr = None
 
+    try:
+        mr_cap = max(0, int(os.getenv("DARKMATTER_MAX_RESOLUTION", "15")))
+    except ValueError:
+        mr_cap = 15
+    mr_read = min(mr, mr_cap) if mr is not None else None
+    if mr is not None and mr_read is not None and mr_read != mr:
+        print(f"[DarkMatter][DEBUG] OpenVisus max_resolution capped: dataset_max={mr} read_max={mr_read} (DARKMATTER_MAX_RESOLUTION={mr_cap})")
+
     def _nonzero_count(sample) -> int:
         arr = np.asarray(sample)
         return int(np.count_nonzero(arr)) if arr.size else 0
 
-    kwargs_order = []
-    if mr is not None:
-        kwargs_order.append(({"field": field, "max_resolution": mr}, f"max_resolution={mr}"))
-        kwargs_order.append(({"max_resolution": mr, "field": field}, f"max_resolution={mr} (alt arg order)"))
-    kwargs_order.append(({"field": field}, "default field read"))
+    # Nexus-style idx: multi-timestep datasets often need an explicit time= on read().
+    time_bases: List[dict] = [{}]
+    try:
+        gts = getattr(db, "getTimesteps", None)
+        if callable(gts):
+            ts = list(gts())
+            if len(ts) > 1:
+                time_bases = [{"time": ts[0]}, {}]
+                print(f"[DarkMatter][DEBUG] OpenVisus getTimesteps count={len(ts)} first={ts[0]!r}")
+            elif len(ts) == 1:
+                time_bases = [{}, {"time": ts[0]}]
+    except Exception:
+        pass
 
+    # Try several resolution levels; keep the finest successful read (largest pixel count). Coarser
+    # levels often decode first when the cap is below dataset max, but the dashboard needs full logic size.
+    res_to_try: List[int] = []
+    if mr_read is not None:
+        res_to_try = sorted({0, min(5, mr_read), min(10, mr_read), mr_read})
+        res_to_try = list(dict.fromkeys(res_to_try))
+
+    kwargs_order: List[tuple] = []
+    for tkw in time_bases:
+        for r in res_to_try:
+            kwargs_order.append(
+                (
+                    {**tkw, "field": field, "max_resolution": r},
+                    f"time={tkw.get('time', 'default')} max_resolution={r}",
+                )
+            )
+            kwargs_order.append(
+                (
+                    {**tkw, "max_resolution": r, "field": field},
+                    f"time={tkw.get('time', 'default')} max_resolution={r} (alt arg order)",
+                )
+            )
+        kwargs_order.append(({**tkw, "field": field}, f"time={tkw.get('time', 'default')} default field read"))
+
+    def _pixel_count(sample) -> int:
+        arr = np.asarray(sample)
+        return int(arr.size) if arr.size else 0
+
+    best_sample = None
+    best_pixels = -1
+    best_label = ""
     last_sample = None
     for kwargs, label in kwargs_order:
         try:
@@ -365,12 +426,43 @@ def read_openvisus_field(idx_url_or_path: str, field: str = "data"):
         last_sample = sample
         nz = _nonzero_count(sample)
         if nz > 0:
-            print(f"[DarkMatter][DEBUG] OpenVisus read ({label}) nonzero={nz}")
-            return sample
-    if mr is not None and last_sample is not None:
+            px = _pixel_count(sample)
+            if px > best_pixels:
+                best_pixels = px
+                best_sample = sample
+                best_label = label
+
+    # Cap can block full-resolution reads; try dataset max once and prefer it if larger / denser.
+    if mr is not None and mr_read is not None and mr_read < mr:
+        for tkw in time_bases:
+            for kwargs, label in (
+                ({**tkw, "field": field, "max_resolution": mr}, f"time={tkw.get('time', 'default')} max_resolution={mr} uncapped"),
+                ({**tkw, "max_resolution": mr, "field": field}, f"time={tkw.get('time', 'default')} max_resolution={mr} uncapped alt order"),
+            ):
+                try:
+                    sample = db.read(**kwargs)
+                except TypeError:
+                    continue
+                nz = _nonzero_count(sample)
+                if nz > 0:
+                    px = _pixel_count(sample)
+                    if px > best_pixels:
+                        best_pixels = px
+                        best_sample = sample
+                        best_label = label
+
+    if best_sample is not None:
         print(
-            f"[DarkMatter][WARN] OpenVisus read returned all zeros for max_resolution={mr} "
-            "and default read; returning last sample for upstream diagnostics"
+            f"[DarkMatter][DEBUG] OpenVisus read ({best_label}) nonzero={_nonzero_count(best_sample)} "
+            f"pixels={best_pixels}"
+        )
+        return best_sample
+
+    if last_sample is not None and _nonzero_count(last_sample) == 0:
+        print(
+            "[DarkMatter][WARN] OpenVisus read returned all zeros for tried time/resolution combinations; "
+            "returning last sample for upstream diagnostics (verify ARCO .bin files match filename_template "
+            "next to the .idx)"
         )
     if last_sample is not None:
         return last_sample
@@ -416,10 +508,17 @@ def resolve_openvisus_resolved_idx_via_api(
 
     The API will also convert to ARCO when the source idx has (arco) == 0.
     """
+    # Docker Compose uses sclib_fastapi; local `bokeh serve` has no that DNS name — default to loopback.
+    _default_api = (
+        "http://sclib_fastapi:5001"
+        if globals().get("has_args")
+        else "http://127.0.0.1:5001"
+    )
     dataset_api_base = (
         os.getenv("SCLIB_DATASET_URL")
         or os.getenv("SCLIB_API_URL")
-        or "http://sclib_fastapi:5001"
+        or os.getenv("SCLIB_FASTAPI_URL")
+        or _default_api
     ).rstrip("/")
     endpoint = f"{dataset_api_base}/api/v1/datasets/s3/openvisus-resolved-idx"
 
@@ -587,10 +686,144 @@ def derive_dataset_from_local_dir(dataset_dir: str):
     }
 
 
+_ARCO_HEX_BIN = re.compile(r"^[0-9a-f]{4}\.bin$", re.IGNORECASE)
+
+
+def _arco_bin_tile_count(dir_path: str) -> int:
+    """How many %04x.bin-style tiles are in dir_path; 0 if 0000.bin is missing."""
+    try:
+        names = os.listdir(dir_path)
+    except OSError:
+        return 0
+    if "0000.bin" not in names:
+        return 0
+    return sum(1 for n in names if _ARCO_HEX_BIN.match(n))
+
+
+def _find_arco_bin_directory_under(segment_root: str) -> Optional[str]:
+    """
+    Prefer segment_root when it already holds ARCO tiles; otherwise the descendant
+    directory with the most matching tiles (handles extra data/0000/... nesting).
+    """
+    if not os.path.isdir(segment_root):
+        return None
+    if _arco_bin_tile_count(segment_root) >= 4:
+        return segment_root
+    best_dir: Optional[str] = None
+    best_n = 0
+    for root, _dirs, files in os.walk(segment_root):
+        if "0000.bin" not in files:
+            continue
+        n = sum(1 for fn in files if _ARCO_HEX_BIN.match(fn))
+        if n > best_n and n >= 4:
+            best_n = n
+            best_dir = root
+    return best_dir
+
+
+def _idx_line_index_after_section(lines: List[str], section: str) -> Optional[int]:
+    for i, line in enumerate(lines):
+        if line.strip() == section and i + 1 < len(lines):
+            return i + 1
+    return None
+
+
+def _fix_idx_field_compression_zip_to_raw(lines: List[str]) -> List[str]:
+    """Replace default_compression(zip) with raw in the (fields) section (first occurrence only)."""
+    out: List[str] = []
+    i = 0
+    replaced = False
+    section_hdr = re.compile(r"^\s*\([a-z_ ]+\)\s*$")
+    while i < len(lines):
+        line = lines[i]
+        if line.strip() == "(fields)":
+            out.append(line)
+            i += 1
+            while i < len(lines):
+                fl = lines[i]
+                if section_hdr.match(fl):
+                    break
+                if (not replaced) and "default_compression(zip)" in fl:
+                    fl = fl.replace("default_compression(zip)", "default_compression(raw)", 1)
+                    replaced = True
+                out.append(fl)
+                i += 1
+            continue
+        out.append(line)
+        i += 1
+    return out
+
+
+def _local_idx_bins_need_raw_compression(idx_path: str) -> bool:
+    """
+    True when ARCO tiles are stored uncompressed but the idx declares default_compression(zip).
+    OpenVisus then zip-decodes, fails, and returns all zeros.
+    """
+    abs_idx = os.path.abspath(idx_path)
+    root = os.path.dirname(abs_idx)
+    prev = os.getcwd()
+    try:
+        os.chdir(root)
+        pd = ov.LoadDataset(abs_idx)
+        db = pd.db
+        access = db.createAccessForBlockQuery()
+        field = db.getField()
+        t = float(db.getTimesteps().getDefault())
+        fn = str(access.getFilename(field, t, 0))
+        if not os.path.isfile(fn):
+            return False
+        raw = ov.LoadBinaryDocument(fn)
+        s = db.getBlockQuerySamples(0)
+        ns = s.nsamples
+        dims = ov.PointNi([int(ns[j]) for j in range(ns.getPointDim())])
+        dtype = ov.DType.fromString(field.dtype.toString())
+        if ov.Decode("zip", dims, dtype, raw) is not None:
+            return False
+        return int(raw.c_size()) == int(dtype.getByteSize(dims))
+    except Exception:
+        return False
+    finally:
+        try:
+            os.chdir(prev)
+        except OSError:
+            pass
+
+
+def _expected_time_subdir_for_first_timestep(time_content_line: str, t0: int = 0) -> Optional[str]:
+    """
+    Parse idx (time) content line like '0 0 %00000d/' -> directory name OpenVisus uses for t0 (no slashes).
+    Supports Visus-style '%00000d' (width = number of zeros) and standard '%04d', '%0Nd'.
+    """
+    m = re.match(r"^\s*\d+\s+\d+\s+(.+?)\s*$", time_content_line.strip())
+    if not m:
+        return None
+    pat = m.group(1).strip()
+    if not pat.endswith("/"):
+        return None
+    core = pat[:-1]
+    m_visus = re.fullmatch(r"%(0+)d", core)
+    if m_visus:
+        width = len(m_visus.group(1))
+        return f"{t0:0{width}d}"
+    m_std = re.fullmatch(r"%0(\d+)d", core)
+    if m_std:
+        width = int(m_std.group(1))
+        return f"{t0:0{width}d}"
+    return None
+
+
 def resolve_local_idx_path(idx_path: str, mid_file: str) -> str:
     """
-    Fix local idx filename_template when it incorrectly duplicates the dataset folder.
-    Example buggy template: ./07180808_1558_F0001/%04x.bin while 0000.bin is in same folder as .idx
+    Fix local idx so OpenVisus can load ARCO tiles from disk.
+
+    - filename_template vs real bin layout (flat, nested, or wrong timestep subdir).
+    - (time) pattern expects e.g. .../00000/0000.bin but tiles are elsewhere -> neutralize to 0 0 ./
+    - idx declares default_compression(zip) while tiles are uncompressed -> default_compression(raw).
+
+    The segment name for template fixes is taken from the idx template line, not mid_file.
+
+    Patched idx is written as *.sc_pathfix.idx (never *.resolved.idx — that suffix triggers OpenVisus
+    ARCO internal filename layout and ignores a plain %04x.bin template).
     """
     try:
         with open(idx_path, "r") as f:
@@ -608,21 +841,92 @@ def resolve_local_idx_path(idx_path: str, mid_file: str) -> str:
         return idx_path
 
     template = lines[template_idx].strip()
-    flat_bin = os.path.join(os.path.dirname(idx_path), "0000.bin")
-    nested_bin = os.path.join(os.path.dirname(idx_path), mid_file, "0000.bin")
+    seg_m = re.match(r"^\./([^/]+)/%04x\.bin\s*$", template)
+    if not seg_m:
+        return idx_path
+    segment = seg_m.group(1).strip()
+    if not segment:
+        return idx_path
 
-    needs_fix = template == f"./{mid_file}/%04x.bin" and os.path.exists(flat_bin) and not os.path.exists(nested_bin)
-    if not needs_fix:
+    dataset_dir = os.path.dirname(os.path.abspath(idx_path))
+    expected_root = os.path.join(dataset_dir, segment)
+    flat_bin = os.path.join(dataset_dir, "0000.bin")
+
+    tile_root: Optional[str] = None
+    if os.path.isdir(expected_root):
+        tile_root = _find_arco_bin_directory_under(expected_root)
+    if tile_root is None and os.path.isfile(flat_bin):
+        tile_root = dataset_dir
+
+    compression_fix = _local_idx_bins_need_raw_compression(idx_path)
+
+    if tile_root is None and not compression_fix:
+        return idx_path
+
+    bin_probe_root = tile_root
+    if bin_probe_root is None and os.path.isdir(expected_root) and os.path.isfile(
+        os.path.join(expected_root, "0000.bin")
+    ):
+        bin_probe_root = expected_root
+
+    time_line_i = _idx_line_index_after_section(lines, "(time)")
+    time_neutralize = False
+    if time_line_i is not None and bin_probe_root:
+        tname = _expected_time_subdir_for_first_timestep(lines[time_line_i], 0)
+        if tname:
+            with_time = os.path.join(expected_root, tname, "0000.bin")
+            if not os.path.isfile(with_time) and os.path.isfile(os.path.join(bin_probe_root, "0000.bin")):
+                time_neutralize = True
+
+    retarget_template = (
+        bool(tile_root) and os.path.normpath(tile_root) != os.path.normpath(expected_root)
+    )
+
+    if not retarget_template and not time_neutralize and not compression_fix:
         return idx_path
 
     fixed_lines = list(lines)
-    dataset_dir = os.path.dirname(idx_path)
-    fixed_lines[template_idx] = f"{dataset_dir}/%04x.bin\n"
+    if retarget_template and tile_root:
+        # Tiles flat next to the .idx need an absolute template; tiles under ./segment/... are reached
+        # via the cache-dir symlink to ../<segment> and a relative ./<segment>/%04x.bin template.
+        if os.path.normpath(tile_root) == os.path.normpath(dataset_dir):
+            fixed_lines[template_idx] = f"{dataset_dir}/%04x.bin\n"
+        else:
+            fixed_lines[template_idx] = f"./{segment}/%04x.bin\n"
+    if time_neutralize and time_line_i is not None:
+        # Tiles live beside ./segment/ without the timestep subdirectory implied by %00000d/ etc.
+        fixed_lines[time_line_i] = "0 0 ./\n"
+    if compression_fix:
+        fixed_lines = _fix_idx_field_compression_zip_to_raw(fixed_lines)
 
-    fixed_path = os.path.join(os.path.dirname(idx_path), f"{mid_file}.resolved.idx")
-    with open(fixed_path, "w") as f:
+    # OpenVisus ARCO resolves companion tiles under <parent>/<idx_stem>/..., not only filename_template.
+    # Writing foo.sc_pathfix.idx makes it look in foo.sc_pathfix/ (wrong). Keep the original .idx basename
+    # inside a small cache dir and symlink <segment> -> ../<segment> so block paths match the real tree.
+    stem = os.path.splitext(os.path.basename(idx_path))[0]
+    cache_dir = os.path.join(dataset_dir, ".dm_openvisus_cache")
+    os.makedirs(cache_dir, exist_ok=True)
+    cached_idx = os.path.join(cache_dir, f"{stem}.idx")
+    seg_link = os.path.join(cache_dir, segment)
+    try:
+        if os.path.lexists(seg_link) or os.path.islink(seg_link):
+            os.unlink(seg_link)
+        rel_target = os.path.relpath(os.path.join(dataset_dir, segment), cache_dir)
+        os.symlink(rel_target, seg_link)
+    except OSError as ex:
+        print(f"[DarkMatter][WARN] resolve_local_idx_path: segment symlink failed ({ex}); OpenVisus may still mis-resolve tiles")
+
+    with open(cached_idx, "w") as f:
         f.writelines(fixed_lines)
-    return fixed_path
+    msg = [f"idx had filename_template {template!r}"]
+    if retarget_template and tile_root:
+        msg.append(f"bins at {tile_root}")
+    if time_neutralize:
+        msg.append("(time) neutralized to 0 0 ./ — tiles were not under timestep subdir")
+    if compression_fix:
+        msg.append("default_compression(zip) -> raw (tiles are uncompressed)")
+    msg.append(f"loader idx -> {cached_idx}")
+    print(f"[DarkMatter][DEBUG] resolve_local_idx_path: wrote {cached_idx} ({'; '.join(msg)})")
+    return cached_idx
 
 
 # def download_s3_uri_to_file(s3_uri: str, dst: str):
@@ -1110,7 +1414,9 @@ class AppState:
                 print(f"[DarkMatter][DEBUG] idx={self.runtime_dataset['idx_path']}")
                 print(f"[DarkMatter][DEBUG] txt={self.runtime_dataset['txt_path']}")
                 print(f"[DarkMatter][DEBUG] csv={self.runtime_dataset['csv_path']}")
-                idx_for_read = self.runtime_dataset["idx_path"]
+                idx_for_read = resolve_local_idx_path(self.runtime_dataset["idx_path"], str(mid_file))
+                if idx_for_read != self.runtime_dataset["idx_path"]:
+                    print(f"[DarkMatter][DEBUG] local_explicit using template-resolved idx: {idx_for_read}")
                 self.detector_to_channels = create_channel_metadata_map(
                     self.runtime_dataset["txt_path"]
                 )
@@ -1230,7 +1536,7 @@ class AppState:
                 if (
                     need_resolved_or_local
                     and self.runtime_dataset["mode"] == "http_explicit"
-                    and dataset_identifier
+                    and _looks_like_dataset_uuid(dataset_identifier)
                     and not dataset_identifier.startswith(("http://", "https://", "s3://"))
                     and (self.s3_auth_override or {}).get("aws_access_key_id")
                 ):
@@ -1289,7 +1595,7 @@ class AppState:
                 if (
                     self.scene_data is None
                     and self.runtime_dataset["mode"] == "s3_explicit"
-                    and dataset_identifier
+                    and _looks_like_dataset_uuid(dataset_identifier)
                     and not dataset_identifier.startswith(("http://", "https://", "s3://"))
                     and (self.s3_auth_override or {}).get("aws_access_key_id")
                 ):
@@ -1330,6 +1636,24 @@ class AppState:
                             if os.path.isfile(lp):
                                 idx_candidates.append(lp)
                                 break
+                    # Local `bokeh serve --args https://...idx` (no portal paths): look in cwd for materialized idx.
+                    if not has_args:
+                        cwd = os.path.abspath(os.getcwd())
+                        idx_uri_hint = str(self.runtime_dataset.get("idx_uri") or "").strip()
+                        for fname in (f"{mid_file}.idx", "visus.idx"):
+                            lp = os.path.join(cwd, fname)
+                            if os.path.isfile(lp):
+                                idx_candidates.append(lp)
+                        for hint in sidecar_stem_hints_from_idx_uri(idx_uri_hint):
+                            lp = os.path.join(cwd, f"{hint}.idx")
+                            if os.path.isfile(lp):
+                                idx_candidates.append(lp)
+                        try:
+                            ds_cwd = derive_dataset_from_local_dir(cwd)
+                            if ds_cwd and ds_cwd.get("idx_path"):
+                                idx_candidates.append(ds_cwd["idx_path"])
+                        except Exception:
+                            pass
                     if resolve_local_idx_file:
                         try:
                             rl = resolve_local_idx_file(str(uuid or "").strip())
@@ -1343,23 +1667,53 @@ class AppState:
                         if p and p not in deduped:
                             deduped.append(p)
                     idx_candidates = deduped
+                    last_zero_trial = None
                     for cand in idx_candidates:
                         try:
-                            trial = read_openvisus_field_with_dataset_cwd(cand)
+                            idx_stem = os.path.splitext(os.path.basename(cand))[0]
+                            cand_fixed = resolve_local_idx_path(cand, idx_stem)
+                            if cand_fixed != cand:
+                                print(f"[DarkMatter][DEBUG] filename_template adjusted idx: {cand} -> {cand_fixed}")
+                            trial = read_openvisus_field_with_dataset_cwd(cand_fixed)
                             if _scene_is_all_zero(trial):
+                                last_zero_trial = trial
                                 print(
-                                    f"[DarkMatter][WARN] materialized idx read was all-zero; "
-                                    f"skipping {cand!r}"
+                                    f"[DarkMatter][WARN] materialized idx read was all-zero for {cand_fixed!r} "
+                                    f"(offline bins often missing under (filename_template) vs {cand_fixed}); "
+                                    "sync ARCO blocks next to this .idx or use SCLib resolved-idx when online."
                                 )
+                                if has_args:
+                                    continue
                                 continue
                             self.scene_data = trial
-                            print(f"[DarkMatter][DEBUG] LoadDataset fallback materialized idx: {cand}")
+                            print(f"[DarkMatter][DEBUG] LoadDataset fallback materialized idx: {cand_fixed}")
                             break
                         except Exception as ex:
                             last_load_err = ex
                             print(f"[DarkMatter][WARN] OpenVisus load failed for materialized idx {cand!r}: {ex}")
 
+                    if self.scene_data is None and not has_args and last_zero_trial is not None:
+                        self.scene_data = last_zero_trial
+                        print(
+                            "[DarkMatter][WARN] local bokeh: using last materialized idx read (all-zero) so "
+                            "HTTPS sidecars can still load; plot will be flat until bins exist locally."
+                        )
+
                 if self.scene_data is None:
+                    last_url = str(idx_for_read or "").strip()
+                    if (
+                        self.runtime_dataset["mode"] == "http_explicit"
+                        and last_url.startswith(("http://", "https://"))
+                    ):
+                        base_err = last_load_err or RuntimeError("linked HTTPS idx did not load")
+                        raise RuntimeError(
+                            "OpenVisus could not load scene data from the linked HTTPS idx (empty content is typical "
+                            "for gateway query-string URLs). For local `bokeh serve`, cd to the folder with your "
+                            "materialized .idx and ensure ARCO bin files exist where (filename_template) points "
+                            f"(often ./{mid_file}/ or ./<acquisition_id>/ next to the idx). "
+                            "Or start SCLib FastAPI and set SCLIB_DATASET_URL=http://127.0.0.1:5001 "
+                            "(openvisus-resolved-idx)."
+                        ) from base_err
                     print(f"[DarkMatter][DEBUG] LoadDataset input (non-HTTPS or last resort)={idx_for_read}")
                     self.scene_data = read_openvisus_field(idx_for_read)
 
