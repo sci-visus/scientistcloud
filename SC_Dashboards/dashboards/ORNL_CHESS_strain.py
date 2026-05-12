@@ -159,6 +159,33 @@ else:
     _query_url0 = (_first_arg("strain_json_url") or "").strip()
     _bd = str(_params.get("base_dir") or "")
     _sd = str(_params.get("save_dir") or "")
+    _mongo_pack = _init.get("mongodb") or {}
+    _dataset_collection = _mongo_pack.get("collection")
+
+    def _dataset_s3_auth_override() -> Optional[Dict[str, str]]:
+        """Use S3 keys from Mongo when the iframe URL truncated query credentials."""
+        uid = str(_params.get("uuid") or "").strip()
+        coll = _dataset_collection
+        if not coll or not uid or uid == "local":
+            return None
+        try:
+            doc = coll.find_one({"uuid": uid})
+        except Exception:
+            return None
+        if not doc:
+            return None
+        ak = str(doc.get("s3_access_key_id") or "").strip()
+        sk = str(doc.get("s3_secret_access_key") or "").strip()
+        if not ak or not sk:
+            return None
+        out: Dict[str, str] = {"access_key_id": ak, "secret_access_key": sk}
+        ep = str(doc.get("s3_endpoint_url") or "").strip()
+        if ep:
+            out["endpoint_url"] = ep.rstrip("/")
+        reg = str(doc.get("s3_region_name") or "").strip()
+        if reg:
+            out["region_name"] = reg
+        return out
 
     def _prefer_upload_mirror_when_url_only(p: StrainDashboardPaths) -> StrainDashboardPaths:
         """
@@ -231,7 +258,7 @@ else:
             )
             p = _prefer_upload_mirror_when_url_only(p)
         try:
-            payload = load_strain_json(p)
+            payload = load_strain_json(p, mongo_s3_auth=_dataset_s3_auth_override())
         except Exception as e:
             payload = {}
             headers_list = []
