@@ -550,6 +550,20 @@ def _darkmatter_disable_resolved_idx_api() -> bool:
     return str(os.getenv("DARKMATTER_DISABLE_RESOLVED_IDX", "")).strip().lower() in ("1", "true", "yes", "on")
 
 
+def _darkmatter_http_explicit_no_fallback() -> bool:
+    """
+    When true, http_explicit loads use only the primary linked HTTPS idx URL for OpenVisus
+    (no resolved-idx API, no native s3:// LoadDataset, no materialized local .idx fallbacks).
+    Set DARKMATTER_HTTP_EXPLICIT_NO_FALLBACK=1 to reproduce or debug gateway HTTPS behavior alone.
+    """
+    return str(os.getenv("DARKMATTER_HTTP_EXPLICIT_NO_FALLBACK", "")).strip().lower() in (
+        "1",
+        "true",
+        "yes",
+        "on",
+    )
+
+
 def resolve_openvisus_resolved_idx_via_api(
     *,
     dataset_identifier: Optional[str],
@@ -1632,6 +1646,15 @@ class AppState:
                     )
 
                 primary_read = str(idx_for_read or "").strip()
+                http_no_fb = (
+                    self.runtime_dataset["mode"] == "http_explicit"
+                    and _darkmatter_http_explicit_no_fallback()
+                )
+                if http_no_fb:
+                    print(
+                        "[DarkMatter][DEBUG] DARKMATTER_HTTP_EXPLICIT_NO_FALLBACK=1 — "
+                        "OpenVisus uses linked HTTPS idx only (no resolved idx / s3:// / materialized .idx)"
+                    )
                 if self.runtime_dataset["mode"] == "http_explicit" and primary_read.startswith(
                     ("http://", "https://")
                 ):
@@ -1651,6 +1674,7 @@ class AppState:
                     not need_resolved_or_local
                     and self.runtime_dataset["mode"] == "http_explicit"
                     and _scene_is_all_zero(self.scene_data)
+                    and not http_no_fb
                 ):
                     print(
                         "[DarkMatter][WARN] linked HTTPS idx read succeeded but scene is all-zero "
@@ -1659,7 +1683,8 @@ class AppState:
                     need_resolved_or_local = True
 
                 if (
-                    need_resolved_or_local
+                    not http_no_fb
+                    and need_resolved_or_local
                     and self.runtime_dataset["mode"] == "http_explicit"
                     and _looks_like_dataset_uuid(dataset_identifier)
                     and not dataset_identifier.startswith(("http://", "https://", "s3://"))
@@ -1728,7 +1753,8 @@ class AppState:
                 # reads while laptop `bokeh serve --args https://...` works. Native s3:// + AWS keys matches the
                 # upload registration path (s3://scientistcloud/...) and avoids broken gateway HTTP templates.
                 if (
-                    self.runtime_dataset["mode"] == "http_explicit"
+                    not http_no_fb
+                    and self.runtime_dataset["mode"] == "http_explicit"
                     and (self.scene_data is None or _scene_is_all_zero(self.scene_data))
                     and (self.s3_auth_override or {}).get("aws_access_key_id")
                     and (self.s3_auth_override or {}).get("aws_secret_access_key")
@@ -1799,12 +1825,15 @@ class AppState:
                             last_load_err = ex
                             print(f"[DarkMatter][WARN] s3_explicit resolved idx failed: {ex}")
 
-                still_need_materialized = need_resolved_or_local and self.scene_data is None
+                still_need_materialized = (
+                    (need_resolved_or_local and self.scene_data is None) and not http_no_fb
+                )
                 if (
                     not still_need_materialized
                     and self.runtime_dataset["mode"] == "http_explicit"
                     and self.scene_data is not None
                     and _scene_is_all_zero(self.scene_data)
+                    and not http_no_fb
                 ):
                     still_need_materialized = True
 
@@ -1890,11 +1919,20 @@ class AppState:
                         and last_url.startswith(("http://", "https://"))
                     ):
                         base_err = last_load_err or RuntimeError("linked HTTPS idx did not load")
+                        if http_no_fb:
+                            raise RuntimeError(
+                                "OpenVisus LoadDataset failed on the linked HTTPS idx only "
+                                "(DARKMATTER_HTTP_EXPLICIT_NO_FALLBACK=1: resolved idx, native s3://, and materialized "
+                                "local .idx are disabled). Visus often reports empty content when the idx URL is "
+                                "wrong, truncated, or when the gateway binding cannot fetch that object. "
+                                "Unset DARKMATTER_HTTP_EXPLICIT_NO_FALLBACK to allow fallbacks again, or fix the "
+                                "HTTPS idx URL and gateway credentials."
+                            ) from base_err
                         raise RuntimeError(
                             "OpenVisus could not load scene data from the linked HTTPS idx (empty content is typical "
                             "for gateway query-string URLs). For local `bokeh serve`, cd to the folder with your "
                             "materialized .idx and ensure ARCO bin files exist where (filename_template) points "
-                            f"(often ./{mid_file}/ or ./<acquisition_id>/ next to the idx). "
+                            f"(often ./{mid_file}/ or a subdirectory named for the acquisition next to the idx). "
                             "Or start SCLib FastAPI and set SCLIB_DATASET_URL=http://127.0.0.1:5001 "
                             "(openvisus-resolved-idx)."
                         ) from base_err
