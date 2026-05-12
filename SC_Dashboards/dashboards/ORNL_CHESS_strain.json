@@ -10,7 +10,7 @@
   "base_image": "visstore-bokeh-dashboard-base",
   "base_image_tag": "latest",
   "requirements_file": "requirements.txt",
-  "additional_requirements": [],
+  "additional_requirements": ["boto3"],
   "shared_utilities": [
     "mongo_connection.py",
     "utils_bokeh_mongodb.py",
