@@ -3584,7 +3584,11 @@ class DatasetManager {
         if (dashLower === 'ornl_chess_strain' && datasetForStrain) {
             const link = this.pickStrainJsonRemoteLink(datasetForStrain);
             if (link) {
-                url += (url.includes('?') ? '&' : '?') + 'strain_json_path=' + encodeURIComponent(link);
+                const low = String(link).trim().toLowerCase();
+                const q = low.startsWith('http://') || low.startsWith('https://')
+                    ? 'strain_json_url=' + encodeURIComponent(link)
+                    : 'strain_json_path=' + encodeURIComponent(link);
+                url += (url.includes('?') ? '&' : '?') + q;
             }
         }
         

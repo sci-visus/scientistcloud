@@ -3,7 +3,7 @@ ORNL / CHESS strain-field dashboard: sparse or dense JSON exports → three heat
 (measurement mask, GP-style estimate, variance) per configurable row.
 
 If ``scientistCloudLib/SCLib_Dashboards/utils_bokeh_dashboard`` is missing, the app
-falls back to standalone mode (``ORNL_STRAIN_JSON_PATH`` / S3 / UI path only; no portal auth).
+falls back to standalone mode (``ORNL_STRAIN_JSON_PATH`` / ``ORNL_STRAIN_JSON_URL`` / UI fields only; no portal auth).
 
 Run locally (example):
     export ORNL_STRAIN_JSON_PATH=/path/to/reduced_data.json
@@ -11,6 +11,7 @@ Run locally (example):
 
 URL query parameters (optional):
     strain_json_path   — override local JSON path for this session
+    strain_json_url    — override remote JSON URL (full https://…) for this session
     strain_rows        — initial number of plot rows (default 2 or ORNL_STRAIN_INITIAL_ROWS)
 """
 from __future__ import annotations
@@ -28,6 +29,10 @@ SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 PROJECT_ROOT = os.path.abspath(os.path.join(SCRIPT_DIR, "..", "..", ".."))
 SHARED_UTILS_DIR = os.path.join(PROJECT_ROOT, "scientistCloudLib", "SCLib_Dashboards")
 
+# Same layout as Docker ``shared_utilities``: modules live under ``scientistCloudLib/SCLib_Dashboards``.
+if SHARED_UTILS_DIR not in sys.path and os.path.isdir(SHARED_UTILS_DIR):
+    sys.path.insert(0, SHARED_UTILS_DIR)
+
 
 def _initialize_dashboard_standalone(
     request: Any = None,
@@ -36,7 +41,7 @@ def _initialize_dashboard_standalone(
     """
     Drop-in replacement for ``initialize_dashboard`` when ``utils_bokeh_dashboard``
     is unavailable (CHESS-only checkout). No MongoDB or portal auth; use
-    ``ORNL_STRAIN_JSON_PATH`` / S3 env vars or the path fields in the UI.
+    ``ORNL_STRAIN_JSON_PATH`` / ``ORNL_STRAIN_JSON_URL`` or the path/URL fields in the UI.
     """
     if status_callback:
         status_callback("Standalone mode: ScientistCloud dashboard utils not loaded; JSON/S3 only.")
@@ -66,8 +71,6 @@ def _initialize_dashboard_standalone(
 
 initialize_dashboard: Any
 try:
-    if SHARED_UTILS_DIR not in sys.path and os.path.isdir(SHARED_UTILS_DIR):
-        sys.path.insert(0, SHARED_UTILS_DIR)
     from utils_bokeh_dashboard import initialize_dashboard  # noqa: E402
 except Exception as exc:
     print(f"[ORNL_CHESS_strain] Using standalone init (SCLib not available: {exc})")
@@ -137,13 +140,16 @@ else:
 
     paths = StrainDashboardPaths.from_environ()
     path_override = _first_arg("strain_json_path") or _first_arg("strain_json")
+    url_override = (_first_arg("strain_json_url") or "").strip()
     if path_override:
         paths = StrainDashboardPaths(
             local_json_path=path_override,
-            s3_bucket=paths.s3_bucket,
-            s3_key=paths.s3_key,
-            s3_endpoint_url=paths.s3_endpoint_url,
-            s3_region=paths.s3_region,
+            json_url=paths.json_url,
+        )
+    if url_override:
+        paths = StrainDashboardPaths(
+            local_json_path=paths.local_json_path,
+            json_url=url_override,
         )
 
     plot_cfg = StrainFieldPlotConfig()
@@ -154,8 +160,11 @@ else:
         value=paths.local_json_path or "",
         width=600,
     )
-    s3_bucket_input = TextInput(title="S3 bucket (optional)", value=paths.s3_bucket, width=220)
-    s3_key_input = TextInput(title="S3 object key (optional)", value=paths.s3_key, width=380)
+    json_url_input = TextInput(
+        title="JSON https URL (optional — full URL you were given, e.g. presigned S3 or public object URL)",
+        value=paths.json_url or "",
+        width=900,
+    )
     grid_w = Spinner(title="Grid width", low=8, high=256, step=1, value=plot_cfg.grid_size[0], width=100)
     grid_h = Spinner(title="Grid height", low=8, high=256, step=1, value=plot_cfg.grid_size[1], width=100)
 
@@ -174,8 +183,7 @@ else:
 
         p = StrainDashboardPaths.from_environ()
         p.local_json_path = (json_path_input.value or "").strip() or p.local_json_path
-        p.s3_bucket = (s3_bucket_input.value or "").strip() or p.s3_bucket
-        p.s3_key = (s3_key_input.value or "").strip() or p.s3_key
+        p.json_url = (json_url_input.value or "").strip() or p.json_url
         try:
             payload = load_strain_json(p)
         except Exception as e:
@@ -232,7 +240,14 @@ else:
                 return _cb
 
             sel.on_change("value", _bind_select(i))
-            rows_out.append(row( sel, p0, p1, p2, sizing_mode="scale_width"))
+            # Two rows per set: field selector (which JSON key to plot), then the three heatmaps.
+            rows_out.append(
+                column(
+                    row(sel, sizing_mode="scale_width"),
+                    row(p0, p1, p2, sizing_mode="scale_width"),
+                    sizing_mode="stretch_width",
+                )
+            )
         figures_column.children = rows_out
 
     def on_reload() -> None:
@@ -267,15 +282,15 @@ else:
 
     _standalone_note = (
         "<p><b>Standalone mode:</b> ScientistCloud <code>utils_bokeh_dashboard</code> was not loaded; "
-        "this session only loads JSON via env / S3 / the path field (no portal auth).</p>"
+        "this session only loads JSON via env / https URL / the path field (no portal auth).</p>"
         if initialize_dashboard is _initialize_dashboard_standalone
         else ""
     )
     help_div = Div(
         text=(
-            "<p><b>Environment:</b> <code>ORNL_STRAIN_JSON_PATH</code> or "
-            "<code>ORNL_STRAIN_S3_BUCKET</code> + <code>ORNL_STRAIN_S3_KEY</code> "
-            "(optional <code>ORNL_STRAIN_S3_ENDPOINT_URL</code>, <code>ORNL_STRAIN_S3_REGION</code>). "
+            "<p><b>Environment:</b> <code>ORNL_STRAIN_JSON_PATH</code> (local file) or "
+            "<code>ORNL_STRAIN_JSON_URL</code> (full <code>https://…</code> link — presigned or public). "
+            "If both are set in the UI, <b>local path wins</b> on reload. "
             "Rows: <code>ORNL_STRAIN_INITIAL_ROWS</code> (default 2).</p>"
             f"{_standalone_note}"
         ),
@@ -285,7 +300,7 @@ else:
     controls = column(
         help_div,
         row(json_path_input, sizing_mode="scale_width"),
-        row(s3_bucket_input, s3_key_input, sizing_mode="scale_width"),
+        row(json_url_input, sizing_mode="scale_width"),
         row(grid_w, grid_h, btn_reload, btn_add, btn_remove, sizing_mode="scale_width"),
         status_div,
         sizing_mode="stretch_width",
@@ -295,14 +310,14 @@ else:
     root = column(header, controls, figures_column, sizing_mode="stretch_width")
     doc.add_root(root)
 
-    if paths.local_json_path or (paths.s3_bucket and paths.s3_key) or path_override:
+    if paths.local_json_path or paths.json_url:
         on_reload()
     else:
         figures_column.children = [
             Div(
                 text=(
-                    "<p>Set <code>ORNL_STRAIN_JSON_PATH</code> or S3 bucket/key, "
-                    "or enter a path above and click <b>Load / reload JSON</b>.</p>"
+                    "<p>Set <code>ORNL_STRAIN_JSON_PATH</code> or <code>ORNL_STRAIN_JSON_URL</code>, "
+                    "or enter a local path / https URL above and click <b>Load / reload JSON</b>.</p>"
                 )
             )
         ]

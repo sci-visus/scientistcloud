@@ -861,11 +861,15 @@ class ViewerManager {
                     const ds = j.dataset;
                     const link = window.datasetManager.pickStrainJsonRemoteLink(ds);
                     if (link) {
-                        viewerUrl += (viewerUrl.includes('?') ? '&' : '?') + 'strain_json_path=' + encodeURIComponent(link);
+                        const low = String(link).trim().toLowerCase();
+                        const q = low.startsWith('http://') || low.startsWith('https://')
+                            ? 'strain_json_url=' + encodeURIComponent(link)
+                            : 'strain_json_path=' + encodeURIComponent(link);
+                        viewerUrl += (viewerUrl.includes('?') ? '&' : '?') + q;
                     }
                 }
             } catch (e) {
-                console.warn('ORNL strain: could not append strain_json_path', e);
+                console.warn('ORNL strain: could not append strain_json_path / strain_json_url', e);
             }
         }
 

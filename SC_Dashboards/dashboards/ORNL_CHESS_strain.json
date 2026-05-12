@@ -17,7 +17,8 @@
     "utils_bokeh_dashboard.py",
     "utils_bokeh_auth.py",
     "utils_bokeh_param.py",
-    "SCDash_dataset_resolver.py"
+    "SCDash_dataset_resolver.py",
+    "ornl_chess_strain_lib.py"
   ],
   "environment_variables": {
     "SECRET_KEY": "${SECRET_KEY}",
