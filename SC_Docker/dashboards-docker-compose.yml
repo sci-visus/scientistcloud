@@ -1,6 +1,6 @@
 # Dashboard Services - Auto-generated from dashboard-registry.json
 # DO NOT EDIT MANUALLY - Regenerate using scripts/generate_docker_compose.sh
-# Generated: Mon Dec  8 14:32:35 CST 2025
+# Generated: Tue May 12 13:12:15 CDT 2026
 
 services:
   # 3D Plotly Dashboard
@@ -63,39 +63,6 @@ services:
       - ${VISUS_DATASETS}:/mnt/visus_datasets
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8051/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 40s
-    init: true
-
-  # 4D Dashboard
-  4d_dashboard:
-    container_name: dashboard_4d_dashboard
-    platform: linux/amd64
-    image: 4d_dashboard:latest
-    build:
-      context: ../SC_Dashboards/dashboards
-      dockerfile: 4d_dashboard.Dockerfile
-      args:
-        D_GIT_TOKEN: ${D_GIT_TOKEN}
-    environment:
-      - SECRET_KEY=${SECRET_KEY}
-      - DEPLOY_SERVER=${DEPLOY_SERVER}
-      - DB_NAME=${DB_NAME}
-      - MONGO_URL=${MONGO_URL}
-      - DOMAIN_NAME=${DOMAIN_NAME}
-      - DASHBOARD_PORT=8052
-    ports:
-      - "8052:8052"
-    networks:
-      - docker_visstore_web
-    restart: unless-stopped
-    volumes:
-      - ${VISUS_DB}:/mnt/visus_db
-      - ${VISUS_DATASETS}:/mnt/visus_datasets
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8052/health"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -168,14 +135,14 @@ services:
       start_period: 40s
     init: true
 
-  # 4D Dashboard (New)
-  4d_dashboardlite:
-    container_name: dashboard_4d_dashboardlite
+  # 4d Dashboard (2x2)
+  4d_dashboardopt:
+    container_name: dashboard_4d_dashboardopt
     platform: linux/amd64
-    image: 4d_dashboardlite:latest
+    image: 4d_dashboardopt:latest
     build:
       context: ../SC_Dashboards/dashboards
-      dockerfile: 4d_dashboardLite.Dockerfile
+      dockerfile: 4d_dashboardopt.Dockerfile
       args:
         D_GIT_TOKEN: ${D_GIT_TOKEN}
     environment:
@@ -184,9 +151,9 @@ services:
       - DB_NAME=${DB_NAME}
       - MONGO_URL=${MONGO_URL}
       - DOMAIN_NAME=${DOMAIN_NAME}
-      - DASHBOARD_PORT=8056
+      - DASHBOARD_PORT=8057
     ports:
-      - "8056:8056"
+      - "8057:8057"
     networks:
       - docker_visstore_web
     restart: unless-stopped
@@ -194,7 +161,73 @@ services:
       - ${VISUS_DB}:/mnt/visus_db
       - ${VISUS_DATASETS}:/mnt/visus_datasets
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8056/health"]
+      test: ["CMD", "curl", "-f", "http://localhost:8057/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    init: true
+
+  # Dark Matter Dashboard
+  darkmatter:
+    container_name: dashboard_darkmatter
+    platform: linux/amd64
+    image: darkmatter:latest
+    build:
+      context: ../SC_Dashboards/dashboards
+      dockerfile: darkmatter.Dockerfile
+      args:
+        D_GIT_TOKEN: ${D_GIT_TOKEN}
+    environment:
+      - SECRET_KEY=${SECRET_KEY}
+      - DEPLOY_SERVER=${DEPLOY_SERVER}
+      - DB_NAME=${DB_NAME}
+      - MONGO_URL=${MONGO_URL}
+      - DOMAIN_NAME=${DOMAIN_NAME}
+      - DASHBOARD_PORT=8058
+    ports:
+      - "8058:8058"
+    networks:
+      - docker_visstore_web
+    restart: unless-stopped
+    volumes:
+      - ${VISUS_DB}:/mnt/visus_db
+      - ${VISUS_DATASETS}:/mnt/visus_datasets
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8058"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    init: true
+
+  # ORNL CHESS Strain
+  ornl_chess_strain:
+    container_name: dashboard_ornl_chess_strain
+    platform: linux/amd64
+    image: ornl_chess_strain:latest
+    build:
+      context: ../SC_Dashboards/dashboards
+      dockerfile: ORNL_CHESS_strain.Dockerfile
+      args:
+        D_GIT_TOKEN: ${D_GIT_TOKEN}
+    environment:
+      - SECRET_KEY=${SECRET_KEY}
+      - DEPLOY_SERVER=${DEPLOY_SERVER}
+      - DB_NAME=${DB_NAME}
+      - MONGO_URL=${MONGO_URL}
+      - DOMAIN_NAME=${DOMAIN_NAME}
+      - DASHBOARD_PORT=8059
+    ports:
+      - "8059:8059"
+    networks:
+      - docker_visstore_web
+    restart: unless-stopped
+    volumes:
+      - ${VISUS_DB}:/mnt/visus_db
+      - ${VISUS_DATASETS}:/mnt/visus_datasets
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8059"]
       interval: 30s
       timeout: 10s
       retries: 3
