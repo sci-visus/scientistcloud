@@ -115,6 +115,7 @@ from ornl_chess_strain_lib import (  # noqa: E402
     StrainFieldPlotConfig,
     build_strain_field_grids,
     default_row_headers,
+    find_strain_json_under_dataset_dir,
     list_strain_field_headers,
     load_strain_json,
     make_strain_triplet_figures,
@@ -158,12 +159,31 @@ else:
     _query_url0 = (_first_arg("strain_json_url") or "").strip()
     _bd = str(_params.get("base_dir") or "")
     _sd = str(_params.get("save_dir") or "")
-    paths = resolve_strain_paths_for_session(
-        base_dir=_bd,
-        save_dir=_sd,
-        query_strain_json_path=_query_path0,
-        query_strain_json_url=_query_url0,
-        env=StrainDashboardPaths.from_environ(),
+
+    def _prefer_upload_mirror_when_url_only(p: StrainDashboardPaths) -> StrainDashboardPaths:
+        """
+        Portal often prefills only the HTTPS gateway URL. If a mirrored ``*.json`` exists under
+        ``base_dir`` / ``save_dir``, load from disk (avoids truncated or gateway-specific keys).
+        """
+        loc = (p.local_json_path or "").strip()
+        jurl = (p.json_url or "").strip()
+        if loc:
+            return p
+        if not jurl:
+            return p
+        mirror = find_strain_json_under_dataset_dir(_bd) or find_strain_json_under_dataset_dir(_sd)
+        if mirror:
+            return StrainDashboardPaths(local_json_path=mirror, json_url=jurl)
+        return p
+
+    paths = _prefer_upload_mirror_when_url_only(
+        resolve_strain_paths_for_session(
+            base_dir=_bd,
+            save_dir=_sd,
+            query_strain_json_path=_query_path0,
+            query_strain_json_url=_query_url0,
+            env=StrainDashboardPaths.from_environ(),
+        )
     )
 
     plot_cfg = StrainFieldPlotConfig()
@@ -198,7 +218,9 @@ else:
         loc_in = (json_path_input.value or "").strip()
         url_in = (json_url_input.value or "").strip()
         if loc_in or url_in:
-            p = StrainDashboardPaths(local_json_path=loc_in, json_url=url_in)
+            p = _prefer_upload_mirror_when_url_only(
+                StrainDashboardPaths(local_json_path=loc_in, json_url=url_in)
+            )
         else:
             p = resolve_strain_paths_for_session(
                 base_dir=_bd,
@@ -207,22 +229,28 @@ else:
                 query_strain_json_url=_query_url0,
                 env=StrainDashboardPaths.from_environ(),
             )
+            p = _prefer_upload_mirror_when_url_only(p)
         try:
             payload = load_strain_json(p)
         except Exception as e:
             payload = {}
+            headers_list = []
             set_status(f"Load failed: {e}", ok=False)
             traceback.print_exc()
+            figures_column.children = [Div(text="<i>No data — load JSON first.</i>")]
             return
         headers_list = list_strain_field_headers(payload, header_regex=plot_cfg.header_regex)
         if not headers_list:
             headers_list = list_strain_field_headers(payload, include_non_matching=True)
         if not headers_list:
             set_status("No plottable numeric keys found in JSON.", ok=False)
+            figures_column.children = [Div(text="<i>No data — load JSON first.</i>")]
             return
         for i in range(len(row_headers)):
             if row_headers[i] not in headers_list:
                 row_headers[i] = headers_list[0]
+        if (p.local_json_path or "").strip():
+            json_path_input.value = (p.local_json_path or "").strip()
         set_status(f"Loaded {len(headers_list)} field header(s).", ok=True)
 
     def apply_grid_size() -> None:
@@ -235,6 +263,7 @@ else:
 
     def rebuild_figures() -> None:
         apply_grid_size()
+        figures_column.children = []
         if not payload or not headers_list:
             figures_column.children = [Div(text="<i>No data — load JSON first.</i>")]
             return
