@@ -2,12 +2,26 @@
 ORNL / CHESS strain-field dashboard: sparse or dense JSON exports → three heatmaps
 (measurement mask, GP-style estimate, variance) per configurable row.
 
-If ``scientistCloudLib/SCLib_Dashboards/utils_bokeh_dashboard`` is missing, the app
-falls back to standalone mode (``ORNL_STRAIN_JSON_PATH`` / ``ORNL_STRAIN_JSON_URL`` / UI fields only; no portal auth).
+**Load order (where JSON comes from)**
 
-Run locally (example):
-    export ORNL_STRAIN_JSON_PATH=/path/to/reduced_data.json
-    bokeh serve ORNL_CHESS_strain.py --port 5017 --allow-websocket-origin=localhost:5017
+Controlled by ``scientistCloudLib/SCLib_Dashboards/ornl_chess_strain_lib.resolve_strain_paths_for_session``:
+
+- **ScientistCloud data portal** (``base_dir`` / ``save_dir`` under ``/mnt/visus_datasets``): upload dir →
+  converted dir → URL query args (``strain_json_path`` / ``strain_json_url``) →
+  ``ORNL_STRAIN_JSON_PATH`` / ``ORNL_STRAIN_JSON_URL``.
+
+- **Command line / local**: ``ORNL_STRAIN_JSON_PATH`` / ``ORNL_STRAIN_JSON_URL`` first, then query args,
+  then upload/converted dirs.
+
+**Overrides (no code changes)**
+
+- ``ORNL_STRAIN_RESOLVE_MODE`` — ``auto``, ``portal`` (always server-first), ``cli`` (always env-first).
+- ``ORNL_STRAIN_SOURCE_ORDER`` — comma tokens:
+  ``upload``, ``converted``, ``query_path``, ``query_url``, ``env_path``, ``env_url``
+  (e.g. ``env_path,env_url,query_url`` for CHESS).
+
+If both path and URL text fields are non-empty or partially filled, **Load / reload** uses those values
+as a manual override. Clear both fields to apply the automatic order again.
 
 URL query parameters (optional):
     strain_json_path   — override local JSON path for this session
@@ -102,10 +116,12 @@ from ornl_chess_strain_lib import (  # noqa: E402
     build_strain_field_grids,
     default_row_headers,
     list_strain_field_headers,
-    load_json_from_local_path,
     load_strain_json,
     make_strain_triplet_figures,
+    resolve_strain_paths_for_session,
+    strain_resolve_order_summary,
 )
+
 
 doc = curdoc()
 _request = doc.session_context.request if hasattr(doc, "session_context") and doc.session_context else None
@@ -138,19 +154,17 @@ else:
         if sr.isdigit():
             initial_rows = max(1, min(12, int(sr)))
 
-    paths = StrainDashboardPaths.from_environ()
-    path_override = _first_arg("strain_json_path") or _first_arg("strain_json")
-    url_override = (_first_arg("strain_json_url") or "").strip()
-    if path_override:
-        paths = StrainDashboardPaths(
-            local_json_path=path_override,
-            json_url=paths.json_url,
-        )
-    if url_override:
-        paths = StrainDashboardPaths(
-            local_json_path=paths.local_json_path,
-            json_url=url_override,
-        )
+    _query_path0 = _first_arg("strain_json_path") or _first_arg("strain_json")
+    _query_url0 = (_first_arg("strain_json_url") or "").strip()
+    _bd = str(_params.get("base_dir") or "")
+    _sd = str(_params.get("save_dir") or "")
+    paths = resolve_strain_paths_for_session(
+        base_dir=_bd,
+        save_dir=_sd,
+        query_strain_json_path=_query_path0,
+        query_strain_json_url=_query_url0,
+        env=StrainDashboardPaths.from_environ(),
+    )
 
     plot_cfg = StrainFieldPlotConfig()
 
@@ -181,9 +195,18 @@ else:
     def load_payload() -> None:
         global payload, headers_list, row_headers  # noqa: PLW0603
 
-        p = StrainDashboardPaths.from_environ()
-        p.local_json_path = (json_path_input.value or "").strip() or p.local_json_path
-        p.json_url = (json_url_input.value or "").strip() or p.json_url
+        loc_in = (json_path_input.value or "").strip()
+        url_in = (json_url_input.value or "").strip()
+        if loc_in or url_in:
+            p = StrainDashboardPaths(local_json_path=loc_in, json_url=url_in)
+        else:
+            p = resolve_strain_paths_for_session(
+                base_dir=_bd,
+                save_dir=_sd,
+                query_strain_json_path=_query_path0,
+                query_strain_json_url=_query_url0,
+                env=StrainDashboardPaths.from_environ(),
+            )
         try:
             payload = load_strain_json(p)
         except Exception as e:
@@ -288,9 +311,16 @@ else:
     )
     help_div = Div(
         text=(
-            "<p><b>Environment:</b> <code>ORNL_STRAIN_JSON_PATH</code> (local file) or "
-            "<code>ORNL_STRAIN_JSON_URL</code> (full <code>https://…</code> link — presigned or public). "
-            "If both are set in the UI, <b>local path wins</b> on reload. "
+            "<p><b>Automatic load order</b> (clear both fields below to use it): "
+            "<code>" + strain_resolve_order_summary(_bd, _sd) + "</code>. "
+            "See module docstring in <code>ornl_chess_strain_lib.py</code> for token meanings "
+            "(<code>upload</code>, <code>converted</code>, <code>query_*</code>, <code>env_*</code>). "
+            "On the ScientistCloud portal mount (<code>/mnt/visus_datasets/…</code>), server directories are tried "
+            "before gateway URLs; from the command line, <code>ORNL_STRAIN_JSON_PATH</code> / "
+            "<code>ORNL_STRAIN_JSON_URL</code> are tried first. "
+            "Override globally: <code>ORNL_STRAIN_RESOLVE_MODE</code> = <code>auto</code> | "
+            "<code>portal</code> | <code>cli</code>, or set <code>ORNL_STRAIN_SOURCE_ORDER</code> "
+            "(comma-separated tokens). "
             "Rows: <code>ORNL_STRAIN_INITIAL_ROWS</code> (default 2).</p>"
             f"{_standalone_note}"
         ),
@@ -316,8 +346,9 @@ else:
         figures_column.children = [
             Div(
                 text=(
-                    "<p>Set <code>ORNL_STRAIN_JSON_PATH</code> or <code>ORNL_STRAIN_JSON_URL</code>, "
-                    "or enter a local path / https URL above and click <b>Load / reload JSON</b>.</p>"
+                    "<p>No JSON resolved yet. Set <code>ORNL_STRAIN_JSON_PATH</code> / "
+                    "<code>ORNL_STRAIN_JSON_URL</code>, clear both fields to use the automatic order, "
+                    "or enter a path or URL above and click <b>Load / reload JSON</b>.</p>"
                 )
             )
         ]
