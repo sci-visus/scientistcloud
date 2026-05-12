@@ -166,7 +166,7 @@ else:
         """Use S3 keys from Mongo when the iframe URL truncated query credentials."""
         uid = str(_params.get("uuid") or "").strip()
         coll = _dataset_collection
-        if not coll or not uid or uid == "local":
+        if coll is None or not uid or uid == "local":
             return None
         try:
             doc = coll.find_one({"uuid": uid})
