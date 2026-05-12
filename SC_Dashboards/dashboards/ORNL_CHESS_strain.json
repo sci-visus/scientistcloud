@@ -1,0 +1,38 @@
+{
+  "name": "ORNL_CHESS_strain",
+  "display_name": "ORNL CHESS Strain",
+  "description": "ORNL/CHESS strain resampled JSON: measurement locations, GP-style estimate, variance",
+  "version": "1.0.0",
+  "type": "bokeh",
+  "entry_point": "ORNL_CHESS_strain.py",
+  "entry_point_type": "python",
+  "port": 8059,
+  "base_image": "visstore-bokeh-dashboard-base",
+  "base_image_tag": "latest",
+  "requirements_file": "requirements.txt",
+  "additional_requirements": [],
+  "shared_utilities": [
+    "mongo_connection.py",
+    "utils_bokeh_mongodb.py",
+    "utils_bokeh_dashboard.py",
+    "utils_bokeh_auth.py",
+    "utils_bokeh_param.py",
+    "SCDash_dataset_resolver.py"
+  ],
+  "environment_variables": {
+    "SECRET_KEY": "${SECRET_KEY}",
+    "DEPLOY_SERVER": "${DEPLOY_SERVER}",
+    "DB_NAME": "${DB_NAME}",
+    "MONGO_URL": "${MONGO_URL}"
+  },
+  "nginx_path": "/dashboard/ORNL_CHESS_strain",
+  "health_check_path": "",
+  "supported_dimensions": [],
+  "build_args": {
+    "D_GIT_TOKEN": "${D_GIT_TOKEN}"
+  },
+  "volume_mounts": [],
+  "exposed_ports": [8059],
+  "depends_on": [],
+  "enabled": true
+}

@@ -79,6 +79,9 @@ function normalizeDashboardType($dashboardType) {
         '4d_dashboardlite' => '4d_dashboardLite',
         '4d_dashboard' => '4d_dashboard',
         '4d dashboard' => '4d_dashboard',
+        'ornl chess strain dashboard' => 'ORNL_CHESS_strain',
+        'ornl chess strain' => 'ORNL_CHESS_strain',
+        'ornl_chess_strain' => 'ORNL_CHESS_strain',
     ];
 
     return $aliases[strtolower($raw)] ?? $raw;
@@ -507,16 +510,18 @@ function isDatasetSupported($dataset, $config) {
 
 function getViewableFormatConfig() {
     $default = [
-        'viewable_formats' => ['IDX', '4D_NEXUS'],
+        'viewable_formats' => ['IDX', '4D_NEXUS', 'ORNL_CHESS_STRAIN'],
         'dashboard_formats' => [
             '4d_dashboardLite' => ['4D_NEXUS'],
             '4D_Dashboard' => ['4D_NEXUS'],
             '4d_dashboard' => ['4D_NEXUS'],
+            'ORNL_CHESS_strain' => ['ORNL_CHESS_STRAIN'],
             'default' => ['IDX']
         ],
         'remote_viewable_requirements' => [
             'IDX' => ['requires_arco' => true],
-            '4D_NEXUS' => ['remote_supported' => false]
+            '4D_NEXUS' => ['remote_supported' => false],
+            'ORNL_CHESS_STRAIN' => ['remote_supported' => true],
         ]
     ];
 
@@ -661,6 +666,9 @@ function getDatasetAvailableFormats($dataset) {
     if ($isRemote && ($sensor === '4D_NEXUS' || strpos($sensor, 'NEXUS') !== false)) {
         $formats[] = '4D_NEXUS';
     }
+    if ($isRemote && $sensor === 'ORNL_CHESS_STRAIN' && $linkRaw !== '') {
+        $formats[] = 'ORNL_CHESS_STRAIN';
+    }
 
     $uuid = trim((string)($dataset['uuid'] ?? $dataset['id'] ?? ''));
     if ($uuid !== '') {
@@ -683,6 +691,9 @@ function getDatasetAvailableFormats($dataset) {
                 }
                 if (in_array($extension, ['nxs', 'h5', 'hdf5'], true)) {
                     $formats[] = '4D_NEXUS';
+                }
+                if ($sensor === 'ORNL_CHESS_STRAIN' && $extension === 'json') {
+                    $formats[] = 'ORNL_CHESS_STRAIN';
                 }
             }
         }

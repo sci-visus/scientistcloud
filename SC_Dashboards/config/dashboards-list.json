@@ -85,6 +85,18 @@
       "url_template": "/dashboard/darkmatter/?uuid={uuid}&server={server}&name={name}",
       "enabled": true,
       "config_file": "../dashboards/darkmatter.json"
+    },
+    {
+      "id": "ORNL_CHESS_strain",
+      "name": "ORNL_CHESS_strain",
+      "type": "bokeh",
+      "display_name": "ORNL CHESS Strain",
+      "description": "CHESS/ORNL resampled strain JSON (measurement mask, GP estimate, variance)",
+      "port": 8059,
+      "nginx_path": "/dashboard/ORNL_CHESS_strain",
+      "url_template": "/dashboard/ORNL_CHESS_strain/?uuid={uuid}&server={server}&name={name}",
+      "enabled": true,
+      "config_file": "../dashboards/ORNL_CHESS_strain.json"
     }
   ]
 }

@@ -1,17 +1,10 @@
 {
-  "viewable_formats": ["IDX", "4D_NEXUS"],
   "dashboard_formats": {
-    "4d_dashboardLite": ["4D_NEXUS"],
-    "4D_Dashboard": ["4D_NEXUS"],
-    "4d_dashboard": ["4D_NEXUS"],
-    "default": ["IDX"]
+    "ORNL_CHESS_strain": ["ORNL_CHESS_STRAIN"]
   },
   "remote_viewable_requirements": {
-    "IDX": {
-      "requires_arco": true
-    },
-    "4D_NEXUS": {
-      "remote_supported": false
+    "ORNL_CHESS_STRAIN": {
+      "remote_supported": true
     }
   }
 }

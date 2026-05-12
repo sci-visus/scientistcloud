@@ -1636,8 +1636,12 @@ class DatasetManager {
                     has_preferred: !!datasetDetails.preferred_dashboard,
                     preferred_type: typeof datasetDetails.preferred_dashboard
                 });
-                
-                // Update viewer-toolbar dropdown to match preferred_dashboard if it exists
+
+                if (window.viewerManager && typeof window.viewerManager.populateViewerSelector === 'function') {
+                    window.viewerManager.populateViewerSelector();
+                }
+
+                // Update viewer-toolbar dropdown to match preferred_dashboard if it exists (after repopulate for ORNL-only list)
                 if (datasetDetails.preferred_dashboard && datasetDetails.preferred_dashboard.trim() !== '') {
                     const viewerTypeSelect = document.getElementById('viewerType');
                     if (viewerTypeSelect) {
@@ -2361,10 +2365,30 @@ class DatasetManager {
         // 5. Fallback to OpenVisusSlice
         
         let selectedDashboard = dashboardTypeOverride;
+
+        let datasetForSensor = datasetDetails || (this.currentDataset && this.currentDataset.details);
+        if (!datasetForSensor || !datasetForSensor.uuid) {
+            try {
+                const response = await fetch(`${getApiBasePath()}/dataset-details.php?dataset_id=${datasetId}`);
+                const data = await response.json();
+                if (data.success && data.dataset) {
+                    datasetForSensor = data.dataset;
+                    if (this.currentDataset) {
+                        this.currentDataset.details = data.dataset;
+                    }
+                }
+            } catch (error) {
+                console.warn('Could not fetch dataset for ORNL strain routing:', error);
+            }
+        }
+        if (this.isOrnlChessStrainDataset(datasetForSensor)) {
+            selectedDashboard = 'ORNL_CHESS_strain';
+            console.log('ORNL_CHESS_STRAIN: forcing ORNL_CHESS_strain (other dashboards cannot load this data)');
+        }
         
         // If no override, check dataset's preferred_dashboard field
         if (!selectedDashboard) {
-            let dataset = datasetDetails;
+            let dataset = datasetForSensor || datasetDetails;
             
             // If dataset details not provided, try to get from currentDataset or fetch
             if (!dataset && this.currentDataset && this.currentDataset.details) {
@@ -2405,7 +2429,10 @@ class DatasetManager {
                     '3D Plotly': '3DPlotly',
                     'plotly': '3DPlotly',
                     '3D Plotly Explorer': '3DPlotly',  // User might have selected this variation
-                    '3d plotly explorer': '3DPlotly'
+                    '3d plotly explorer': '3DPlotly',
+                    'ORNL CHESS Strain': 'ORNL_CHESS_strain',
+                    'ornl chess strain': 'ORNL_CHESS_strain',
+                    'ORNL_CHESS_strain': 'ORNL_CHESS_strain'
                 };
                 
                 // Check if we need to normalize
@@ -2465,10 +2492,12 @@ class DatasetManager {
             }
         }
         
-        // Fallback to OpenVisusSlice if nothing else selected
+        // Fallback to OpenVisusSlice if nothing else selected (never for ORNL strain JSON)
         if (!selectedDashboard) {
-            selectedDashboard = 'OpenVisusSlice';
-            console.log('Using default dashboard: OpenVisusSlice');
+            selectedDashboard = this.isOrnlChessStrainDataset(datasetForSensor)
+                ? 'ORNL_CHESS_strain'
+                : 'OpenVisusSlice';
+            console.log('Using default dashboard:', selectedDashboard);
         }
         
         // Load dashboard using viewer manager
@@ -2523,6 +2552,40 @@ class DatasetManager {
     }
 
     /**
+     * True when this dataset is ORNL CHESS strain JSON (no other portal dashboard should open it).
+     */
+    isOrnlChessStrainDataset(dataset) {
+        if (!dataset || typeof dataset !== 'object') {
+            return false;
+        }
+        const raw = String(dataset.sensor || '').trim();
+        const norm = raw.toUpperCase().replace(/\s+/g, '_');
+        return norm === 'ORNL_CHESS_STRAIN';
+    }
+
+    /**
+     * First remote/local link field suitable for ORNL strain JSON (S3/HTTP or *.json).
+     */
+    pickStrainJsonRemoteLink(dataset) {
+        if (!dataset || typeof dataset !== 'object') {
+            return '';
+        }
+        const fields = ['viewer_url', 'download_url', 'google_drive_link', 'source_path'];
+        for (const f of fields) {
+            const u = String(dataset[f] || '').trim();
+            if (!u) {
+                continue;
+            }
+            const low = u.toLowerCase();
+            if (low.endsWith('.json') || low.includes('.json?') || low.startsWith('s3://')
+                || low.startsWith('http://') || low.startsWith('https://')) {
+                return u;
+            }
+        }
+        return '';
+    }
+
+    /**
      * Smart dashboard selection based on dataset dimension and user preferences
      * 
      * PRIORITY ORDER:
@@ -2538,6 +2601,7 @@ class DatasetManager {
      * @returns {Promise<string>} Selected dashboard ID
      */
     async selectDashboardForDataset(datasetId, datasetUuid, preferredDashboardId = null) {
+        let ornlStrainDataset = false;
         try {
             const normalizePreferredDashboardId = (preferredValue) => {
                 const raw = String(preferredValue || '').trim();
@@ -2577,10 +2641,29 @@ class DatasetManager {
                     'darkmatter': 'DarkMatter',
                     'MagicScan Dashboard': 'magicscan',
                     'magicscan dashboard': 'magicscan',
-                    'MagicScan': 'magicscan'
+                    'MagicScan': 'magicscan',
+                    'ORNL CHESS Strain': 'ORNL_CHESS_strain',
+                    'ornl chess strain': 'ORNL_CHESS_strain',
+                    'ORNL_CHESS_strain': 'ORNL_CHESS_strain'
                 };
                 return dashboardNameMapping[raw] || dashboardNameMapping[raw.toLowerCase()] || raw;
             };
+
+            try {
+                const detRes = await fetch(`${getApiBasePath()}/dataset-details.php?dataset_id=${encodeURIComponent(datasetId)}`);
+                if (detRes.ok) {
+                    const detData = await detRes.json();
+                    const rawSensor = String(detData.dataset?.sensor || '').trim();
+                    const sensor = rawSensor.toUpperCase().replace(/\s+/g, '_');
+                    ornlStrainDataset = sensor === 'ORNL_CHESS_STRAIN';
+                }
+            } catch (e) {
+                console.warn('Could not read sensor for dashboard routing:', e);
+            }
+            if (ornlStrainDataset) {
+                console.log('✅ ORNL_CHESS_STRAIN dataset → ORNL_CHESS_strain only (OpenVisusSlice/DarkMatter cannot load this data)');
+                return 'ORNL_CHESS_strain';
+            }
 
             const preferredNormalized = normalizePreferredDashboardId(preferredDashboardId);
             if (preferredNormalized) {
@@ -2600,26 +2683,22 @@ class DatasetManager {
                     return preferredOnUnknownDim;
                 }
                 console.warn('⚠️ Could not determine dataset dimension, using OpenVisusSlice as default/general dashboard');
-                // OpenVisusSlice is the most general dashboard - use it as default
                 if (window.viewerManager && window.viewerManager.viewers && window.viewerManager.viewers['OpenVisusSlice']) {
                     return 'OpenVisusSlice';
                 }
-                // Fallback to toolbar selector or first available
                 const viewerType = document.getElementById('viewerType');
                 return viewerType ? viewerType.value : (Object.keys(window.viewerManager.viewers)[0] || 'OpenVisusSlice');
             }
             
             // Step 2: Get all dashboards and filter by supported dimensions
-            const compatibleDashboards = await this.getCompatibleDashboards(datasetDimension);
+            const compatibleDashboards = await this.getCompatibleDashboards(datasetDimension, datasetId);
             console.log(`✅ Found ${compatibleDashboards.length} compatible dashboard(s) for ${datasetDimension}D:`, compatibleDashboards.map(d => d.id));
             
             if (compatibleDashboards.length === 0) {
                 console.warn(`⚠️ No dashboards found for ${datasetDimension}D, using OpenVisusSlice as default/general dashboard`);
-                // OpenVisusSlice is the most general dashboard - use it as default
                 if (window.viewerManager && window.viewerManager.viewers && window.viewerManager.viewers['OpenVisusSlice']) {
                     return 'OpenVisusSlice';
                 }
-                // Fallback to toolbar selector or first available
                 const viewerType = document.getElementById('viewerType');
                 return viewerType ? viewerType.value : (Object.keys(window.viewerManager.viewers)[0] || 'OpenVisusSlice');
             }
@@ -2672,7 +2751,10 @@ class DatasetManager {
                     'MagicScan Dashboard': 'magicscan',
                     'magicscan dashboard': 'magicscan',
                     'MagicScan': 'magicscan',
-                    'magicscan': 'magicscan'
+                    'magicscan': 'magicscan',
+                    'ORNL CHESS Strain': 'ORNL_CHESS_strain',
+                    'ornl chess strain': 'ORNL_CHESS_strain',
+                    'ORNL_CHESS_strain': 'ORNL_CHESS_strain'
                 };
                 
                 // Try mapped name first (check both original and lowercase)
@@ -2779,6 +2861,10 @@ class DatasetManager {
             
         } catch (error) {
             console.error('❌ Error in smart dashboard selection:', error);
+            if (ornlStrainDataset) {
+                console.log('✅ ORNL strain fallback after selection error');
+                return 'ORNL_CHESS_strain';
+            }
             // Fallback to OpenVisusSlice as the most general/default dashboard
             if (window.viewerManager && window.viewerManager.viewers && window.viewerManager.viewers['OpenVisusSlice']) {
                 console.log('✅ Using OpenVisusSlice as fallback default dashboard');
@@ -2905,9 +2991,10 @@ class DatasetManager {
     /**
      * Get dashboards compatible with a given dimension
      * @param {number} dimension - Dataset dimension (1, 2, 3, or 4)
+     * @param {string|null} datasetId - When set, ORNL_CHESS_STRAIN datasets only see the strain dashboard
      * @returns {Promise<Array>} Array of compatible dashboard objects
      */
-    async getCompatibleDashboards(dimension) {
+    async getCompatibleDashboards(dimension, datasetId = null) {
         try {
             // Load dashboard registry
             const dashResponse = await fetch(`${getApiBasePath()}/dashboards.php`);
@@ -2922,6 +3009,33 @@ class DatasetManager {
             const dashboards = Array.isArray(dashData.dashboards) 
                 ? dashData.dashboards 
                 : Object.entries(dashData.dashboards || {}).map(([id, dash]) => ({ id, ...dash }));
+
+            if (datasetId) {
+                try {
+                    const detRes = await fetch(`${getApiBasePath()}/dataset-details.php?dataset_id=${encodeURIComponent(datasetId)}`);
+                    if (detRes.ok) {
+                        const detData = await detRes.json();
+                        const rawSensor = String(detData.dataset?.sensor || '').trim();
+                        const sensor = rawSensor.toUpperCase().replace(/\s+/g, '_');
+                        if (sensor === 'ORNL_CHESS_STRAIN') {
+                            const strain = dashboards.find(d => (d.id || d.name) === 'ORNL_CHESS_strain' && d.enabled);
+                            if (strain) {
+                                const dashboardId = strain.id || strain.name;
+                                return [{
+                                    id: dashboardId,
+                                    name: strain.name || dashboardId,
+                                    display_name: strain.display_name || strain.name || dashboardId,
+                                    config: strain.config || null,
+                                    supported_dimensions: strain.supported_dimensions || strain.config?.supported_dimensions || [],
+                                }];
+                            }
+                            return [];
+                        }
+                    }
+                } catch (e) {
+                    console.warn('getCompatibleDashboards: could not read sensor', e);
+                }
+            }
             
             const dimensionStr = `${dimension}D`;
             const compatibleDashboards = [];
@@ -3078,8 +3192,10 @@ class DatasetManager {
                     'MagicScan Dashboard': 'magicscan',
                     'magicscan dashboard': 'magicscan',
                     'MagicScan': 'magicscan',
-                    'magicscan': 'magicscan',
-                    'magicscan': 'magicscan'  // Direct ID match
+                    'magicscan': 'magicscan',  // Direct ID match
+                    'ORNL CHESS Strain': 'ORNL_CHESS_strain',
+                    'ornl chess strain': 'ORNL_CHESS_strain',
+                    'ORNL_CHESS_strain': 'ORNL_CHESS_strain'
                 };
                 
                 // Try direct mapping first (exact match, then case-insensitive)
@@ -3128,19 +3244,23 @@ class DatasetManager {
                     console.log('Using smart-selected dashboard:', dashboardType);
                 } catch (error) {
                     console.warn('Smart selection failed, using default:', error);
-                    dashboardType = 'OpenVisusSlice';
+                    dashboardType = this.isOrnlChessStrainDataset(dataset) ? 'ORNL_CHESS_strain' : 'OpenVisusSlice';
                 }
             }
             
             // Final fallback
             if (!dashboardType) {
-                dashboardType = 'OpenVisusSlice';
+                dashboardType = this.isOrnlChessStrainDataset(dataset) ? 'ORNL_CHESS_strain' : 'OpenVisusSlice';
+            }
+
+            if (this.isOrnlChessStrainDataset(dataset)) {
+                dashboardType = 'ORNL_CHESS_strain';
             }
             
             console.log('Final dashboard type for URL generation:', dashboardType);
             
             // Generate the dashboard URL using the same logic as viewer-manager
-            const dashboardUrl = await this.generateDashboardUrl(datasetUuid, datasetServer, datasetName, dashboardType);
+            const dashboardUrl = await this.generateDashboardUrl(datasetUuid, datasetServer, datasetName, dashboardType, dataset);
             
             // Copy to clipboard
             await navigator.clipboard.writeText(dashboardUrl);
@@ -3275,17 +3395,21 @@ class DatasetManager {
                     dashboardType = await this.selectDashboardForDataset(datasetId, datasetUuid, null);
                 } catch (error) {
                     console.warn('Smart selection failed, using default:', error);
-                    dashboardType = 'OpenVisusSlice';
+                    dashboardType = this.isOrnlChessStrainDataset(dataset) ? 'ORNL_CHESS_strain' : 'OpenVisusSlice';
                 }
             }
             
             // Final fallback
             if (!dashboardType) {
-                dashboardType = 'OpenVisusSlice';
+                dashboardType = this.isOrnlChessStrainDataset(dataset) ? 'ORNL_CHESS_strain' : 'OpenVisusSlice';
+            }
+
+            if (this.isOrnlChessStrainDataset(dataset)) {
+                dashboardType = 'ORNL_CHESS_strain';
             }
             
             // Generate the dashboard URL using the same logic as viewer-manager
-            const dashboardUrl = await this.generateDashboardUrl(datasetUuid, datasetServer, datasetName, dashboardType);
+            const dashboardUrl = await this.generateDashboardUrl(datasetUuid, datasetServer, datasetName, dashboardType, dataset);
             
             // Open in new tab
             window.open(dashboardUrl, '_blank');
@@ -3300,7 +3424,7 @@ class DatasetManager {
     /**
      * Generate dashboard URL (similar to viewer-manager's generateViewerUrl)
      */
-    async generateDashboardUrl(datasetUuid, datasetServer, datasetName, dashboardType) {
+    async generateDashboardUrl(datasetUuid, datasetServer, datasetName, dashboardType, datasetForStrain = null) {
         // Get dashboard configuration from viewer-manager or API
         let viewer = null;
         
@@ -3455,6 +3579,14 @@ class DatasetManager {
             .replace(/{uuid}/g, encodeURIComponent(datasetUuid))
             .replace(/{server}/g, encodeURIComponent(datasetServer || 'false'))
             .replace(/{name}/g, encodeURIComponent(datasetName || ''));
+
+        const dashLower = String(dashboardType || '').toLowerCase();
+        if (dashLower === 'ornl_chess_strain' && datasetForStrain) {
+            const link = this.pickStrainJsonRemoteLink(datasetForStrain);
+            if (link) {
+                url += (url.includes('?') ? '&' : '?') + 'strain_json_path=' + encodeURIComponent(link);
+            }
+        }
         
         // For local development, convert /dashboard/ paths to direct port access
         const isLocal = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
@@ -3985,6 +4117,7 @@ class DatasetManager {
             'NETCDF': 'fas fa-database',
             'HDF5': 'fas fa-database',
             '4D_NEXUS': 'fas fa-cube',
+            'ORNL_CHESS_STRAIN': 'fas fa-border-all',
             'RGB DRONE': 'fas fa-drone',
             'MapIR DRONE': 'fas fa-drone'
         };

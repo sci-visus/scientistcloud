@@ -609,6 +609,7 @@ if ($defaultShareSeconds > $shareMaxSeconds) {
                   <option value="NETCDF">NETCDF</option>
                   <option value="HDF5">HDF5</option>
                   <option value="4D_NEXUS">4D_NEXUS</option>
+                  <option value="ORNL_CHESS_STRAIN">ORNL CHESS strain (JSON)</option>
                   <option value="RGB">RGB</option>
                   <option value="MAPIR">MAPIR</option>
                   <option value="OTHER">OTHER</option>

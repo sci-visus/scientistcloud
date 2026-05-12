@@ -70,6 +70,14 @@
       "port": 8058,
       "nginx_path": "/dashboard/darkmatter",
       "config_file": "../dashboards/darkmatter.json"
+    },
+    "ORNL_CHESS_strain": {
+      "name": "ORNL_CHESS_strain",
+      "display_name": "ORNL CHESS Strain",
+      "enabled": true,
+      "port": 8059,
+      "nginx_path": "/dashboard/ORNL_CHESS_strain",
+      "config_file": "../dashboards/ORNL_CHESS_strain.json"
     }
   }
 }

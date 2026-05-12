@@ -131,9 +131,22 @@ class ViewerManager {
             return;
         }
         
+        let onlyOrnlStrain = false;
+        try {
+            const ds = window.datasetManager?.currentDataset?.details || window.datasetManager?.currentDataset;
+            if (ds && typeof window.datasetManager.isOrnlChessStrainDataset === 'function') {
+                onlyOrnlStrain = window.datasetManager.isOrnlChessStrainDataset(ds);
+            }
+        } catch (e) {
+            onlyOrnlStrain = false;
+        }
+
         // Add options from loaded viewers
         // Use dashboard id as value for consistency
         Object.entries(this.viewers).forEach(([viewerKey, viewer]) => {
+            if (onlyOrnlStrain && (viewer.id || viewerKey) !== 'ORNL_CHESS_strain') {
+                return;
+            }
             const option = document.createElement('option');
             // Use id if available, otherwise use the key or type
             option.value = viewer.id || viewerKey || viewer.type;
@@ -141,10 +154,23 @@ class ViewerManager {
             viewerType.appendChild(option);
             console.log('Added dashboard option:', option.value, '-', option.textContent);
         });
-        
+
+        if (onlyOrnlStrain && viewerType.options.length === 0) {
+            const option = document.createElement('option');
+            option.value = 'ORNL_CHESS_strain';
+            option.textContent = 'ORNL CHESS Strain (not deployed — register dashboard)';
+            viewerType.appendChild(option);
+            console.warn('ORNL strain dataset but ORNL_CHESS_strain viewer is not in dashboards.php / viewer list');
+        }
+
         // Set default viewer if available
         if (viewerType.options.length > 0) {
-            viewerType.value = viewerType.options[0].value;
+            if (onlyOrnlStrain) {
+                const ornlOpt = Array.from(viewerType.options).find(o => o.value === 'ORNL_CHESS_strain');
+                viewerType.value = ornlOpt ? ornlOpt.value : viewerType.options[0].value;
+            } else {
+                viewerType.value = viewerType.options[0].value;
+            }
             console.log('Set default dashboard to:', viewerType.value);
         }
         
@@ -176,7 +202,9 @@ class ViewerManager {
             'magicscan dashboard': 'magicscan',
             'magicscan': 'magicscan',
             '4d dashboard (new)': '4d_dashboardLite',
-            '4d dashboard': '4d_dashboard'
+            '4d dashboard': '4d_dashboard',
+            'ornl chess strain': 'ORNL_CHESS_strain',
+            'ornl_chess_strain': 'ORNL_CHESS_strain'
         };
         if (aliases[normalized] && this.viewers[aliases[normalized]]) {
             return aliases[normalized];
@@ -733,7 +761,8 @@ class ViewerManager {
             '4d_dashboard': '4d_dashboardLite',  // Alternative spelling
             '4D_dashboard': '4d_dashboardLite',
             'Magicscan': 'magicscan',  // Normalize case
-            'magicscan': 'magicscan'
+            'magicscan': 'magicscan',
+            'ornl_chess_strain': 'ORNL_CHESS_strain'
         };
         
         // Resolve dashboard type to actual ID
@@ -820,8 +849,26 @@ class ViewerManager {
         }
 
         // Generate viewer URL using the url_template
-        const viewerUrl = this.generateViewerUrl(datasetUuid, datasetServer, datasetName, viewer.url_template);
-        
+        let viewerUrl = this.generateViewerUrl(datasetUuid, datasetServer, datasetName, viewer.url_template);
+        const dashKey = (resolvedDashboardType || dashboardType || '').toString();
+        if (dashKey === 'ORNL_CHESS_strain' && datasetId && window.datasetManager?.pickStrainJsonRemoteLink) {
+            try {
+                const apiBase = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
+                    ? '/api' : '/portal/api';
+                const r = await fetch(`${apiBase}/dataset-details.php?dataset_id=${encodeURIComponent(datasetId)}`);
+                if (r.ok) {
+                    const j = await r.json();
+                    const ds = j.dataset;
+                    const link = window.datasetManager.pickStrainJsonRemoteLink(ds);
+                    if (link) {
+                        viewerUrl += (viewerUrl.includes('?') ? '&' : '?') + 'strain_json_path=' + encodeURIComponent(link);
+                    }
+                }
+            } catch (e) {
+                console.warn('ORNL strain: could not append strain_json_path', e);
+            }
+        }
+
         console.log('Loading dashboard:', {
             dashboardType,
             resolvedDashboardType,
