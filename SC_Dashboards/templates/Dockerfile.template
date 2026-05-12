@@ -39,7 +39,7 @@ RUN if [ -s requirements.txt ]; then \
 {{#if ADDITIONAL_REQUIREMENTS}}
 # Install additional requirements
 RUN python3 -m pip install --no-cache-dir {{ADDITIONAL_REQUIREMENTS}}
-{{/if}}
+{{/if ADDITIONAL_REQUIREMENTS}}
 
 # Set environment variables from configuration
 {{ENVIRONMENT_VARIABLES_SECTION}}
@@ -51,7 +51,7 @@ EXPOSE {{DASHBOARD_PORT}}
 {{#if HEALTH_CHECK_PATH}}
 HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
   CMD curl -f http://localhost:{{DASHBOARD_PORT}}{{HEALTH_CHECK_PATH}} || exit 1
-{{/if}}
+{{/if HEALTH_CHECK_PATH}}
 
 # Run dashboard entry point
 {{CMD_SECTION}}

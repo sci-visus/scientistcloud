@@ -210,30 +210,28 @@ cp "$TEMPLATE_FILE" "$TEMP_FILE"
 # Handle ADDITIONAL_REQUIREMENTS conditional
 # Check if there are any additional requirements (explicit count check)
 if [ "$ADDITIONAL_REQUIREMENTS_COUNT" -gt 0 ] && [ -n "$ADDITIONAL_REQUIREMENTS" ]; then
-    # Keep the section, just remove the conditional markers
-    sed -i.bak 's|{{#if ADDITIONAL_REQUIREMENTS}}||g; s|{{/if}}||g' "$TEMP_FILE"
+    # Keep the section, just remove the conditional markers (named closing tag so we do not strip HEALTH's {{/if}})
+    sed -i.bak 's|{{#if ADDITIONAL_REQUIREMENTS}}||g; s|{{/if ADDITIONAL_REQUIREMENTS}}||g' "$TEMP_FILE"
     rm -f "$TEMP_FILE.bak"
 else
-    # Remove the entire conditional section (match from opening to closing tag)
-    # Use a pattern that matches {{/if}} with escaped forward slash
-    sed -i.bak '/{{#if ADDITIONAL_REQUIREMENTS}}/,/{{\/if}}/d' "$TEMP_FILE"
+    # Remove the entire conditional section (match from opening to named closing tag)
+    sed -i.bak '/{{#if ADDITIONAL_REQUIREMENTS}}/,/{{\/if ADDITIONAL_REQUIREMENTS}}/d' "$TEMP_FILE"
     rm -f "$TEMP_FILE.bak"
 fi
 
 # Handle HEALTH_CHECK_PATH conditional
 if [ -n "$HEALTH_CHECK_PATH" ]; then
     # Keep the section, just remove the conditional markers
-    sed -i.bak 's|{{#if HEALTH_CHECK_PATH}}||g; s|{{/if}}||g' "$TEMP_FILE"
+    sed -i.bak 's|{{#if HEALTH_CHECK_PATH}}||g; s|{{/if HEALTH_CHECK_PATH}}||g' "$TEMP_FILE"
     rm -f "$TEMP_FILE.bak"
 else
-    # Remove the entire conditional section (match from opening to closing tag)
-    # Use a pattern that matches {{/if}} with escaped forward slash
-    sed -i.bak '/{{#if HEALTH_CHECK_PATH}}/,/{{\/if}}/d' "$TEMP_FILE"
+    # Remove the entire conditional section (named closing tag)
+    sed -i.bak '/{{#if HEALTH_CHECK_PATH}}/,/{{\/if HEALTH_CHECK_PATH}}/d' "$TEMP_FILE"
     rm -f "$TEMP_FILE.bak"
 fi
 
 # Requirements file is always present (build script ensures it), so always include it
-sed -i.bak 's|{{#if REQUIREMENTS_FILE}}||g; s|{{/if}}||g' "$TEMP_FILE"
+sed -i.bak 's|{{#if REQUIREMENTS_FILE}}||g; s|{{/if REQUIREMENTS_FILE}}||g' "$TEMP_FILE"
 rm -f "$TEMP_FILE.bak"
 
 # Now do template replacement
@@ -299,22 +297,29 @@ if echo "$BASE_IMAGE" | grep -qiE "(4d-dashboard|bokeh-dashboard|magicscan)"; th
     PERMISSIONS_SECTION="${PERMISSIONS_SECTION}    chown -R bokehuser:bokehuser /app\n"
     PERMISSIONS_SECTION="${PERMISSIONS_SECTION}USER bokehuser\n"
     
-    # Find the line with "# Set environment variables" or "# Expose dashboard port" and insert before it
-    if grep -q "# Set environment variables from configuration" "$OUTPUT_FILE"; then
-        sed -i.bak "/^# Set environment variables from configuration$/i\\
-${PERMISSIONS_SECTION}\\
-" "$OUTPUT_FILE"
-    elif grep -q "# Expose dashboard port" "$OUTPUT_FILE"; then
-        sed -i.bak "/^# Expose dashboard port$/i\\
-${PERMISSIONS_SECTION}\\
-" "$OUTPUT_FILE"
+    # Insert before a marker line (sed "i" collapses \n in PERMISSIONS_SECTION; use awk + printf)
+    PERMS_FILE="$(mktemp)"
+    printf '%b' "$PERMISSIONS_SECTION" > "$PERMS_FILE"
+    if grep -q "^# Set environment variables from configuration" "$OUTPUT_FILE"; then
+        awk -v marker="# Set environment variables from configuration" '
+            FNR==NR { block = block $0 ORS; next }
+            $0 == marker { printf "%s", block }
+            { print }
+        ' "$PERMS_FILE" "$OUTPUT_FILE" > "${OUTPUT_FILE}.ins" && mv "${OUTPUT_FILE}.ins" "$OUTPUT_FILE"
+    elif grep -q "^# Expose dashboard port" "$OUTPUT_FILE"; then
+        awk -v marker="# Expose dashboard port" '
+            FNR==NR { block = block $0 ORS; next }
+            $0 == marker { printf "%s", block }
+            { print }
+        ' "$PERMS_FILE" "$OUTPUT_FILE" > "${OUTPUT_FILE}.ins" && mv "${OUTPUT_FILE}.ins" "$OUTPUT_FILE"
     else
-        # Insert before CMD if no other marker found
-        sed -i.bak "/^CMD /i\\
-${PERMISSIONS_SECTION}\\
-" "$OUTPUT_FILE"
+        awk '
+            FNR==NR { block = block $0 ORS; next }
+            /^CMD / && !inserted { printf "%s", block; inserted = 1 }
+            { print }
+        ' "$PERMS_FILE" "$OUTPUT_FILE" > "${OUTPUT_FILE}.ins" && mv "${OUTPUT_FILE}.ins" "$OUTPUT_FILE"
     fi
-    rm -f "$OUTPUT_FILE.bak"
+    rm -f "$PERMS_FILE" "${OUTPUT_FILE}.bak" 2>/dev/null || true
 fi
 
 echo "✅ Generated Dockerfile: $OUTPUT_FILE"
