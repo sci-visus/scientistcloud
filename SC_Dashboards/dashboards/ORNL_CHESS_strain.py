@@ -120,7 +120,6 @@ from ornl_chess_strain_lib import (  # noqa: E402
     load_strain_json,
     make_strain_triplet_figures,
     resolve_strain_paths_for_session,
-    strain_resolve_order_summary,
 )
 
 
@@ -359,32 +358,31 @@ else:
     btn_add.on_click(on_add_row)
     btn_remove.on_click(on_remove_row)
 
-    _standalone_note = (
-        "<p><b>Standalone mode:</b> ScientistCloud <code>utils_bokeh_dashboard</code> was not loaded; "
-        "this session only loads JSON via env / https URL / the path field (no portal auth).</p>"
-        if initialize_dashboard is _initialize_dashboard_standalone
-        else ""
-    )
-    help_div = Div(
-        text=(
-            "<p><b>Automatic load order</b> (clear both fields below to use it): "
-            "<code>" + strain_resolve_order_summary(_bd, _sd) + "</code>. "
-            "See module docstring in <code>ornl_chess_strain_lib.py</code> for token meanings "
-            "(<code>upload</code>, <code>converted</code>, <code>query_*</code>, <code>env_*</code>). "
-            "On the ScientistCloud portal mount (<code>/mnt/visus_datasets/…</code>), server directories are tried "
-            "before gateway URLs; from the command line, <code>ORNL_STRAIN_JSON_PATH</code> / "
-            "<code>ORNL_STRAIN_JSON_URL</code> are tried first. "
-            "Override globally: <code>ORNL_STRAIN_RESOLVE_MODE</code> = <code>auto</code> | "
-            "<code>portal</code> | <code>cli</code>, or set <code>ORNL_STRAIN_SOURCE_ORDER</code> "
-            "(comma-separated tokens). "
-            "Rows: <code>ORNL_STRAIN_INITIAL_ROWS</code> (default 2).</p>"
-            f"{_standalone_note}"
-        ),
-        sizing_mode="stretch_width",
-    )
+    # _standalone_note = (
+    #     "<p><b>Standalone mode:</b> ScientistCloud <code>utils_bokeh_dashboard</code> was not loaded; "
+    #     "this session only loads JSON via env / https URL / the path field (no portal auth).</p>"
+    #     if initialize_dashboard is _initialize_dashboard_standalone
+    #     else ""
+    # )
+    # help_div = Div(
+    #     text=(
+    #         "<p><b>Automatic load order</b> (clear both fields below to use it): "
+    #         "<code>" + strain_resolve_order_summary(_bd, _sd) + "</code>. "
+    #         "See module docstring in <code>ornl_chess_strain_lib.py</code> for token meanings "
+    #         "(<code>upload</code>, <code>converted</code>, <code>query_*</code>, <code>env_*</code>). "
+    #         "On the ScientistCloud portal mount (<code>/mnt/visus_datasets/…</code>), server directories are tried "
+    #         "before gateway URLs; from the command line, <code>ORNL_STRAIN_JSON_PATH</code> / "
+    #         "<code>ORNL_STRAIN_JSON_URL</code> are tried first. "
+    #         "Override globally: <code>ORNL_STRAIN_RESOLVE_MODE</code> = <code>auto</code> | "
+    #         "<code>portal</code> | <code>cli</code>, or set <code>ORNL_STRAIN_SOURCE_ORDER</code> "
+    #         "(comma-separated tokens). "
+    #         "Rows: <code>ORNL_STRAIN_INITIAL_ROWS</code> (default 2).</p>"
+    #         f"{_standalone_note}"
+    #     ),
+    #     sizing_mode="stretch_width",
+    # )
 
     controls = column(
-        help_div,
         row(json_path_input, sizing_mode="scale_width"),
         row(json_url_input, sizing_mode="scale_width"),
         row(grid_w, grid_h, btn_reload, btn_add, btn_remove, sizing_mode="scale_width"),
