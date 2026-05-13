@@ -73,6 +73,8 @@ try {
     $teamName = $input['team_name'] ?? $input['newName'] ?? null;
     $newMemberEmail = $input['new_member_email'] ?? $input['newMemberEmail'] ?? null;
     $emails = $input['emails'] ?? null;
+    $invalid = [];
+    $actuallyAdded = [];
     
     if (!$teamUuid) {
         ob_end_clean();
@@ -115,13 +117,58 @@ try {
     if ($emails !== null) {
         // If emails array is provided, use it directly
         $updateData['emails'] = $emails;
-    } elseif ($newMemberEmail !== null && trim($newMemberEmail) !== '') {
-        // If new member email is provided, add it to existing emails
-        $newEmail = trim($newMemberEmail);
-        if (!in_array($newEmail, $currentEmails)) {
-            $currentEmails[] = $newEmail;
+    } elseif ($newMemberEmail !== null && trim((string) $newMemberEmail) !== '') {
+        $raw = trim((string) $newMemberEmail);
+        $emailsToAdd = [];
+        foreach (array_map('trim', explode(',', $raw)) as $e) {
+            if ($e === '') {
+                continue;
+            }
+            if (filter_var($e, FILTER_VALIDATE_EMAIL)) {
+                $emailsToAdd[] = $e;
+            } else {
+                $invalid[] = $e;
+            }
         }
+        $emailsToAdd = array_values(array_unique($emailsToAdd));
+
+        if (empty($emailsToAdd)) {
+            ob_end_clean();
+            http_response_code(400);
+            echo json_encode([
+                'success' => false,
+                'error' => 'No valid email addresses.',
+                'invalid' => $invalid,
+            ]);
+            exit;
+        }
+
+        $originalEmails = $currentEmails;
+        foreach ($emailsToAdd as $e) {
+            if (!in_array($e, $currentEmails)) {
+                $currentEmails[] = $e;
+            }
+        }
+        foreach ($emailsToAdd as $e) {
+            if (!in_array($e, $originalEmails)) {
+                $actuallyAdded[] = $e;
+            }
+        }
+
         $updateData['emails'] = $currentEmails;
+
+        // Nothing changed and no team rename — avoid a redundant API call
+        if ($actuallyAdded === [] && !array_key_exists('team_name', $updateData)) {
+            ob_end_clean();
+            echo json_encode([
+                'success' => true,
+                'message' => 'No new members to add.',
+                'team' => null,
+                'added' => [],
+                'invalid' => $invalid,
+            ]);
+            exit;
+        }
     }
     
     if (empty($updateData)) {
@@ -157,7 +204,9 @@ try {
             echo json_encode([
                 'success' => true,
                 'message' => $result['message'] ?? 'Team updated successfully',
-                'team' => $result['team'] ?? null
+                'team' => $result['team'] ?? null,
+                'added' => $actuallyAdded,
+                'invalid' => $invalid,
             ]);
             exit;
         } else {

@@ -204,13 +204,13 @@ function displayWelcomeScreen($user) {
                         <div class="card-body">
                             <div class="d-grid gap-2">
                                 <button class="btn btn-primary" id="quickUploadBtn">
-                                    <i class="fas fa-upload"></i> Upload Dataset
+                                    <i class="fas fa-upload"></i> Upload
                                 </button>
                                 <button class="btn btn-outline-primary" id="quickViewJobsBtn" style="display: none;">
                                     <i class="fas fa-tasks"></i> View Jobs
                                 </button>
                                 <button class="btn btn-outline-primary" id="quickCreateTeamBtn">
-                                    <i class="fas fa-users"></i> Create Team
+                                    <i class="fas fa-users"></i> Team
                                 </button>
                                 <button class="btn btn-outline-secondary" id="quickSettingsBtn" disabled style="display: none;">
                                     <i class="fas fa-cog"></i> Settings

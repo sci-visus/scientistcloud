@@ -82,14 +82,14 @@ $preferredDashboard = getUserPreferredDashboard($user['id']);
           <option value="">Loading dashboards...</option>
         </select>
         <div class="btn-group ms-3" role="group" aria-label="Dataset actions">
-          <button type="button" class="btn btn-outline-light" id="uploadDatasetBtn" title="Upload Dataset">
-            <i class="fas fa-upload"></i> Upload Dataset
+          <button type="button" class="btn btn-outline-light" id="uploadDatasetBtn" title="Upload">
+            <i class="fas fa-upload"></i> Upload
           </button>
           <button type="button" class="btn btn-outline-light" id="viewJobsBtn" title="View Jobs" style="display: none;">
             <i class="fas fa-tasks"></i> View Jobs
           </button>
-          <button type="button" class="btn btn-outline-light" id="createTeamBtn" title="Create Team">
-            <i class="fas fa-users"></i> Create Team
+          <button type="button" class="btn btn-outline-light" id="createTeamBtn" title="Team">
+            <i class="fas fa-users"></i> Team
           </button>
           <button type="button" class="btn btn-outline-light" id="settingsBtn" title="Settings" disabled style="display: none;">
             <i class="fas fa-cog"></i> Settings

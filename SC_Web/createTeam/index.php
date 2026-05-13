@@ -377,8 +377,8 @@ try {
                                         <i class="fas fa-plus"></i>
                                     </button>
                                     <div id="add-member-container-<?php echo htmlspecialchars($team['uuid'] ?? ''); ?>" class="add-member-container" style="display:none;">
-                                        <input type="email" id="new-member-<?php echo htmlspecialchars($team['uuid'] ?? ''); ?>" placeholder="Add new member">
-                                        <button onclick="updateTeam('<?php echo htmlspecialchars($team['uuid'] ?? ''); ?>')" class="add-btn">Add</button>
+                                        <input type="text" id="new-member-<?php echo htmlspecialchars($team['uuid'] ?? ''); ?>" placeholder="Emails (comma-separated)" autocomplete="off">
+                                        <button type="button" onclick="updateTeam('<?php echo htmlspecialchars($team['uuid'] ?? ''); ?>')" class="add-btn">Add</button>
                                     </div>
                                 </div>
                             </ul>
@@ -583,11 +583,54 @@ try {
         });
     }
 
+    function memberAlreadyListed(teamId, email) {
+        var container = document.getElementById('add-member-container-' + teamId);
+        if (!container) {
+            return false;
+        }
+        var teamEl = container.closest('.team');
+        if (!teamEl) {
+            return false;
+        }
+        var spans = teamEl.querySelectorAll('.member-email');
+        for (var i = 0; i < spans.length; i++) {
+            if (spans[i].textContent.trim() === email) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    function appendMemberRow(teamId, email) {
+        var container = document.getElementById('add-member-container-' + teamId);
+        if (!container) {
+            return;
+        }
+        var section = container.closest('.add-member-section');
+        if (!section) {
+            return;
+        }
+        var li = document.createElement('li');
+        var span = document.createElement('span');
+        span.className = 'member-email';
+        span.textContent = email;
+        var btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'remove-btn';
+        btn.textContent = 'Remove';
+        btn.onclick = function() {
+            removeMember(teamId, email);
+        };
+        li.appendChild(span);
+        li.appendChild(btn);
+        section.parentNode.insertBefore(li, section);
+    }
+
     function updateTeam(teamId) {
         var newMemberEmail = document.getElementById('new-member-' + teamId).value.trim();
 
         if (newMemberEmail === '') {
-            alert("Please enter an email address.");
+            alert("Please enter at least one email address.");
             return;
         }
 
@@ -601,16 +644,44 @@ try {
                 new_member_email: newMemberEmail
             })
         })
-        .then(response => response.json())
-        .then(data => {
-            if (data.success) {
-                alert("Team updated successfully.");
-                location.reload();
-            } else {
+        .then(function(response) {
+            return response.json().then(function(data) {
+                return { ok: response.ok, status: response.status, data: data };
+            });
+        })
+        .then(function(result) {
+            var data = result.data;
+            if (!result.ok || !data.success) {
                 alert("Error updating the team: " + (data.error || 'Unknown error'));
+                return;
+            }
+            var added = data.added || [];
+            var appended = 0;
+            added.forEach(function(email) {
+                if (!memberAlreadyListed(teamId, email)) {
+                    appendMemberRow(teamId, email);
+                    appended++;
+                }
+            });
+            var inputEl = document.getElementById('new-member-' + teamId);
+            inputEl.value = '';
+            inputEl.focus();
+            var parts = [];
+            if (appended > 0) {
+                parts.push('Added ' + appended + ' member(s).');
+            } else if (added.length > 0) {
+                parts.push('Those addresses were already on the team.');
+            } else if (data.message && data.message.indexOf('No new members') !== -1) {
+                parts.push('Those addresses were already on the team.');
+            }
+            if (data.invalid && data.invalid.length) {
+                parts.push('Skipped invalid: ' + data.invalid.join(', '));
+            }
+            if (parts.length) {
+                alert(parts.join(' '));
             }
         })
-        .catch(error => {
+        .catch(function(error) {
             console.error('Error:', error);
             alert("Error updating the team.");
         });
