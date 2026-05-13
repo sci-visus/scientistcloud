@@ -552,6 +552,22 @@ RESOLVED_IDX_S3_OUTPUT_NAME = "visus.idx"
 RESOLVED_IDX_PROXY_OUTPUT_NAME = "visus_proxy.idx"
 
 
+def _darkmatter_resolved_idx_filename_template_mode() -> str:
+    """SCLib ``openvisus-resolved-idx`` rewrite mode for ``(filename_template)``.
+
+    Default ``proxy`` serves ARCO bins via ``/api/v1/datasets/s3/object-proxy/...`` URLs.
+    OpenVisus in Docker often returns all-zero / ``empty content`` with raw ``s3://``
+    templates or gateway-misresolved HTTPS bin paths (see logs for ``/scientistcloud/...``).
+
+    Set ``DARKMATTER_RESOLVED_IDX_FILENAME_TEMPLATE_MODE`` to ``s3`` or ``https`` if your
+    OpenVisus build reads those reliably.
+    """
+    raw = (os.getenv("DARKMATTER_RESOLVED_IDX_FILENAME_TEMPLATE_MODE") or "").strip().lower()
+    if raw in ("s3", "proxy", "https"):
+        return raw
+    return "proxy"
+
+
 def read_openvisus_field_with_dataset_cwd(idx_url_or_path: str, field: str = "data"):
     """
     OpenVisus resolves relative filename_template paths against cwd, not the .idx directory.
@@ -601,7 +617,7 @@ def resolve_openvisus_resolved_idx_via_api(
     user_email: Optional[str],
     auth_override: Optional[dict] = None,
     output_filename: str = "visus.idx",
-    filename_template_mode: str = "s3",
+    filename_template_mode: str = "proxy",
     force_refresh: bool = False,
     region_name: str = "us-east-1",
 ):
@@ -1950,7 +1966,7 @@ class AppState:
                                 user_email=user_email,
                                 auth_override=self.s3_auth_override or {},
                                 output_filename=RESOLVED_IDX_S3_OUTPUT_NAME,
-                                filename_template_mode="s3",
+                                filename_template_mode=_darkmatter_resolved_idx_filename_template_mode(),
                                 force_refresh=True,
                             )
                             if resolved_idx and os.path.isfile(resolved_idx):
@@ -2063,7 +2079,7 @@ class AppState:
                                 user_email=user_email,
                                 auth_override=self.s3_auth_override or {},
                                 output_filename=RESOLVED_IDX_S3_OUTPUT_NAME,
-                                filename_template_mode="s3",
+                                filename_template_mode=_darkmatter_resolved_idx_filename_template_mode(),
                                 force_refresh=False,
                             )
                             if resolved_idx and os.path.isfile(resolved_idx):
