@@ -631,8 +631,19 @@ def resolve_openvisus_resolved_idx_via_api(
     return resolved_idx_path, data.get("resolved_idx_http_url")
 
 
-def derive_dataset_from_remote_uri(remote_uri: str):
-    return parse_remote_dataset_uri(remote_uri)
+def derive_dataset_from_remote_uri(remote_uri: str, auth_override: Optional[dict] = None):
+    """
+    Resolve http(s):// or s3:// dataset from either a direct ``*.idx`` URL or a prefix
+    (directory) URL: the latter lists keys under the prefix and picks a ``*.idx``.
+    """
+    ds = parse_remote_dataset_uri(remote_uri)
+    if ds is not None:
+        return ds
+    try:
+        return discover_remote_dataset_from_prefix(remote_uri, auth_override)
+    except Exception as ex:
+        print(f"[DarkMatter][WARN] remote dataset prefix discovery failed: {ex}")
+        return None
 
 
 def derive_dataset_from_uuid(dataset_uuid: str):
@@ -701,7 +712,7 @@ def derive_dataset_from_uuid(dataset_uuid: str):
             continue
         ds = derive_dataset_from_local_dir(candidate)
         if ds is None:
-            ds = derive_dataset_from_remote_uri(candidate)
+            ds = derive_dataset_from_remote_uri(candidate, auth_override)
         if ds is not None:
             if auth_override.get("aws_access_key_id") and auth_override.get("aws_secret_access_key"):
                 ds["auth_override"] = auth_override
@@ -1255,6 +1266,208 @@ def http_object_url_to_s3_uri(url: str) -> str:
     bucket_name = path_parts[0]
     key = "/".join(path_parts[1:])
     return f"s3://{bucket_name}/{key}"
+
+
+def _merge_auth_from_https_gateway_uri(uri: str, auth_override: Optional[dict]) -> dict:
+    """Merge Mongo/env S3 auth with credentials embedded in an HTTPS gateway URL query."""
+    merged = dict(auth_override or {})
+    u = str(uri or "").strip()
+    if not u.startswith(("http://", "https://")):
+        return merged
+    parts = urlsplit(u)
+    q = parse_qs(parts.query or "")
+    ak = (q.get("access_key") or [""])[0].strip()
+    sk = (q.get("secret_key") or [""])[0].strip()
+    if ak and not str(merged.get("aws_access_key_id") or "").strip():
+        merged["aws_access_key_id"] = ak
+    if sk and not str(merged.get("aws_secret_access_key") or "").strip():
+        merged["aws_secret_access_key"] = sk
+    gw = f"{parts.scheme}://{parts.netloc}" if (parts.scheme and parts.netloc) else ""
+    if gw and not str(merged.get("endpoint_url") or "").strip():
+        merged["endpoint_url"] = gw
+    return merged
+
+
+def _pick_idx_key_under_prefix(keys: List[str], prefix: str) -> Optional[str]:
+    """Prefer the shallowest *.idx key under prefix; tie-break by shortest key then name."""
+    idx_keys = [k for k in keys if k.lower().endswith(".idx")]
+    if not idx_keys:
+        return None
+    if len(idx_keys) == 1:
+        return idx_keys[0]
+    pref = prefix.rstrip("/") + "/" if prefix else ""
+
+    def depth(k: str) -> int:
+        if pref and k.startswith(pref):
+            rel = k[len(pref) :]
+        else:
+            rel = k
+        return rel.count("/")
+
+    idx_keys.sort(key=lambda k: (depth(k), len(k), k))
+    return idx_keys[0]
+
+
+def _list_s3_idx_keys_at_prefix(
+    bucket: str,
+    prefix: str,
+    auth_override: dict,
+    max_items: int = 500,
+) -> List[str]:
+    """List object keys under prefix that end with .idx (path-style gateway compatible)."""
+    dotenv_candidates = [
+        os.path.join(PROJECT_ROOT, ".env"),
+        os.path.join(PROJECT_ROOT, "SC_Docker", ".env"),
+        os.path.join(PROJECT_ROOT, "SC_Docker", "env.scientistcloud.com"),
+        os.path.join(PROJECT_ROOT, "..", "VisusDataPortalPrivate", "Docker", ".env"),
+    ]
+    load_dotenv()
+    for dotenv_path in dotenv_candidates:
+        if os.path.exists(dotenv_path):
+            load_dotenv(dotenv_path=dotenv_path, override=False)
+
+    endpoint_url = os.getenv("ENDPOINT_URL")
+    aws_access_key_id = os.getenv("AWS_ACCESS_KEY_ID")
+    aws_secret_access_key = os.getenv("AWS_SECRET_ACCESS_KEY")
+    region_name = os.getenv("AWS_S3_REGION", "us-east-1")
+    if auth_override:
+        endpoint_url = auth_override.get("endpoint_url") or endpoint_url
+        aws_access_key_id = auth_override.get("aws_access_key_id") or aws_access_key_id
+        aws_secret_access_key = auth_override.get("aws_secret_access_key") or aws_secret_access_key
+        region_name = auth_override.get("region_name") or region_name
+
+    if not aws_access_key_id or not aws_secret_access_key:
+        return []
+
+    endpoint_candidates: List[Optional[str]] = []
+    for candidate in [
+        endpoint_url,
+        os.getenv("S3_ENDPOINT_URL"),
+        os.getenv("S3_PUBLIC_ENDPOINT_URL"),
+        os.getenv("ENDPOINT_URL"),
+        None,
+    ]:
+        if candidate not in endpoint_candidates:
+            endpoint_candidates.append(candidate)
+
+    last_error: Optional[Exception] = None
+    for candidate_endpoint in endpoint_candidates:
+        for addr_style in ("path", "virtual"):
+            try:
+                config = Config(
+                    signature_version="s3v4",
+                    s3={"addressing_style": addr_style},
+                )
+                s3_client = Session().client(
+                    "s3",
+                    endpoint_url=candidate_endpoint,
+                    region_name=region_name,
+                    config=config,
+                    aws_access_key_id=aws_access_key_id,
+                    aws_secret_access_key=aws_secret_access_key,
+                )
+                paginator = s3_client.get_paginator("list_objects_v2")
+                batch: List[str] = []
+                for page in paginator.paginate(
+                    Bucket=bucket,
+                    Prefix=prefix,
+                    PaginationConfig={"PageSize": 200, "MaxItems": max_items},
+                ):
+                    for obj in page.get("Contents", []) or []:
+                        k = obj.get("Key")
+                        if k and k.lower().endswith(".idx"):
+                            batch.append(str(k))
+                    if len(batch) >= max_items:
+                        break
+                if batch:
+                    if candidate_endpoint:
+                        print(
+                            f"[DarkMatter][DEBUG] S3 list under prefix={prefix!r} found {len(batch)} "
+                            f".idx key(s) (endpoint={candidate_endpoint} addressing_style={addr_style})"
+                        )
+                    else:
+                        print(
+                            f"[DarkMatter][DEBUG] S3 list under prefix={prefix!r} found {len(batch)} "
+                            f".idx key(s) (default endpoint addressing_style={addr_style})"
+                        )
+                    return batch
+            except Exception as exc:
+                last_error = exc
+                continue
+    if last_error:
+        print(f"[DarkMatter][WARN] S3 list_objects under {prefix!r} failed: {last_error}")
+    return []
+
+
+def discover_remote_dataset_from_prefix(
+    remote_uri: str,
+    auth_override: Optional[dict] = None,
+) -> Optional[dict]:
+    """
+    When remote_uri is a bucket prefix (HTTPS path-style or s3://) without a trailing .idx
+    file, list keys under that prefix and build http_explicit / s3_explicit dataset dict
+    from the chosen *.idx (shallowest under the prefix).
+    """
+    uri = str(remote_uri or "").strip()
+    if not uri:
+        return None
+
+    merged = _merge_auth_from_https_gateway_uri(uri, auth_override)
+    bucket = ""
+    key_prefix = ""
+
+    if uri.lower().startswith("s3://"):
+        bucket, key_prefix = parse_s3_uri(uri)
+    elif uri.startswith(("http://", "https://")):
+        s3_equiv = http_object_url_to_s3_uri(uri)
+        if not s3_equiv:
+            return None
+        bucket, key_prefix = parse_s3_uri(s3_equiv)
+    else:
+        return None
+
+    if not bucket:
+        return None
+    pk = (key_prefix or "").strip()
+    if pk.lower().endswith(".idx"):
+        return None
+
+    prefix = pk.rstrip("/") + "/" if pk else ""
+    if not merged.get("aws_access_key_id") or not merged.get("aws_secret_access_key"):
+        return None
+
+    keys = _list_s3_idx_keys_at_prefix(bucket, prefix, merged)
+    picked = _pick_idx_key_under_prefix(keys, prefix)
+    if not picked:
+        return None
+
+    if uri.lower().startswith("s3://"):
+        out = parse_remote_dataset_uri(f"s3://{bucket}/{picked}")
+        if out:
+            print(
+                f"[DarkMatter][DEBUG] discovered idx under prefix s3://{bucket}/{prefix!r} -> "
+                f"s3://{bucket}/{picked}"
+            )
+        return out
+
+    parts = urlsplit(uri)
+    path = f"/{bucket}/{picked}"
+    idx_uri = urlunsplit((parts.scheme, parts.netloc, path, parts.query, parts.fragment))
+    base_path = path[:-4]
+    txt_uri = urlunsplit((parts.scheme, parts.netloc, f"{base_path}.txt", parts.query, parts.fragment))
+    csv_uri = urlunsplit((parts.scheme, parts.netloc, f"{base_path}.csv", parts.query, parts.fragment))
+    mid_file = os.path.splitext(os.path.basename(picked))[0]
+    print(
+        f"[DarkMatter][DEBUG] discovered idx under prefix {prefix!r} -> "
+        f"{_redact_url_secrets(idx_uri)}"
+    )
+    return {
+        "mode": "http_explicit",
+        "mid_file": mid_file,
+        "idx_uri": idx_uri,
+        "txt_uri": txt_uri,
+        "csv_uri": csv_uri,
+    }
 
 
 def with_query_params(url: str, params: dict) -> str:

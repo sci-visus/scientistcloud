@@ -188,10 +188,12 @@ function displayWelcomeScreen($user) {
                                     <h3 class="text-success mb-1"><?php echo formatFileSize($stats['total_size']); ?></h3>
                                     <p class="text-muted mb-0 small">Total Size</p>
                                 </div>
+                                <?php /* Status types metric disabled — count of distinct `status` values; not useful in welcome UI for now.
                                 <div class="flex-fill" style="min-width: 120px;">
                                     <h3 class="text-info mb-1"><?php echo count($stats['status_counts']); ?></h3>
                                     <p class="text-muted mb-0 small">Status Types</p>
                                 </div>
+                                */ ?>
                             </div>
                         </div>
                     </div>
