@@ -601,7 +601,7 @@ def resolve_openvisus_resolved_idx_via_api(
     user_email: Optional[str],
     auth_override: Optional[dict] = None,
     output_filename: str = "visus.idx",
-    filename_template_mode: str = "proxy",
+    filename_template_mode: str = "s3",
     force_refresh: bool = False,
     region_name: str = "us-east-1",
 ):
