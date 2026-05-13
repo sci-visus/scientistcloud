@@ -542,15 +542,6 @@ def read_openvisus_field(idx_url_or_path: str, field: str = "data"):
                 "(do not set SCLIB_DISABLE_OPENVISUS_RESOLVED_IDX=1 on SCLib) or fix OpenVisus + gateway "
                 "so native s3:// LoadDataset is not empty."
             )
-        u = str(idx_url_or_path or "").strip()
-        if u.startswith(("http://", "https://")):
-            print(
-                "[DarkMatter][WARN] HTTPS idx: OpenVisus fetches tiles over HTTP inside the Visus "
-                "library; all-zero here usually means those GETs failed or paths do not match the gateway "
-                "(not something this Python read loop can repair). Allow openvisus-resolved-idx "
-                "(do not set SCLIB_DISABLE_OPENVISUS_RESOLVED_IDX=1 on SCLib) or fix OpenVisus + gateway "
-                "so native s3:// LoadDataset is not empty."
-            )
     if last_sample is not None:
         return last_sample
     return db.read(field=field)
