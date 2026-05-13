@@ -106,8 +106,20 @@ for arg in "$@"; do
     esac
 done
 
+# Root of ScientistCloud 2.0 tree (matches dashboard logic: ScientistCloud2.0 or ScientistCloud_2.0).
+SC20_ROOT=""
+for _sc20_candidate in "$HOME/ScientistCloud2.0" "$HOME/ScientistCloud_2.0"; do
+    if [ -d "$_sc20_candidate/SCLib_TryTest" ] || [ -d "$_sc20_candidate/scientistCloudLib" ] || [ -d "$_sc20_candidate/scientistcloud" ]; then
+        SC20_ROOT="$_sc20_candidate"
+        break
+    fi
+done
+if [ -z "$SC20_ROOT" ]; then
+    SC20_ROOT="$HOME/ScientistCloud2.0"
+fi
+
 # Source environment variables first (shared file + optional local overrides)
-ENV_DIR="$HOME/ScientistCloud2.0/SCLib_TryTest"
+ENV_DIR="$SC20_ROOT/SCLib_TryTest"
 ENV_FILE_SHARED="$ENV_DIR/env.scientistcloud"
 ENV_FILE=""
 
@@ -164,10 +176,8 @@ if [ "$NGINX_ONLY" = true ]; then
     DASHBOARDS_DIR=""
     if [ -d "$(pwd)/../SC_Dashboards" ]; then
         DASHBOARDS_DIR="$(cd "$(pwd)/../SC_Dashboards" && pwd)"
-    elif [ -d "$HOME/ScientistCloud2.0/scientistcloud/SC_Dashboards" ]; then
-        DASHBOARDS_DIR="$HOME/ScientistCloud2.0/scientistcloud/SC_Dashboards"
-    elif [ -d "$HOME/ScientistCloud_2.0/scientistcloud/SC_Dashboards" ]; then
-        DASHBOARDS_DIR="$HOME/ScientistCloud_2.0/scientistcloud/SC_Dashboards"
+    elif [ -d "$SC20_ROOT/scientistcloud/SC_Dashboards" ]; then
+        DASHBOARDS_DIR="$SC20_ROOT/scientistcloud/SC_Dashboards"
     elif [ -d "$(dirname "$(dirname "$(dirname "$(pwd)")")")/scientistcloud/SC_Dashboards" ]; then
         DASHBOARDS_DIR="$(cd "$(dirname "$(dirname "$(dirname "$(pwd)")")")/scientistcloud/SC_Dashboards" && pwd)"
     fi
@@ -223,7 +233,7 @@ fi
 # Always update GitHub repos (even in dashboards-only mode)
 # Start Update SCLib_TryTest
 echo "📦 Update SCLib_TryTest and copy environment to SCLib and SC Website..."
-SCLIB_TRYTEST_DIR="$HOME/ScientistCloud2.0/SCLib_TryTest"
+SCLIB_TRYTEST_DIR="$SC20_ROOT/SCLib_TryTest"
 if [ -d "$SCLIB_TRYTEST_DIR" ]; then
     pushd "$SCLIB_TRYTEST_DIR"
     # Preserve local environment files across git reset.
@@ -241,8 +251,8 @@ if [ -d "$SCLIB_TRYTEST_DIR" ]; then
     fi
 
     if [ -n "$ENV_SOURCE_FILE" ]; then
-        cp "$ENV_SOURCE_FILE" "$HOME/ScientistCloud2.0/scientistCloudLib/Docker/.env"
-        cp "$ENV_SOURCE_FILE" "$HOME/ScientistCloud2.0/scientistcloud/SC_Docker/.env"
+        cp "$ENV_SOURCE_FILE" "$SC20_ROOT/scientistCloudLib/Docker/.env"
+        cp "$ENV_SOURCE_FILE" "$SC20_ROOT/scientistcloud/SC_Docker/.env"
         echo "✅ Environment files copied from $ENV_SOURCE_FILE"
     else
         echo "⚠️ No environment source file found after update (expected env.scientistcloud)"
@@ -254,7 +264,7 @@ fi
 
 # Pull latest code from scientistCloudLib repository (parent of Docker directory)
 # Using workingPrivateRepo branch from sci-visus/scientistCloudLib
-SCLIB_CODE_DIR="$HOME/ScientistCloud2.0/scientistCloudLib"
+SCLIB_CODE_DIR="$SC20_ROOT/scientistCloudLib"
 if [ -d "$SCLIB_CODE_DIR" ]; then
     echo "📥 Pulling latest SCLib code from workingPrivateRepo branch..."
     pushd "$SCLIB_CODE_DIR"
@@ -273,7 +283,7 @@ if [ -d "$SCLIB_CODE_DIR" ]; then
 fi
 
 # Pull SCLib Docker code (same repository, different directory)
-SCLIB_DOCKER_DIR="$HOME/ScientistCloud2.0/scientistCloudLib/Docker"
+SCLIB_DOCKER_DIR="$SC20_ROOT/scientistCloudLib/Docker"
 if [ -d "$SCLIB_DOCKER_DIR" ]; then
     echo "📥 Pulling latest SCLib Docker code from workingPrivateRepo branch..."
     pushd "$SCLIB_DOCKER_DIR"
@@ -293,8 +303,8 @@ fi
 
 # Pull Portal Docker code
 # Note: Portal code may be in a different repository - adjust if needed
-PORTAL_DOCKER_DIR="$HOME/ScientistCloud2.0/scientistcloud/SC_Docker"
-SCIENTISTCLOUD_DIR="$HOME/ScientistCloud2.0/scientistcloud"
+PORTAL_DOCKER_DIR="$SC20_ROOT/scientistcloud/SC_Docker"
+SCIENTISTCLOUD_DIR="$SC20_ROOT/scientistcloud"
 if [ -d "$PORTAL_DOCKER_DIR" ]; then
     echo "📥 Pulling latest Portal Docker code..."
     
@@ -556,10 +566,8 @@ echo "📊 Setting up and building dashboards..."
 DASHBOARDS_DIR=""
 if [ -d "$(pwd)/../SC_Dashboards" ]; then
     DASHBOARDS_DIR="$(cd "$(pwd)/../SC_Dashboards" && pwd)"
-elif [ -d "$HOME/ScientistCloud2.0/scientistcloud/SC_Dashboards" ]; then
-    DASHBOARDS_DIR="$HOME/ScientistCloud2.0/scientistcloud/SC_Dashboards"
-elif [ -d "$HOME/ScientistCloud_2.0/scientistcloud/SC_Dashboards" ]; then
-    DASHBOARDS_DIR="$HOME/ScientistCloud_2.0/scientistcloud/SC_Dashboards"
+elif [ -d "$SC20_ROOT/scientistcloud/SC_Dashboards" ]; then
+    DASHBOARDS_DIR="$SC20_ROOT/scientistcloud/SC_Dashboards"
 elif [ -d "$(dirname "$(dirname "$(dirname "$(pwd)")")")/scientistcloud/SC_Dashboards" ]; then
     DASHBOARDS_DIR="$(cd "$(dirname "$(dirname "$(dirname "$(pwd)")")")/scientistcloud/SC_Dashboards" && pwd)"
 fi

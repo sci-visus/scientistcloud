@@ -547,6 +547,11 @@ def read_openvisus_field(idx_url_or_path: str, field: str = "data"):
     return db.read(field=field)
 
 
+# Resolved idx on disk uses ``visus.idx`` (matches ``openvisus-resolved-idx`` default / conversion output).
+RESOLVED_IDX_S3_OUTPUT_NAME = "visus.idx"
+RESOLVED_IDX_PROXY_OUTPUT_NAME = "visus_proxy.idx"
+
+
 def read_openvisus_field_with_dataset_cwd(idx_url_or_path: str, field: str = "data"):
     """
     OpenVisus resolves relative filename_template paths against cwd, not the .idx directory.
@@ -557,12 +562,13 @@ def read_openvisus_field_with_dataset_cwd(idx_url_or_path: str, field: str = "da
         raise RuntimeError("empty idx path for OpenVisus load")
     if p.startswith(("http://", "https://", "s3://")):
         return read_openvisus_field(p, field=field)
-    root = os.path.dirname(os.path.abspath(p))
+    abs_p = os.path.abspath(p)
+    root = os.path.dirname(abs_p)
     prev = os.getcwd()
     try:
         os.chdir(root)
         print(f"[DarkMatter][DEBUG] cwd for OpenVisus load={root}")
-        return read_openvisus_field(p, field=field)
+        return read_openvisus_field(abs_p, field=field)
     finally:
         try:
             os.chdir(prev)
@@ -571,7 +577,7 @@ def read_openvisus_field_with_dataset_cwd(idx_url_or_path: str, field: str = "da
 
 
 def _darkmatter_disable_resolved_idx_api() -> bool:
-    """When true, never POST to openvisus-resolved-idx (pure HTTPS / no local visus.s3.idx materialization)."""
+    """When true, never POST to openvisus-resolved-idx (pure HTTPS / no local resolved s3 idx materialization)."""
     return str(os.getenv("DARKMATTER_DISABLE_RESOLVED_IDX", "")).strip().lower() in ("1", "true", "yes", "on")
 
 
@@ -606,7 +612,7 @@ def resolve_openvisus_resolved_idx_via_api(
     The API will also convert to ARCO when the source idx has (arco) == 0.
 
     Set DARKMATTER_DISABLE_RESOLVED_IDX=1 in the dashboard container to skip this entirely
-    (e.g. testing linked HTTPS idx only without regenerating visus.s3.idx after deletes).
+    (e.g. testing linked HTTPS idx only without regenerating the resolved idx after deletes).
     """
     # Docker Compose uses sclib_fastapi; local `bokeh serve` has no that DNS name — default to loopback.
     _default_api = (
@@ -640,7 +646,11 @@ def resolve_openvisus_resolved_idx_via_api(
         "background": False,
     }
 
-    resp = requests.post(endpoint, json=payload, timeout=60)
+    try:
+        timeout_s = max(60, int(os.getenv("DARKMATTER_RESOLVED_IDX_HTTP_TIMEOUT", "600")))
+    except ValueError:
+        timeout_s = 600
+    resp = requests.post(endpoint, json=payload, timeout=timeout_s)
     if resp.status_code >= 400:
         try:
             detail = resp.json().get("detail")
@@ -1931,7 +1941,7 @@ class AppState:
                     if _darkmatter_disable_resolved_idx_api():
                         print(
                             "[DarkMatter][DEBUG] Skipping openvisus-resolved-idx API "
-                            "(DARKMATTER_DISABLE_RESOLVED_IDX) — pure HTTPS / no visus.s3.idx regeneration"
+                            "(DARKMATTER_DISABLE_RESOLVED_IDX) — pure HTTPS / no resolved s3 idx regeneration"
                         )
                     else:
                         try:
@@ -1939,7 +1949,7 @@ class AppState:
                                 dataset_identifier=dataset_identifier,
                                 user_email=user_email,
                                 auth_override=self.s3_auth_override or {},
-                                output_filename="visus.s3.idx",
+                                output_filename=RESOLVED_IDX_S3_OUTPUT_NAME,
                                 filename_template_mode="s3",
                                 force_refresh=True,
                             )
@@ -1971,7 +1981,7 @@ class AppState:
                                 dataset_identifier=dataset_identifier,
                                 user_email=user_email,
                                 auth_override=self.s3_auth_override or {},
-                                output_filename="visus.proxy.idx",
+                                output_filename=RESOLVED_IDX_PROXY_OUTPUT_NAME,
                                 filename_template_mode="proxy",
                                 force_refresh=True,
                             )
@@ -2052,7 +2062,7 @@ class AppState:
                                 dataset_identifier=dataset_identifier,
                                 user_email=user_email,
                                 auth_override=self.s3_auth_override or {},
-                                output_filename="visus.s3.idx",
+                                output_filename=RESOLVED_IDX_S3_OUTPUT_NAME,
                                 filename_template_mode="s3",
                                 force_refresh=False,
                             )
