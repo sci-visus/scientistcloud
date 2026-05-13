@@ -40,7 +40,7 @@
 #      ./allServicesStart.sh --dashboards-only -dm   # Dashboard steps only, DarkMatter only
 
 # Parse command line arguments
-SKIP_MAIN_SERVICES=false
+SKIP_MAIN_SERVICES=true
 DASHBOARDS_ONLY=false
 REBUILD_WEB=false
 REBUILD_SCLIB=false
