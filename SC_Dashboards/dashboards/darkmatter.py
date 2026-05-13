@@ -392,16 +392,32 @@ def _log_openvisus_block0_url_for_diagnostics(db_outer, field_name: str) -> None
 
 def read_openvisus_field(idx_url_or_path: str, field: str = "data"):
     """
-    Read an OpenVisus field using full dataset resolution when the binding supports it
-    (same pattern as 3DVTK: getMaxResolution + read(max_resolution=...)). Without that,
-    multiresolution idx can yield an all-zero coarse slice from read(field=...) alone.
+    ``LoadDataset(uri)`` then ``read`` for field ``data`` (by default).
 
-    If every max-resolution attempt returns all zeros, fall back to a plain field read —
-    some ARCO + remote-template combinations only populate data on the default read path.
+    The multi-step ``read`` attempts exist because **local multiresolution ARCO** idx files
+    often return an all-zero array from a single ``read(field=...)`` unless ``max_resolution``
+    / timestep are chosen carefully (same class of issue as other ScientistCloud Bokeh apps).
 
-    max_resolution is capped by DARKMATTER_MAX_RESOLUTION (default 15); some ARCO idx builds
-    return misleading data at very high levels (e.g. 26).
+    **Remote HTTPS** tile reads are handled inside OpenVisus (C++); if those GETs fail or map
+    to the wrong path, every Python-side ``read`` variant can still be all zeros — that is
+    not fixed by simplifying this function. Use a resolved idx / working ``s3://`` binding,
+    or set ``DARKMATTER_OPENVISUS_SIMPLE_READ=1`` to force the minimal ``read(field=...)`` only
+    when comparing behavior.
     """
+    if str(os.getenv("DARKMATTER_OPENVISUS_SIMPLE_READ", "")).strip().lower() in (
+        "1",
+        "true",
+        "yes",
+        "on",
+    ):
+        db = ov.LoadDataset(idx_url_or_path)
+        out = db.read(field=field)
+        print(
+            "[DarkMatter][DEBUG] OpenVisus simple read path "
+            "(DARKMATTER_OPENVISUS_SIMPLE_READ=1): LoadDataset + read(field) only"
+        )
+        return out
+
     db = ov.LoadDataset(idx_url_or_path)
     mr = None
     try:
@@ -517,6 +533,24 @@ def read_openvisus_field(idx_url_or_path: str, field: str = "data"):
             "returning last sample for upstream diagnostics (verify ARCO .bin files match filename_template "
             "next to the .idx)"
         )
+        u = str(idx_url_or_path or "").strip()
+        if u.startswith(("http://", "https://")):
+            print(
+                "[DarkMatter][WARN] HTTPS idx: OpenVisus fetches tiles over HTTP inside the Visus "
+                "library; all-zero here usually means those GETs failed or paths do not match the gateway "
+                "(not something this Python read loop can repair). Allow openvisus-resolved-idx "
+                "(do not set SCLIB_DISABLE_OPENVISUS_RESOLVED_IDX=1 on SCLib) or fix OpenVisus + gateway "
+                "so native s3:// LoadDataset is not empty."
+            )
+        u = str(idx_url_or_path or "").strip()
+        if u.startswith(("http://", "https://")):
+            print(
+                "[DarkMatter][WARN] HTTPS idx: OpenVisus fetches tiles over HTTP inside the Visus "
+                "library; all-zero here usually means those GETs failed or paths do not match the gateway "
+                "(not something this Python read loop can repair). Allow openvisus-resolved-idx "
+                "(do not set SCLIB_DISABLE_OPENVISUS_RESOLVED_IDX=1 on SCLib) or fix OpenVisus + gateway "
+                "so native s3:// LoadDataset is not empty."
+            )
     if last_sample is not None:
         return last_sample
     return db.read(field=field)
