@@ -92,7 +92,7 @@ define('SECRET_IV', $config['auth']['secret_iv']);
 
 // Dashboard configuration
 define('DEFAULT_DASHBOARD', 'OpenVisusSlice');
-define('SUPPORTED_DASHBOARDS', ['OpenVisusSlice', '3DPlotly', '3DVTK', '4D_Dashboard', 'Magicscan']);
+define('SUPPORTED_DASHBOARDS', ['OpenVisusSlice', 'DarkMatter', '3DPlotly', '3DVTK', '4D_Dashboard', 'Magicscan']);
 
 // File upload settings
 // Very large limits for massive file uploads (TB+ datasets)

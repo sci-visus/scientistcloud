@@ -2592,8 +2592,9 @@ class DatasetManager {
      * 1. Dataset dimension compatibility (filter dashboards by supported_dimensions)
      * 2. Single compatible dashboard (if only one matches dimension, use it)
      * 3. User's preferred_dashboard (if compatible with dimension)
-     * 4. OpenVisusSlice (most general dashboard, works with all dimensions)
-     * 5. First available compatible dashboard (as last resort)
+     * 4. DarkMatter for IDX sensor when registered (Nexus-style portal default)
+     * 5. OpenVisusSlice (most general dashboard, works with all dimensions)
+     * 6. First available compatible dashboard (as last resort)
      * 
      * @param {string} datasetId - Dataset ID
      * @param {string} datasetUuid - Dataset UUID
@@ -2602,6 +2603,7 @@ class DatasetManager {
      */
     async selectDashboardForDataset(datasetId, datasetUuid, preferredDashboardId = null) {
         let ornlStrainDataset = false;
+        let portalDatasetSensor = '';
         try {
             const normalizePreferredDashboardId = (preferredValue) => {
                 const raw = String(preferredValue || '').trim();
@@ -2654,8 +2656,8 @@ class DatasetManager {
                 if (detRes.ok) {
                     const detData = await detRes.json();
                     const rawSensor = String(detData.dataset?.sensor || '').trim();
-                    const sensor = rawSensor.toUpperCase().replace(/\s+/g, '_');
-                    ornlStrainDataset = sensor === 'ORNL_CHESS_STRAIN';
+                    portalDatasetSensor = rawSensor.toUpperCase().replace(/\s+/g, '_');
+                    ornlStrainDataset = portalDatasetSensor === 'ORNL_CHESS_STRAIN';
                 }
             } catch (e) {
                 console.warn('Could not read sensor for dashboard routing:', e);
@@ -2681,6 +2683,10 @@ class DatasetManager {
                 if (preferredOnUnknownDim) {
                     console.log(`✅ Using preferred dashboard when dimension unavailable: ${preferredOnUnknownDim}`);
                     return preferredOnUnknownDim;
+                }
+                if (portalDatasetSensor === 'IDX' && window.viewerManager?.viewers?.DarkMatter) {
+                    console.log('✅ Dimension unknown: using DarkMatter for IDX (default over OpenVisusSlice)');
+                    return 'DarkMatter';
                 }
                 console.warn('⚠️ Could not determine dataset dimension, using OpenVisusSlice as default/general dashboard');
                 if (window.viewerManager && window.viewerManager.viewers && window.viewerManager.viewers['OpenVisusSlice']) {
@@ -2814,7 +2820,16 @@ class DatasetManager {
                 }
             }
             
-            // Step 5: No preference or preference not compatible - prioritize OpenVisusSlice as the most general dashboard
+            // Step 5: No preference or preference not compatible — prefer Dark Matter for IDX when available
+            if (portalDatasetSensor === 'IDX') {
+                const dmPick = compatibleDashboards.find(d => (d.id || '').toLowerCase() === 'darkmatter');
+                if (dmPick && window.viewerManager?.viewers?.DarkMatter) {
+                    console.log('✅ Selected DarkMatter for IDX dataset (portal default over OpenVisusSlice)');
+                    return 'DarkMatter';
+                }
+            }
+
+            // Otherwise prioritize OpenVisusSlice as the most general dashboard
             // Priority order:
             // 1. OpenVisusSlice (most general, works with all dimensions)
             // 2. Other compatible dashboards that exist in viewerManager

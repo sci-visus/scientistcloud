@@ -1574,7 +1574,8 @@ class UploadManager {
         // Prepare upload data
         const folderValue = this.getFolderValue(form);
         console.log('Folder value from form:', folderValue);
-        
+
+        const sensorUpper = String(formData.get('sensor') || '').trim().toUpperCase();
         const uploadData = {
             dataset_name: formData.get('name'),
             sensor: formData.get('sensor'),
@@ -1585,12 +1586,13 @@ class UploadManager {
             team_uuid: formData.get('team_uuid') || null,
             tags: formData.get('tags') || '',
             dimensions: formData.get('dimensions') || null,
-            preferred_dashboard: formData.get('preferred_dashboard') || 'OpenVisusSlice'
+            preferred_dashboard:
+                formData.get('preferred_dashboard') ||
+                (sensorUpper === 'IDX' ? 'DarkMatter' : 'OpenVisusSlice'),
         };
 
         const selectedExtensions = files.map(f => (f.name.split('.').pop() || '').toLowerCase());
         const selectedExtensionSet = new Set(selectedExtensions);
-        const sensorUpper = String(uploadData.sensor || '').trim().toUpperCase();
 
         if (sensorUpper === 'IDX' && (selectedExtensionSet.has('tif') || selectedExtensionSet.has('tiff')) && !selectedExtensionSet.has('idx')) {
             const proceed = confirm(
@@ -2113,6 +2115,13 @@ class UploadManager {
             submitBtn.disabled = true;
             submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Initiating...';
 
+            const sensorUpper = String(formData.get('sensor') || '').trim().toUpperCase();
+            const dims = (formData.get('dimensions') || '').toString().trim();
+            const tags = (formData.get('tags') || '').toString().trim();
+            const preferredPick =
+                (formData.get('preferred_dashboard') || '').toString().trim() ||
+                (sensorUpper === 'IDX' ? 'DarkMatter' : 'OpenVisusSlice');
+
             // Use SCLib Upload API initiate endpoint for S3
             const requestData = {
                 source_type: 's3',
@@ -2131,9 +2140,19 @@ class UploadManager {
                 sensor: formData.get('sensor'),
                 convert: formData.get('convert') === 'on',
                 is_public: formData.get('is_public') === 'on',
+                is_downloadable: formData.get('is_downloadable') || 'only owner',
                 folder: this.getFolderValue(form),
-                team_uuid: formData.get('team_uuid') || null
+                team_uuid: formData.get('team_uuid') || null,
+                preferred_dashboard: preferredPick,
+                dimensions: dims || null,
+                tags: tags || undefined
             };
+            if (!requestData.tags) {
+                delete requestData.tags;
+            }
+            if (!requestData.dimensions) {
+                delete requestData.dimensions;
+            }
 
             const response = await fetch(`${getUploadApiBasePath()}/upload-initiate.php`, {
                 method: 'POST',
@@ -2283,6 +2302,13 @@ class UploadManager {
             submitBtn.disabled = true;
             submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Linking...';
 
+            const sensorUpper = String(formData.get('sensor') || '').trim().toUpperCase();
+            const dims = (formData.get('dimensions') || '').toString().trim();
+            const tags = (formData.get('tags') || '').toString().trim();
+            const preferredPick =
+                (formData.get('preferred_dashboard') || '').toString().trim() ||
+                (sensorUpper === 'IDX' ? 'DarkMatter' : 'OpenVisusSlice');
+
             // Use SCLib Upload API initiate endpoint for URL/remote server
             const requestData = {
                 source_type: 'url',
@@ -2294,9 +2320,19 @@ class UploadManager {
                 sensor: formData.get('sensor'),
                 convert: false, // Remote server links typically don't need conversion
                 is_public: formData.get('is_public') === 'on',
+                is_downloadable: formData.get('is_downloadable') || 'only owner',
                 folder: this.getFolderValue(form),
-                team_uuid: formData.get('team_uuid') || null
+                team_uuid: formData.get('team_uuid') || null,
+                preferred_dashboard: preferredPick,
+                dimensions: dims || null,
+                tags: tags || undefined
             };
+            if (!requestData.tags) {
+                delete requestData.tags;
+            }
+            if (!requestData.dimensions) {
+                delete requestData.dimensions;
+            }
 
             const response = await fetch(`${getUploadApiBasePath()}/upload-initiate.php`, {
                 method: 'POST',
