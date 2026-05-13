@@ -106,6 +106,76 @@ function getDatasetStatus($datasetId) {
 }
 
 /**
+ * Resolve dataset size in gigabytes for display (multiple Mongo fields / units).
+ * Treats 0 as unset so a stale data_size does not hide raw_size in bytes.
+ */
+function resolveDatasetDataSizeGb(array $dataset): float {
+    $meta = (isset($dataset['metadata']) && is_array($dataset['metadata'])) ? $dataset['metadata'] : [];
+
+    $positiveFloat = static function ($v): ?float {
+        if ($v === null || $v === '') {
+            return null;
+        }
+        if (!is_numeric($v)) {
+            return null;
+        }
+        $f = (float) $v;
+        return $f > 0 ? $f : null;
+    };
+
+    foreach (['data_size', 'total_size'] as $key) {
+        foreach ([$dataset, $meta] as $src) {
+            $g = $positiveFloat($src[$key] ?? null);
+            if ($g !== null) {
+                return $g;
+            }
+        }
+    }
+
+    foreach (['raw_size', 'total_size_bytes', 'file_size', 'size_bytes'] as $key) {
+        foreach ([$dataset, $meta] as $src) {
+            $b = $positiveFloat($src[$key] ?? null);
+            if ($b !== null) {
+                return $b / pow(1024, 3);
+            }
+        }
+    }
+
+    foreach (['data_size', 'total_size'] as $key) {
+        $raw = $dataset[$key] ?? null;
+        if (!is_string($raw)) {
+            continue;
+        }
+        $sizeStr = strtoupper(trim($raw));
+        if ($sizeStr === '') {
+            continue;
+        }
+        if (preg_match('/^([\d.]+)\s*([KMGT]?B?)$/', $sizeStr, $matches)) {
+            $number = (float) $matches[1];
+            $unit = $matches[2] ?? 'B';
+            switch ($unit) {
+                case 'KB':
+                case 'K':
+                    return $number / (1024 * 1024);
+                case 'MB':
+                case 'M':
+                    return $number / 1024;
+                case 'GB':
+                case 'G':
+                    return $number;
+                case 'TB':
+                case 'T':
+                    return $number * 1024;
+                default:
+                    return $number / (1024 * 1024 * 1024);
+            }
+        }
+    }
+
+    return 0.0;
+}
+
+/**
  * Format dataset for display
  * Handles both MongoDB document format and API response format
  */
@@ -124,15 +194,8 @@ function formatDataset($dataset) {
         $tags = [];
     }
     
-    // Get data_size - prioritize MongoDB data_size field
-    // Ensure it's numeric (data_size is stored as float in GB, but could be string from some sources)
-    $data_size = $dataset['data_size'] ?? $dataset['total_size'] ?? $dataset['raw_size'] ?? $dataset['file_size'] ?? 0;
-    // Convert to float if it's a string or not numeric
-    if (!is_numeric($data_size)) {
-        $data_size = 0;
-    } else {
-        $data_size = (float)$data_size;
-    }
+    // Size in GB: never let a literal 0 block fallbacks (API may send data_size: 0 while raw_size is set)
+    $data_size = resolveDatasetDataSizeGb($dataset);
     
     // Get created date - check multiple possible fields
     $created_at = $dataset['time'] ?? $dataset['date_imported'] ?? $dataset['created_at'] ?? null;
