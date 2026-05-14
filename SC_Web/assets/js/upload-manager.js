@@ -647,11 +647,11 @@ class UploadManager {
                     <div class="form-check mb-2">
                         <input class="form-check-input" type="checkbox" name="convert" id="s3ConvertIdx">
                         <label class="form-check-label" for="s3ConvertIdx">
-                            Download dataset from S3 and queue background conversion (IDX → ARCO when applicable)
+                            Download dataset from S3 to the server and run full conversion (mirror + IDX → ARCO when applicable)
                         </label>
                     </div>
                     <small class="form-text text-muted d-block">
-                        Leave unchecked to register a remote link only. Check when you want the portal to materialize and convert a local copy.
+                        Unchecked: keep data in S3 only; for <strong>sensor IDX</strong> paths ending in <code>.idx</code>, the server still queues background work to write a resolved <code>visus.idx</code> under converted/ (no tile mirror). Check this box when you want a full local copy under upload/ as well.
                     </small>
                 </div>
 
