@@ -539,9 +539,10 @@ def read_openvisus_field(idx_url_or_path: str, field: str = "data"):
             print(
                 "[DarkMatter][WARN] HTTPS idx: OpenVisus fetches tiles over HTTP inside the Visus "
                 "library; all-zero here usually means those GETs failed or paths do not match the gateway "
-                "(not something this Python read loop can repair). Allow openvisus-resolved-idx "
-                "(do not set SCLIB_DISABLE_OPENVISUS_RESOLVED_IDX=1 on SCLib) or fix OpenVisus + gateway "
-                "so native s3:// LoadDataset is not empty."
+                "(not something this Python read loop can repair). Ensure background conversion wrote "
+                "``visus.idx`` under /mnt/visus_datasets/converted/<uuid>/ (openvisus-resolved-idx). "
+                "The dashboard does not re-run that API unless DARKMATTER_ALLOW_RESOLVED_IDX_API_ON_LAUNCH=1. "
+                "Fix OpenVisus + gateway / filename_template, or set SCLIB_DISABLE_OPENVISUS_RESOLVED_IDX=0 on SCLib."
             )
     if last_sample is not None:
         return last_sample
@@ -594,8 +595,27 @@ def read_openvisus_field_with_dataset_cwd(idx_url_or_path: str, field: str = "da
 
 
 def _darkmatter_disable_resolved_idx_api() -> bool:
-    """When true, never POST to openvisus-resolved-idx (pure HTTPS / no local resolved s3 idx materialization)."""
+    """Hard-off: never POST to openvisus-resolved-idx from the dashboard (overrides allow-launch)."""
     return str(os.getenv("DARKMATTER_DISABLE_RESOLVED_IDX", "")).strip().lower() in ("1", "true", "yes", "on")
+
+
+def _darkmatter_may_post_openvisus_resolved_idx_on_launch() -> bool:
+    """
+    Whether the dashboard may POST to SCLib ``/api/v1/datasets/s3/openvisus-resolved-idx``.
+
+    Production policy: resolved ``visus.idx`` is produced **once** during ScientistCloud background
+    conversion under ``/mnt/visus_datasets/converted/<uuid>/`` (see ``SCLib_BackgroundService``), not on
+    every dashboard session. Set ``DARKMATTER_ALLOW_RESOLVED_IDX_API_ON_LAUNCH=1`` only for debugging
+    legacy on-launch regeneration (and ``force_refresh`` behavior).
+    """
+    if _darkmatter_disable_resolved_idx_api():
+        return False
+    return str(os.getenv("DARKMATTER_ALLOW_RESOLVED_IDX_API_ON_LAUNCH", "")).strip().lower() in (
+        "1",
+        "true",
+        "yes",
+        "on",
+    )
 
 
 def _darkmatter_http_explicit_no_fallback() -> bool:
@@ -628,8 +648,11 @@ def resolve_openvisus_resolved_idx_via_api(
 
     The API will also convert to ARCO when the source idx has (arco) == 0.
 
-    Set DARKMATTER_DISABLE_RESOLVED_IDX=1 in the dashboard container to skip this entirely
-    (e.g. testing linked HTTPS idx only without regenerating the resolved idx after deletes).
+    **Dashboard policy:** this POST is **not** called on dashboard load unless
+    ``DARKMATTER_ALLOW_RESOLVED_IDX_API_ON_LAUNCH=1`` (see ``_darkmatter_may_post_openvisus_resolved_idx_on_launch``).
+    Normal flow: background conversion (``SCLib_BackgroundService``) runs openvisus-resolved-idx once and sets
+    ``converted_idx_path`` on the dataset document. Use ``DARKMATTER_DISABLE_RESOLVED_IDX=1`` to hard-disable
+    even when the allow-launch flag is set.
     """
     # Docker Compose uses sclib_fastapi; local `bokeh serve` has no that DNS name — default to loopback.
     _default_api = (
@@ -2004,7 +2027,9 @@ class AppState:
                 ):
                     print(
                         "[DarkMatter][WARN] linked HTTPS idx read succeeded but scene is all-zero "
-                        "(bins may not load with this template); trying resolved idx next"
+                        "(bins may not load with this template); will try local materialized idx under "
+                        "converted/<uuid>/ when present. Dashboard does not re-POST openvisus-resolved-idx "
+                        "unless DARKMATTER_ALLOW_RESOLVED_IDX_API_ON_LAUNCH=1."
                     )
                     need_resolved_or_local = True
 
@@ -2016,10 +2041,12 @@ class AppState:
                     and not dataset_identifier.startswith(("http://", "https://", "s3://"))
                     and (self.s3_auth_override or {}).get("aws_access_key_id")
                 ):
-                    if _darkmatter_disable_resolved_idx_api():
+                    if not _darkmatter_may_post_openvisus_resolved_idx_on_launch():
                         print(
-                            "[DarkMatter][DEBUG] Skipping openvisus-resolved-idx API "
-                            "(DARKMATTER_DISABLE_RESOLVED_IDX) — pure HTTPS / no resolved s3 idx regeneration"
+                            "[DarkMatter][DEBUG] Skipping openvisus-resolved-idx on dashboard launch "
+                            "(resolved visus.idx is produced during background conversion under "
+                            "/mnt/visus_datasets/converted/<uuid>/). "
+                            "Set DARKMATTER_ALLOW_RESOLVED_IDX_API_ON_LAUNCH=1 to opt into legacy on-launch POST."
                         )
                     else:
                         try:
@@ -2055,9 +2082,9 @@ class AppState:
                     ).strip().lower() in ("1", "true", "yes", "on")
                     if (
                         enable_proxy
+                        and _darkmatter_may_post_openvisus_resolved_idx_on_launch()
                         and self.scene_data is not None
                         and _scene_is_all_zero(self.scene_data)
-                        and not _darkmatter_disable_resolved_idx_api()
                     ):
                         try:
                             resolved_proxy, resolved_proxy_http = resolve_openvisus_resolved_idx_via_api(
@@ -2136,10 +2163,11 @@ class AppState:
                     and not dataset_identifier.startswith(("http://", "https://", "s3://"))
                     and (self.s3_auth_override or {}).get("aws_access_key_id")
                 ):
-                    if _darkmatter_disable_resolved_idx_api():
+                    if not _darkmatter_may_post_openvisus_resolved_idx_on_launch():
                         print(
-                            "[DarkMatter][DEBUG] Skipping openvisus-resolved-idx for s3_explicit "
-                            "(DARKMATTER_DISABLE_RESOLVED_IDX)"
+                            "[DarkMatter][DEBUG] Skipping openvisus-resolved-idx for s3_explicit on launch "
+                            "(use background conversion under /mnt/visus_datasets/converted/<uuid>/). "
+                            "Set DARKMATTER_ALLOW_RESOLVED_IDX_API_ON_LAUNCH=1 to opt in."
                         )
                     else:
                         try:
