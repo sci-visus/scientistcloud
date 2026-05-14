@@ -1,6 +1,7 @@
 import matplotlib.colors as mcolors
 import numpy as np
 import sys
+from html import escape
 from typing import DefaultDict, List, Optional
 import os
 import atexit
@@ -713,6 +714,7 @@ def derive_dataset_from_uuid(dataset_uuid: str):
         return None
 
     if not doc:
+        print(f"[DarkMatter][WARN] derive_dataset_from_uuid: no Mongo document for uuid={dataset_uuid}")
         return None
 
     auth_override = {
@@ -775,6 +777,27 @@ def derive_dataset_from_uuid(dataset_uuid: str):
                 f"mode={ds['mode']} mid={ds['mid_file']}"
             )
             return ds
+        # Candidate present but not resolved — log why (helps remote-link debugging).
+        if candidate.startswith(("http://", "https://", "s3://")):
+            if not candidate.lower().endswith(".idx"):
+                has_creds = bool(
+                    auth_override.get("aws_access_key_id") and auth_override.get("aws_secret_access_key")
+                )
+                if not has_creds:
+                    print(
+                        f"[DarkMatter][WARN] dataset doc field {field} is a remote prefix/folder URL but "
+                        "s3_access_key_id / s3_secret_access_key are missing — cannot list bucket to find .idx."
+                    )
+                elif candidate.startswith(("http://", "https://")) and not http_object_url_to_s3_uri(candidate):
+                    print(
+                        f"[DarkMatter][WARN] dataset doc field {field} is HTTPS but not path-style "
+                        "(https://host/bucket/key) — cannot convert to s3:// for listing."
+                    )
+            else:
+                print(
+                    f"[DarkMatter][WARN] dataset doc field {field} looks like a direct .idx URL but "
+                    "derive_dataset_from_remote_uri returned None (check URL, credentials, or sidecar paths)."
+                )
 
     return None
 
@@ -1472,6 +1495,10 @@ def discover_remote_dataset_from_prefix(
     elif uri.startswith(("http://", "https://")):
         s3_equiv = http_object_url_to_s3_uri(uri)
         if not s3_equiv:
+            print(
+                "[DarkMatter][WARN] discover_remote_dataset_from_prefix: HTTPS URL is not path-style "
+                f"(expected https://host/bucket/prefix/...); cannot map to s3:// for listing. uri={_redact_url_secrets(uri)}"
+            )
             return None
         bucket, key_prefix = parse_s3_uri(s3_equiv)
     else:
@@ -1485,11 +1512,20 @@ def discover_remote_dataset_from_prefix(
 
     prefix = pk.rstrip("/") + "/" if pk else ""
     if not merged.get("aws_access_key_id") or not merged.get("aws_secret_access_key"):
+        print(
+            "[DarkMatter][WARN] discover_remote_dataset_from_prefix: missing S3 credentials "
+            "(need s3_access_key_id + s3_secret_access_key on dataset document, or access_key/secret_key "
+            f"in HTTPS URL query) to list prefix under bucket={bucket!r}. uri={_redact_url_secrets(uri)}"
+        )
         return None
 
     keys = _list_s3_idx_keys_at_prefix(bucket, prefix, merged)
     picked = _pick_idx_key_under_prefix(keys, prefix)
     if not picked:
+        print(
+            "[DarkMatter][WARN] discover_remote_dataset_from_prefix: no *.idx keys found under "
+            f"prefix={prefix!r} in bucket={bucket!r} (listed up to cap). uri={_redact_url_secrets(uri)}"
+        )
         return None
 
     if uri.lower().startswith("s3://"):
@@ -2617,6 +2653,27 @@ def main():
                 Div(text=f"<p>{error_text}</p>"),
             )
         )
+        return
+
+    if has_args and runtime_dataset is None and _looks_like_dataset_uuid(str(uuid)):
+        hint = (
+            "<h2>Dataset could not be loaded</h2>"
+            f"<p>No OpenVisus dataset resolved for UUID <code>{escape(str(uuid))}</code>. "
+            "Check container logs for lines starting with <code>[DarkMatter]</code>.</p>"
+            "<p><b>Remote-linked data (common fixes)</b></p><ul>"
+            "<li><b>Folder / prefix URL</b> (no <code>.idx</code> in the link): the Mongo document needs "
+            "<code>s3_access_key_id</code> and <code>s3_secret_access_key</code> (and usually "
+            "<code>s3_endpoint_url</code>) so the dashboard can list the bucket and pick an <code>.idx</code>.</li>"
+            "<li><b>HTTPS gateway links</b> must be <b>path-style</b>: "
+            "<code>https://&lt;host&gt;/&lt;bucket&gt;/path/to/prefix/</code> — not "
+            "<code>https://bucket.host/...</code> unless you use <code>s3://</code> directly.</li>"
+            "<li>Alternatively put <code>access_key</code> / <code>secret_key</code> (and optional "
+            "<code>region_name</code>) in the link query string for the object gateway.</li>"
+            "<li>Direct <code>*.idx</code> URLs still need reachable <code>.txt</code> and <code>.csv</code> "
+            "sidecars (same stem) or materialized files under <code>/mnt/visus_datasets/converted/&lt;uuid&gt;/</code>.</li>"
+            "</ul>"
+        )
+        curdoc().add_root(column(Div(text=hint, width_policy="max", styles={"max-width": "960px"})))
         return
 
     app_state = AppState(runtime_remote_url, runtime_dataset=runtime_dataset)
