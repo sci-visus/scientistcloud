@@ -46,12 +46,12 @@ if (!isset($_GET['code'])) {
         $callbackPath = $isLocal ? '/auth/callback.php' : '/portal/auth/callback.php';
         $callbackUrl = SC_SERVER_URL . $callbackPath;
         
+        // Do not force prompt=consent on every login — it breaks some database sign-up flows.
+        // Google Drive consent is requested when needed via connection=google-oauth2.
         $loginUrl = $auth0->login(
             $callbackUrl,
             [
-                'prompt' => 'consent',
-                'access_type' => 'offline',
-                'scope' => 'openid profile email offline_access https://www.googleapis.com/auth/drive.readonly https://www.googleapis.com/auth/gmail.send'
+                'scope' => 'openid profile email offline_access https://www.googleapis.com/auth/drive.readonly https://www.googleapis.com/auth/gmail.send',
             ]
         );
         

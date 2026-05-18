@@ -7,6 +7,8 @@ This document describes the Auth0 integration that has been implemented for Scie
 ### New Files:
 - `config_auth0.php` - Auth0 configuration and SDK initialization
 - `auth/callback.php` - Auth0 callback handler for login flow
+- `signup.php` - Database (email/password) sign-up entry point
+- `login_verification_sent.php` - Post sign-up “check your email” page
 - `logout.php` - Logout page with Auth0 integration
 - `AUTH0_SETUP.md` - This documentation file
 
@@ -28,31 +30,55 @@ AUTH0_CLIENT_SECRET=your-client-secret
 ### Auth0 Application Settings
 In your Auth0 dashboard (https://manage.auth0.com/dashboard), configure:
 
-1. **Allowed Callback URLs**: Add these URLs (comma-separated):
+1. **Allowed Callback URLs** (comma-separated):
    ```
    https://scientistcloud.com/portal/auth/callback.php
-   https://scientistcloud.com/auth/callback.php
-   ```
-   
-2. **Allowed Logout URLs**: Add these URLs:
-   ```
-   https://scientistcloud.com/portal/login.php
-   https://scientistcloud.com/login.php
+   http://51.81.155.171/portal/auth/callback.php
    ```
 
-3. **Allowed Web Origins (CORS)**: Add:
+2. **Allowed Logout URLs**:
+   ```
+   https://scientistcloud.com/portal/login.php
+   https://scientistcloud.com/portal/signup.php
+   ```
+
+3. **Allowed Web Origins (CORS)**:
    ```
    https://scientistcloud.com
    ```
 
-4. **Application Type**: Set to "Regular Web Application" (not SPA)
+4. **Application Type**: Regular Web Application (not SPA)
 
-5. **Scopes**: Ensure these scopes are enabled:
-   - `openid`
-   - `profile`
-   - `email`
-   - `offline_access`
-   - `https://www.googleapis.com/auth/drive`
+5. **Connections** (Applications → your app → Connections):
+   - Enable **Username-Password-Authentication** (email/password sign-up)
+   - Enable **google-oauth2** (Google sign-in)
+
+### Database sign-up (email + password)
+
+Google can work while database sign-up returns **400** on `dev-ep26akpb.auth0.com/u/signup`. Fix this in Auth0, not in PHP.
+
+1. **Authentication → Database → Username-Password-Authentication → Settings**
+   - **Disable Sign Ups** must be **off** (sign-ups allowed).
+
+2. **Applications → your app → Connections**
+   - **Username-Password-Authentication** enabled for this application.
+
+3. **Branding / Email templates**
+   - Do not redirect verification to legacy `http://51.81.155.171/login_error.php`.
+   - Use `https://scientistcloud.com/portal/login_verification_sent.php` or `/portal/login.php`.
+
+4. **Security → Attack Protection**
+   - Bot/CAPTCHA challenges often fail in Safari (TrustedHTML / Cloudflare console errors → 400 on signup). Test in Chrome or relax attack protection while debugging.
+
+5. **Portal sign-up entry point** (after deploy):
+   `https://scientistcloud.com/portal/signup.php`  
+   Uses `screen_hint=signup` and `connection=Username-Password-Authentication`.
+
+6. **Monitoring → Logs** in Auth0: inspect failed signup events for the exact 400 reason.
+
+### Scopes
+   - `openid`, `profile`, `email`, `offline_access`
+   - `https://www.googleapis.com/auth/drive.readonly` (optional)
 
 ### Auth0 API Configuration (Optional)
 
