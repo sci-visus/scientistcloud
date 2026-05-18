@@ -3116,6 +3116,35 @@ class DatasetManager {
     }
     
     /**
+     * Fetch a dashboard URL from the server (includes full remote credentials for share links).
+     * Falls back to client-side generateDashboardUrl when the API is unavailable.
+     */
+    async fetchDashboardShareUrl(datasetId, dashboardType) {
+        const params = new URLSearchParams({
+            dataset_id: String(datasetId),
+            dashboard: String(dashboardType || ''),
+            origin: window.location.origin,
+        });
+        const response = await fetch(`${getApiBasePath()}/dashboard-link.php?${params.toString()}`);
+        const data = await response.json().catch(() => ({}));
+        if (response.ok && data.success && data.url) {
+            if (/([?&](access_key|secret_key)=)\.\.\./i.test(data.url)) {
+                throw new Error(
+                    'Share link still has placeholder credentials. Re-save the dataset S3 link with keys, or deploy the latest portal API.'
+                );
+            }
+            return data.url;
+        }
+        if (response.status === 404) {
+            throw new Error(
+                'dashboard-link.php is not available on this server (404). Deploy the latest SC_Web files, then try again.'
+            );
+        }
+        const err = data.error || data.message || `HTTP ${response.status}`;
+        throw new Error(err);
+    }
+
+    /**
      * Copy dashboard link to clipboard
      */
     async copyDashboardLink(datasetId, buttonData = {}) {
@@ -3273,9 +3302,8 @@ class DatasetManager {
             }
             
             console.log('Final dashboard type for URL generation:', dashboardType);
-            
-            // Generate the dashboard URL using the same logic as viewer-manager
-            const dashboardUrl = await this.generateDashboardUrl(datasetUuid, datasetServer, datasetName, dashboardType, dataset);
+
+            const dashboardUrl = await this.fetchDashboardShareUrl(datasetId, dashboardType);
             
             // Copy to clipboard
             await navigator.clipboard.writeText(dashboardUrl);
@@ -3298,7 +3326,7 @@ class DatasetManager {
             console.log('Dashboard link copied to clipboard:', dashboardUrl);
         } catch (error) {
             console.error('Error copying dashboard link:', error);
-            alert('Failed to copy dashboard link. Please try again.');
+            alert(error.message || 'Failed to copy dashboard link. Please try again.');
         }
     }
     
@@ -3422,9 +3450,8 @@ class DatasetManager {
             if (this.isOrnlChessStrainDataset(dataset)) {
                 dashboardType = 'ORNL_CHESS_strain';
             }
-            
-            // Generate the dashboard URL using the same logic as viewer-manager
-            const dashboardUrl = await this.generateDashboardUrl(datasetUuid, datasetServer, datasetName, dashboardType, dataset);
+
+            const dashboardUrl = await this.fetchDashboardShareUrl(datasetId, dashboardType);
             
             // Open in new tab
             window.open(dashboardUrl, '_blank');
@@ -3432,7 +3459,7 @@ class DatasetManager {
             console.log('Dashboard link opened in new tab:', dashboardUrl);
         } catch (error) {
             console.error('Error opening dashboard link:', error);
-            alert('Failed to open dashboard link. Please try again.');
+            alert(error.message || 'Failed to open dashboard link. Please try again.');
         }
     }
     

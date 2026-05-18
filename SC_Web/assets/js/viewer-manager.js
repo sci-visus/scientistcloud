@@ -851,25 +851,15 @@ class ViewerManager {
         // Generate viewer URL using the url_template
         let viewerUrl = this.generateViewerUrl(datasetUuid, datasetServer, datasetName, viewer.url_template);
         const dashKey = (resolvedDashboardType || dashboardType || '').toString();
-        if (dashKey === 'ORNL_CHESS_strain' && datasetId && window.datasetManager?.pickStrainJsonRemoteLink) {
+        if (dashKey === 'ORNL_CHESS_strain' && datasetId && window.datasetManager?.fetchDashboardShareUrl) {
             try {
-                const apiBase = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
-                    ? '/api' : '/portal/api';
-                const r = await fetch(`${apiBase}/dataset-details.php?dataset_id=${encodeURIComponent(datasetId)}`);
-                if (r.ok) {
-                    const j = await r.json();
-                    const ds = j.dataset;
-                    const link = window.datasetManager.pickStrainJsonRemoteLink(ds);
-                    if (link) {
-                        const low = String(link).trim().toLowerCase();
-                        const q = low.startsWith('http://') || low.startsWith('https://')
-                            ? 'strain_json_url=' + encodeURIComponent(link)
-                            : 'strain_json_path=' + encodeURIComponent(link);
-                        viewerUrl += (viewerUrl.includes('?') ? '&' : '?') + q;
-                    }
-                }
+                viewerUrl = await window.datasetManager.fetchDashboardShareUrl(datasetId, dashKey);
             } catch (e) {
-                console.warn('ORNL strain: could not append strain_json_path / strain_json_url', e);
+                console.error('ORNL strain: dashboard-link API failed', e);
+                this.showErrorDashboard(
+                    e.message || 'Could not build ORNL strain dashboard URL with credentials.'
+                );
+                return;
             }
         }
 

@@ -61,6 +61,50 @@ function getDatasetById($datasetId) {
 }
 
 /**
+ * Dataset row for dashboard share links — includes stored S3 credentials (never sent to browser UI APIs).
+ *
+ * @return array<string,mixed>|null
+ */
+function getDatasetForDashboardLink($datasetId) {
+    try {
+        $user = getCurrentUser();
+        if (!$user) {
+            return null;
+        }
+
+        $sclib = getSCLibClient();
+        $raw = $sclib->getDatasetDetails($datasetId, $user['id']);
+        if (!$raw || !is_array($raw)) {
+            return null;
+        }
+
+        $formatted = formatDataset($raw);
+        foreach (['s3_access_key_id', 's3_secret_access_key', 's3_endpoint_url', 's3_region_name', 's3_path_style'] as $field) {
+            if (array_key_exists($field, $raw)) {
+                $formatted[$field] = $raw[$field];
+            }
+        }
+        foreach (['accesskey', 'secretkey'] as $legacy) {
+            if (!empty($raw[$legacy]) && empty($formatted['s3_access_key_id'])) {
+                if ($legacy === 'accesskey') {
+                    $formatted['s3_access_key_id'] = $raw[$legacy];
+                } else {
+                    $formatted['s3_secret_access_key'] = $raw[$legacy];
+                }
+            }
+        }
+
+        return $formatted;
+    } catch (Exception $e) {
+        logMessage('ERROR', 'Failed to get dataset for dashboard link', [
+            'dataset_id' => $datasetId,
+            'error' => $e->getMessage(),
+        ]);
+        return null;
+    }
+}
+
+/**
  * Get dataset by UUID
  */
 function getDatasetByUuid($datasetUuid) {
