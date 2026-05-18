@@ -66,6 +66,16 @@ if ($deployLooksLocal && !$requestIsLocalHost) {
 }
 define('SC_SERVER_URL', $deployServer);
 
+// Canonical portal auth URLs (production uses /portal/ prefix; never legacy 51.81.155.171)
+$_scPortalPrefix = (strpos(SC_SERVER_URL, 'localhost') !== false || strpos(SC_SERVER_URL, '127.0.0.1') !== false)
+    ? ''
+    : '/portal';
+define('SC_PORTAL_PREFIX', $_scPortalPrefix);
+define('SC_PORTAL_LOGIN_URL', rtrim(SC_SERVER_URL, '/') . $_scPortalPrefix . '/login.php');
+define('SC_PORTAL_SIGNUP_URL', rtrim(SC_SERVER_URL, '/') . $_scPortalPrefix . '/signup.php');
+define('SC_PORTAL_VERIFICATION_SENT_URL', rtrim(SC_SERVER_URL, '/') . $_scPortalPrefix . '/login_verification_sent.php');
+define('SC_PORTAL_AUTH_CALLBACK_URL', rtrim(SC_SERVER_URL, '/') . $_scPortalPrefix . '/auth/callback.php');
+
 // Ensure domain_name has .com if it's missing
 $domainName = $config['server']['domain_name'];
 if (strpos($domainName, 'scientistcloud') !== false && strpos($domainName, 'scientistcloud.com') === false) {

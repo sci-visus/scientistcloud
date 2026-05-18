@@ -7,8 +7,10 @@ This document describes the Auth0 integration that has been implemented for Scie
 ### New Files:
 - `config_auth0.php` - Auth0 configuration and SDK initialization
 - `auth/callback.php` - Auth0 callback handler for login flow
-- `signup.php` - Database (email/password) sign-up entry point
+- `login.php` - Sign in (all users) → `https://scientistcloud.com/portal/login.php`
+- `signup.php` - New email/password sign-up → `https://scientistcloud.com/portal/signup.php`
 - `login_verification_sent.php` - Post sign-up “check your email” page
+- **Do not use** legacy `http://51.81.155.171` or `login_error.php` in Auth0
 - `logout.php` - Logout page with Auth0 integration
 - `AUTH0_SETUP.md` - This documentation file
 
