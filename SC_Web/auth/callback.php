@@ -18,6 +18,17 @@ try {
     }
 
     $user_email = $userInfo['email'];
+    $auth0_sub = $userInfo['sub'] ?? '';
+    $email_verified = !empty($userInfo['email_verified']);
+    $is_database_user = (str_starts_with($auth0_sub, 'auth0|'));
+
+    if ($is_database_user && !$email_verified) {
+        $_SESSION['pending_verification_email'] = $user_email;
+        $isLocal = (strpos(SC_SERVER_URL, 'localhost') !== false || strpos(SC_SERVER_URL, '127.0.0.1') !== false);
+        $sentPath = $isLocal ? '/login_verification_sent.php' : '/portal/login_verification_sent.php';
+        header('Location: ' . rtrim(SC_SERVER_URL, '/') . $sentPath . '?pending=1');
+        exit;
+    }
     $user_name = $userInfo['name'] ?? $userInfo['email'];
     $_SESSION['access_token'] = $auth0->getAccessToken();
     $_SESSION['token_expires_at'] = isset($userInfo['exp']) ? $userInfo['exp'] : (time() + 3600);
@@ -35,7 +46,7 @@ try {
 
     // Generate a user ID from email (consistent ID generation)
     $userId = 'user_' . str_replace(['@', '.'], '_', $user_email);
-    $auth0_sub = $userInfo['sub'] ?? $userId;
+    $auth0_sub = $auth0_sub !== '' ? $auth0_sub : $userId;
     
     // Create or update user in SCLib using user_profile collection
     try {

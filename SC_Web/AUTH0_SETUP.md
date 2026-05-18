@@ -65,16 +65,23 @@ Google can work while database sign-up returns **400** on `dev-ep26akpb.auth0.co
 
 3. **Branding / Email templates**
    - Do not redirect verification to legacy `http://51.81.155.171/login_error.php`.
-   - Use `https://scientistcloud.com/portal/login_verification_sent.php` or `/portal/login.php`.
+   - **Redirect To** after sign-up: `https://scientistcloud.com/portal/login_verification_sent.php?signup=1`
+   - **Requires Email Verification** on the database connection must be **ON** or Auth0 will not send mail.
+   - **Branding → Email Provider** must be configured (built-in or SMTP).
+   - If logs show `451 Authentication failed: Maximum credits exceeded`, the built-in Auth0 mail quota is exhausted — switch to **Use my own email provider** (SendGrid, SES, Mailgun, etc.).
 
-4. **Security → Attack Protection**
+4. **Management API** (resend verification on portal)
+   - Set `AUTH0_MANAGEMENT_CLIENT_ID` and `AUTH0_MANAGEMENT_CLIENT_SECRET` on the portal container (see `env.scientistcloud`).
+   - Machine-to-machine app needs scope `create:users` and `update:users` (or send verification email permission).
+
+5. **Security → Attack Protection**
    - Bot/CAPTCHA challenges often fail in Safari (TrustedHTML / Cloudflare console errors → 400 on signup). Test in Chrome or relax attack protection while debugging.
 
-5. **Portal sign-up entry point** (after deploy):
+6. **Portal sign-up entry point** (after deploy):
    `https://scientistcloud.com/portal/signup.php`  
    Uses `screen_hint=signup` and `connection=Username-Password-Authentication`.
 
-6. **Monitoring → Logs** in Auth0: inspect failed signup events for the exact 400 reason.
+7. **Monitoring → Logs** in Auth0: inspect failed signup events for the exact 400 reason.
 
 ### Scopes
    - `openid`, `profile`, `email`, `offline_access`
