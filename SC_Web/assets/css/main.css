@@ -77,10 +77,10 @@ body {
 }
 
 .sidebar {
-  width: var(--sidebar-width, 600px);  /* Resizable via CSS variable */
-  flex: 0 0 var(--sidebar-width, 600px);
+  width: var(--sidebar-width, 280px);  /* Resizable via CSS variable */
+  flex: 0 0 var(--sidebar-width, 280px);
   min-width: 200px;  /* Minimum width to prevent collapse */
-  max-width: 80vw;  /* Maximum width to prevent overflow */
+  max-width: min(420px, 42vw);  /* Keep room for dashboard + details pane */
   border-right: 1px solid var(--panel-border);
   padding-top: 1rem;
   padding-bottom: 1rem;
@@ -134,10 +134,10 @@ body {
 }
 
 .details {
-  width: var(--details-width, 300px);  /* Resizable via CSS variable */
-  flex: 0 0 var(--details-width, 300px);
+  width: var(--details-width, 320px);  /* Resizable via CSS variable */
+  flex: 0 0 var(--details-width, 320px);
   min-width: 200px;  /* Minimum width to prevent collapse */
-  max-width: 80vw;  /* Maximum width to prevent overflow */
+  max-width: min(420px, 42vw);
   border-left: 1px solid var(--panel-border);
   overflow: hidden; /* Prevent sidebar itself from scrolling */
   display: flex;
@@ -156,7 +156,7 @@ body {
   overflow-x: hidden;
   width: 100%;
   padding: 0 0.5rem;
-  padding-bottom: 450px; /* Add padding to allow scrolling above active uploads widget (400px max-height + 20px bottom + 30px margin) */
+  padding-bottom: 1rem;
   margin-top: 0.5rem;
 }
 
@@ -279,7 +279,8 @@ body {
 
 /* Main content area */
 .main {
-  flex-grow: 1;
+  flex: 1 1 0;
+  min-width: 0; /* Allow flex child to shrink (avoids crushed center column) */
   background-color: var(--bg-color);
   display: flex;
   flex-direction: column;
@@ -288,17 +289,22 @@ body {
 
 /* Viewer toolbar */
 .toolbar-wrapper {
-  width: 80%;
-  margin: 0.5rem auto;
+  width: 100%;
+  box-sizing: border-box;
+  margin: 0.5rem 0;
+  padding: 0 0.75rem;
   display: flex;
-  justify-content: center;
+  justify-content: stretch;
 }
 
 .viewer-toolbar {
   background-color: var(--toolbar-bg);
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  padding: 0.25rem 0.5rem;
+  gap: 0.5rem;
+  width: 100%;
+  padding: 0.35rem 0.75rem;
   border-radius: 0.5rem;
   transition: background-color 0.3s;
   border: 1px solid var(--panel-border);
@@ -328,7 +334,7 @@ body {
 }
 
 .viewer-toolbar .btn-group {
-  margin-left: 1rem;
+  margin-left: 0;
 }
 
 .viewer-toolbar .btn {
@@ -347,7 +353,9 @@ body {
 
 /* Viewer content */
 .viewer-container {
-  flex-grow: 1;
+  flex: 1 1 0;
+  min-width: 0;
+  min-height: 0;
   padding: 0;
   display: flex;
   align-items: stretch;
@@ -612,6 +620,18 @@ body:not(.light-theme) .viewer-container #dashboardFrame {
 
 .nested.folder-datasets li {
   margin-bottom: 0.25rem;
+}
+
+/* Dataset details pane */
+.dataset-details {
+  font-size: 0.9rem;
+  word-wrap: break-word;
+  overflow-wrap: anywhere;
+}
+
+.dataset-details a,
+.dataset-details .text-break {
+  word-break: break-all;
 }
 
 /* Dashboard styles */
@@ -896,20 +916,18 @@ body:not(.light-theme) .viewer-container #dashboardFrame {
 /* Responsive design */
 @media (max-width: 768px) {
   .sidebar {
-    width: 400px;
+    width: var(--sidebar-width, 260px);
+    max-width: 55vw;
   }
   
   .details {
-    width: 250px;
+    width: var(--details-width, 280px);
+    max-width: 55vw;
   }
   
-  .toolbar-wrapper {
-    width: 95%;
-  }
-  
-  .viewer-toolbar {
-    flex-wrap: wrap;
-    gap: 0.5rem;
+  .upload-progress-widget {
+    right: 12px;
+    width: min(320px, calc(100vw - 24px));
   }
 }
 
@@ -927,14 +945,14 @@ body:not(.light-theme) .viewer-container #dashboardFrame {
   }
 }
 
-/* Upload Progress Widget */
+/* Upload Progress Widget — sit left of details pane, not on top of it */
 .upload-progress-widget {
   position: fixed;
   bottom: 20px;
-  right: 20px;
-  width: 350px;
+  right: calc(var(--details-width, 320px) + 24px);
+  width: min(350px, calc(100vw - var(--sidebar-width, 280px) - var(--details-width, 320px) - 48px));
   max-height: 400px;
-  z-index: 1000;
+  z-index: 900;
   box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
   border-radius: 0.5rem;
   overflow: hidden;
@@ -964,6 +982,10 @@ body:not(.light-theme) .viewer-container #dashboardFrame {
 
 .upload-progress-item:last-child {
   border-bottom: none;
+}
+
+body:has(.details.collapsed) .upload-progress-widget {
+  right: 20px;
 }
 
 /* Upload Interface Styles */

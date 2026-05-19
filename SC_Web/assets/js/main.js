@@ -808,6 +808,21 @@ function showSettingsModal() {
     alert('Settings functionality not yet implemented');
 }
 
+/** Clamp persisted panel widths so a bad resize cannot crush the dashboard column */
+function clampSidebarWidth(width) {
+    const n = Number(width);
+    if (!Number.isFinite(n)) return null;
+    const max = Math.min(420, Math.floor(window.innerWidth * 0.42));
+    return Math.max(200, Math.min(n, max));
+}
+
+function clampDetailsWidth(width) {
+    const n = Number(width);
+    if (!Number.isFinite(n)) return null;
+    const max = Math.min(420, Math.floor(window.innerWidth * 0.42));
+    return Math.max(200, Math.min(n, max));
+}
+
 /**
  * Load saved sidebar widths from localStorage
  */
@@ -815,12 +830,20 @@ function loadSidebarWidths() {
     const savedSidebarWidth = localStorage.getItem('sidebarWidth');
     const savedDetailsWidth = localStorage.getItem('detailsWidth');
     
-    if (savedSidebarWidth) {
-        document.documentElement.style.setProperty('--sidebar-width', `${savedSidebarWidth}px`);
+    const sidebarW = clampSidebarWidth(savedSidebarWidth);
+    if (sidebarW !== null) {
+        document.documentElement.style.setProperty('--sidebar-width', `${sidebarW}px`);
+        if (String(savedSidebarWidth) !== String(sidebarW)) {
+            localStorage.setItem('sidebarWidth', String(sidebarW));
+        }
     }
     
-    if (savedDetailsWidth) {
-        document.documentElement.style.setProperty('--details-width', `${savedDetailsWidth}px`);
+    const detailsW = clampDetailsWidth(savedDetailsWidth);
+    if (detailsW !== null) {
+        document.documentElement.style.setProperty('--details-width', `${detailsW}px`);
+        if (String(savedDetailsWidth) !== String(detailsW)) {
+            localStorage.setItem('detailsWidth', String(detailsW));
+        }
     }
 }
 
@@ -839,16 +862,20 @@ function clearPanelDragWidth(panel) {
  * Save sidebar width to localStorage
  */
 function saveSidebarWidth(width) {
-    localStorage.setItem('sidebarWidth', width);
-    document.documentElement.style.setProperty('--sidebar-width', `${width}px`);
+    const clamped = clampSidebarWidth(width);
+    if (clamped === null) return;
+    localStorage.setItem('sidebarWidth', String(clamped));
+    document.documentElement.style.setProperty('--sidebar-width', `${clamped}px`);
 }
 
 /**
  * Save details sidebar width to localStorage
  */
 function saveDetailsWidth(width) {
-    localStorage.setItem('detailsWidth', width);
-    document.documentElement.style.setProperty('--details-width', `${width}px`);
+    const clamped = clampDetailsWidth(width);
+    if (clamped === null) return;
+    localStorage.setItem('detailsWidth', String(clamped));
+    document.documentElement.style.setProperty('--details-width', `${clamped}px`);
 }
 
 /**
@@ -908,15 +935,15 @@ function initializeResizeHandles() {
             // When dragging right (e.clientX > startX), diff is positive, sidebar should grow
             // When dragging left (e.clientX < startX), diff is negative, sidebar should shrink
             const diff = e.clientX - startX;
-            const newWidth = Math.max(200, Math.min(startWidth + diff, window.innerWidth * 0.8));
+            const newWidth = clampSidebarWidth(startWidth + diff);
             // Inline width only during drag; persist on mouseup (avoids localStorage jank / sticky feel)
-            applyPanelWidth(sidebar, newWidth);
+            if (newWidth !== null) applyPanelWidth(sidebar, newWidth);
         }
         
         if (isResizingRight) {
             const diff = startX - e.clientX; // Inverted for right sidebar (dragging right = negative diff)
-            const newWidth = Math.max(200, Math.min(startWidth + diff, window.innerWidth * 0.8));
-            applyPanelWidth(details, newWidth);
+            const newWidth = clampDetailsWidth(startWidth + diff);
+            if (newWidth !== null) applyPanelWidth(details, newWidth);
         }
     });
     

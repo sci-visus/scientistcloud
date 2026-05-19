@@ -54,7 +54,7 @@ $preferredDashboard = getUserPreferredDashboard($user['id']);
 </head>
 <body>
   <!-- Left Sidebar -->
-  <aside class="sidebar d-flex flex-column align-items-center" id="folderSidebar">
+  <aside class="sidebar d-flex flex-column align-items-stretch" id="folderSidebar">
     <img src="assets/images/scientistcloud-logo.png" class="logo" alt="ScientistCloud Logo">
     <div class="d-flex align-items-center justify-content-between w-100 px-2 mb-2">
       <h5 class="mb-0">Datasets</h5>
