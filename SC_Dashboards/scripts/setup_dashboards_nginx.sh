@@ -194,6 +194,15 @@ done <<< "$DASHBOARDS"
 
 echo "✅ Copied $COPIED_COUNT dashboard nginx configuration(s)"
 
+# Auth gate (login redirect for /dashboard/*) — must be present when dashboards use auth_request
+AUTH_GATE_SRC="$DASHBOARD_NGINX_CONF_DIR/dashboard_auth_gate.conf"
+if [ -f "$AUTH_GATE_SRC" ]; then
+    cp "$AUTH_GATE_SRC" "$DASHBOARD_SUBDIR/dashboard_auth_gate.conf"
+    echo "   ✓ Copied: dashboard_auth_gate.conf (required for auth_request)"
+else
+    echo "   ⚠️  Missing $AUTH_GATE_SRC — /dashboard/* will return 500 until this file exists"
+fi
+
 # Now test and start/reload nginx
 # First, test the configuration using a temporary container (before touching the real one)
 echo "   Testing nginx configuration..."

@@ -555,7 +555,8 @@ function clearDashboardAuthCookie() {
  * True if the request has a valid portal session or auth_token cookie.
  */
 function hasDashboardAccess() {
-    if (isAuthenticated()) {
+    // Fast path: portal session from Auth0 callback (no SCLib round-trip)
+    if (!empty($_SESSION['user_email'])) {
         return true;
     }
     if (empty($_COOKIE['auth_token'])) {
