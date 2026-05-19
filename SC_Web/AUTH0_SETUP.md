@@ -76,14 +76,20 @@ Google can work while database sign-up returns **400** on `dev-ep26akpb.auth0.co
    - Set `AUTH0_MANAGEMENT_CLIENT_ID` and `AUTH0_MANAGEMENT_CLIENT_SECRET` on the portal container (see `env.scientistcloud`).
    - Machine-to-machine app needs scope `create:users` and `update:users` (or send verification email permission).
 
-5. **Security → Attack Protection**
+5. **Actions → Library / Flows → Login**
+   - Search deployed Post-Login actions for `api.redirect.sendUserTo` or `login_error.php`.
+   - Replace legacy `http://51.81.155.171/login_error.php` with  
+     `https://scientistcloud.com/portal/login_verification_sent.php`  
+     or remove the action if portal callback already handles unverified users.
+
+6. **Security → Attack Protection**
    - Bot/CAPTCHA challenges often fail in Safari (TrustedHTML / Cloudflare console errors → 400 on signup). Test in Chrome or relax attack protection while debugging.
 
-6. **Portal sign-up entry point** (after deploy):
+7. **Portal sign-up entry point** (after deploy):
    `https://scientistcloud.com/portal/signup.php`  
    Uses `screen_hint=signup` and `connection=Username-Password-Authentication`.
 
-7. **Monitoring → Logs** in Auth0: inspect failed signup events for the exact 400 reason.
+8. **Monitoring → Logs** in Auth0: inspect failed signup events for the exact 400 reason.
 
 ### Scopes
    - `openid`, `profile`, `email`, `offline_access`

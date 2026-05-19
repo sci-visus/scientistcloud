@@ -34,9 +34,23 @@ if (isAuthenticated()) {
     exit;
 }
 
-// Always redirect to Auth0 login (don't check getUser first, as it might be empty after callback)
-// Check if we're coming back from Auth0 callback (has code parameter)
-if (!isset($_GET['code'])) {
+// Email verification complete (Auth0 Redirect To should be login.php, not callback.php)
+if (isset($_GET['success']) && $_GET['success'] === 'true' && isset($_GET['code']) && $_GET['code'] === 'success') {
+    $isLocal = (strpos(SC_SERVER_URL, 'localhost') !== false || strpos(SC_SERVER_URL, '127.0.0.1') !== false);
+    $landing = $isLocal ? '/login_verification_sent.php' : '/portal/login_verification_sent.php';
+    $email = isset($_GET['email']) ? trim((string) $_GET['email']) : '';
+    $query = http_build_query(array_filter([
+        'verified' => '1',
+        'email' => $email !== '' ? $email : null,
+    ]));
+    header('Location: ' . rtrim(SC_SERVER_URL, '/') . $landing . '?' . $query);
+    exit;
+}
+
+// OAuth authorization code (long string) — forward to callback; not email verification (code=success)
+$hasOAuthCode = isset($_GET['code']) && $_GET['code'] !== '' && $_GET['code'] !== 'success';
+
+if (!$hasOAuthCode) {
     // Not coming from callback, redirect to Auth0
     try {
         // Determine callback URL based on environment
@@ -71,9 +85,6 @@ if (!isset($_GET['code'])) {
         exit;
     }
 } else {
-    // We have a code parameter, might be from Auth0 callback
-    // Redirect to callback handler
-    // For local development, use /auth/callback.php (no /portal/ prefix)
     $isLocal = (strpos(SC_SERVER_URL, 'localhost') !== false || strpos(SC_SERVER_URL, '127.0.0.1') !== false);
     $callbackPath = $isLocal ? '/auth/callback.php' : '/portal/auth/callback.php';
     header('Location: ' . $callbackPath . '?' . $_SERVER['QUERY_STRING']);

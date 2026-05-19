@@ -1,7 +1,7 @@
 <?php
 /**
- * Shown after Auth0 database signup when email verification is required.
- * Point Auth0 "Redirect To" here (not legacy IP login_error.php).
+ * Shown after Auth0 database signup when email verification is required,
+ * and after the user clicks the verification link (verified=1).
  */
 if (session_status() !== PHP_SESSION_ACTIVE) {
     session_start();
@@ -21,7 +21,7 @@ if (!empty($_SESSION['pending_verification_email'])) {
     $email = (string) $_SESSION['pending_verification_email'];
 }
 
-if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && !isset($_GET['verified'])) {
     $email = trim((string) ($_POST['email'] ?? $email));
     if ($email !== '' && filter_var($email, FILTER_VALIDATE_EMAIL)) {
         $flash = auth0_resend_verification_email($email);
@@ -34,62 +34,69 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 }
 
 $justSignedUp = isset($_GET['pending']) || isset($_GET['signup']);
+$emailVerified = isset($_GET['verified']) && $_GET['verified'] === '1';
+if ($emailVerified && isset($_GET['email']) && $_GET['email'] !== '') {
+    $email = trim((string) $_GET['email']);
+    unset($_SESSION['pending_verification_email']);
+}
 ?>
 <!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Verify your email — ScientistCloud</title>
+    <title><?php echo $emailVerified ? 'Email verified' : 'Verify your email'; ?> — ScientistCloud</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
 </head>
 <body class="bg-light d-flex align-items-center justify-content-center min-vh-100">
     <div class="card shadow-sm" style="max-width: 480px;">
         <div class="card-body p-4">
-            <h1 class="h4 mb-3">Verify your email to continue</h1>
-            <?php if ($justSignedUp) { ?>
-                <p class="text-muted">
-                    Your account was created. We sent a verification link to your inbox.
-                    You must click that link before you can sign in with email and password.
+            <?php if ($emailVerified) { ?>
+                <h1 class="h4 mb-3 text-success">Email verified</h1>
+                <p class="text-muted mb-4">
+                    <?php if ($email !== '') { ?>
+                        <strong><?php echo htmlspecialchars($email); ?></strong> is verified.
+                    <?php } else { ?>
+                        Your email is verified.
+                    <?php } ?>
+                    Sign in with your password to use ScientistCloud.
                 </p>
+                <a class="btn btn-primary w-100" href="<?php echo htmlspecialchars($loginPath); ?>">Sign in</a>
             <?php } else { ?>
-                <p class="text-muted">
-                    Email/password accounts require verification. Check your inbox for the link from Auth0.
-                </p>
-            <?php } ?>
-
-            <?php if ($flash) { ?>
-                <div class="alert alert-<?php echo $flash['ok'] ? 'success' : 'warning'; ?>" role="alert">
-                    <?php echo htmlspecialchars($flash['message']); ?>
+                <h1 class="h4 mb-3">Verify your email to continue</h1>
+                <?php if ($justSignedUp) { ?>
+                    <p class="text-muted">
+                        Your account was created. We sent a verification link to your inbox.
+                        You must click that link before you can sign in with email and password.
+                    </p>
+                <?php } else { ?>
+                    <p class="text-muted">
+                        Email/password accounts require verification. Check your inbox for the link from Auth0.
+                    </p>
+                <?php } ?>
+                <?php if ($flash) { ?>
+                    <div class="alert alert-<?php echo $flash['ok'] ? 'success' : 'warning'; ?>" role="alert">
+                        <?php echo htmlspecialchars($flash['message']); ?>
+                    </div>
+                <?php } ?>
+                <ul class="small text-muted mb-4">
+                    <li>Check <strong>spam</strong> and promotions folders.</li>
+                    <li>Wait a few minutes — delivery can be delayed.</li>
+                    <li>Use the same email you used to sign up.</li>
+                </ul>
+                <form method="post" class="mb-4">
+                    <label class="form-label" for="email">Resend verification email</label>
+                    <div class="input-group">
+                        <input type="email" class="form-control" id="email" name="email" required
+                            placeholder="you@example.com" value="<?php echo htmlspecialchars($email); ?>">
+                        <button type="submit" class="btn btn-outline-primary">Resend</button>
+                    </div>
+                </form>
+                <div class="d-flex flex-wrap gap-2">
+                    <a class="btn btn-primary" href="<?php echo htmlspecialchars($loginPath); ?>">Go to login</a>
+                    <a class="btn btn-link" href="<?php echo htmlspecialchars($signupPath); ?>">Sign up again</a>
                 </div>
             <?php } ?>
-
-            <ul class="small text-muted mb-4">
-                <li>Check <strong>spam</strong> and promotions folders.</li>
-                <li>Wait a few minutes — delivery can be delayed.</li>
-                <li>Use the same email you used to sign up.</li>
-            </ul>
-
-            <form method="post" class="mb-4">
-                <label class="form-label" for="email">Resend verification email</label>
-                <div class="input-group">
-                    <input
-                        type="email"
-                        class="form-control"
-                        id="email"
-                        name="email"
-                        required
-                        placeholder="you@example.com"
-                        value="<?php echo htmlspecialchars($email); ?>"
-                    >
-                    <button type="submit" class="btn btn-outline-primary">Resend</button>
-                </div>
-            </form>
-
-            <div class="d-flex flex-wrap gap-2">
-                <a class="btn btn-primary" href="<?php echo htmlspecialchars($loginPath); ?>">Go to login</a>
-                <a class="btn btn-link" href="<?php echo htmlspecialchars($signupPath); ?>">Sign up again</a>
-            </div>
         </div>
     </div>
 </body>

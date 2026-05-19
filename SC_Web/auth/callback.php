@@ -9,6 +9,36 @@ require_once(__DIR__ . '/../includes/sclib_client.php'); // Includes getSCLibAut
 
 global $auth0;
 
+$isLocal = (strpos(SC_SERVER_URL, 'localhost') !== false || strpos(SC_SERVER_URL, '127.0.0.1') !== false);
+$loginPath = $isLocal ? '/login.php' : '/portal/login.php';
+$verifiedLandingPath = $isLocal ? '/login_verification_sent.php' : '/portal/login_verification_sent.php';
+
+// Auth0 email-verification link redirect (success=true&code=success) — not an OAuth callback.
+if (
+    isset($_GET['success']) && $_GET['success'] === 'true'
+    && isset($_GET['code']) && $_GET['code'] === 'success'
+) {
+    $email = isset($_GET['email']) ? trim((string) $_GET['email']) : '';
+    if ($email !== '') {
+        unset($_SESSION['pending_verification_email']);
+    }
+    $query = http_build_query(array_filter([
+        'verified' => '1',
+        'email' => $email !== '' ? $email : null,
+    ]));
+    header('Location: ' . rtrim(SC_SERVER_URL, '/') . $verifiedLandingPath . '?' . $query);
+    exit;
+}
+
+// Real OAuth callbacks must include an authorization code (not the literal "success").
+if (!isset($_GET['code']) || $_GET['code'] === 'success') {
+    logMessage('WARNING', 'Auth callback hit without OAuth authorization code', [
+        'query' => $_GET,
+    ]);
+    header('Location: ' . rtrim(SC_SERVER_URL, '/') . $loginPath);
+    exit;
+}
+
 try {
     $auth0->exchange();
     $userInfo = $auth0->getUser();
@@ -24,9 +54,7 @@ try {
 
     if ($is_database_user && !$email_verified) {
         $_SESSION['pending_verification_email'] = $user_email;
-        $isLocal = (strpos(SC_SERVER_URL, 'localhost') !== false || strpos(SC_SERVER_URL, '127.0.0.1') !== false);
-        $sentPath = $isLocal ? '/login_verification_sent.php' : '/portal/login_verification_sent.php';
-        header('Location: ' . rtrim(SC_SERVER_URL, '/') . $sentPath . '?pending=1');
+        header('Location: ' . rtrim(SC_SERVER_URL, '/') . $verifiedLandingPath . '?pending=1');
         exit;
     }
     $user_name = $userInfo['name'] ?? $userInfo['email'];
@@ -127,15 +155,12 @@ try {
     // Redirect to main application (portal)
     // For local development, use /index.php (no /portal/ prefix)
     // For server, use /portal/index.php
-    $isLocal = (strpos(SC_SERVER_URL, 'localhost') !== false || strpos(SC_SERVER_URL, '127.0.0.1') !== false);
     $indexPath = $isLocal ? '/index.php' : '/portal/index.php';
     header('Location: ' . $indexPath);
     exit;
     
 } catch (Exception $e) {
     logMessage('ERROR', 'Auth0 callback error', ['error' => $e->getMessage()]);
-    $isLocal = (strpos(SC_SERVER_URL, 'localhost') !== false || strpos(SC_SERVER_URL, '127.0.0.1') !== false);
-    $loginPath = $isLocal ? '/login.php' : '/portal/login.php';
     echo "<h2>Login Error</h2><p>There was a problem signing you in. Please try again.</p>";
     echo "<p>Error: " . htmlspecialchars($e->getMessage()) . "</p>";
     echo "<p><a href='" . $loginPath . "'>Try again</a></p>";
