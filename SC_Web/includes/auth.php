@@ -487,7 +487,8 @@ function createDashboardAuthToken($email, $userId = null, $expiresHours = null) 
     }
     $hours = $expiresHours ?? (int) (getenv('JWT_EXPIRY_HOURS') ?: 24);
     $now = time();
-    $audience = getenv('AUTH0_AUDIENCE') ?: 'sclib-api';
+    // Bokeh dashboards always expect aud=sclib-api (not Auth0 API audience from AUTH0_AUDIENCE).
+    $audience = 'sclib-api';
     $payload = [
         'email' => $email,
         'user' => $email,
