@@ -311,7 +311,11 @@ function formatDataset($dataset) {
         'status_message' => $statusMessage,
         'conversion_last_error' => $conversionLastError,
         'upload_interrupted' => $uploadInterrupted,
-        'interrupted_at' => $dataset['interrupted_at'] ?? null
+        'interrupted_at' => $dataset['interrupted_at'] ?? null,
+        'is_downloadable' => $dataset['is_downloadable'] ?? 'only owner',
+        'team_name' => $dataset['team_name'] ?? '',
+        'is_owner' => $dataset['is_owner'] ?? null,
+        'can_download' => $dataset['can_download'] ?? null,
     ];
     
     return $formatted;

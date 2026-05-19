@@ -76,14 +76,15 @@ try {
         exit;
     }
 
-    // Check if user has access to this dataset
+    // Only the dataset owner may edit metadata
     $user = getCurrentUser();
-    if ($dataset['user_id'] !== $user['email'] && 
-        !in_array($user['email'], $dataset['shared_with'] ?? []) &&
-        $dataset['team_uuid'] !== $user['team_id']) {
+    $isOwner = ($dataset['is_owner'] ?? false) === true
+        || ($dataset['user_id'] ?? '') === ($user['email'] ?? '')
+        || ($dataset['user_id'] ?? '') === ($user['id'] ?? '');
+    if (!$isOwner) {
         ob_end_clean();
         http_response_code(403);
-        echo json_encode(['success' => false, 'error' => 'Access denied']);
+        echo json_encode(['success' => false, 'error' => 'Only the dataset owner can update it']);
         exit;
     }
 

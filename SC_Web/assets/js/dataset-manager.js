@@ -41,6 +41,8 @@ class DatasetManager {
         this.folders = [];
         this.isSelectingDataset = false; // Flag to prevent multiple simultaneous selections
         this.pendingSelection = null; // Store pending selection if one is already in progress
+        this.currentUserEmail = null;
+        this.userTeams = null; // { uuids: string[], names: string[] }
         this.initialize();
     }
 
@@ -1469,83 +1471,111 @@ class DatasetManager {
     }
 
     /**
+     * Load current user email and team memberships (cached).
+     */
+    async ensureUserContext() {
+        if (this.currentUserEmail && this.userTeams) {
+            return;
+        }
+        try {
+            const userResponse = await fetch(`${getApiBasePath()}/user-info.php`);
+            if (userResponse.ok) {
+                const userData = await userResponse.json();
+                if (userData.success) {
+                    this.currentUserEmail = userData.user?.email || userData.email || userData.user?.id || userData.id;
+                }
+            }
+        } catch (error) {
+            console.warn('Could not get user info:', error);
+        }
+        const uuids = new Set();
+        const names = new Set();
+        try {
+            const teamsResponse = await fetch(`${getApiBasePath()}/get-teams.php`);
+            if (teamsResponse.ok) {
+                const teamsData = await teamsResponse.json();
+                if (teamsData.success && Array.isArray(teamsData.teams)) {
+                    for (const team of teamsData.teams) {
+                        if (team.uuid) uuids.add(String(team.uuid));
+                        if (team.team_name) names.add(String(team.team_name));
+                    }
+                }
+            }
+        } catch (error) {
+            console.warn('Could not load teams for permission check:', error);
+        }
+        this.userTeams = { uuids: [...uuids], names: [...names] };
+    }
+
+    /**
+     * True if the current user owns this dataset.
+     */
+    isDatasetOwner(dataset) {
+        if (!dataset) return false;
+        if (dataset.is_owner === true) return true;
+        if (dataset.is_owner === false) return false;
+        const email = this.currentUserEmail;
+        if (!email) return false;
+        return dataset.user === email ||
+            dataset.user_email === email ||
+            dataset.user_id === email;
+    }
+
+    /**
+     * True if user belongs to dataset team (UUID, name, or legacy team_uuid-as-name).
+     */
+    userInDatasetTeam(dataset) {
+        if (!dataset || !this.userTeams) return false;
+        const refs = new Set([
+            dataset.team_uuid,
+            dataset.team_name,
+            dataset.team_id,
+        ].filter(Boolean).map(String));
+        if (refs.size === 0) return false;
+        for (const id of this.userTeams.uuids) {
+            if (refs.has(id)) return true;
+        }
+        for (const name of this.userTeams.names) {
+            if (refs.has(name)) return true;
+        }
+        return false;
+    }
+
+    /**
      * Check if current user can download a dataset based on is_downloadable setting
      * @param {Object} dataset - Dataset object with is_downloadable, user, user_email, team_uuid fields
-     * @param {string} currentUserEmail - Current user's email (optional, will fetch if not provided)
-     * @param {string} currentUserTeamId - Current user's team ID (optional, will fetch if not provided)
      * @returns {boolean} - True if user can download, false otherwise
      */
-    async canDownloadDataset(dataset, currentUserEmail = null, currentUserTeamId = null) {
-        // Default to "only owner" if not set
+    async canDownloadDataset(dataset) {
+        if (!dataset) return false;
+
+        if (dataset.can_download === true) return true;
+        if (dataset.can_download === false) return false;
+
+        await this.ensureUserContext();
+
         const isDownloadable = dataset.is_downloadable || 'only owner';
-        
-        // If public, anyone can download
         if (isDownloadable === 'public') {
             return true;
         }
-        
-        // Get current user info if not provided
-        if (!currentUserEmail) {
-            try {
-                const userResponse = await fetch(`${getApiBasePath()}/user-info.php`);
-                if (userResponse.ok) {
-                    const userData = await userResponse.json();
-                    if (userData.success) {
-                        // Support both old format (direct fields) and new format (user object)
-                        currentUserEmail = userData.user?.email || userData.email || userData.user?.id || userData.id;
-                        currentUserTeamId = currentUserTeamId || userData.user?.team_id || userData.team_id;
-                    }
-                }
-            } catch (error) {
-                console.warn('Could not get user info for download check:', error);
-                return false; // If we can't get user info, deny download
-            }
-        }
-        
-        if (!currentUserEmail) {
-            return false; // No user email, can't download
-        }
-        
-        // Check if user is the owner
-        const isOwner = dataset.user === currentUserEmail || 
-                       dataset.user_email === currentUserEmail || 
-                       dataset.user_id === currentUserEmail;
-        
-        if (isDownloadable === 'only owner') {
-            return isOwner;
-        }
-        
-        if (isDownloadable === 'only team') {
-            // Owner can always download
-            if (isOwner) {
-                return true;
-            }
-            // Check if user is in the same team
-            if (dataset.team_uuid) {
-                // Get user's team if not provided
-                if (!currentUserTeamId) {
-                    try {
-                        const userResponse = await fetch(`${getApiBasePath()}/user-info.php`);
-                        if (userResponse.ok) {
-                            const userData = await userResponse.json();
-                            if (userData.success) {
-                                currentUserTeamId = userData.user?.team_id || userData.team_id;
-                            }
-                        }
-                    } catch (error) {
-                        console.warn('Could not get user team info:', error);
-                    }
-                }
-                // Compare team IDs
-                if (currentUserTeamId && dataset.team_uuid) {
-                    return currentUserTeamId === dataset.team_uuid;
-                }
-            }
+
+        if (!this.currentUserEmail) {
             return false;
         }
-        
-        // Default: only owner
-        return isOwner;
+
+        if (this.isDatasetOwner(dataset)) {
+            return true;
+        }
+
+        if (isDownloadable === 'only owner') {
+            return false;
+        }
+
+        if (isDownloadable === 'only team') {
+            return this.userInDatasetTeam(dataset);
+        }
+
+        return false;
     }
 
     /**
@@ -1903,6 +1933,26 @@ class DatasetManager {
             (dataset.status || '').toLowerCase() === 'failed' &&
             datasetMessage.toLowerCase().includes('upload interrupted')
         );
+
+        await this.ensureUserContext();
+        const isOwner = this.isDatasetOwner(dataset);
+        const ownerActionButtons = isOwner ? `
+                        <button type="button" class="btn btn-sm btn-outline-primary" data-action="share" data-dataset-id="${dataset.id || dataset.uuid}">
+                            <i class="fas fa-share"></i> Share
+                        </button>
+                        <button type="button" class="btn btn-sm btn-outline-primary" data-action="delete" data-dataset-id="${dataset.id || dataset.uuid}">
+                            <i class="fas fa-trash"></i> Delete
+                        </button>
+                        <button type="button" class="btn btn-sm btn-outline-primary" id="editDatasetBtn" data-dataset-id="${dataset.id || dataset.uuid}">
+                            <i class="fas fa-edit"></i> Edit
+                        </button>
+                        <button type="button" class="btn btn-sm btn-outline-primary retry-conversion-details-btn" 
+                                data-dataset-uuid="${dataset.uuid || dataset.id}"
+                                data-dataset-name="${this.escapeHtml(dataset.name || 'Dataset')}">
+                            <i class="fas fa-redo"></i> Retry
+                        </button>
+        ` : '';
+
         const statusNoticeHtml = datasetMessage ? `
             <div class="alert alert-${isInterruptedUpload ? 'warning' : 'danger'} py-2 small mb-3">
                 <div class="fw-semibold mb-1">
@@ -1927,24 +1977,9 @@ class DatasetManager {
                     <h6 class="text-primary mb-2">${this.escapeHtml(dataset.name || 'Unnamed Dataset')}</h6>
                 </div>
                 
-                <!-- Action Buttons (Share, Delete, Edit, Retry, Copy Dashboard Link) -->
+                <!-- Action Buttons (owner: Share/Delete/Edit/Retry; all: dashboard links) -->
                 <div class="dataset-actions mb-3 pb-2 border-bottom">
-                    <div class="btn-group btn-group-sm w-100" role="group">
-                        <button type="button" class="btn btn-sm btn-outline-primary" data-action="share" data-dataset-id="${dataset.id || dataset.uuid}">
-                            <i class="fas fa-share"></i> Share
-                        </button>
-                        <button type="button" class="btn btn-sm btn-outline-primary" data-action="delete" data-dataset-id="${dataset.id || dataset.uuid}">
-                            <i class="fas fa-trash"></i> Delete
-                        </button>
-                        <button type="button" class="btn btn-sm btn-outline-primary" id="editDatasetBtn" data-dataset-id="${dataset.id || dataset.uuid}">
-                            <i class="fas fa-edit"></i> Edit
-                        </button>
-                        <button type="button" class="btn btn-sm btn-outline-primary retry-conversion-details-btn" 
-                                data-dataset-uuid="${dataset.uuid || dataset.id}"
-                                data-dataset-name="${this.escapeHtml(dataset.name || 'Dataset')}">
-                            <i class="fas fa-redo"></i> Retry
-                        </button>
-                    </div>
+                    ${ownerActionButtons ? `<div class="btn-group btn-group-sm w-100" role="group">${ownerActionButtons}</div>` : ''}
                     <div class="mt-2 d-flex gap-2">
                         <button type="button" class="btn btn-sm btn-outline-primary flex-grow-1" data-action="copy-dashboard-link" 
                                 data-dataset-id="${dataset.id || dataset.uuid}"
@@ -3108,6 +3143,12 @@ class DatasetManager {
      * Share dataset - shows share interface
      */
     async shareDataset(datasetId) {
+        await this.ensureUserContext();
+        const details = this.currentDatasetDetails || this.currentDataset;
+        if (details && !this.isDatasetOwner(details)) {
+            alert('Only the dataset owner can share it.');
+            return;
+        }
         const datasetUuid = this.currentDataset?.uuid || datasetId;
         const datasetName = this.currentDataset?.name || 'Dataset';
         
@@ -3946,7 +3987,7 @@ class DatasetManager {
             const data = await response.json();
             
             if (data.success) {
-                alert(`Dataset shared successfully with team: ${teamName}`);
+                alert(data.message || `Dataset shared successfully with team: ${teamName}`);
                 this.closeShareInterface();
             } else {
                 alert(`Error sharing dataset: ${data.error || 'Unknown error'}`);
@@ -4054,6 +4095,12 @@ class DatasetManager {
      * Delete dataset
      */
     async deleteDataset(datasetId) {
+        await this.ensureUserContext();
+        const details = this.currentDatasetDetails || this.currentDataset;
+        if (details && !this.isDatasetOwner(details)) {
+            alert('Only the dataset owner can delete it.');
+            return;
+        }
         if (confirm('Are you sure you want to delete this dataset? This action cannot be undone.')) {
             try {
                 const response = await fetch(`${getApiBasePath()}/delete-dataset.php`, {
