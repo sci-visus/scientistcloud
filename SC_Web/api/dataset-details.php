@@ -65,16 +65,7 @@ try {
         exit;
     }
 
-    // Check if user has access to this dataset
-    $user = getCurrentUser();
-    if ($dataset['user_id'] !== $user['id'] && 
-        !in_array($user['id'], $dataset['shared_with'] ?? []) &&
-        $dataset['team_id'] !== $user['team_id']) {
-        ob_end_clean();
-        http_response_code(403);
-        echo json_encode(['success' => false, 'error' => 'Access denied']);
-        exit;
-    }
+    // Access is enforced by SCLib GET /api/v1/datasets/{id}?user_email= (team/share/owner rules).
 
     // Format response (never expose raw gateway / query-string credentials to the browser)
     $response = [
