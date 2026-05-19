@@ -13,6 +13,9 @@ location {{NGINX_PATH_WITHOUT_SLASH}} {
 }
 
 location {{NGINX_PATH}} {
+    auth_request /_sc_dashboard_auth;
+    error_page 401 = @sc_dashboard_login;
+
     # Use variable to defer hostname resolution (prevents startup errors if containers aren't up)
     set $upstream_host "dashboard_{{DASHBOARD_NAME_LOWER}}";
     set $upstream_port "{{DASHBOARD_PORT}}";

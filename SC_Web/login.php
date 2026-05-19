@@ -23,14 +23,16 @@ if (!isset($_SESSION['CREATED'])) {
     $_SESSION['CREATED'] = time();
 }
 
+// Remember dashboard (or other) URL to open after login
+if (!empty($_GET['return_to'])) {
+    storeLoginReturnTo($_GET['return_to']);
+}
+
 // Check if user is already authenticated
 // isAuthenticated() now verifies getCurrentUser(), so this should be safe
 if (isAuthenticated()) {
-    // User is authenticated, redirect to index
-    // For local development, use /index.php (no /portal/ prefix)
-    $isLocal = (strpos(SC_SERVER_URL, 'localhost') !== false || strpos(SC_SERVER_URL, '127.0.0.1') !== false);
-    $indexPath = $isLocal ? '/index.php' : '/portal/index.php';
-    header('Location: ' . $indexPath);
+    setDashboardAuthCookieFromSession();
+    header('Location: ' . getPostLoginRedirectUrl());
     exit;
 }
 

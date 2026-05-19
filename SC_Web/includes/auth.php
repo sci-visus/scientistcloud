@@ -218,6 +218,8 @@ function isAuthenticated() {
  * Logout user
  */
 function logoutUser() {
+    clearDashboardAuthCookie();
+
     // Clear all session variables
     $_SESSION = array();
     
@@ -385,6 +387,186 @@ function canAccessDataset($datasetId, $userId = null) {
         
     } catch (Exception $e) {
         logMessage('ERROR', 'Failed to check dataset access', ['dataset_id' => $datasetId, 'error' => $e->getMessage()]);
+        return false;
+    }
+}
+
+/**
+ * Whether the current request is served over HTTPS (direct or via proxy).
+ */
+function isHttpsRequest() {
+    if (!empty($_SERVER['HTTPS']) && strtolower((string) $_SERVER['HTTPS']) !== 'off') {
+        return true;
+    }
+    return strtolower((string) ($_SERVER['HTTP_X_FORWARDED_PROTO'] ?? '')) === 'https';
+}
+
+/**
+ * Allowed post-login redirect targets (dashboard share links and portal pages).
+ */
+function isSafeLoginReturnToUrl($url) {
+    $url = trim((string) $url);
+    if ($url === '') {
+        return false;
+    }
+    $parts = parse_url($url);
+    if ($parts === false || empty($parts['host'])) {
+        return false;
+    }
+    $host = strtolower($parts['host']);
+    $allowedHosts = ['localhost', '127.0.0.1', 'scientistcloud.com', 'www.scientistcloud.com'];
+    $deployHost = parse_url(SC_SERVER_URL, PHP_URL_HOST);
+    if ($deployHost && !in_array(strtolower($deployHost), $allowedHosts, true)) {
+        $allowedHosts[] = strtolower($deployHost);
+    }
+    if (!in_array($host, $allowedHosts, true)) {
+        return false;
+    }
+    $path = $parts['path'] ?? '/';
+    if (strpos($path, '/dashboard/') === 0) {
+        return true;
+    }
+    if (SC_PORTAL_PREFIX !== '' && strpos($path, SC_PORTAL_PREFIX . '/') === 0) {
+        return true;
+    }
+    if (SC_PORTAL_PREFIX === '' && ($path === '/index.php' || $path === '/' || strpos($path, '/index.php') === 0)) {
+        return true;
+    }
+    return false;
+}
+
+/**
+ * Remember where to send the user after login (dashboard share link, etc.).
+ */
+function storeLoginReturnTo($url) {
+    $url = trim((string) $url);
+    if ($url !== '' && isSafeLoginReturnToUrl($url)) {
+        $_SESSION['login_return_to'] = $url;
+    }
+}
+
+/**
+ * Return stored post-login URL and clear it from the session.
+ */
+function consumeLoginReturnTo() {
+    $url = $_SESSION['login_return_to'] ?? null;
+    unset($_SESSION['login_return_to']);
+    if ($url && isSafeLoginReturnToUrl($url)) {
+        return $url;
+    }
+    return null;
+}
+
+/**
+ * Default portal landing page after login when no return URL is stored.
+ */
+function getDefaultPostLoginUrl() {
+    $isLocal = (strpos(SC_SERVER_URL, 'localhost') !== false || strpos(SC_SERVER_URL, '127.0.0.1') !== false);
+    $indexPath = $isLocal ? '/index.php' : '/portal/index.php';
+    return rtrim(SC_SERVER_URL, '/') . $indexPath;
+}
+
+/**
+ * Resolve redirect target after successful authentication.
+ */
+function getPostLoginRedirectUrl() {
+    return consumeLoginReturnTo() ?? getDefaultPostLoginUrl();
+}
+
+function dashboardJwtBase64UrlEncode($data) {
+    return rtrim(strtr(base64_encode($data), '+/', '-_'), '=');
+}
+
+/**
+ * Create HS256 JWT for Bokeh dashboards (matches SCLib_JWTManager payload shape).
+ */
+function createDashboardAuthToken($email, $userId = null, $expiresHours = null) {
+    $email = trim((string) $email);
+    if ($email === '') {
+        return null;
+    }
+    $hours = $expiresHours ?? (int) (getenv('JWT_EXPIRY_HOURS') ?: 24);
+    $now = time();
+    $audience = getenv('AUTH0_AUDIENCE') ?: 'sclib-api';
+    $payload = [
+        'email' => $email,
+        'user' => $email,
+        'iat' => $now,
+        'exp' => $now + ($hours * 3600),
+        'jti' => bin2hex(random_bytes(16)),
+        'iss' => 'sclib-auth',
+        'aud' => $audience,
+        'type' => 'access',
+    ];
+    if ($userId) {
+        $payload['user_id'] = $userId;
+    }
+    $header = dashboardJwtBase64UrlEncode(json_encode(['typ' => 'JWT', 'alg' => 'HS256']));
+    $body = dashboardJwtBase64UrlEncode(json_encode($payload));
+    $signature = dashboardJwtBase64UrlEncode(hash_hmac('sha256', $header . '.' . $body, SECRET_KEY, true));
+    return $header . '.' . $body . '.' . $signature;
+}
+
+/**
+ * Set auth_token cookie so /dashboard/* Bokeh apps can authenticate the user.
+ */
+function setDashboardAuthCookie($email, $userId = null) {
+    $token = createDashboardAuthToken($email, $userId);
+    if (!$token) {
+        return false;
+    }
+    $hours = (int) (getenv('JWT_EXPIRY_HOURS') ?: 24);
+    $secure = isHttpsRequest();
+    setcookie('auth_token', $token, [
+        'expires' => time() + ($hours * 3600),
+        'path' => '/',
+        'secure' => $secure,
+        'httponly' => true,
+        'samesite' => 'Lax',
+    ]);
+    return true;
+}
+
+/**
+ * Set dashboard auth cookie from the current PHP session, if logged in.
+ */
+function setDashboardAuthCookieFromSession() {
+    if (empty($_SESSION['user_email'])) {
+        return false;
+    }
+    return setDashboardAuthCookie($_SESSION['user_email'], $_SESSION['user_id'] ?? null);
+}
+
+/**
+ * Clear dashboard auth cookie on logout.
+ */
+function clearDashboardAuthCookie() {
+    $secure = isHttpsRequest();
+    setcookie('auth_token', '', [
+        'expires' => time() - 3600,
+        'path' => '/',
+        'secure' => $secure,
+        'httponly' => true,
+        'samesite' => 'Lax',
+    ]);
+}
+
+/**
+ * True if the request has a valid portal session or auth_token cookie.
+ */
+function hasDashboardAccess() {
+    if (isAuthenticated()) {
+        return true;
+    }
+    if (empty($_COOKIE['auth_token'])) {
+        return false;
+    }
+    try {
+        $sclib = getSCLibAuthClient();
+        $result = $sclib->validateAuthToken($_COOKIE['auth_token']);
+        return !empty($result['success']) && !empty($result['valid']);
+    } catch (Exception $e) {
+        error_log('hasDashboardAccess: ' . $e->getMessage());
         return false;
     }
 }

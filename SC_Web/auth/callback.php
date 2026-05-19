@@ -6,6 +6,7 @@ if (session_status() === PHP_SESSION_NONE) {
 
 require_once(__DIR__ . '/../config_auth0.php'); // Setup SDK
 require_once(__DIR__ . '/../includes/sclib_client.php'); // Includes getSCLibAuthClient()
+require_once(__DIR__ . '/../includes/auth.php');
 
 global $auth0;
 
@@ -152,11 +153,9 @@ try {
         'name' => $user_name
     ]);
 
-    // Redirect to main application (portal)
-    // For local development, use /index.php (no /portal/ prefix)
-    // For server, use /portal/index.php
-    $indexPath = $isLocal ? '/index.php' : '/portal/index.php';
-    header('Location: ' . $indexPath);
+    setDashboardAuthCookie($user_email, $userId);
+
+    header('Location: ' . getPostLoginRedirectUrl());
     exit;
     
 } catch (Exception $e) {
