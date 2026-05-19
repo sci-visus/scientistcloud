@@ -115,6 +115,7 @@ from ornl_chess_strain_lib import (  # noqa: E402
     StrainFieldPlotConfig,
     build_strain_field_grids,
     default_row_headers,
+    enrich_strain_paths_from_dataset_doc,
     find_strain_json_under_dataset_dir,
     list_strain_field_headers,
     load_strain_json,
@@ -155,22 +156,35 @@ else:
             initial_rows = max(1, min(12, int(sr)))
 
     _query_path0 = _first_arg("strain_json_path") or _first_arg("strain_json")
-    _query_url0 = (_first_arg("strain_json_url") or "").strip()
+    _query_url0 = (
+        _first_arg("strain_json_url")
+        or _first_arg("json_url")
+        or _first_arg("data_link")
+        or ""
+    ).strip()
     _bd = str(_params.get("base_dir") or "")
     _sd = str(_params.get("save_dir") or "")
     _mongo_pack = _init.get("mongodb") or {}
     _dataset_collection = _mongo_pack.get("collection")
 
-    def _dataset_s3_auth_override() -> Optional[Dict[str, str]]:
-        """Use S3 keys from Mongo when the iframe URL truncated query credentials."""
+    def _fetch_dataset_doc() -> Optional[Dict[str, Any]]:
         uid = str(_params.get("uuid") or "").strip()
         coll = _dataset_collection
         if coll is None or not uid or uid == "local":
             return None
+        if uid.lower().startswith(("http://", "https://", "s3://", "pelican://")):
+            return None
         try:
             doc = coll.find_one({"uuid": uid})
+            return doc if isinstance(doc, dict) else None
         except Exception:
             return None
+
+    _dataset_doc = _fetch_dataset_doc()
+
+    def _dataset_s3_auth_override() -> Optional[Dict[str, str]]:
+        """Use S3 keys from Mongo when the iframe URL truncated query credentials."""
+        doc = _dataset_doc
         if not doc:
             return None
         ak = str(doc.get("s3_access_key_id") or "").strip()
@@ -202,14 +216,19 @@ else:
             return StrainDashboardPaths(local_json_path=mirror, json_url=jurl)
         return p
 
-    paths = _prefer_upload_mirror_when_url_only(
-        resolve_strain_paths_for_session(
-            base_dir=_bd,
-            save_dir=_sd,
-            query_strain_json_path=_query_path0,
-            query_strain_json_url=_query_url0,
-            env=StrainDashboardPaths.from_environ(),
-        )
+    paths = enrich_strain_paths_from_dataset_doc(
+        _prefer_upload_mirror_when_url_only(
+            resolve_strain_paths_for_session(
+                base_dir=_bd,
+                save_dir=_sd,
+                query_strain_json_path=_query_path0,
+                query_strain_json_url=_query_url0,
+                env=StrainDashboardPaths.from_environ(),
+            )
+        ),
+        _dataset_doc,
+        base_dir=_bd,
+        save_dir=_sd,
     )
 
     plot_cfg = StrainFieldPlotConfig()
@@ -248,14 +267,20 @@ else:
                 StrainDashboardPaths(local_json_path=loc_in, json_url=url_in)
             )
         else:
-            p = resolve_strain_paths_for_session(
+            p = enrich_strain_paths_from_dataset_doc(
+                _prefer_upload_mirror_when_url_only(
+                    resolve_strain_paths_for_session(
+                        base_dir=_bd,
+                        save_dir=_sd,
+                        query_strain_json_path=_query_path0,
+                        query_strain_json_url=_query_url0,
+                        env=StrainDashboardPaths.from_environ(),
+                    )
+                ),
+                _dataset_doc,
                 base_dir=_bd,
                 save_dir=_sd,
-                query_strain_json_path=_query_path0,
-                query_strain_json_url=_query_url0,
-                env=StrainDashboardPaths.from_environ(),
             )
-            p = _prefer_upload_mirror_when_url_only(p)
         try:
             payload = load_strain_json(p, mongo_s3_auth=_dataset_s3_auth_override())
         except Exception as e:
