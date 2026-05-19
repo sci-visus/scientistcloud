@@ -961,6 +961,190 @@ class DatasetManager {
     }
 
     /**
+     * Try to parse JSON (handles BOM, NaN/Infinity tokens, double-encoded JSON strings).
+     * @returns {object|array|string|number|boolean|null|undefined} parsed value, or undefined
+     */
+    tryParseJsonLoose(raw) {
+        if (raw == null) return undefined;
+        let text = String(raw).replace(/^\uFEFF/, '').trim();
+        if (!text) return undefined;
+
+        const attempts = [
+            (t) => t,
+            (t) => t.replace(/\bNaN\b/g, 'null')
+                .replace(/\b-Infinity\b/g, 'null')
+                .replace(/\bInfinity\b/g, 'null'),
+        ];
+
+        for (const transform of attempts) {
+            for (let depth = 0; depth < 3; depth++) {
+                try {
+                    const value = JSON.parse(transform(text));
+                    if (typeof value === 'string') {
+                        const inner = value.trim();
+                        if (
+                            (inner.startsWith('{') && inner.endsWith('}')) ||
+                            (inner.startsWith('[') && inner.endsWith(']'))
+                        ) {
+                            text = inner;
+                            continue;
+                        }
+                    }
+                    return value;
+                } catch (e) {
+                    break;
+                }
+            }
+        }
+        return undefined;
+    }
+
+    /**
+     * Best-effort pretty printer when JSON.parse fails (minified scientific exports).
+     */
+    prettyPrintJsonLoose(raw) {
+        const text = String(raw).replace(/^\uFEFF/, '').trim();
+        if (!text) return '';
+
+        let out = '';
+        let indent = 0;
+        const step = '  ';
+        let inString = false;
+        let escape = false;
+
+        const pushIndent = () => {
+            out += '\n' + step.repeat(Math.max(0, indent));
+        };
+
+        for (let i = 0; i < text.length; i++) {
+            const c = text[i];
+
+            if (inString) {
+                out += c;
+                if (escape) {
+                    escape = false;
+                } else if (c === '\\') {
+                    escape = true;
+                } else if (c === '"') {
+                    inString = false;
+                }
+                continue;
+            }
+
+            if (c === '"') {
+                inString = true;
+                out += c;
+                continue;
+            }
+
+            if (c === '{' || c === '[') {
+                out += c;
+                indent += 1;
+                pushIndent();
+                continue;
+            }
+
+            if (c === '}' || c === ']') {
+                indent = Math.max(0, indent - 1);
+                pushIndent();
+                out += c;
+                continue;
+            }
+
+            if (c === ',') {
+                out += ',';
+                pushIndent();
+                continue;
+            }
+
+            if (c === ':') {
+                out += ': ';
+                continue;
+            }
+
+            if (c === ' ' || c === '\n' || c === '\r' || c === '\t') {
+                continue;
+            }
+
+            out += c;
+        }
+
+        return out.trim();
+    }
+
+    /**
+     * Format file text for display (pretty JSON when applicable).
+     */
+    formatTextFileContent(content, fileName, mimeType = '') {
+        const name = (fileName || '').toLowerCase();
+        const isJson = name.endsWith('.json') || mimeType === 'application/json';
+        const raw = content == null ? '' : String(content);
+        const maxChars = 8_000_000;
+        const truncated = raw.length > maxChars;
+        const source = truncated ? raw.slice(0, maxChars) : raw;
+
+        if (isJson) {
+            const parsed = this.tryParseJsonLoose(source);
+            let formatted;
+            let mode = 'pretty';
+            if (parsed !== undefined) {
+                formatted = JSON.stringify(parsed, null, 2);
+            } else {
+                formatted = this.prettyPrintJsonLoose(source);
+                mode = 'formatted';
+            }
+            return {
+                isJson: true,
+                mode,
+                truncated,
+                formatted,
+                html: `<pre class="file-text-content json-pretty-print p-3 rounded mb-0" data-json-mode="${mode}"><code class="json-code">${this.escapeHtml(formatted)}</code></pre>`,
+            };
+        }
+
+        return {
+            isJson: false,
+            mode: 'text',
+            truncated,
+            formatted: source,
+            html: `<pre class="file-text-content p-3 rounded mb-0" style="white-space: pre-wrap; word-wrap: break-word;"><code>${this.escapeHtml(source)}</code></pre>`,
+        };
+    }
+
+    buildFileViewerShell(fileName, bodyHtml, extraToolbarHtml = '') {
+        return `
+            <div class="container-fluid p-4 file-viewer-shell">
+                <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+                    <h5 class="mb-0"><i class="fas fa-file-alt me-2"></i>${this.escapeHtml(fileName)}</h5>
+                    <div class="d-flex align-items-center gap-2">
+                        ${extraToolbarHtml}
+                        <button type="button" class="btn btn-sm btn-outline-secondary" onclick="window.datasetManager.clearFileView()">
+                            <i class="fas fa-times"></i> Close
+                        </button>
+                    </div>
+                </div>
+                ${bodyHtml}
+            </div>
+        `;
+    }
+
+    copyFileViewText() {
+        const code = document.querySelector('.file-viewer-shell .json-code, .file-viewer-shell .file-text-content code');
+        if (!code || !navigator.clipboard) {
+            return;
+        }
+        const text = code.textContent || '';
+        navigator.clipboard.writeText(text).then(() => {
+            const btn = document.querySelector('.file-viewer-shell .json-copy-btn');
+            if (btn) {
+                const prev = btn.innerHTML;
+                btn.innerHTML = '<i class="fas fa-check"></i> Copied';
+                setTimeout(() => { btn.innerHTML = prev; }, 1500);
+            }
+        }).catch((err) => console.warn('Copy failed:', err));
+    }
+
+    /**
      * Display text file content in center panel
      */
     async displayTextFile(datasetUuid, filePath, fileName, directory) {
@@ -1023,36 +1207,28 @@ class DatasetManager {
             const data = await response.json();
 
             if (data.success && data.type === 'text') {
-                // Display text content with syntax highlighting for JSON
-                const isJson = fileName.toLowerCase().endsWith('.json');
-                const content = data.content;
-                
-                let contentHtml = '';
-                if (isJson) {
-                    try {
-                        const jsonObj = JSON.parse(content);
-                        contentHtml = `<pre class="file-text-content p-3 rounded"><code>${this.escapeHtml(JSON.stringify(jsonObj, null, 2))}</code></pre>`;
-                    } catch (e) {
-                        // Not valid JSON, display as plain text
-                        contentHtml = `<pre class="file-text-content p-3 rounded" style="white-space: pre-wrap; word-wrap: break-word;"><code>${this.escapeHtml(content)}</code></pre>`;
-                    }
-                } else {
-                    contentHtml = `<pre class="file-text-content p-3 rounded" style="white-space: pre-wrap; word-wrap: break-word;"><code>${this.escapeHtml(content)}</code></pre>`;
-                }
-
-                viewerContainer.innerHTML = `
-                    <div class="container-fluid p-4">
-                        <div class="d-flex justify-content-between align-items-center mb-3">
-                            <h5><i class="fas fa-file-alt me-2"></i>${this.escapeHtml(fileName)}</h5>
-                            <button class="btn btn-sm btn-outline-secondary" onclick="window.datasetManager.clearFileView()">
-                                <i class="fas fa-times"></i> Close
-                            </button>
-                        </div>
-                        <div class="file-content-viewer" style="max-height: calc(100vh - 200px); overflow-y: auto;">
-                            ${contentHtml}
-                        </div>
+                const formatted = this.formatTextFileContent(
+                    data.content,
+                    fileName,
+                    data.mime_type || ''
+                );
+                const toolbar = formatted.isJson ? `
+                    <span class="badge bg-secondary">${formatted.mode === 'pretty' ? 'Pretty JSON' : 'Formatted JSON'}</span>
+                    <button type="button" class="btn btn-sm btn-outline-secondary json-copy-btn"
+                            onclick="window.datasetManager.copyFileViewText()" title="Copy to clipboard">
+                        <i class="fas fa-copy"></i> Copy
+                    </button>
+                ` : '';
+                const truncateNote = formatted.truncated
+                    ? '<div class="alert alert-warning py-2 small mb-2">File is very large; showing the first portion only.</div>'
+                    : '';
+                const bodyHtml = `
+                    ${truncateNote}
+                    <div class="file-content-viewer" style="max-height: calc(100vh - 200px); overflow: auto;">
+                        ${formatted.html}
                     </div>
                 `;
+                viewerContainer.innerHTML = this.buildFileViewerShell(fileName, bodyHtml, toolbar);
             } else {
                 viewerContainer.innerHTML = `
                     <div class="container-fluid p-4">
