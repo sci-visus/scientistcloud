@@ -77,10 +77,10 @@ body {
 }
 
 .sidebar {
-  width: var(--sidebar-width, 280px);  /* Resizable via CSS variable */
-  flex: 0 0 var(--sidebar-width, 280px);
-  min-width: 200px;  /* Minimum width to prevent collapse */
-  max-width: min(420px, 42vw);  /* Keep room for dashboard + details pane */
+  width: var(--sidebar-width, 300px);  /* Resizable via CSS variable */
+  flex: 0 0 var(--sidebar-width, 300px);
+  min-width: 220px;
+  max-width: min(560px, 58vw);
   border-right: 1px solid var(--panel-border);
   padding-top: 1rem;
   padding-bottom: 1rem;
@@ -136,8 +136,8 @@ body {
 .details {
   width: var(--details-width, 320px);  /* Resizable via CSS variable */
   flex: 0 0 var(--details-width, 320px);
-  min-width: 200px;  /* Minimum width to prevent collapse */
-  max-width: min(420px, 42vw);
+  min-width: 220px;
+  max-width: min(520px, 48vw);
   border-left: 1px solid var(--panel-border);
   overflow: hidden; /* Prevent sidebar itself from scrolling */
   display: flex;
@@ -201,7 +201,8 @@ body {
 
 /* Resize handles */
 .resize-handle {
-  width: 4px;
+  width: 8px;
+  flex: 0 0 8px;
   background-color: transparent;
   cursor: col-resize;
   position: relative;
@@ -209,6 +210,7 @@ body {
   transition: background-color 0.2s;
   user-select: none;
   -webkit-user-select: none;
+  touch-action: none;
 }
 
 .resize-handle:hover {
@@ -487,16 +489,78 @@ body:not(.light-theme) .viewer-container #dashboardFrame {
 
 .dataset-item {
   margin-bottom: 0.25rem;
+  min-width: 0;
+}
+
+.dataset-header {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 0.35rem;
+  min-width: 0;
+}
+
+/* Expand/collapse files: always visible on the left */
+.dataset-header .dataset-files-toggle {
+  order: -1;
+  flex: 0 0 1.75rem;
+  width: 1.75rem;
+  height: 1.75rem;
+  padding: 0;
+  margin: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: none;
+  border: none;
+  color: var(--fg-color);
+  cursor: pointer;
+  opacity: 0.85;
+  transition: transform 0.2s, opacity 0.2s;
+}
+
+.dataset-header .dataset-files-toggle:hover {
+  opacity: 1;
+}
+
+.dataset-header .dataset-files-toggle.expanded {
+  transform: rotate(90deg);
+}
+
+.dataset-header .dataset-link {
+  order: 0;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.dataset-row-badge,
+.dataset-header > .badge {
+  order: 1;
+  flex-shrink: 0;
+  margin-left: 0.25rem;
+}
+
+.dataset-header .retry-conversion-btn {
+  order: 2;
+  flex-shrink: 0;
+}
+
+.dataset-row-icon {
+  flex-shrink: 0;
+  margin-right: 0.35rem;
+  width: 1em;
+  text-align: center;
 }
 
 .dataset-link {
   display: flex;
   align-items: center;
-  padding: 0.5rem;
+  padding: 0.35rem 0.5rem;
   border-radius: 0.25rem;
   transition: background-color 0.2s;
   text-decoration: none;
   color: var(--fg-color);
+  min-width: 0;
 }
 
 .dataset-link:hover {
@@ -510,15 +574,21 @@ body:not(.light-theme) .viewer-container #dashboardFrame {
 }
 
 .dataset-name {
-  flex: 1;
+  flex: 1 1 auto;
+  min-width: 0;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
+.dataset-link .badge {
+  flex-shrink: 0;
+  margin-left: 0.35rem;
+}
+
 .badge {
   font-size: 0.75rem;
-  margin-left: 0.5rem;
+  margin-left: 0.35rem;
 }
 
 /* Override badge background colors for upload pipeline statuses */
@@ -608,8 +678,16 @@ body:not(.light-theme) .viewer-container #dashboardFrame {
 }
 
 .folder-name {
-  flex: 1;
+  flex: 1 1 auto;
+  min-width: 0;
   font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.folder-summary .badge {
+  flex-shrink: 0;
 }
 
 .nested.folder-datasets {

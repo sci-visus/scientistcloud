@@ -750,37 +750,35 @@ class DatasetManager {
         );
         
         return `
-            <div class="dataset-item" data-dataset-id="${datasetId}" data-dataset-uuid="${datasetUuid}">
-                <div class="dataset-header d-flex align-items-center">
-                    <a class="nav-link dataset-link flex-grow-1" href="javascript:void(0)" 
+                <div class="dataset-header">
+                    <button type="button" class="dataset-files-toggle" data-dataset-uuid="${datasetUuid}"
+                            title="Show files in dataset" aria-label="Expand file list">
+                        <i class="fas fa-chevron-right" aria-hidden="true"></i>
+                    </button>
+                    <a class="nav-link dataset-link" href="javascript:void(0)" 
                        data-dataset-id="${datasetId}"
                        data-dataset-name="${datasetName}"
                        data-dataset-uuid="${effectiveUuid}"
-                       data-dataset-server="${datasetServer}">
-                        <i class="${fileIcon} me-2"></i>
+                       data-dataset-server="${datasetServer}"
+                       title="${this.escapeHtml(datasetName)}">
+                        <i class="${fileIcon} dataset-row-icon" aria-hidden="true"></i>
                         <span class="dataset-name">${datasetName}</span>
                     </a>
-                    <div class="dataset-actions d-flex align-items-center gap-2 ms-2">
-                        <span class="badge bg-${statusColor}">${status}</span>
-                        ${showRetry ? `
-                            <button class="btn btn-sm btn-warning retry-conversion-btn" 
-                                    data-dataset-uuid="${datasetUuid}"
-                                    data-dataset-name="${datasetName}"
-                                    title="Retry conversion">
-                                Retry
-                            </button>
-                        ` : ''}
-                        <button class="btn btn-sm btn-link dataset-files-toggle p-0" data-dataset-uuid="${datasetUuid}" title="Toggle files">
-                            <i class="fas fa-chevron-right"></i>
+                    <span class="dataset-row-badge badge bg-${statusColor}">${status}</span>
+                    ${showRetry ? `
+                        <button class="btn btn-sm btn-warning retry-conversion-btn flex-shrink-0"
+                                data-dataset-uuid="${datasetUuid}"
+                                data-dataset-name="${datasetName}"
+                                title="Retry conversion">
+                            Retry
                         </button>
-                    </div>
+                    ` : ''}
                 </div>
                 <div class="dataset-files" id="files-${datasetUuid}" style="display: none;">
                     <div class="dataset-files-content">
                         <p class="text-muted small">Loading files...</p>
                     </div>
                 </div>
-            </div>
         `;
     }
 

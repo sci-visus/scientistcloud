@@ -123,6 +123,43 @@ function formatFileSize($bytes) {
     
     return round($bytes, 2) . ' ' . $units[$pow];
 }
+
+/**
+ * One dataset row in the sidebar: expand toggle (left), name link, badge.
+ *
+ * @param array<string, mixed> $dataset
+ * @param string $badgeHtml raw HTML for trailing badge
+ */
+function render_dataset_sidebar_row($dataset, $badgeHtml) {
+    $id = htmlspecialchars($dataset['id'] ?? $dataset['uuid'] ?? '');
+    $name = htmlspecialchars($dataset['name'] ?? 'Unnamed Dataset');
+    $uuid = htmlspecialchars($dataset['uuid'] ?? $dataset['id'] ?? '');
+    $server = htmlspecialchars(getDatasetServerFlag($dataset));
+    $icon = getFileFormatIcon($dataset['sensor'] ?? '');
+    ?>
+    <div class="dataset-header">
+        <button type="button" class="dataset-files-toggle" data-dataset-uuid="<?php echo $uuid; ?>"
+                title="Show files in dataset" aria-label="Expand file list">
+            <i class="fas fa-chevron-right" aria-hidden="true"></i>
+        </button>
+        <a class="nav-link dataset-link" href="javascript:void(0)"
+           data-dataset-id="<?php echo $id; ?>"
+           data-dataset-name="<?php echo $name; ?>"
+           data-dataset-uuid="<?php echo $uuid; ?>"
+           data-dataset-server="<?php echo $server; ?>"
+           title="<?php echo $name; ?>">
+            <i class="<?php echo $icon; ?> dataset-row-icon" aria-hidden="true"></i>
+            <span class="dataset-name"><?php echo $name; ?></span>
+        </a>
+        <?php echo $badgeHtml; ?>
+    </div>
+    <div class="dataset-files" id="files-<?php echo $uuid; ?>" style="display: none;">
+        <div class="dataset-files-content">
+            <p class="text-muted small">Loading files...</p>
+        </div>
+    </div>
+    <?php
+}
 ?>
 
 <!-- Dataset List Container - JavaScript will replace this content -->
@@ -139,27 +176,11 @@ function formatFileSize($bytes) {
             <!-- Root level datasets (no folder) -->
             <?php foreach ($rootDatasets as $dataset): ?>
                 <div class="dataset-item" data-dataset-id="<?php echo htmlspecialchars($dataset['id']); ?>" data-dataset-uuid="<?php echo htmlspecialchars($dataset['uuid']); ?>">
-                    <div class="dataset-header">
-                        <a class="nav-link dataset-link" href="javascript:void(0)" 
-                           data-dataset-id="<?php echo htmlspecialchars($dataset['id']); ?>"
-                           data-dataset-name="<?php echo htmlspecialchars($dataset['name']); ?>"
-                           data-dataset-uuid="<?php echo htmlspecialchars($dataset['uuid']); ?>"
-                           data-dataset-server="<?php echo getDatasetServerFlag($dataset); ?>">
-                            <i class="<?php echo getFileFormatIcon($dataset['sensor']); ?> me-2"></i>
-                            <span class="dataset-name"><?php echo htmlspecialchars($dataset['name']); ?></span>
-                            <span class="badge bg-<?php echo getStatusColor($dataset['status']); ?> ms-2">
-                                <?php echo htmlspecialchars($dataset['status']); ?>
-                            </span>
-                        </a>
-                        <button class="dataset-files-toggle" data-dataset-uuid="<?php echo htmlspecialchars($dataset['uuid']); ?>" title="Toggle files">
-                            <i class="fas fa-chevron-right"></i>
-                        </button>
-                    </div>
-                    <div class="dataset-files" id="files-<?php echo htmlspecialchars($dataset['uuid']); ?>" style="display: none;">
-                        <div class="dataset-files-content">
-                            <p class="text-muted small">Loading files...</p>
-                        </div>
-                    </div>
+                    <?php render_dataset_sidebar_row(
+                        $dataset,
+                        '<span class="dataset-row-badge badge bg-' . getStatusColor($dataset['status']) . '">'
+                            . htmlspecialchars($dataset['status']) . '</span>'
+                    ); ?>
                 </div>
             <?php endforeach; ?>
             
@@ -445,35 +466,7 @@ function formatFileSize($bytes) {
     margin-bottom: 0.5rem;
 }
 
-.dataset-header {
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-}
-
-.dataset-header .dataset-link {
-    flex: 1;
-}
-
-.dataset-files-toggle {
-    background: none;
-    border: none;
-    color: var(--fg-color);
-    cursor: pointer;
-    padding: 0.25rem 0.5rem;
-    display: flex;
-    align-items: center;
-    transition: transform 0.2s;
-    opacity: 0.7;
-}
-
-.dataset-files-toggle:hover {
-    opacity: 1;
-}
-
-.dataset-files-toggle.expanded {
-    transform: rotate(90deg);
-}
+/* dataset-header / toggle layout: see assets/css/main.css */
 
 .dataset-files {
     padding-left: 1.5rem;

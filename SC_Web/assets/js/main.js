@@ -808,19 +808,35 @@ function showSettingsModal() {
     alert('Settings functionality not yet implemented');
 }
 
+const PANEL_MIN_MAIN_WIDTH = 340;
+
+function getOtherPanelWidth(selector) {
+    const el = document.querySelector(selector);
+    if (!el || el.classList.contains('collapsed')) {
+        return 0;
+    }
+    return el.offsetWidth || 0;
+}
+
 /** Clamp persisted panel widths so a bad resize cannot crush the dashboard column */
 function clampSidebarWidth(width) {
     const n = Number(width);
     if (!Number.isFinite(n)) return null;
-    const max = Math.min(420, Math.floor(window.innerWidth * 0.42));
-    return Math.max(200, Math.min(n, max));
+    const detailsW = getOtherPanelWidth('#detailSidebar');
+    const handles = 24;
+    const maxByViewport = window.innerWidth - detailsW - PANEL_MIN_MAIN_WIDTH - handles;
+    const max = Math.max(280, Math.min(560, Math.floor(window.innerWidth * 0.58), maxByViewport));
+    return Math.max(220, Math.min(n, max));
 }
 
 function clampDetailsWidth(width) {
     const n = Number(width);
     if (!Number.isFinite(n)) return null;
-    const max = Math.min(420, Math.floor(window.innerWidth * 0.42));
-    return Math.max(200, Math.min(n, max));
+    const sidebarW = getOtherPanelWidth('#folderSidebar');
+    const handles = 24;
+    const maxByViewport = window.innerWidth - sidebarW - PANEL_MIN_MAIN_WIDTH - handles;
+    const max = Math.max(260, Math.min(520, Math.floor(window.innerWidth * 0.48), maxByViewport));
+    return Math.max(220, Math.min(n, max));
 }
 
 /**
