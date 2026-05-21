@@ -407,7 +407,7 @@ def serve_layout():
                 )
             if logic_shape:
                 estimated_voxels = int(np.prod(logic_shape))
-                max_voxels = int(os.getenv("SC_3DPLOTLY_MAX_VOXELS", "20000000"))
+                max_voxels = int(os.getenv("SC_3DPLOTLY_MAX_VOXELS", "41000000"))
                 if estimated_voxels > max_voxels:
                     raise RuntimeError(
                         f"3D Plotly currently reads the selected volume into memory. "
