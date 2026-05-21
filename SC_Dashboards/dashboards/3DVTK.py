@@ -7,6 +7,7 @@
 import os
 import requests
 import time
+import traceback
 
 # this may be dangerous, only for local testing/debugging
 os.environ["BOKEH_ALLOW_WS_ORIGIN"] = "*"
@@ -68,15 +69,16 @@ except ImportError:
 deploy_server = os.getenv('DEPLOY_SERVER')
 
 # Initialize dashboard using utility functions
-# Check if running locally - if no URL args, we're in local mode
+# Local dev only when explicitly enabled (never infer from missing URL args — health checks and
+# bare /3DVTK/ hits would otherwise load a developer-only path and crash in Docker).
 from bokeh.plotting import curdoc
 doc = curdoc()
 request = doc.session_context.request if hasattr(doc, 'session_context') and doc.session_context else None
 has_url_args = request and request.arguments and len(request.arguments) > 0
-DATA_IS_LOCAL = not has_url_args
+DATA_IS_LOCAL = os.getenv('SC_DASHBOARD_LOCAL_DEV', '').lower() in ('1', 'true', 'yes')
 
-local_base_dir = f'/Users/amygooch/GIT/SCI/DATA/turbine/turbin_visus'
- 
+local_base_dir = os.getenv('LOCAL_BASE_DIR', '/Users/amygooch/GIT/SCI/DATA/turbine/turbin_visus')
+
 
 if DATA_IS_LOCAL:
     # Local mode - skip all the complex setup
@@ -815,24 +817,42 @@ uuid_reload_button.on_click(reloadButtonF)
 resolution_slider.on_change('value', volResolutionChange)
 
 UI_INIT_DONE = True
-dataset_path = resolve_dataset_path_for_openvisus(uuid, server)
-if dataset_path.startswith("/") and not os.path.exists(dataset_path):
-    print(f"Path does not exist: {dataset_path}")
-MicroCT = ov.LoadDataset(dataset_path)
-resolution_max =  MicroCT.getMaxResolution()
-resolution_slider.end = int(resolution_max)
-resolution_val= int(resolution_slider.value)
-if (resolution_val >resolution_max):
-    resolution_val =  int(resolution_max)/3
-print(resolution_max)
-print(resolution_val)
 
-vol=MicroCT.read(max_resolution=resolution_val)
+def _load_initial_volume():
+    global MicroCT, volume_data, volume_resolution, volume_update_counter
+    dataset_path = resolve_dataset_path_for_openvisus(uuid, server)
+    if dataset_path.startswith("/") and not os.path.exists(dataset_path):
+        raise FileNotFoundError(f"Dataset path does not exist: {dataset_path}")
+    MicroCT = ov.LoadDataset(dataset_path)
+    resolution_max = MicroCT.getMaxResolution()
+    resolution_slider.end = int(resolution_max)
+    resolution_val = int(resolution_slider.value)
+    if resolution_val > resolution_max:
+        resolution_val = int(resolution_max) / 3
+    print(resolution_max)
+    print(resolution_val)
+    vol = MicroCT.read(max_resolution=resolution_val)
+    volume_data = vol
+    volume_resolution = resolution_val
+    volume_update_counter = 0
+    return vol, resolution_val
 
-# Initialize the volume data
-volume_data = vol
-volume_resolution = resolution_val
-volume_update_counter = 0
+try:
+    if not has_url_args and not DATA_IS_LOCAL:
+        raise RuntimeError(
+            "Missing dataset parameters. Open this dashboard from the portal with "
+            "?uuid=...&server=...&name=..."
+        )
+    vol, resolution_val = _load_initial_volume()
+except Exception as load_err:
+    print(f"[3DVTK][ERROR] Failed to load dataset: {load_err}")
+    traceback.print_exc()
+    err_div = Div(
+        text=f"<h2>3D VTK could not load this dataset</h2><p>{load_err}</p>",
+        styles={'color': '#dc3545', 'padding': '20px'},
+    )
+    curdoc().add_root(err_div)
+    raise
 
 # Create the initial volume pane
 initial_volume = get_current_volume_pane()

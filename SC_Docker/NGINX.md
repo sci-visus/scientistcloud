@@ -12,7 +12,8 @@ SC_Docker/nginx/
 ├── templates/
 │   └── scientistcloud-server.conf.template   # → conf.d/scientistcloud-server.conf (envsubst)
 ├── includes/
-│   └── scientistcloud-locations.conf         # portal, SCLib, dozzle, dashboards
+│   ├── scientistcloud-locations.conf         # portal, SCLib, dozzle, dashboards
+│   └── scientistcloud-bokeh-static-map.conf  # Referer → Bokeh container for /static/
 └── conf.d/
     ├── README.md
     ├── dashboard_auth_gate.conf              # source (setup copies to dashboards/)

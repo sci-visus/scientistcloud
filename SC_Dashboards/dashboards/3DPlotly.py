@@ -44,6 +44,16 @@ sys.path.append('/home/ViSOAR/dataportal/openvisuspy/src')
 stored_uuid = None
 stored_server = None
 stored_name = None
+# Set True when loaded in portal iframe (?embedded=1) — portal already has its own chrome.
+embedded_in_portal = False
+
+
+def _query_flag(search, key):
+    if not search:
+        return False
+    params = parse_qs(unquote(search).lstrip('?'))
+    val = (params.get(key) or [''])[0]
+    return str(val).lower() in ('1', 'true', 'yes')
 
 
 def _is_remote_identifier(value):
@@ -357,8 +367,12 @@ def check_auth():
 dataset_url = None
 timesteps = None
 
-# Helper function to create header banner
-def create_header_banner(dataset_name=None):
+# Helper function to create header banner (hidden when embedded in portal — avoids dashboard-in-dashboard UI)
+def create_header_banner(dataset_name=None, show=None):
+    if show is None:
+        show = not embedded_in_portal
+    if not show:
+        return html.Div(style={'display': 'none'})
     sc_blue = "#4E477F"
     title_text = f"ScientistCloud | 3D Plotly Dashboard: {dataset_name}" if dataset_name else "ScientistCloud | 3D Plotly Dashboard"
     header_banner = html.Div(
@@ -474,7 +488,6 @@ def serve_layout():
 # Set the layout function
 app.layout = html.Div("Initializing...")
 app.layout = html.Div([
-    create_header_banner(),
     dcc.Location(id='url', refresh=False),
     dcc.Interval(id='interval-component', interval=1000, n_intervals=0, max_intervals=1),
 
@@ -510,7 +523,8 @@ app.layout = html.Div([
 )
 def initialize_dataset(n_intervals,search):
     print('initialize_dataset triggered with search:', search)
-    global dataset_url, timesteps
+    global dataset_url, timesteps, embedded_in_portal
+    embedded_in_portal = _query_flag(search, 'embedded')
     query_params = parse_qs(unquote(search).lstrip('?'))
     uuid = query_params.get('uuid', [None])[0]
     server = query_params.get('server', [None])[0]

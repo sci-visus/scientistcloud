@@ -26,10 +26,10 @@ resolve_dashboard_health_url() {
         return 0
     fi
 
-    # Default "/health" in JSON targets server root; Bokeh/Panel apps mount under /AppName/.
-    # Most dashboards have no /AppName/health route — probe the app index (same as darkmatter/ORNL).
-    if [ "$is_bokeh_like" = true ] && [ "$hpath" = "/health" ] && [ -n "$app_base" ]; then
-        echo "http://localhost:${port}/${app_base}/"
+    # Default "/health" in JSON: probe Bokeh *server* root, not /AppName/.
+    # Hitting /AppName/ runs the full app script (auth, OpenVisus LoadDataset) every 30s.
+    if [ "$is_bokeh_like" = true ] && [ "$hpath" = "/health" ]; then
+        echo "http://localhost:${port}/"
         return 0
     fi
 

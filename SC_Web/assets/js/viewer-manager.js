@@ -995,7 +995,8 @@ class ViewerManager {
         const separator = url.includes('?') ? '&' : '?';
         // Use currentTheme already declared at function start (line 692)
         url += `${separator}theme=${encodeURIComponent(currentTheme)}`;
-        
+        url += '&embedded=1';
+
         return url;
     }
 

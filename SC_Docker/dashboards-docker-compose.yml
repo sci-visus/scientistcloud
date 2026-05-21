@@ -1,6 +1,6 @@
 # Dashboard Services - Auto-generated from dashboard-registry.json
 # DO NOT EDIT MANUALLY - Regenerate using scripts/generate_docker_compose.sh
-# Generated: Thu May 21 15:23:02 CDT 2026
+# Generated: Thu May 21 16:25:49 CDT 2026
 
 services:
   # 3D Plotly Dashboard
@@ -62,7 +62,7 @@ services:
       - ${VISUS_DB}:/mnt/visus_db
       - ${VISUS_DATASETS}:/mnt/visus_datasets
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8051/3DVTK/"]
+      test: ["CMD", "curl", "-f", "http://localhost:8051/"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -95,7 +95,7 @@ services:
       - ${VISUS_DB}:/mnt/visus_db
       - ${VISUS_DATASETS}:/mnt/visus_datasets
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8054/OpenVisusSlice/"]
+      test: ["CMD", "curl", "-f", "http://localhost:8054/"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -128,7 +128,7 @@ services:
       - ${VISUS_DB}:/mnt/visus_db
       - ${VISUS_DATASETS}:/mnt/visus_datasets
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8053/magicscan/"]
+      test: ["CMD", "curl", "-f", "http://localhost:8053/"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -161,7 +161,7 @@ services:
       - ${VISUS_DB}:/mnt/visus_db
       - ${VISUS_DATASETS}:/mnt/visus_datasets
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8057/4d_dashboardopt/"]
+      test: ["CMD", "curl", "-f", "http://localhost:8057/"]
       interval: 30s
       timeout: 10s
       retries: 3
