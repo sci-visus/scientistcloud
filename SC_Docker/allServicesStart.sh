@@ -12,8 +12,11 @@
 #   s   SCLib (auth, fastapi, background-service) — rebuild via scientistCloudLib/Docker/start.sh
 #   w   SC_Web portal (scientistcloud-portal) — rebuild via SC_Docker/start.sh
 #   d   All enabled dashboards — init, build, docker-compose up, nginx configs
-#   x   SC edge nginx — scientistcloud-nginx + setup_dashboards_nginx.sh sc (+ dozzle)
-#   z   Dozzle log UI (visstore_dozzle) — https://DOMAIN/dozzle/
+#   x   SC edge nginx — scientistcloud-nginx, default.conf override, certs, dashboards, dozzle
+#   z   Dozzle log UI (visstore_dozzle) — https://DOMAIN/dozzle/  (also runs with x)
+#
+# No manual nginx/dozzle steps needed when repo is up to date — mode x handles:
+#   nginx/conf.d/default.conf, scientistcloud-server.conf.template, visstore_dozzle, cert paths
 #
 # Long flags (same modes):
 #   -s, --sclib-only          SCLib rebuild
@@ -279,6 +282,47 @@ ensure_docker_network() {
     fi
 }
 
+# Required SC nginx files (replaces manual default.conf / visstore_nginx steps)
+ensure_sc_nginx_files() {
+    local missing=0 f
+    for f in \
+        nginx/conf.d/default.conf \
+        nginx/templates/scientistcloud-server.conf.template \
+        nginx/includes/scientistcloud-locations.conf \
+        docker-compose.nginx.yml; do
+        if [ ! -f "$PORTAL_DOCKER_DIR/$f" ]; then
+            echo "❌ Missing SC_Docker/$f"
+            missing=1
+        fi
+    done
+    if [ "$missing" -ne 0 ]; then
+        echo "   Run: cd $SCIENTISTCLOUD_DIR && git pull && git checkout -B workingPrivateRepo origin/workingPrivateRepo"
+        exit 1
+    fi
+}
+
+# Quick edge checks after nginx starts (replaces manual curl smoke tests)
+verify_edge_nginx() {
+    local domain="${DOMAIN_NAME:-scientistcloud.com}"
+    if ! docker ps --format '{{.Names}}' | grep -q "^${NGINX_CONTAINER}$"; then
+        return 1
+    fi
+    docker exec "$NGINX_CONTAINER" nginx -t >/dev/null 2>&1 || return 1
+    local code
+    code=$(curl -s -o /dev/null -w '%{http_code}' -H "Host: $domain" "http://127.0.0.1/portal/health" 2>/dev/null || echo "000")
+    if [ "$code" = "200" ]; then
+        echo "   ✅ HTTP /portal/health → $code (Host: $domain)"
+        return 0
+    fi
+    code=$(curl -sk -o /dev/null -w '%{http_code}' -H "Host: $domain" "https://127.0.0.1/portal/health" 2>/dev/null || echo "000")
+    if [ "$code" = "200" ]; then
+        echo "   ✅ HTTPS /portal/health → $code"
+        return 0
+    fi
+    echo "   ⚠️  /portal/health returned HTTP=$code (portal may still be starting)"
+    return 0
+}
+
 # Compose files for edge nginx + optional dozzle (SC-native)
 nginx_compose_files() {
     local files="-f docker-compose.yml -f docker-compose.nginx.yml"
@@ -445,8 +489,10 @@ mode_nginx() {
     popd >/dev/null
 
     ensure_docker_network
+    ensure_sc_nginx_files
     discover_certbot_paths || {
         echo "❌ Cannot start $NGINX_CONTAINER without SSL certs (export SC_CERTBOT_CONF / SC_CERTBOT_WWW)"
+        echo "   One-time: ./scripts/migrate-ssl-certs.sh /path/to/old/Docker/certbot"
         exit 1
     }
     pushd "$PORTAL_DOCKER_DIR" >/dev/null
@@ -466,9 +512,9 @@ mode_nginx() {
     if docker ps --format '{{.Names}}' | grep -q "^${NGINX_CONTAINER}$"; then
         docker exec "$NGINX_CONTAINER" nginx -t && docker exec "$NGINX_CONTAINER" nginx -s reload
         echo "✅ $NGINX_CONTAINER reloaded"
+        verify_edge_nginx || true
     else
-        echo "⚠️  $NGINX_CONTAINER not running — add scientistcloud-server.conf (see NGINX.md) then:"
-        echo "   cd $PORTAL_DOCKER_DIR && docker compose -f docker-compose.yml -f docker-compose.nginx.yml up -d"
+        echo "⚠️  $NGINX_CONTAINER not running — see NGINX.md or run: ./allServicesStart.sh x"
     fi
 
     mode_dozzle
