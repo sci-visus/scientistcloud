@@ -198,12 +198,28 @@ function sc_find_dashboard_config(string $dashboardType): ?array
 }
 
 /**
- * Build an absolute dashboard URL (may include gateway credentials in query params).
+ * Whether the dataset stores S3 keys the dashboard can load after login (no URL secrets needed).
+ *
+ * @param array<string,mixed> $dataset
+ */
+function sc_dataset_has_stored_s3_credentials(array $dataset): bool
+{
+    [$accessKey, $secretKey] = sc_extract_s3_credentials_from_dataset($dataset);
+    return $accessKey !== '' && $secretKey !== '';
+}
+
+/**
+ * Absolute /dashboard/… URL used as post-login destination (return_to).
  *
  * @param array<string,mixed> $dataset Dataset from getDatasetForDashboardLink().
+ * @param bool $embedRemoteCredentials When false, omit gateway keys from the URL (Mongo supplies them after login).
  */
-function sc_build_dashboard_share_url(array $dataset, string $dashboardType, ?string $origin = null): string
-{
+function sc_build_dashboard_destination_url(
+    array $dataset,
+    string $dashboardType,
+    ?string $origin = null,
+    bool $embedRemoteCredentials = true
+): string {
     if (sc_dataset_is_ornl_chess_strain($dataset)) {
         $dashboardType = 'ORNL_CHESS_strain';
     }
@@ -231,7 +247,10 @@ function sc_build_dashboard_share_url(array $dataset, string $dashboardType, ?st
     );
 
     $dashId = strtolower((string)($dash['id'] ?? $dashboardType));
-    if ($dashId === 'ornl_chess_strain' || sc_dataset_is_ornl_chess_strain($dataset)) {
+    $isOrnl = ($dashId === 'ornl_chess_strain' || sc_dataset_is_ornl_chess_strain($dataset));
+    $omitUrlCreds = $isOrnl && !$embedRemoteCredentials && sc_dataset_has_stored_s3_credentials($dataset);
+
+    if ($isOrnl && !$omitUrlCreds) {
         $strainLink = sc_resolve_strain_json_remote_link($dataset);
         if ($strainLink !== '') {
             $low = strtolower(trim($strainLink));
@@ -254,4 +273,15 @@ function sc_build_dashboard_share_url(array $dataset, string $dashboardType, ?st
     }
 
     return rtrim($origin, '/') . $path;
+}
+
+/**
+ * Shareable link: portal login first, then redirect to the dashboard (return_to).
+ *
+ * @param array<string,mixed> $dataset Dataset from getDatasetForDashboardLink().
+ */
+function sc_build_dashboard_share_url(array $dataset, string $dashboardType, ?string $origin = null): string
+{
+    $destination = sc_build_dashboard_destination_url($dataset, $dashboardType, $origin, false);
+    return SC_PORTAL_LOGIN_URL . '?return_to=' . rawurlencode($destination);
 }

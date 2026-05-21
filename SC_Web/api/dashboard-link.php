@@ -79,14 +79,15 @@ try {
     }
 
     $url = sc_build_dashboard_share_url($dataset, $dashboardType, $origin);
+    $dashboardDestination = sc_build_dashboard_destination_url($dataset, $dashboardType, $origin, false);
 
     $containsSecrets = (bool) preg_match(
         '/([?&](access_key|secret_key|secret_access_key|access_key_id)=)/i',
-        $url
+        $dashboardDestination
     );
     $hasPlaceholderCreds = (bool) preg_match(
         '/([?&](access_key|secret_key|secret_access_key|access_key_id)=\.\.\.)/i',
-        $url
+        $dashboardDestination
     );
 
     if ($hasPlaceholderCreds) {
@@ -104,11 +105,12 @@ try {
     echo json_encode([
         'success' => true,
         'url' => $url,
+        'dashboard_url' => $dashboardDestination,
         'dashboard' => normalizeDashboardType($dashboardType) ?? $dashboardType,
         'contains_credentials' => $containsSecrets,
         'notice' => $containsSecrets
-            ? 'This link includes S3/gateway credentials. Share only with people you trust.'
-            : null,
+            ? 'Recipients sign in first; gateway credentials are not embedded in this share link when possible.'
+            : 'Recipients sign in at the portal, then open the dashboard with this dataset.',
     ]);
 } catch (Exception $e) {
     ob_end_clean();
