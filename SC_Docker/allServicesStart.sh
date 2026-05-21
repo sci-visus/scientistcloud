@@ -353,8 +353,13 @@ mode_nginx() {
     ensure_docker_network
     pushd "$PORTAL_DOCKER_DIR" >/dev/null
     if [ -f docker-compose.nginx.yml ]; then
-        docker compose -f docker-compose.yml -f docker-compose.nginx.yml up -d scientistcloud-nginx 2>/dev/null || \
-            docker-compose -f docker-compose.yml -f docker-compose.nginx.yml up -d scientistcloud-nginx 2>/dev/null || true
+        if ! docker compose -f docker-compose.yml -f docker-compose.nginx.yml up -d scientistcloud-nginx 2>&1; then
+            docker-compose -f docker-compose.yml -f docker-compose.nginx.yml up -d scientistcloud-nginx 2>&1 || {
+                echo "❌ Failed to start $NGINX_CONTAINER (check cert paths SC_CERTBOT_CONF / SC_CERTBOT_WWW and port 80/443)"
+                docker ps -a --filter "name=$NGINX_CONTAINER" --format '{{.Names}} {{.Status}}' 2>/dev/null || true
+                exit 1
+            }
+        fi
     fi
     popd >/dev/null
 

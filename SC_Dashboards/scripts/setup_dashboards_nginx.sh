@@ -123,23 +123,27 @@ echo "   Cleaning up old dashboard configs..."
 REMOVED_COUNT=0
 
 if [ -d "$MAIN_NGINX_CONF_DIR" ]; then
-    # Remove files without server blocks (old format that causes errors)
-    while IFS= read -r OLD_CONFIG; do
-        if [ -f "$OLD_CONFIG" ]; then
-            # Check if file doesn't start with a server block
-            if ! grep -q "^server {" "$OLD_CONFIG" 2>/dev/null; then
-                echo "   🗑️  Removing old format config (no server block): $(basename "$OLD_CONFIG")"
-                rm -f "$OLD_CONFIG" 2>/dev/null || true
-                REMOVED_COUNT=$((REMOVED_COUNT + 1))
+    # SC-native: conf.d/*_dashboard.conf are location-block *sources* (copied into dashboards/).
+    # Do not delete them here — that broke setup (0 copied, nginx test failed, no scientistcloud-nginx).
+    if [ "$USE_SC_NATIVE" != true ]; then
+        # Legacy Visus: remove mistaken http-level location files from conf.d root
+        while IFS= read -r OLD_CONFIG; do
+            if [ -f "$OLD_CONFIG" ]; then
+                if ! grep -q "^server {" "$OLD_CONFIG" 2>/dev/null; then
+                    echo "   🗑️  Removing old format config (no server block): $(basename "$OLD_CONFIG")"
+                    rm -f "$OLD_CONFIG" 2>/dev/null || true
+                    REMOVED_COUNT=$((REMOVED_COUNT + 1))
+                fi
             fi
-        fi
-    done < <(find "$MAIN_NGINX_CONF_DIR" -maxdepth 1 -name "*_dashboard.conf" -o -name "*Dashboard*.conf" 2>/dev/null || true)
-    
-    # Also clean up dashboard subdirectory
+        done < <(find "$MAIN_NGINX_CONF_DIR" -maxdepth 1 -name "*_dashboard.conf" -o -name "*Dashboard*.conf" 2>/dev/null || true)
+    fi
+
+    # Refresh runtime copies only (mounted into scientistcloud-nginx)
     if [ -d "$DASHBOARD_SUBDIR" ]; then
         find "$DASHBOARD_SUBDIR" -name "*_dashboard.conf" -delete 2>/dev/null || true
     fi
-    
+
+    if [ "$USE_SC_NATIVE" != true ]; then
     # Remove uppercase duplicates (e.g., 3DPlotly_dashboard.conf) if lowercase versions exist
     for config_file in "$MAIN_NGINX_CONF_DIR"/*_dashboard.conf; do
         if [ -f "$config_file" ]; then
@@ -152,6 +156,7 @@ if [ -d "$MAIN_NGINX_CONF_DIR" ]; then
             fi
         fi
     done
+    fi
 fi
 
 if [ $REMOVED_COUNT -gt 0 ]; then
