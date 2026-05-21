@@ -485,7 +485,9 @@ mode_nginx() {
             ./scripts/generate_nginx_config.sh "$name" 2>&1 | grep -E '(✅|⚠️|❌|Generated)' || true
         done <<< "$dashboards"
     fi
-    ./scripts/setup_dashboards_nginx.sh sc
+    if ! ./scripts/setup_dashboards_nginx.sh sc; then
+        echo "⚠️  setup_dashboards_nginx.sh had errors — continuing to start $NGINX_CONTAINER"
+    fi
     popd >/dev/null
 
     ensure_docker_network
