@@ -108,6 +108,15 @@ fi
 # Store path without trailing slash for backward compatibility (if needed elsewhere)
 NGINX_PATH_WITHOUT_SLASH="${NGINX_PATH%/}"
 
+# Bokeh --use-xheaders: browser URLs must match the public nginx path, not the in-container app path.
+if [ "$NGINX_PATH_WITHOUT_SLASH" != "$APP_PATH_NO_SLASH" ]; then
+    FORWARDED_PREFIX="$NGINX_PATH_WITHOUT_SLASH"
+    COOKIE_PATH="${NGINX_PATH}"
+else
+    FORWARDED_PREFIX="$APP_PATH_NO_SLASH"
+    COOKIE_PATH="${APP_PATH}"
+fi
+
 # Remove trailing "_dashboard" if present ONLY for the output filename
 # (e.g., "4d_dashboard" -> remove "_dashboard" -> "4d" -> "4d_dashboard.conf")
 DASHBOARD_NAME_LOWER_FOR_FILE=$(echo "$CONTAINER_NAME_SERVICE" | sed 's/_dashboard$//')
@@ -237,6 +246,37 @@ location ${NGINX_PATH}static/extensions/panel/ {
     add_header Cache-Control "public, immutable";
 }
 STATICEOF
+    # When nginx path differs from app path, Bokeh may still emit /3DVTK/static/... URLs
+    # (from X-Forwarded-Prefix /3DVTK on older configs). Proxy those to container /static/.
+    if [ "$NGINX_PATH_WITHOUT_SLASH" != "$APP_PATH_NO_SLASH" ]; then
+        cat >> "$STATIC_TEMP" << STATICEOF
+
+# In-container app-path static (fallback for Panel/Bokeh asset URLs under ${APP_PATH}static/)
+location ${APP_PATH}static/ {
+    set \$upstream_host "dashboard_${CONTAINER_NAME_SERVICE}";
+    set \$upstream_port "${DASHBOARD_PORT}";
+    rewrite ^${APP_PATH}static/(.*)$ /static/\$1 break;
+    proxy_pass http://\$upstream_host:\$upstream_port;
+    proxy_set_header Host \$host;
+    proxy_set_header X-Real-IP \$remote_addr;
+    proxy_set_header X-Forwarded-For "\$proxy_add_x_forwarded_for";
+    proxy_set_header X-Forwarded-Proto \$scheme;
+}
+
+location ${APP_PATH}static/extensions/panel/ {
+    set \$upstream_host "dashboard_${CONTAINER_NAME_SERVICE}";
+    set \$upstream_port "${DASHBOARD_PORT}";
+    rewrite ^${APP_PATH}static/extensions/panel/(.*)$ /static/extensions/panel/\$1 break;
+    proxy_pass http://\$upstream_host:\$upstream_port;
+    proxy_set_header Host \$host;
+    proxy_set_header X-Real-IP \$remote_addr;
+    proxy_set_header X-Forwarded-For "\$proxy_add_x_forwarded_for";
+    proxy_set_header X-Forwarded-Proto \$scheme;
+    expires 1y;
+    add_header Cache-Control "public, immutable";
+}
+STATICEOF
+    fi
 else
     # Other types (vtk, etc.) - no static file section
     echo "# Static files not configured for type: $DASHBOARD_TYPE" > "$STATIC_TEMP"
@@ -246,9 +286,8 @@ fi
 BOKEH_HEADERS_TEMP=$(mktemp)
 if [[ "$DASHBOARD_TYPE" == "bokeh" || "$DASHBOARD_TYPE" == "dash" ]]; then
     cat > "$BOKEH_HEADERS_TEMP" << BOKEHEOF
-    # Cookie path should match the app path, not the nginx path
-    # This ensures cookies set by the app are accessible at the app's path
-    proxy_cookie_path / ${APP_PATH};
+    # Cookie path must match the URL the browser uses (public nginx path when proxied)
+    proxy_cookie_path / ${COOKIE_PATH};
     
     # WebSocket support for Bokeh/Dash
     proxy_http_version 1.1;
@@ -259,10 +298,8 @@ if [[ "$DASHBOARD_TYPE" == "bokeh" || "$DASHBOARD_TYPE" == "dash" ]]; then
     # Otherwise, for Bokeh apps that always use WebSockets, we can set to upgrade
     proxy_set_header Connection "upgrade";
     
-    # Bokeh/Dash-specific headers
-    # Use APP_PATH (without trailing slash) to match the app's actual path, not the nginx path
-    # This matches the working dataExplorer pattern: X-Forwarded-Prefix /dataExplorer
-    proxy_set_header X-Forwarded-Prefix ${APP_PATH_NO_SLASH};
+    # Public URL prefix for Bokeh/Panel static assets and WebSocket URLs in the browser
+    proxy_set_header X-Forwarded-Prefix ${FORWARDED_PREFIX};
     proxy_redirect off;
 BOKEHEOF
 else
