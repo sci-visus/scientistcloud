@@ -229,7 +229,9 @@ git_pull_all() {
         git remote get-url origin 2>/dev/null | grep -q sci-visus/scientistCloudLib || \
             git remote set-url origin https://github.com/sci-visus/scientistCloudLib.git 2>/dev/null || true
         git fetch origin
-        git checkout workingPrivateRepo 2>/dev/null || git checkout -b workingPrivateRepo origin/workingPrivateRepo
+        git reset --hard HEAD 2>/dev/null || true
+        git clean -fd 2>/dev/null || true
+        git checkout -f workingPrivateRepo 2>/dev/null || git checkout -f -b workingPrivateRepo origin/workingPrivateRepo
         git reset --hard origin/workingPrivateRepo
         popd >/dev/null
     fi
@@ -250,19 +252,22 @@ git_pull_all() {
             cp SC_Docker/.env "$env_bak"
         fi
         git fetch origin
+        # Discard local edits to tracked files (e.g. generated dashboards-docker-compose.yml)
+        # so checkout never aborts; deploy always matches GitHub.
+        git reset --hard HEAD 2>/dev/null || true
+        git clean -fd 2>/dev/null || true
+        if git ls-remote --heads origin workingPrivateRepo 2>/dev/null | grep -q workingPrivateRepo; then
+            git checkout -f -B workingPrivateRepo origin/workingPrivateRepo
+            git reset --hard origin/workingPrivateRepo
+        else
+            git checkout -f -B main origin/main 2>/dev/null || git checkout -f origin/main
+            git reset --hard origin/main 2>/dev/null || true
+        fi
         git clean -fd 2>/dev/null || true
         if [ -n "$env_bak" ] && [ -f "$env_bak" ]; then
             mkdir -p SC_Docker
             cp "$env_bak" SC_Docker/.env
             rm -f "$env_bak"
-        fi
-        if git ls-remote --heads origin workingPrivateRepo 2>/dev/null | grep -q workingPrivateRepo; then
-            # -B: attach to branch from detached HEAD; avoids "branch already exists"
-            git checkout -B workingPrivateRepo origin/workingPrivateRepo
-            git reset --hard origin/workingPrivateRepo
-        else
-            git checkout -B main origin/main 2>/dev/null || git checkout -f origin/main
-            git reset --hard origin/main 2>/dev/null || true
         fi
         popd >/dev/null
         if [ -f "$SCLIB_TRYTEST_DIR/env.scientistcloud" ]; then
