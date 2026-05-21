@@ -10,7 +10,7 @@ require_once(__DIR__ . '/includes/auth.php');
 require_once(__DIR__ . '/includes/dataset_manager.php');
 require_once(__DIR__ . '/includes/dashboard_manager.php');
 
-// Start session if not already started
+// Start session if not already started (cookie path=/ set in config via session_cookie_params.php)
 if (session_status() == PHP_SESSION_NONE) {
     session_start();
 }
@@ -33,6 +33,9 @@ if (!$user) {
     header('Location: ' . $loginPath);
     exit;
 }
+
+// Bokeh dashboards read auth_token, not PHPSESSID — refresh on each portal load
+setDashboardAuthCookieFromSession();
 
 // Get user's datasets
 $datasets = getUserDatasets($user['id']);

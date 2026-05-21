@@ -743,6 +743,28 @@ class ViewerManager {
     }
 
     /**
+     * Set auth_token cookie for /dashboard/* before loading the iframe (Bokeh does not read PHPSESSID).
+     */
+    async ensureDashboardAuthCookie() {
+        if (window.IS_PUBLIC_PORTAL === true) {
+            return true;
+        }
+        const isLocal = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+        const url = `${isLocal ? '/api' : '/portal/api'}/dashboard-auth-token.php`;
+        try {
+            const response = await fetch(url, { credentials: 'include' });
+            if (!response.ok) {
+                console.warn('dashboard-auth-token failed:', response.status);
+                return false;
+            }
+            return true;
+        } catch (err) {
+            console.warn('dashboard-auth-token error:', err);
+            return false;
+        }
+    }
+
+    /**
      * Load dashboard content
      */
     async loadDashboardContent(datasetId, datasetName, datasetUuid, datasetServer, dashboardType) {
@@ -871,6 +893,8 @@ class ViewerManager {
             urlTemplate: viewer.url_template,
             generatedUrl: viewerUrl
         });
+
+        await this.ensureDashboardAuthCookie();
         
         // Create iframe
         const iframe = document.createElement('iframe');

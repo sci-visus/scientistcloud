@@ -4,6 +4,8 @@
  * Integrates with scientistCloudLib configuration
  */
 
+require_once(__DIR__ . '/includes/session_cookie_params.php');
+
 // Set error reporting
 // In production, don't display errors to prevent headers being sent
 // Errors will still be logged, but won't output to browser

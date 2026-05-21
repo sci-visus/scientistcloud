@@ -4,7 +4,9 @@
  * Handles user authentication via Auth0
  */
 
-// Start session VERY FIRST
+require_once(__DIR__ . '/includes/session_cookie_params.php');
+
+// Start session after cookie params (path=/ for /portal and /dashboard)
 if (session_status() !== PHP_SESSION_ACTIVE) {
     session_start();
 }

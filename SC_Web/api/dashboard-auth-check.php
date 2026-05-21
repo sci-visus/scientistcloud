@@ -4,6 +4,8 @@
  * Returns 200 when the user has a portal session or valid auth_token cookie.
  */
 
+require_once(__DIR__ . '/../includes/session_cookie_params.php');
+
 if (session_status() !== PHP_SESSION_ACTIVE) {
     session_start();
 }
@@ -18,6 +20,7 @@ try {
     if (hasDashboardAccess()) {
         if (!empty($_SESSION['user_email'])) {
             setDashboardAuthCookieFromSession();
+            header('X-SC-User-Email: ' . $_SESSION['user_email']);
         }
         http_response_code(200);
         echo 'ok';

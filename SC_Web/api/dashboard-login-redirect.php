@@ -4,6 +4,8 @@
  * Used by nginx when auth_request fails on /dashboard/* (avoids encoding long query strings in redirects).
  */
 
+require_once(__DIR__ . '/../includes/session_cookie_params.php');
+
 if (session_status() !== PHP_SESSION_ACTIVE) {
     session_start();
 }
