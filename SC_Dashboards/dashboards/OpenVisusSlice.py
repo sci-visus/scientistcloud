@@ -521,7 +521,7 @@ curdoc().add_root(column(header_banner, row(home_button, info_button), instructi
 
 # Getting the current document
 if __name__.startswith('bokeh'):
-    from openvisuspy import SetupLogger, IsPanelServe, GetBackend, Slices
+    from openvisuspy import SetupLogger, IsPanelServe, Slices
     from OpenVisus import *
     from openvisuspy.probes import ProbeTool
 
