@@ -93,8 +93,8 @@ services:
   # Note: Using existing SCLib services (sclib_auth and sclib_fastapi)
   # These are already running from the SCLib Docker setup
 
-  # Note: Uses existing visstore_nginx from VisusDataPortalPrivate
-  # Portal will be accessible at /portal/ path through existing nginx
+  # Edge nginx: scientistcloud/SC_Docker/nginx/ — see docker-compose.nginx.yml and NGINX.md
+  # Legacy visstore_nginx (VisusDataPortalPrivate) should be retired after cutover.
 
 networks:
   docker_visstore_web:

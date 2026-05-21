@@ -7,16 +7,29 @@
 # inside the server blocks. New dashboards use separate .conf files in
 # conf.d/ which are automatically included by nginx.
 #
-# Usage: ./setup_dashboards_nginx.sh [visus_docker_path]
+# Usage:
+#   ./setup_dashboards_nginx.sh sc
+#     → SC-native: scientistcloud/SC_Docker/nginx/conf.d/dashboards/ (reload scientistcloud-nginx)
+#   ./setup_dashboards_nginx.sh [visus_docker_path]
+#     → Legacy: copy into VisusDataPortalPrivate Docker/nginx (reload visstore_nginx)
 
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 DASHBOARDS_DIR="$(cd "$SCRIPT_DIR/../dashboards" && pwd)"
 CONFIG_DIR="$(cd "$SCRIPT_DIR/../config" && pwd)"
+SC_DOCKER_DIR="$(cd "$SCRIPT_DIR/../../SC_Docker" && pwd)"
 
-# Find VisusDataPortalPrivate Docker directory
-VISUS_DOCKER_PATH="$1"
+# Target: SC-native (recommended) or legacy VisusDataPortalPrivate
+NGINX_TARGET="${1:-}"
+USE_SC_NATIVE=false
+VISUS_DOCKER_PATH=""
+
+if [ "$NGINX_TARGET" = "sc" ] || [ "$NGINX_TARGET" = "--sc" ]; then
+    USE_SC_NATIVE=true
+elif [ -n "$NGINX_TARGET" ]; then
+    VISUS_DOCKER_PATH="$NGINX_TARGET"
+fi
 
 if [ -z "$VISUS_DOCKER_PATH" ]; then
     # Try to find it using same logic as allServicesStart.sh
@@ -49,16 +62,29 @@ if [ -z "$VISUS_DOCKER_PATH" ]; then
     fi
 fi
 
-if [ -z "$VISUS_DOCKER_PATH" ] || [ ! -d "$VISUS_DOCKER_PATH" ]; then
-    echo "❌ VisusDataPortalPrivate Docker directory not found"
-    echo "   Please provide path as argument or set VISUS_DOCKER environment variable"
-    exit 1
+if [ "$USE_SC_NATIVE" = true ]; then
+    MAIN_NGINX_CONF_DIR="$SC_DOCKER_DIR/nginx/conf.d"
+    DASHBOARD_NGINX_CONF_DIR="$SC_DOCKER_DIR/nginx/conf.d"
+    DASHBOARD_SUBDIR="$MAIN_NGINX_CONF_DIR/dashboards"
+    NGINX_CONTAINER_NAME="${SC_NGINX_CONTAINER:-scientistcloud-nginx}"
+    NGINX_TEST_MOUNT="$SC_DOCKER_DIR/nginx"
+    USE_SC_NGINX_TEST=true
+    echo "📋 SC-native nginx target: $DASHBOARD_SUBDIR"
+else
+    if [ -z "$VISUS_DOCKER_PATH" ] || [ ! -d "$VISUS_DOCKER_PATH" ]; then
+        echo "❌ VisusDataPortalPrivate Docker directory not found"
+        echo "   Use: ./setup_dashboards_nginx.sh sc   (ScientistCloud 2.0 — recommended)"
+        echo "   Or provide legacy path: ./setup_dashboards_nginx.sh /path/to/VisusDataPortalPrivate/Docker"
+        exit 1
+    fi
+    MAIN_NGINX_CONF_DIR="$VISUS_DOCKER_PATH/nginx/conf.d"
+    DASHBOARD_NGINX_CONF_DIR="$SC_DOCKER_DIR/nginx/conf.d"
+    DASHBOARD_SUBDIR="$MAIN_NGINX_CONF_DIR/dashboards"
+    NGINX_CONTAINER_NAME="visstore_nginx"
+    NGINX_TEST_MOUNT="$VISUS_DOCKER_PATH/nginx"
+    USE_SC_NGINX_TEST=false
+    echo "📋 Legacy VisusDataPortalPrivate nginx target: $DASHBOARD_SUBDIR"
 fi
-
-MAIN_NGINX_CONF_DIR="$VISUS_DOCKER_PATH/nginx/conf.d"
-DASHBOARD_NGINX_CONF_DIR="$SCRIPT_DIR/../../SC_Docker/nginx/conf.d"
-# Dashboard configs are location blocks, so they go in a subdirectory to avoid http-level includes
-DASHBOARD_SUBDIR="$MAIN_NGINX_CONF_DIR/dashboards"
 
 if [ ! -d "$MAIN_NGINX_CONF_DIR" ]; then
     echo "❌ Main nginx conf.d directory not found: $MAIN_NGINX_CONF_DIR"
@@ -80,12 +106,12 @@ echo "   Target: $DASHBOARD_SUBDIR"
 echo "   (Dashboard configs are location blocks, stored in subdirectory to avoid http-level includes)"
 
 # Check nginx status first - if restarting, stop it to break the loop
-if docker ps --format "{{.Names}}" | grep -q "visstore_nginx"; then
-    NGINX_STATUS=$(docker inspect --format='{{.State.Status}}' visstore_nginx 2>/dev/null || echo "not-found")
+if docker ps --format "{{.Names}}" | grep -q "^${NGINX_CONTAINER_NAME}$"; then
+    NGINX_STATUS=$(docker inspect --format='{{.State.Status}}' "$NGINX_CONTAINER_NAME" 2>/dev/null || echo "not-found")
     if [ "$NGINX_STATUS" = "restarting" ]; then
         echo "⚠️  Nginx container is restarting (likely due to bad configs)"
         echo "   Stopping nginx to break restart loop..."
-        docker stop visstore_nginx 2>/dev/null || true
+        docker stop "$NGINX_CONTAINER_NAME" 2>/dev/null || true
         sleep 2
         echo "   ✅ Nginx stopped"
     fi
@@ -206,39 +232,47 @@ fi
 # Now test and start/reload nginx
 # First, test the configuration using a temporary container (before touching the real one)
 echo "   Testing nginx configuration..."
-NGINX_TEST_OUTPUT=$(docker run --rm -v "$VISUS_DOCKER_PATH/nginx:/etc/nginx:ro" nginx:alpine nginx -t 2>&1)
+if [ "${USE_SC_NGINX_TEST:-false}" = true ]; then
+    DOMAIN_NAME="${DOMAIN_NAME:-scientistcloud.com}"
+    NGINX_TEST_OUTPUT=$(docker run --rm \
+        -e DOMAIN_NAME="$DOMAIN_NAME" \
+        -e NGINX_ENVSUBST_FILTER=DOMAIN_NAME \
+        -v "$NGINX_TEST_MOUNT/nginx.conf:/etc/nginx/nginx.conf:ro" \
+        -v "$NGINX_TEST_MOUNT/templates:/etc/nginx/templates:ro" \
+        -v "$NGINX_TEST_MOUNT/includes:/etc/nginx/includes:ro" \
+        -v "$DASHBOARD_SUBDIR:/etc/nginx/conf.d/dashboards:ro" \
+        nginx:latest /docker-entrypoint.sh nginx -t 2>&1)
+else
+    NGINX_TEST_OUTPUT=$(docker run --rm -v "$NGINX_TEST_MOUNT:/etc/nginx:ro" nginx:alpine nginx -t 2>&1)
+fi
 NGINX_TEST_EXIT=$?
 
 if echo "$NGINX_TEST_OUTPUT" | grep -q "syntax is ok"; then
     echo "   ✅ Configuration test passed"
     
     # Check if nginx container exists
-    if docker ps -a --format "{{.Names}}" | grep -q "visstore_nginx"; then
-        # Container exists - check if it's running
-        NGINX_STATUS=$(docker inspect --format='{{.State.Status}}' visstore_nginx 2>/dev/null || echo "not-found")
+    if docker ps -a --format "{{.Names}}" | grep -q "^${NGINX_CONTAINER_NAME}$"; then
+        NGINX_STATUS=$(docker inspect --format='{{.State.Status}}' "$NGINX_CONTAINER_NAME" 2>/dev/null || echo "not-found")
         
         if [ "$NGINX_STATUS" = "running" ]; then
-            # Container is running - reload it
-            echo "🔄 Reloading nginx..."
-            docker exec visstore_nginx nginx -s reload
+            echo "🔄 Reloading $NGINX_CONTAINER_NAME..."
+            docker exec "$NGINX_CONTAINER_NAME" nginx -s reload
             echo "✅ Nginx reloaded with dashboard configurations"
         else
-            # Container exists but not running - start it
-            echo "🔄 Starting nginx container..."
-            docker start visstore_nginx 2>/dev/null || true
+            echo "🔄 Starting $NGINX_CONTAINER_NAME..."
+            docker start "$NGINX_CONTAINER_NAME" 2>/dev/null || true
             sleep 3
-            
-            # Verify it started
-            NGINX_STATUS=$(docker inspect --format='{{.State.Status}}' visstore_nginx 2>/dev/null || echo "not-found")
+            NGINX_STATUS=$(docker inspect --format='{{.State.Status}}' "$NGINX_CONTAINER_NAME" 2>/dev/null || echo "not-found")
             if [ "$NGINX_STATUS" = "running" ]; then
                 echo "✅ Nginx container started successfully"
             else
                 echo "⚠️  Nginx container status: $NGINX_STATUS"
-                echo "   Check logs: docker logs visstore_nginx"
+                echo "   Check logs: docker logs $NGINX_CONTAINER_NAME"
             fi
         fi
     else
-        echo "ℹ️  Nginx container not found - configurations will be active when nginx starts"
+        echo "ℹ️  Nginx container '$NGINX_CONTAINER_NAME' not found — start with:"
+        echo "   cd $SC_DOCKER_DIR && docker compose -f docker-compose.yml -f docker-compose.nginx.yml up -d scientistcloud-nginx"
     fi
 else
     echo "❌ Nginx configuration test failed"

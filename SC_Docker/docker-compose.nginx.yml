@@ -1,0 +1,37 @@
+# ScientistCloud edge nginx — use with main compose:
+#   docker compose -f docker-compose.yml -f docker-compose.nginx.yml up -d
+#
+# Replaces visstore_nginx from VisusDataPortalPrivate for SC 2.0 deployments.
+
+services:
+  scientistcloud-nginx:
+    image: nginx:latest
+    container_name: scientistcloud-nginx
+    ports:
+      - "${SC_NGINX_HTTP_PORT:-80}:80"
+      - "${SC_NGINX_HTTPS_PORT:-443}:443"
+    environment:
+      - DOMAIN_NAME=${DOMAIN_NAME:-scientistcloud.com}
+      # Only substitute ${DOMAIN_NAME}; leave nginx $variables untouched
+      - NGINX_ENVSUBST_FILTER=DOMAIN_NAME
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx/templates:/etc/nginx/templates:ro
+      - ./nginx/includes:/etc/nginx/includes:ro
+      - ./nginx/conf.d/dashboards:/etc/nginx/conf.d/dashboards:ro
+      - ${SC_CERTBOT_WWW:-./certbot/www}:/var/www/certbot:ro
+      - ${SC_CERTBOT_CONF:-./certbot/conf}:/etc/letsencrypt:ro
+    networks:
+      - docker_visstore_web
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://127.0.0.1/portal/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+    # No hard depends_on — use Docker resolver + set $upstream vars (same as legacy nginx)
+
+networks:
+  docker_visstore_web:
+    external: true

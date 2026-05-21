@@ -1,0 +1,58 @@
+# ScientistCloud edge server blocks (replaces visstore_nginx default.conf.https for SC 2.0).
+# Rendered at container start: DOMAIN_NAME → /etc/nginx/conf.d/scientistcloud-server.conf
+
+server {
+    listen 80;
+    server_name ${DOMAIN_NAME};
+
+    set $portal_upstream "scientistcloud-portal";
+
+    proxy_buffer_size 128k;
+    proxy_buffers 4 256k;
+    proxy_busy_buffers_size 256k;
+    proxy_max_temp_file_size 0;
+    proxy_http_version 1.1;
+    proxy_set_header Connection "";
+
+    client_max_body_size 10G;
+
+    resolver 127.0.0.11 valid=30s;
+    resolver_timeout 5s;
+
+    include /etc/nginx/includes/scientistcloud-locations.conf;
+}
+
+server {
+    listen 443 ssl;
+    http2 on;
+    server_name ${DOMAIN_NAME};
+
+    set $portal_upstream "scientistcloud-portal";
+
+    ssl_certificate /etc/letsencrypt/live/${DOMAIN_NAME}/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/${DOMAIN_NAME}/privkey.pem;
+    ssl_protocols TLSv1.2 TLSv1.3;
+    ssl_ciphers ECDHE-RSA-AES128-GCM-SHA256:ECDHE-RSA-AES256-GCM-SHA384:ECDHE-RSA-AES128-SHA256:ECDHE-RSA-AES256-SHA384;
+    ssl_prefer_server_ciphers off;
+    ssl_session_cache shared:SSL:10m;
+    ssl_session_timeout 10m;
+
+    add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
+    add_header X-Frame-Options SAMEORIGIN always;
+    add_header X-Content-Type-Options nosniff always;
+    add_header X-XSS-Protection "1; mode=block" always;
+
+    proxy_buffer_size 128k;
+    proxy_buffers 4 256k;
+    proxy_busy_buffers_size 256k;
+    proxy_max_temp_file_size 0;
+    proxy_http_version 1.1;
+    proxy_set_header Connection "";
+
+    client_max_body_size 10G;
+
+    resolver 127.0.0.11 valid=30s;
+    resolver_timeout 5s;
+
+    include /etc/nginx/includes/scientistcloud-locations.conf;
+}

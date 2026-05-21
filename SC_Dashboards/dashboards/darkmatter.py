@@ -2,7 +2,7 @@ import matplotlib.colors as mcolors
 import numpy as np
 import sys
 from html import escape
-from typing import DefaultDict, List, Optional
+from typing import Any, DefaultDict, List, Optional
 import os
 import atexit
 from collections import defaultdict
@@ -647,6 +647,64 @@ def _darkmatter_may_use_cached_resolved_idx_http() -> bool:
     return not _darkmatter_disable_resolved_idx_api()
 
 
+def _materialized_resolved_visus_idx_missing(
+    runtime_dataset: Optional[dict],
+    dataset_uuid: str,
+    save_dir_hint: str = "",
+) -> bool:
+    """True when converted/<uuid>/visus.idx is not on disk (background conversion not finished)."""
+    cip = str((runtime_dataset or {}).get("converted_idx_path") or "").strip()
+    if cip and os.path.isfile(cip):
+        return False
+    sd = str(save_dir_hint or "").strip()
+    if sd:
+        for fname in ("visus.idx", "visus_proxy.idx"):
+            if os.path.isfile(os.path.join(sd, fname)):
+                return False
+    if dataset_uuid and has_args:
+        try:
+            base = str(globals().get("save_dir") or sd or "").strip()
+            if base:
+                for fname in ("visus.idx", "visus_proxy.idx"):
+                    if os.path.isfile(os.path.join(base, fname)):
+                        return False
+        except Exception:
+            pass
+    return True
+
+
+def _try_resolve_and_load_openvisus_idx(
+    *,
+    dataset_identifier: str,
+    user_email: Optional[str],
+    auth_override: Optional[dict],
+    force_refresh: bool,
+    log_label: str,
+) -> Optional[Any]:
+    """POST openvisus-resolved-idx (generate if missing) and LoadDataset via resolved HTTP URL."""
+    resolved_idx, resolved_http = resolve_openvisus_resolved_idx_via_api(
+        dataset_identifier=dataset_identifier,
+        user_email=user_email,
+        auth_override=auth_override or {},
+        output_filename=RESOLVED_IDX_S3_OUTPUT_NAME,
+        filename_template_mode=_darkmatter_resolved_idx_filename_template_mode(),
+        force_refresh=bool(force_refresh),
+    )
+    if not resolved_idx and not resolved_http:
+        return None
+    http_u = (resolved_http or "").strip()
+    if http_u.startswith(("http://", "https://")):
+        print(
+            f"[DarkMatter][DEBUG] {log_label} LoadDataset via resolved-idx HTTP: "
+            f"{_redact_url_secrets(http_u)}"
+        )
+        return read_openvisus_field(http_u)
+    if resolved_idx and os.path.isfile(resolved_idx):
+        print(f"[DarkMatter][DEBUG] {log_label} LoadDataset local resolved idx: {resolved_idx}")
+        return read_openvisus_field_with_dataset_cwd(resolved_idx)
+    return None
+
+
 def resolve_openvisus_resolved_idx_via_api(
     *,
     dataset_identifier: Optional[str],
@@ -663,11 +721,10 @@ def resolve_openvisus_resolved_idx_via_api(
 
     The API will also convert to ARCO when the source idx has (arco) == 0.
 
-    **Dashboard policy:** this POST is **not** called on dashboard load unless
-    ``DARKMATTER_ALLOW_RESOLVED_IDX_API_ON_LAUNCH=1`` (see ``_darkmatter_may_post_openvisus_resolved_idx_on_launch``).
-    Normal flow: background conversion (``SCLib_BackgroundService``) runs openvisus-resolved-idx once and sets
-    ``converted_idx_path`` on the dataset document. Use ``DARKMATTER_DISABLE_RESOLVED_IDX=1`` to hard-disable
-    even when the allow-launch flag is set.
+    **Dashboard policy:** background ``SCLib_BackgroundService`` should run this once after upload.
+    If ``converted/<uuid>/visus.idx`` is missing, Dark Matter POSTs here with ``force_refresh=False`` to
+    generate it (unless ``DARKMATTER_DISABLE_RESOLVED_IDX=1``). Set
+    ``DARKMATTER_ALLOW_RESOLVED_IDX_API_ON_LAUNCH=1`` only to force regeneration when a file already exists.
     """
     # Docker Compose uses sclib_fastapi; local `bokeh serve` has no that DNS name — default to loopback.
     _default_api = (
@@ -2056,14 +2113,47 @@ class AppState:
                     and not dataset_identifier.startswith(("http://", "https://", "s3://"))
                     and (self.s3_auth_override or {}).get("aws_access_key_id")
                 ):
-                    if not _darkmatter_may_post_openvisus_resolved_idx_on_launch():
+                    missing_materialized = _materialized_resolved_visus_idx_missing(
+                        self.runtime_dataset,
+                        dataset_identifier,
+                        str(save_dir) if has_args else "",
+                    )
+                    may_generate = _darkmatter_may_use_cached_resolved_idx_http()
+                    may_force = _darkmatter_may_post_openvisus_resolved_idx_on_launch()
+                    if missing_materialized and may_generate:
                         print(
-                            "[DarkMatter][DEBUG] Skipping openvisus-resolved-idx on dashboard launch "
-                            "(resolved visus.idx is produced during background conversion under "
-                            "/mnt/visus_datasets/converted/<uuid>/). "
-                            "Set DARKMATTER_ALLOW_RESOLVED_IDX_API_ON_LAUNCH=1 to opt into legacy on-launch POST."
+                            "[DarkMatter][DEBUG] No converted/<uuid>/visus.idx on disk — "
+                            "POSTing openvisus-resolved-idx to generate proxy descriptor "
+                            "(background conversion may not have run yet)."
                         )
-                    else:
+                        try:
+                            trial = _try_resolve_and_load_openvisus_idx(
+                                dataset_identifier=dataset_identifier,
+                                user_email=user_email,
+                                auth_override=self.s3_auth_override,
+                                force_refresh=False,
+                                log_label="generate-missing",
+                            )
+                            if trial is not None and (
+                                self.scene_data is None or not _scene_is_all_zero(trial)
+                            ):
+                                self.scene_data = trial
+                                need_resolved_or_local = False
+                                print(
+                                    "[DarkMatter][DEBUG] scene loaded after openvisus-resolved-idx generation"
+                                )
+                        except Exception as ex:
+                            last_load_err = ex
+                            print(
+                                f"[DarkMatter][WARN] openvisus-resolved-idx generation on load failed: {ex}"
+                            )
+                    elif not missing_materialized and not may_force:
+                        print(
+                            "[DarkMatter][DEBUG] converted/<uuid>/visus.idx exists; skipping on-launch "
+                            "openvisus-resolved-idx POST (set DARKMATTER_ALLOW_RESOLVED_IDX_API_ON_LAUNCH=1 "
+                            "to force regeneration)."
+                        )
+                    elif may_force:
                         try:
                             resolved_idx, resolved_http = resolve_openvisus_resolved_idx_via_api(
                                 dataset_identifier=dataset_identifier,
@@ -2079,6 +2169,7 @@ class AppState:
                                     self.scene_data is None or not _scene_is_all_zero(trial)
                                 ):
                                     self.scene_data = trial
+                                    need_resolved_or_local = False
                                     print(
                                         "[DarkMatter][DEBUG] LoadDataset using resolved idx "
                                         f"(HTTP-first): path={resolved_idx}"
@@ -2091,6 +2182,12 @@ class AppState:
                         except Exception as ex:
                             last_load_err = ex
                             print(f"[DarkMatter][WARN] resolved idx API / load failed: {ex}")
+                    elif missing_materialized and not may_generate:
+                        print(
+                            "[DarkMatter][WARN] No visus.idx under converted/<uuid>/ and "
+                            "DARKMATTER_DISABLE_RESOLVED_IDX=1 — cannot generate proxy idx. "
+                            "Start sclib_background_service or unset that env var."
+                        )
 
                     enable_proxy = str(
                         os.getenv("DARKMATTER_ENABLE_PROXY_RESOLVED_IDX", "false")
