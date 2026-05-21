@@ -632,6 +632,21 @@ def _darkmatter_http_explicit_no_fallback() -> bool:
     )
 
 
+def _darkmatter_may_use_cached_resolved_idx_http() -> bool:
+    """
+    Whether to POST openvisus-resolved-idx with force_refresh=False to obtain
+    ``resolved_idx_http_url`` for LoadDataset.
+
+    Background conversion writes a materialized ``visus.idx`` whose ``(filename_template)``
+    points at SCLib object-proxy URLs. OpenVisus ``LoadDataset`` on a *local filesystem* path
+    often ignores those templates and reads empty tiles (all-zero scene). The HTTP URL served
+    by ``/api/v1/datasets/resolved-idx/<token>/visus.idx`` is the supported read path (same as
+    OpenVisusSlice ``setDataset`` after resolved-idx). This is not on-launch regeneration:
+    ``force_refresh=False`` returns the cached idx when present.
+    """
+    return not _darkmatter_disable_resolved_idx_api()
+
+
 def resolve_openvisus_resolved_idx_via_api(
     *,
     dataset_identifier: Optional[str],
@@ -2206,7 +2221,45 @@ class AppState:
                 if still_need_materialized:
                     idx_candidates = []
                     cip = str(self.runtime_dataset.get("converted_idx_path") or "").strip()
-                    if cip and os.path.isfile(cip):
+                    # Materialized proxy-template idx: prefer SCLib resolved-idx HTTP URL before
+                    # local filesystem LoadDataset (OpenVisusSlice always uses resolved-idx for remote).
+                    if (
+                        cip
+                        and os.path.isfile(cip)
+                        and _darkmatter_may_use_cached_resolved_idx_http()
+                        and _looks_like_dataset_uuid(dataset_identifier)
+                        and not dataset_identifier.startswith(("http://", "https://", "s3://"))
+                        and (self.s3_auth_override or {}).get("aws_access_key_id")
+                    ):
+                        try:
+                            resolved_idx, resolved_http = resolve_openvisus_resolved_idx_via_api(
+                                dataset_identifier=dataset_identifier,
+                                user_email=user_email,
+                                auth_override=self.s3_auth_override or {},
+                                output_filename=os.path.basename(cip) or "visus.idx",
+                                filename_template_mode=_darkmatter_resolved_idx_filename_template_mode(),
+                                force_refresh=False,
+                            )
+                            trial_cached = _read_resolved_materialized_idx(
+                                resolved_idx or cip, resolved_http
+                            )
+                            if trial_cached is not None and not _scene_is_all_zero(trial_cached):
+                                self.scene_data = trial_cached
+                                still_need_materialized = False
+                                print(
+                                    "[DarkMatter][DEBUG] non-zero scene via cached resolved-idx HTTP URL "
+                                    f"(materialized path={resolved_idx or cip})"
+                                )
+                            elif trial_cached is not None:
+                                print(
+                                    "[DarkMatter][WARN] cached resolved-idx HTTP read was all-zero; "
+                                    "will try other materialized idx candidates"
+                                )
+                        except Exception as cached_res_ex:
+                            print(
+                                f"[DarkMatter][WARN] cached resolved-idx HTTP load failed: {cached_res_ex}"
+                            )
+                    if still_need_materialized and cip and os.path.isfile(cip):
                         idx_candidates.append(cip)
                     if has_args and save_dir:
                         sd = str(save_dir or "").strip()
