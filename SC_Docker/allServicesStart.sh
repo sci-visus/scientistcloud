@@ -447,14 +447,22 @@ mode_dashboards() {
         dashboards=$(jq -r '.dashboards | to_entries[] | select(.value.enabled == true) | .key' config/dashboard-registry.json 2>/dev/null || echo "")
     fi
 
+    DASHBOARD_BUILD_FAILED=false
     if [ -n "$dashboards" ]; then
         while IFS= read -r name; do
             [ -n "$name" ] || continue
             echo "   📦 init $name"
             ./scripts/init_dashboard.sh "$name" --overwrite 2>&1 | grep -E '(✅|⚠️|❌|Generated)' || true
             echo "   🐳 build $name"
-            ./scripts/build_dashboard.sh "$name" 2>&1 | tail -3 || true
+            if ! ./scripts/build_dashboard.sh "$name"; then
+                echo "   ❌ Docker build failed: $name"
+                DASHBOARD_BUILD_FAILED=true
+            fi
         done <<< "$dashboards"
+    fi
+    if [ "$DASHBOARD_BUILD_FAILED" = true ]; then
+        echo "❌ One or more dashboard image builds failed — fix errors above before relying on containers"
+        exit 1
     fi
 
     ./scripts/generate_docker_compose.sh --output ../SC_Docker/dashboards-docker-compose.yml 2>&1 | tail -2 || true

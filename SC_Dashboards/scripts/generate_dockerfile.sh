@@ -122,50 +122,11 @@ if [ "$ADDITIONAL_REQUIREMENTS_COUNT" -gt 0 ]; then
     fi
 fi
 
-# Build VTK X11 libraries section if needed
-VTK_X11_SECTION=""
-if [ "$NEEDS_VTK_X11" = true ]; then
-    VTK_X11_SECTION="# Environment variables for headless VTK/PyVista rendering\n"
-    VTK_X11_SECTION="${VTK_X11_SECTION}ENV DISPLAY=:99\n"
-    VTK_X11_SECTION="${VTK_X11_SECTION}ENV QT_QPA_PLATFORM=offscreen\n"
-    VTK_X11_SECTION="${VTK_X11_SECTION}ENV MESA_GL_VERSION_OVERRIDE=3.3\n"
-    VTK_X11_SECTION="${VTK_X11_SECTION}ENV MESA_GLSL_VERSION_OVERRIDE=330\n"
-    VTK_X11_SECTION="${VTK_X11_SECTION}\n"
-    VTK_X11_SECTION="${VTK_X11_SECTION}# Install system dependencies for PyVista/VTK rendering\n"
-    VTK_X11_SECTION="${VTK_X11_SECTION}RUN apt-get update && apt-get install -y --no-install-recommends \\\\\n"
-    VTK_X11_SECTION="${VTK_X11_SECTION}        libx11-6 \\\\\n"
-    VTK_X11_SECTION="${VTK_X11_SECTION}        libxext6 \\\\\n"
-    VTK_X11_SECTION="${VTK_X11_SECTION}        libxrender1 \\\\\n"
-    VTK_X11_SECTION="${VTK_X11_SECTION}        libxtst6 \\\\\n"
-    VTK_X11_SECTION="${VTK_X11_SECTION}        libxi6 \\\\\n"
-    VTK_X11_SECTION="${VTK_X11_SECTION}        libxrandr2 \\\\\n"
-    VTK_X11_SECTION="${VTK_X11_SECTION}        libxss1 \\\\\n"
-    VTK_X11_SECTION="${VTK_X11_SECTION}        libxcb1 \\\\\n"
-    VTK_X11_SECTION="${VTK_X11_SECTION}        libxcomposite1 \\\\\n"
-    VTK_X11_SECTION="${VTK_X11_SECTION}        libxcursor1 \\\\\n"
-    VTK_X11_SECTION="${VTK_X11_SECTION}        libxdamage1 \\\\\n"
-    VTK_X11_SECTION="${VTK_X11_SECTION}        libxfixes3 \\\\\n"
-    VTK_X11_SECTION="${VTK_X11_SECTION}        libxinerama1 \\\\\n"
-    VTK_X11_SECTION="${VTK_X11_SECTION}        libxmu6 \\\\\n"
-    VTK_X11_SECTION="${VTK_X11_SECTION}        libxpm4 \\\\\n"
-    VTK_X11_SECTION="${VTK_X11_SECTION}        libxaw7 \\\\\n"
-    VTK_X11_SECTION="${VTK_X11_SECTION}        libxft2 \\\\\n"
-    VTK_X11_SECTION="${VTK_X11_SECTION}        libfontconfig1 \\\\\n"
-    VTK_X11_SECTION="${VTK_X11_SECTION}        libfreetype6 \\\\\n"
-    VTK_X11_SECTION="${VTK_X11_SECTION}        libgl1-mesa-dri \\\\\n"
-    VTK_X11_SECTION="${VTK_X11_SECTION}        libglu1-mesa \\\\\n"
-    VTK_X11_SECTION="${VTK_X11_SECTION}        libglib2.0-0 \\\\\n"
-    VTK_X11_SECTION="${VTK_X11_SECTION}        libgthread-2.0-0 \\\\\n"
-    VTK_X11_SECTION="${VTK_X11_SECTION}        libgtk-3-0 \\\\\n"
-    VTK_X11_SECTION="${VTK_X11_SECTION}        libgdk-pixbuf-xlib-2.0-0 \\\\\n"
-    VTK_X11_SECTION="${VTK_X11_SECTION}        libcairo-gobject2 \\\\\n"
-    VTK_X11_SECTION="${VTK_X11_SECTION}        libpango-1.0-0 \\\\\n"
-    VTK_X11_SECTION="${VTK_X11_SECTION}        libpangocairo-1.0-0 \\\\\n"
-    VTK_X11_SECTION="${VTK_X11_SECTION}        libatk1.0-0 \\\\\n"
-    VTK_X11_SECTION="${VTK_X11_SECTION}        libcairo2 \\\\\n"
-    VTK_X11_SECTION="${VTK_X11_SECTION}        libpangoft2-1.0-0 \\\\\n"
-    VTK_X11_SECTION="${VTK_X11_SECTION}    && apt-get clean \\\\\n"
-    VTK_X11_SECTION="${VTK_X11_SECTION}    && rm -rf /var/lib/apt/lists/*\n"
+# VTK/PyVista system libs — use static snippet (avoids broken \\\\n escaping in generated RUN lines)
+VTK_SNIPPET_FILE="$TEMPLATES_DIR/dockerfile-vtk-x11.snippet"
+NEEDS_VTK_SNIPPET=false
+if [ "$NEEDS_VTK_X11" = true ] && [ -f "$VTK_SNIPPET_FILE" ]; then
+    NEEDS_VTK_SNIPPET=true
 fi
 
 # Build environment variables section
@@ -234,17 +195,12 @@ fi
 sed -i.bak 's|{{#if REQUIREMENTS_FILE}}||g; s|{{/if REQUIREMENTS_FILE}}||g' "$TEMP_FILE"
 rm -f "$TEMP_FILE.bak"
 
-# Now do template replacement
-# Handle VTK_X11_SECTION separately since it contains newlines
-if [ -n "$VTK_X11_SECTION" ]; then
-    # Use a temporary file to handle the replacement with newlines
-    echo -e "$VTK_X11_SECTION" > /tmp/vtk_x11_section.txt
-    # Replace the placeholder with the content from file
-    sed -i.bak "/{{VTK_X11_SECTION}}/r /tmp/vtk_x11_section.txt" "$TEMP_FILE"
+# Insert VTK snippet (static file — reliable line continuations for apt-get RUN)
+if [ "$NEEDS_VTK_SNIPPET" = true ]; then
+    sed -i.bak "/{{VTK_X11_SECTION}}/r $VTK_SNIPPET_FILE" "$TEMP_FILE"
     sed -i.bak "s|{{VTK_X11_SECTION}}||g" "$TEMP_FILE"
-    rm -f "$TEMP_FILE.bak" /tmp/vtk_x11_section.txt
+    rm -f "$TEMP_FILE.bak"
 else
-    # Remove the placeholder if VTK X11 is not needed
     sed -i.bak "s|{{VTK_X11_SECTION}}||g" "$TEMP_FILE"
     rm -f "$TEMP_FILE.bak"
 fi
@@ -282,7 +238,7 @@ fi
 # Add user/group configuration for permissions (after requirements install, before CMD)
 # This allows bokehuser to write to mounted volumes like /mnt/visus_datasets
 # Check if base image uses bokehuser (4d-dashboard-base, bokeh-dashboard-base, magicscan-base)
-if echo "$BASE_IMAGE" | grep -qiE "(4d-dashboard|bokeh-dashboard|magicscan)"; then
+if echo "$BASE_IMAGE" | grep -qiE "(sc-4d-dashboard|sc-bokeh-dashboard|4d-dashboard|bokeh-dashboard|magicscan)"; then
     # Insert user/group configuration after requirements install
     PERMISSIONS_SECTION="# Fix permissions: Create bokehuser if it doesn't exist and add to www-data group\n"
     PERMISSIONS_SECTION="${PERMISSIONS_SECTION}# This allows the dashboard to create sessions directories in /mnt/visus_datasets/upload/<UUID>/sessions\n"

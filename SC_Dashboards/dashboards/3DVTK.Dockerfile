@@ -24,42 +24,23 @@ ENV QT_QPA_PLATFORM=offscreen
 ENV MESA_GL_VERSION_OVERRIDE=3.3
 ENV MESA_GLSL_VERSION_OVERRIDE=330
 
-# Install system dependencies for PyVista/VTK rendering
+# Install system dependencies for PyVista/VTK rendering (Debian bookworm / python:3.10-slim)
 RUN apt-get update && apt-get install -y --no-install-recommends \
-        libx11-6 \
-        libxext6 \
-        libxrender1 \
-        libxtst6 \
-        libxi6 \
-        libxrandr2 \
-        libxss1 \
-        libxcb1 \
-        libxcomposite1 \
-        libxcursor1 \
-        libxdamage1 \
-        libxfixes3 \
-        libxinerama1 \
-        libxmu6 \
-        libxpm4 \
-        libxaw7 \
-        libxft2 \
-        libfontconfig1 \
-        libfreetype6 \
-        libgl1-mesa-dri \
-        libglu1-mesa \
-        libglib2.0-0 \
-        libgthread-2.0-0 \
-        libgtk-3-0 \
-        libgdk-pixbuf-xlib-2.0-0 \
-        libcairo-gobject2 \
-        libpango-1.0-0 \
-        libpangocairo-1.0-0 \
-        libatk1.0-0 \
-        libcairo2 \
-        libpangoft2-1.0-0 \
+    libx11-6 \
+    libxext6 \
+    libxrender1 \
+    libxtst6 \
+    libxi6 \
+    libxrandr2 \
+    libxss1 \
+    libxcb1 \
+    libfontconfig1 \
+    libfreetype6 \
+    libgl1 \
+    libglib2.0-0 \
+    libgomp1 \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
-
 # Copy application code
 ENV APP_HOME=/app
 WORKDIR $APP_HOME
