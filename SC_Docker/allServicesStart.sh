@@ -160,11 +160,8 @@ discover_certbot_paths() {
         return 0
     fi
     for cert_root in \
-        "$HOME/VisStoreClone/visus-dataportal-private/Docker/certbot" \
-        "$HOME/visus-dataportal-private/Docker/certbot" \
-        "$HOME/VisusDataPortalPrivate/Docker/certbot" \
-        "$HOME/GIT/VisusDataPortalPrivate/Docker/certbot" \
-        "$PORTAL_DOCKER_DIR/certbot"; do
+        "$PORTAL_DOCKER_DIR/certbot" \
+        "${SC20_HOME:-$HOME/ScientistCloud2.0}/scientistcloud/SC_Docker/certbot"; do
         cert_conf="$cert_root/conf"
         if [ -f "$cert_conf/live/${domain}/fullchain.pem" ]; then
             export SC_CERTBOT_CONF="$cert_conf"
@@ -236,13 +233,25 @@ git_pull_all() {
             fi
         fi
         pushd "$SCIENTISTCLOUD_DIR" >/dev/null
+        local env_bak=""
+        if [ -f SC_Docker/.env ]; then
+            env_bak="$(mktemp)"
+            cp SC_Docker/.env "$env_bak"
+        fi
         git fetch origin
-        git clean -fd -e SC_Docker/.env 2>/dev/null || true
+        git clean -fd 2>/dev/null || true
+        if [ -n "$env_bak" ] && [ -f "$env_bak" ]; then
+            mkdir -p SC_Docker
+            cp "$env_bak" SC_Docker/.env
+            rm -f "$env_bak"
+        fi
         if git ls-remote --heads origin workingPrivateRepo 2>/dev/null | grep -q workingPrivateRepo; then
-            git checkout workingPrivateRepo 2>/dev/null || git checkout -b workingPrivateRepo origin/workingPrivateRepo
-            git reset --hard origin/workingPrivateRepo 2>/dev/null || git checkout -f origin/workingPrivateRepo
+            # -B: attach to branch from detached HEAD; avoids "branch already exists"
+            git checkout -B workingPrivateRepo origin/workingPrivateRepo
+            git reset --hard origin/workingPrivateRepo
         else
-            git reset --hard origin/main 2>/dev/null || git checkout -f origin/main
+            git checkout -B main origin/main 2>/dev/null || git checkout -f origin/main
+            git reset --hard origin/main 2>/dev/null || true
         fi
         popd >/dev/null
         if [ -f "$SCLIB_TRYTEST_DIR/env.scientistcloud" ]; then

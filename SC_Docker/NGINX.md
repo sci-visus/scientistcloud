@@ -33,22 +33,23 @@ SC_Docker/nginx/
 
 ## Environment
 
-In `env.scientistcloud` or shell:
+In `SCLib_TryTest/env.scientistcloud` (adjust `SC20_HOME` per host):
 
 ```bash
-export DOMAIN_NAME=scientistcloud.com
-# Reuse existing Let's Encrypt dirs from Visus deploy:
-export SC_CERTBOT_CONF=/path/to/Docker/certbot/conf
-export SC_CERTBOT_WWW=/path/to/Docker/certbot/www
+SC20_HOME=/home/amy/ScientistCloud2.0
+SC_CERTBOT_CONF=${SC20_HOME}/scientistcloud/SC_Docker/certbot/conf
+SC_CERTBOT_WWW=${SC20_HOME}/scientistcloud/SC_Docker/certbot/www
+DOMAIN_NAME=scientistcloud.com
 ```
+
+Certs live under **`scientistcloud/SC_Docker/certbot/`** — no dependency on VisusDataPortalPrivate paths.
 
 ## Cutover on the server
 
 ```bash
 cd scientistcloud/SC_Docker
-export DOMAIN_NAME=scientistcloud.com
-export SC_CERTBOT_CONF=...   # same paths visstore_nginx used
-export SC_CERTBOT_WWW=...
+# One-time copy from legacy visus certbot (current server only):
+./scripts/migrate-ssl-certs.sh /path/to/old/Docker/certbot
 
 ./scripts/cutover-from-visstore-nginx.sh
 # or manually:

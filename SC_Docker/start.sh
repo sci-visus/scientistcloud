@@ -142,15 +142,13 @@ check_sclib() {
 check_ssl() {
     print_status "Checking SSL certificates..."
     
-    # Check if VisusDataPortalPrivate has SSL certificates
-    VISUS_SSL_PATH="/home/amy/VisStoreClone/visus-dataportal-private/Docker/certbot/conf"
-    if [ -d "$VISUS_SSL_PATH" ] && [ -f "$VISUS_SSL_PATH/live/scientistcloud.com/fullchain.pem" ]; then
-        print_success "Found existing SSL certificates in VisusDataPortalPrivate"
-        print_success "Portal will use existing SSL certificates via visstore_nginx"
+    local domain="${DOMAIN_NAME:-scientistcloud.com}"
+    local sc_ssl_path="$(cd "$(dirname "$0")" && pwd)/certbot/conf"
+    if [ -f "$sc_ssl_path/live/${domain}/fullchain.pem" ]; then
+        print_success "Found SSL certificates in SC_Docker/certbot"
     else
-        print_warning "SSL certificates not found in VisusDataPortalPrivate"
-        print_warning "Portal will be accessible via HTTP only"
-        print_warning "Please ensure your VisusDataPortalPrivate system has SSL configured"
+        print_warning "SSL certificates not found at $sc_ssl_path/live/${domain}/"
+        print_warning "Run: ./scripts/migrate-ssl-certs.sh <legacy-certbot-dir> or issue new certs"
     fi
 }
 
