@@ -246,12 +246,11 @@ location ${NGINX_PATH}static/extensions/panel/ {
     add_header Cache-Control "public, immutable";
 }
 STATICEOF
-    # When nginx path differs from app path, Bokeh may still emit /3DVTK/static/... URLs
-    # (from X-Forwarded-Prefix /3DVTK on older configs). Proxy those to container /static/.
-    if [ "$NGINX_PATH_WITHOUT_SLASH" != "$APP_PATH_NO_SLASH" ]; then
-        cat >> "$STATIC_TEMP" << STATICEOF
+    # Bokeh with X-Forwarded-Prefix often emits ${APP_PATH}static/... (e.g. /OpenVisusSlice/static/).
+    # Always proxy those to the container /static/ tree, not only when nginx path differs.
+    cat >> "$STATIC_TEMP" << STATICEOF
 
-# In-container app-path static (fallback for Panel/Bokeh asset URLs under ${APP_PATH}static/)
+# In-container app-path static (Bokeh asset URLs under ${APP_PATH}static/)
 location ${APP_PATH}static/ {
     set \$upstream_host "dashboard_${CONTAINER_NAME_SERVICE}";
     set \$upstream_port "${DASHBOARD_PORT}";
@@ -276,7 +275,6 @@ location ${APP_PATH}static/extensions/panel/ {
     add_header Cache-Control "public, immutable";
 }
 STATICEOF
-    fi
 else
     # Other types (vtk, etc.) - no static file section
     echo "# Static files not configured for type: $DASHBOARD_TYPE" > "$STATIC_TEMP"

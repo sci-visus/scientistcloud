@@ -4,7 +4,7 @@
  * Returns the dimension (1, 2, 3, or 4) of a dataset by reading its nexus file
  */
 
-require_once __DIR__ . '/../includes/config.php';
+require_once __DIR__ . '/../config.php';
 require_once __DIR__ . '/../includes/mongo_connection.php';
 
 header('Content-Type: application/json');
