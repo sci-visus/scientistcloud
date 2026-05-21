@@ -185,6 +185,27 @@ discover_certbot_paths() {
     return 1
 }
 
+# Canonical deploy env (same as manual deploy):
+#   cp $SC20_ROOT/SCLib_TryTest/env.scientistcloud $SC20_ROOT/scientistCloudLib/Docker/.env
+#   cp $SC20_ROOT/SCLib_TryTest/env.scientistcloud $SC20_ROOT/scientistcloud/SC_Docker/.env
+# Must run after git pull — git clean -fd removes untracked .env files.
+sync_env_files() {
+    local env_file="$SCLIB_TRYTEST_DIR/env.scientistcloud"
+    local sclib_env="$SCLIB_DOCKER_DIR/.env"
+    local portal_env="$PORTAL_DOCKER_DIR/.env"
+    if [ ! -f "$env_file" ]; then
+        echo "⚠️  No env.scientistcloud at $env_file (SCLib/portal compose may fail)"
+        return 1
+    fi
+    mkdir -p "$SCLIB_DOCKER_DIR" "$PORTAL_DOCKER_DIR"
+    echo "   cp $env_file $sclib_env"
+    cp "$env_file" "$sclib_env"
+    echo "   cp $env_file $portal_env"
+    cp "$env_file" "$portal_env"
+    echo "   ✅ env synced to SCLib Docker and SC_Docker"
+    return 0
+}
+
 load_env() {
     local env_file="$SCLIB_TRYTEST_DIR/env.scientistcloud"
     if [ -f "$env_file" ]; then
@@ -197,9 +218,7 @@ load_env() {
         echo "⚠️  No env.scientistcloud at $env_file"
     fi
     discover_certbot_paths || true
-    if [ -f "$SCLIB_TRYTEST_DIR/env.scientistcloud" ]; then
-        cp "$SCLIB_TRYTEST_DIR/env.scientistcloud" "$PORTAL_DOCKER_DIR/.env"
-    fi
+    sync_env_files || true
 }
 
 git_pull_all() {
@@ -215,11 +234,6 @@ git_pull_all() {
         git fetch origin
         git reset --hard origin/main
         [ -f "$bak" ] && cp "$bak" env.scientistcloud && rm -f "$bak"
-        if [ -f env.scientistcloud ]; then
-            cp env.scientistcloud "$SCLIB_DOCKER_DIR/.env"
-            cp env.scientistcloud "$PORTAL_DOCKER_DIR/.env"
-            echo "   ✅ env → scientistCloudLib/Docker/.env and SC_Docker/.env"
-        fi
         popd >/dev/null
     fi
 
@@ -246,11 +260,6 @@ git_pull_all() {
             fi
         fi
         pushd "$SCIENTISTCLOUD_DIR" >/dev/null
-        local env_bak=""
-        if [ -f SC_Docker/.env ]; then
-            env_bak="$(mktemp)"
-            cp SC_Docker/.env "$env_bak"
-        fi
         git fetch origin
         # Discard local edits to tracked files (e.g. generated dashboards-docker-compose.yml)
         # so checkout never aborts; deploy always matches GitHub.
@@ -264,19 +273,12 @@ git_pull_all() {
             git reset --hard origin/main 2>/dev/null || true
         fi
         git clean -fd 2>/dev/null || true
-        if [ -n "$env_bak" ] && [ -f "$env_bak" ]; then
-            mkdir -p SC_Docker
-            cp "$env_bak" SC_Docker/.env
-            rm -f "$env_bak"
-        fi
         popd >/dev/null
-        if [ -f "$SCLIB_TRYTEST_DIR/env.scientistcloud" ]; then
-            cp "$SCLIB_TRYTEST_DIR/env.scientistcloud" "$PORTAL_DOCKER_DIR/.env"
-        fi
         if docker ps -a --format '{{.Names}}' | grep -q '^scientistcloud-portal$'; then
             docker start scientistcloud-portal 2>/dev/null || true
         fi
     fi
+    sync_env_files || true
     echo "✅ Git pull complete"
 }
 
@@ -410,7 +412,15 @@ mode_sclib() {
         exit 1
     fi
     ensure_docker_network
+    sync_env_files || {
+        echo "❌ Cannot start SCLib without $SCLIB_TRYTEST_DIR/env.scientistcloud"
+        exit 1
+    }
     pushd "$SCLIB_DOCKER_DIR" >/dev/null
+    if [ ! -f .env ]; then
+        echo "❌ Missing $SCLIB_DOCKER_DIR/.env after sync_env_files"
+        exit 1
+    fi
     if [ "$REBUILD_SCLIB" = true ]; then
         echo "🔨 Rebuild SCLib (clean + up)"
         ./start.sh clean
@@ -427,6 +437,10 @@ mode_web() {
     echo "🌐 Mode w — SC_Web portal"
     echo "════════════════════════════════════════"
     ensure_docker_network
+    sync_env_files || {
+        echo "❌ Cannot start portal without $SCLIB_TRYTEST_DIR/env.scientistcloud"
+        exit 1
+    }
     pushd "$PORTAL_DOCKER_DIR" >/dev/null
     if [ "$REBUILD_WEB" = true ]; then
         echo "🔨 Rebuild portal"
@@ -448,6 +462,7 @@ mode_dashboards() {
         exit 1
     fi
     ensure_docker_network
+    sync_env_files || true
     pushd "$DASHBOARDS_DIR" >/dev/null
 
     if [ -x ./docker/bases/build-base-images.sh ]; then
