@@ -70,6 +70,13 @@ SHARED_UTILITIES=$(jq -r '.shared_utilities[]' "$CONFIG_FILE" 2>/dev/null | tr '
 DASHBOARD_VERSION=$(jq -r '.version // "1.0.0"' "$CONFIG_FILE")
 DASHBOARD_PORT=$(jq -r '.port' "$CONFIG_FILE")
 HEALTH_CHECK_PATH=$(jq -r '.health_check_path // ""' "$CONFIG_FILE")
+
+# Runtime user inherited from SC base image (plotly vs bokeh)
+if echo "$BASE_IMAGE" | grep -qiE "plotly"; then
+    DASHBOARD_RUN_USER="plotlyuser"
+else
+    DASHBOARD_RUN_USER="bokehuser"
+fi
 BUILD_ARGS=$(jq -r '.build_args // {} | keys[]' "$CONFIG_FILE" 2>/dev/null | tr '\n' ' ' || echo "")
 ENVIRONMENT_VARS=$(jq -r '.environment_variables // {}' "$CONFIG_FILE")
 
@@ -206,6 +213,7 @@ sed -e "s|{{BASE_IMAGE}}|$BASE_IMAGE|g" \
     -e "s|{{ENTRY_POINT}}|$ENTRY_POINT|g" \
     -e "s|{{ENTRY_POINT_TYPE}}|$ENTRY_POINT_TYPE|g" \
     -e "s|{{DASHBOARD_PORT}}|$DASHBOARD_PORT|g" \
+    -e "s|{{DASHBOARD_RUN_USER}}|$DASHBOARD_RUN_USER|g" \
     -e "s|{{REQUIREMENTS_FILE}}|$REQUIREMENTS_FILE|g" \
     -e "s|{{ADDITIONAL_REQUIREMENTS}}|$ADDITIONAL_REQUIREMENTS|g" \
     -e "s|{{HEALTH_CHECK_URL}}|$HEALTH_CHECK_URL|g" \
@@ -231,7 +239,14 @@ fi
 # Add user/group configuration for permissions (after requirements install, before CMD)
 # This allows bokehuser to write to mounted volumes like /mnt/visus_datasets
 # Check if base image uses bokehuser (4d-dashboard-base, bokeh-dashboard-base, magicscan-base)
-if echo "$BASE_IMAGE" | grep -qiE "(sc-4d-dashboard|sc-bokeh-dashboard|4d-dashboard|bokeh-dashboard|magicscan)"; then
+if echo "$BASE_IMAGE" | grep -qiE "(sc-4d-dashboard|sc-bokeh-dashboard|sc-plotly-dashboard|4d-dashboard|bokeh-dashboard|plotly-dashboard|magicscan)"; then
+    if echo "$BASE_IMAGE" | grep -qiE "plotly"; then
+        RUN_USER="plotlyuser"
+        APP_DIR="/app"
+    else
+        RUN_USER="bokehuser"
+        APP_DIR="/app"
+    fi
     # Insert user/group configuration after requirements install
     PERMISSIONS_SECTION="# Fix permissions: Create bokehuser if it doesn't exist and add to www-data group\n"
     PERMISSIONS_SECTION="${PERMISSIONS_SECTION}# This allows the dashboard to create sessions directories in /mnt/visus_datasets/upload/<UUID>/sessions\n"
@@ -241,10 +256,10 @@ if echo "$BASE_IMAGE" | grep -qiE "(sc-4d-dashboard|sc-bokeh-dashboard|4d-dashbo
     PERMISSIONS_SECTION="${PERMISSIONS_SECTION}#   Run on host: sudo chgrp -R www-data /mnt/visus_datasets/upload && sudo chmod -R g+w /mnt/visus_datasets/upload\n"
     PERMISSIONS_SECTION="${PERMISSIONS_SECTION}USER root\n"
     PERMISSIONS_SECTION="${PERMISSIONS_SECTION}RUN groupadd -f www-data && \\\\\n"
-    PERMISSIONS_SECTION="${PERMISSIONS_SECTION}    (id -u bokehuser >/dev/null 2>&1 || useradd -m -s /bin/bash -u 10001 bokehuser) && \\\\\n"
-    PERMISSIONS_SECTION="${PERMISSIONS_SECTION}    usermod -a -G www-data bokehuser && \\\\\n"
-    PERMISSIONS_SECTION="${PERMISSIONS_SECTION}    chown -R bokehuser:bokehuser /app\n"
-    PERMISSIONS_SECTION="${PERMISSIONS_SECTION}USER bokehuser\n"
+    PERMISSIONS_SECTION="${PERMISSIONS_SECTION}    (id -u ${RUN_USER} >/dev/null 2>&1 || useradd -m -s /bin/bash -u 10001 ${RUN_USER}) && \\\\\n"
+    PERMISSIONS_SECTION="${PERMISSIONS_SECTION}    usermod -a -G www-data ${RUN_USER} && \\\\\n"
+    PERMISSIONS_SECTION="${PERMISSIONS_SECTION}    chown -R ${RUN_USER}:${RUN_USER} ${APP_DIR}\n"
+    PERMISSIONS_SECTION="${PERMISSIONS_SECTION}USER ${RUN_USER}\n"
     
     # Insert before a marker line (sed "i" collapses \n in PERMISSIONS_SECTION; use awk + printf)
     PERMS_FILE="$(mktemp)"

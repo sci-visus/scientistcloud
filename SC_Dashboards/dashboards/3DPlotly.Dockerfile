@@ -17,6 +17,9 @@ ENV DOMAIN_NAME=${DOMAIN_NAME}
 # Echo build information
 RUN echo "DEPLOY SERVER: ${DEPLOY_SERVER}"
 
+# Base images end as non-root; apt-get and permission fixes need root during build
+USER root
+
 
 # Environment variables for headless VTK/PyVista rendering
 ENV DISPLAY=:99
@@ -80,6 +83,18 @@ RUN if [ -s requirements.txt ]; then \
 RUN python3 -m pip install --no-cache-dir versioneer[toml] Cython pandas bokeh==3.8.0 dash dash-bootstrap-components dash_vtk vtk dash-vtk
 
 
+# Fix permissions: Create bokehuser if it doesn't exist and add to www-data group
+# This allows the dashboard to create sessions directories in /mnt/visus_datasets/upload/<UUID>/sessions
+# IMPORTANT: Host directories at /mnt/visus_datasets/upload/<UUID> must have:
+#   - Group ownership: www-data (or be group-writable)
+#   - Permissions: 775 or 2775 (setgid) to allow group writes
+#   Run on host: sudo chgrp -R www-data /mnt/visus_datasets/upload && sudo chmod -R g+w /mnt/visus_datasets/upload
+USER root
+RUN groupadd -f www-data && \
+    (id -u plotlyuser >/dev/null 2>&1 || useradd -m -s /bin/bash -u 10001 plotlyuser) && \
+    usermod -a -G www-data plotlyuser && \
+    chown -R plotlyuser:plotlyuser /app
+USER plotlyuser
 # Set environment variables from configuration
 
 
@@ -87,11 +102,11 @@ RUN python3 -m pip install --no-cache-dir versioneer[toml] Cython pandas bokeh==
 EXPOSE 8060
 
 # Health check (if specified)
-
 HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
-  CMD curl -f http://localhost:8060/health || exit 1
+  CMD curl -f http://localhost:8060/ || exit 1
 
+# Run dashboard entry point (match base image runtime user)
+USER plotlyuser
 
-# Run dashboard entry point
 CMD ["python3", "3DPlotly.py"]
 

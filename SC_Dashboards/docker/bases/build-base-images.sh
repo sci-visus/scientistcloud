@@ -17,8 +17,14 @@ build_one() {
     echo "════════════════════════════════════════"
     echo "🐳 Building $tag"
     echo "════════════════════════════════════════"
+    local extra_args=()
+    if [ "${SC_FORCE_REBUILD_BASES:-0}" = "1" ]; then
+        extra_args+=(--no-cache)
+        echo "   (SC_FORCE_REBUILD_BASES=1 — no cache)"
+    fi
     docker build \
         --platform "$PLATFORM" \
+        "${extra_args[@]}" \
         -f "$dockerfile" \
         -t "$tag" \
         .

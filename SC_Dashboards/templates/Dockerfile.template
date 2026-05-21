@@ -15,6 +15,9 @@ ENV DOMAIN_NAME=${DOMAIN_NAME}
 # Echo build information
 RUN echo "DEPLOY SERVER: ${DEPLOY_SERVER}"
 
+# Base images end as non-root; apt-get and permission fixes need root during build
+USER root
+
 {{VTK_X11_SECTION}}
 # Copy application code
 ENV APP_HOME=/app
@@ -51,6 +54,8 @@ EXPOSE {{DASHBOARD_PORT}}
 HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
   CMD curl -f {{HEALTH_CHECK_URL}} || exit 1
 
-# Run dashboard entry point
+# Run dashboard entry point (match base image runtime user)
+USER {{DASHBOARD_RUN_USER}}
+
 {{CMD_SECTION}}
 

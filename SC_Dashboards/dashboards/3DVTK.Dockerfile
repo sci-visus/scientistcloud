@@ -17,6 +17,9 @@ ENV DOMAIN_NAME=${DOMAIN_NAME}
 # Echo build information
 RUN echo "DEPLOY SERVER: ${DEPLOY_SERVER}"
 
+# Base images end as non-root; apt-get and permission fixes need root during build
+USER root
+
 
 # Environment variables for headless VTK/PyVista rendering
 ENV DISPLAY=:99
@@ -99,11 +102,11 @@ USER bokehuser
 EXPOSE 8051
 
 # Health check (if specified)
-
 HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
-  CMD curl -f http://localhost:8051/health || exit 1
+  CMD curl -f http://localhost:8051/3DVTK/ || exit 1
 
+# Run dashboard entry point (match base image runtime user)
+USER bokehuser
 
-# Run dashboard entry point
 CMD ["sh", "-c", "WS_ORIGIN=${DOMAIN_NAME:-scientistcloud.com}; python3 -m bokeh serve ./3DVTK.py --allow-websocket-origin=$WS_ORIGIN --allow-websocket-origin=scientistcloud.com --allow-websocket-origin=www.scientistcloud.com --allow-websocket-origin=127.0.0.1 --allow-websocket-origin=0.0.0.0 --port=8051 --address=0.0.0.0 --use-xheaders --session-token-expiration=86400"]
 
