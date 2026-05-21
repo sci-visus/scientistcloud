@@ -21,8 +21,11 @@ RUN python3 -m pip install --no-cache-dir -r /tmp/requirements/base-requirements
     python3 -m pip install --no-cache-dir -r /tmp/requirements/bokeh-requirements.txt && \
     python3 -m OpenVisus configure || true
 
-# PyPI openvisuspy lacks Slices/GetBackend used by OpenVisusSlice; install sci-visus source (public repo).
-RUN git clone --depth 1 https://github.com/sci-visus/openvisuspy.git ${INSTALL_HOME}/dataportal/openvisuspy && \
+# PyPI openvisuspy==1.0.71 lacks GetBackend/Slices (OpenVisusSlice needs git source).
+# Same pin as legacy visstore-bokeh-dashboard-base (VisusDataPortalPrivate).
+RUN git clone https://github.com/sci-visus/openvisuspy.git ${INSTALL_HOME}/dataportal/openvisuspy && \
+    cd ${INSTALL_HOME}/dataportal/openvisuspy && \
+    git checkout c1c8340cd015f04bc431b904a2bdfc0901cc34b0 && \
     python3 -m pip uninstall -y openvisuspy 2>/dev/null || true && \
     python3 -m pip install --no-cache-dir -e ${INSTALL_HOME}/dataportal/openvisuspy
 

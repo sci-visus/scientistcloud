@@ -29,4 +29,4 @@ Or one base:
 - **sc-plotly-dashboard-base**: 3DPlotly
 - **sc-4d-dashboard-base**: 4d_dashboardopt
 
-OpenVisus is installed from PyPI (`openvisuspy==1.0.71`) — no `D_GIT_TOKEN` / Visus git clone required for bases.
+OpenVisus C++ is from PyPI (`OpenVisus==2.2.141`). **openvisuspy** is installed from git @ `c1c8340` (editable), matching legacy `visstore-bokeh-dashboard-base` — PyPI `1.0.71` alone breaks OpenVisusSlice (`GetBackend`, `Slices`).
