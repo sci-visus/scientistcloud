@@ -150,6 +150,33 @@ SCIENTISTCLOUD_DIR="$SC20_ROOT/scientistcloud"
 DASHBOARDS_DIR="$SCIENTISTCLOUD_DIR/SC_Dashboards"
 NGINX_CONTAINER="${SC_NGINX_CONTAINER:-scientistcloud-nginx}"
 
+discover_certbot_paths() {
+    local domain="${DOMAIN_NAME:-scientistcloud.com}"
+    local cert_root cert_conf
+    if [ -n "${SC_CERTBOT_CONF:-}" ] && [ -f "${SC_CERTBOT_CONF}/live/${domain}/fullchain.pem" ]; then
+        SC_CERTBOT_WWW="${SC_CERTBOT_WWW:-$(dirname "$SC_CERTBOT_CONF")/www}"
+        export SC_CERTBOT_CONF SC_CERTBOT_WWW
+        echo "   🔒 SSL certs: $SC_CERTBOT_CONF"
+        return 0
+    fi
+    for cert_root in \
+        "$HOME/VisStoreClone/visus-dataportal-private/Docker/certbot" \
+        "$HOME/visus-dataportal-private/Docker/certbot" \
+        "$HOME/VisusDataPortalPrivate/Docker/certbot" \
+        "$HOME/GIT/VisusDataPortalPrivate/Docker/certbot" \
+        "$PORTAL_DOCKER_DIR/certbot"; do
+        cert_conf="$cert_root/conf"
+        if [ -f "$cert_conf/live/${domain}/fullchain.pem" ]; then
+            export SC_CERTBOT_CONF="$cert_conf"
+            export SC_CERTBOT_WWW="$cert_root/www"
+            echo "   🔒 SSL certs (auto): $SC_CERTBOT_CONF"
+            return 0
+        fi
+    done
+    echo "   ⚠️  No Let's Encrypt certs for $domain — set SC_CERTBOT_CONF before mode x"
+    return 1
+}
+
 load_env() {
     local env_file="$SCLIB_TRYTEST_DIR/env.scientistcloud"
     if [ -f "$env_file" ]; then
@@ -160,6 +187,10 @@ load_env() {
         set +o allexport
     else
         echo "⚠️  No env.scientistcloud at $env_file"
+    fi
+    discover_certbot_paths || true
+    if [ -f "$SCLIB_TRYTEST_DIR/env.scientistcloud" ]; then
+        cp "$SCLIB_TRYTEST_DIR/env.scientistcloud" "$PORTAL_DOCKER_DIR/.env"
     fi
 }
 
@@ -197,13 +228,16 @@ git_pull_all() {
 
     if [ -d "$SCIENTISTCLOUD_DIR" ]; then
         echo "📦 scientistcloud (portal + dashboards)"
-        if [ -d "$SCIENTISTCLOUD_DIR/SC_Web/vendor" ] && docker ps --format '{{.Names}}' | grep -q '^scientistcloud-portal$'; then
-            docker stop scientistcloud-portal 2>/dev/null || true
-            sleep 1
+        if [ -d "$SCIENTISTCLOUD_DIR/SC_Web/vendor" ]; then
+            sudo chown -R "$(whoami):$(whoami)" "$SCIENTISTCLOUD_DIR/SC_Web/vendor" 2>/dev/null || true
+            if docker ps --format '{{.Names}}' | grep -q '^scientistcloud-portal$'; then
+                docker stop scientistcloud-portal 2>/dev/null || true
+                sleep 1
+            fi
         fi
         pushd "$SCIENTISTCLOUD_DIR" >/dev/null
         git fetch origin
-        git clean -fd 2>/dev/null || true
+        git clean -fd -e SC_Docker/.env 2>/dev/null || true
         if git ls-remote --heads origin workingPrivateRepo 2>/dev/null | grep -q workingPrivateRepo; then
             git checkout workingPrivateRepo 2>/dev/null || git checkout -b workingPrivateRepo origin/workingPrivateRepo
             git reset --hard origin/workingPrivateRepo 2>/dev/null || git checkout -f origin/workingPrivateRepo
@@ -211,6 +245,9 @@ git_pull_all() {
             git reset --hard origin/main 2>/dev/null || git checkout -f origin/main
         fi
         popd >/dev/null
+        if [ -f "$SCLIB_TRYTEST_DIR/env.scientistcloud" ]; then
+            cp "$SCLIB_TRYTEST_DIR/env.scientistcloud" "$PORTAL_DOCKER_DIR/.env"
+        fi
         if docker ps -a --format '{{.Names}}' | grep -q '^scientistcloud-portal$'; then
             docker start scientistcloud-portal 2>/dev/null || true
         fi
@@ -351,6 +388,10 @@ mode_nginx() {
     popd >/dev/null
 
     ensure_docker_network
+    discover_certbot_paths || {
+        echo "❌ Cannot start $NGINX_CONTAINER without SSL certs (export SC_CERTBOT_CONF / SC_CERTBOT_WWW)"
+        exit 1
+    }
     pushd "$PORTAL_DOCKER_DIR" >/dev/null
     if [ -f docker-compose.nginx.yml ]; then
         if ! docker compose -f docker-compose.yml -f docker-compose.nginx.yml up -d scientistcloud-nginx 2>&1; then
