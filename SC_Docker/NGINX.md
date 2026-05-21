@@ -31,9 +31,9 @@ SC_Docker/nginx/
 | `/dashboard/*` | `dashboard_*` (via `dashboards/*_dashboard.conf`) |
 | `/dozzle/` | `visstore_dozzle` (optional) |
 | `/static/extensions/panel/` | `dashboard_3dvtk:8051` (same as `default.conf.https`) |
-| `/static/js/`, `/static/css/`, … | `dashboard_openvisusslice:8054` (replaces `visstore_bokeh:5006/static/`) |
+| `/static/js/`, `/static/css/`, … | Referer map → correct `dashboard_*:port` (see `scientistcloud-bokeh-static-map.conf`) |
 
-**Literal `proxy_pass` only** on `/static/` blocks — do not use `$variables` in `proxy_pass` for these paths (see `default.conf.https` lines 404–422).
+**`/static/` routing:** `proxy_pass http://$sc_bokeh_static_upstream` with **no** URI path suffix (preserves `/static/js/bokeh.min.js`). Do **not** use `proxy_pass http://$host:$port/static/` — variable + path suffix returns **403** (see `default.conf.https` lines 417–422 for the legacy literal form).
 
 **Omitted** (legacy, not needed for SC 2.0): `visstore_user` at `/`, `visstore_bokeh` container, `/dataExplorer/` root path (use `/dashboard/OpenVisusSlice/`), old `/plotly/` root (use `/dashboard/…`), `/Visus/`, `visstore_bg_service`.
 

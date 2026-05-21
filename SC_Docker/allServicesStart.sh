@@ -373,6 +373,7 @@ verify_edge_nginx() {
     # Bokeh dashboards load /static/js/bokeh.min.js from site root (not /dashboard/.../static/)
     local static_code
     static_code=$(curl -sk -o /dev/null -w '%{http_code}' -H "Host: $domain" \
+        -H "Referer: https://${domain}/dashboard/3DVTK/" \
         "https://127.0.0.1/static/js/bokeh.min.js" 2>/dev/null || echo "000")
     if [ "$static_code" = "200" ]; then
         echo "   ✅ HTTPS /static/js/bokeh.min.js → $static_code"
