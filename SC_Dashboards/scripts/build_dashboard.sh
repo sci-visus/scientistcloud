@@ -67,7 +67,28 @@ fi
 # Load configuration
 BASE_IMAGE=$(jq -r '.base_image' "$CONFIG_FILE")
 BASE_IMAGE_TAG=$(jq -r '.base_image_tag // "latest"' "$CONFIG_FILE")
+BASE_IMAGE_REF="${BASE_IMAGE}:${BASE_IMAGE_TAG}"
+SC_BASES_DIR="$(cd "$SCRIPT_DIR/../docker/bases" && pwd)"
 IMAGE_NAME=$(echo "$DASHBOARD_NAME" | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9]/_/g')
+
+# Ensure SC base image exists (no VisusDataPortalPrivate dependency)
+if ! docker image inspect "$BASE_IMAGE_REF" >/dev/null 2>&1; then
+    echo "⚠️  Base image $BASE_IMAGE_REF not found — building SC base images..."
+    if [ -x "$SC_BASES_DIR/build-base-images.sh" ]; then
+        case "$BASE_IMAGE" in
+            sc-bokeh-dashboard-base) "$SC_BASES_DIR/build-base-images.sh" --only bokeh ;;
+            sc-plotly-dashboard-base) "$SC_BASES_DIR/build-base-images.sh" --only plotly ;;
+            sc-4d-dashboard-base) "$SC_BASES_DIR/build-base-images.sh" --only 4d ;;
+            *)
+                echo "❌ Unknown base_image: $BASE_IMAGE (expected sc-bokeh-dashboard-base, sc-plotly-dashboard-base, or sc-4d-dashboard-base)"
+                exit 1
+                ;;
+        esac
+    else
+        echo "❌ Missing $SC_BASES_DIR/build-base-images.sh"
+        exit 1
+    fi
+fi
 BUILD_ARGS=$(jq -r '.build_args // {} | to_entries | map("--build-arg \(.key)=\(.value)") | join(" ")' "$CONFIG_FILE")
 
 # Handle empty BUILD_ARGS (jq returns empty string if no build_args)

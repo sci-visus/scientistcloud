@@ -2,10 +2,11 @@
 # Generated from dashboard.json configuration
 # DO NOT EDIT MANUALLY - Regenerate using scripts/generate_dockerfile.sh
 
-FROM visstore-plotly-dashboard-base:latest
+FROM sc-plotly-dashboard-base:latest
 
 # Build arguments
 ARG D_GIT_TOKEN
+
 ARG DEPLOY_SERVER
 ARG DOMAIN_NAME
 
@@ -76,6 +77,8 @@ COPY SCLib_Dashboards/utils_bokeh_dashboard.py ./utils_bokeh_dashboard.py
 COPY SCLib_Dashboards/utils_bokeh_auth.py ./utils_bokeh_auth.py
 # Copy shared utility: utils_bokeh_param.py
 COPY SCLib_Dashboards/utils_bokeh_param.py ./utils_bokeh_param.py
+# Copy shared utility: SCDash_dataset_resolver.py
+COPY SCLib_Dashboards/SCDash_dataset_resolver.py ./SCDash_dataset_resolver.py
 
 
 # Copy dashboard-specific files (flat structure)

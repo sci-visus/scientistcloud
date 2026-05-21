@@ -1,0 +1,28 @@
+# ScientistCloud Bokeh/Panel dashboard base (replaces visstore-bokeh-dashboard-base from VisusDataPortalPrivate)
+FROM python:3.10-slim
+
+ENV PYTHONUNBUFFERED=True \
+    TZ=America/Chicago \
+    INSTALL_HOME=/home/scientistcloud
+
+RUN ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && \
+    echo $TZ > /etc/timezone && \
+    apt-get update && \
+    apt-get install -y --no-install-recommends \
+        git curl gcc gfortran libopenblas-dev liblapack-dev pkg-config patchelf passwd \
+    && python3 -m pip install --upgrade pip \
+    && apt-get clean && rm -rf /var/lib/apt/lists/*
+
+COPY requirements/ /tmp/requirements/
+
+RUN python3 -m pip install --no-cache-dir -r /tmp/requirements/base-requirements.txt && \
+    python3 -m pip install --no-cache-dir -r /tmp/requirements/ubuntu-python310-requirements.txt && \
+    python3 -m pip install --no-cache-dir -r /tmp/requirements/bokeh-requirements.txt && \
+    python3 -m OpenVisus configure || true
+
+RUN mkdir -p ${INSTALL_HOME} /app /srv/tmp && \
+    (id -u bokehuser >/dev/null 2>&1 || useradd -m -s /bin/bash -u 10001 bokehuser) && \
+    chown -R bokehuser:bokehuser /app ${INSTALL_HOME} /srv/tmp
+
+WORKDIR /app
+USER bokehuser

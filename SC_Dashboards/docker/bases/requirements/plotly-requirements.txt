@@ -1,0 +1,10 @@
+# Plotly/Dash dashboard stack
+versioneer[toml]
+Cython
+pandas
+bokeh==3.8.0
+dash
+dash-bootstrap-components
+dash_vtk
+vtk
+dash-vtk

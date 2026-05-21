@@ -2,10 +2,11 @@
 # Generated from dashboard.json configuration
 # DO NOT EDIT MANUALLY - Regenerate using scripts/generate_dockerfile.sh
 
-FROM visstore-4d-dashboard-base:latest
+FROM sc-4d-dashboard-base:latest
 
 # Build arguments
 ARG D_GIT_TOKEN
+
 ARG DEPLOY_SERVER
 ARG DOMAIN_NAME
 
@@ -26,6 +27,20 @@ WORKDIR $APP_HOME
 COPY SCLib_Dashboards ./SCLib_Dashboards
 # Copy shared utility: mongo_connection.py
 COPY SCLib_Dashboards/mongo_connection.py ./mongo_connection.py
+# Copy shared utility: utils_bokeh_mongodb.py
+COPY SCLib_Dashboards/utils_bokeh_mongodb.py ./utils_bokeh_mongodb.py
+# Copy shared utility: utils_bokeh_dashboard.py
+COPY SCLib_Dashboards/utils_bokeh_dashboard.py ./utils_bokeh_dashboard.py
+# Copy shared utility: utils_bokeh_auth.py
+COPY SCLib_Dashboards/utils_bokeh_auth.py ./utils_bokeh_auth.py
+# Copy shared utility: utils_bokeh_param.py
+COPY SCLib_Dashboards/utils_bokeh_param.py ./utils_bokeh_param.py
+# Copy shared utility: SCDash_dataset_resolver.py
+COPY SCLib_Dashboards/SCDash_dataset_resolver.py ./SCDash_dataset_resolver.py
+# Copy shared utility: 4d_dashboard_implementation.py
+COPY SCLib_Dashboards/4d_dashboard_implementation.py ./4d_dashboard_implementation.py
+# Copy shared utility: 4d_dashboard_builder.py
+COPY SCLib_Dashboards/4d_dashboard_builder.py ./4d_dashboard_builder.py
 
 
 # Copy dashboard-specific files (flat structure)
@@ -42,7 +57,18 @@ RUN if [ -s requirements.txt ]; then \
     fi
 
 
-# Fix permissions: Create bokehuser if it doesn't exist and add to www-data groupn# This allows the dashboard to create sessions directories in /mnt/visus_datasets/upload/<UUID>/sessionsn# IMPORTANT: Host directories at /mnt/visus_datasets/upload/<UUID> must have:n#   - Group ownership: www-data (or be group-writable)n#   - Permissions: 775 or 2775 (setgid) to allow group writesn#   Run on host: sudo chgrp -R www-data /mnt/visus_datasets/upload && sudo chmod -R g+w /mnt/visus_datasets/uploadnUSER rootnRUN groupadd -f www-data && \n    (id -u bokehuser >/dev/null 2>&1 || useradd -m -s /bin/bash -u 10001 bokehuser) && \n    usermod -a -G www-data bokehuser && \n    chown -R bokehuser:bokehuser /appnUSER bokehusern
+# Fix permissions: Create bokehuser if it doesn't exist and add to www-data group
+# This allows the dashboard to create sessions directories in /mnt/visus_datasets/upload/<UUID>/sessions
+# IMPORTANT: Host directories at /mnt/visus_datasets/upload/<UUID> must have:
+#   - Group ownership: www-data (or be group-writable)
+#   - Permissions: 775 or 2775 (setgid) to allow group writes
+#   Run on host: sudo chgrp -R www-data /mnt/visus_datasets/upload && sudo chmod -R g+w /mnt/visus_datasets/upload
+USER root
+RUN groupadd -f www-data && \
+    (id -u bokehuser >/dev/null 2>&1 || useradd -m -s /bin/bash -u 10001 bokehuser) && \
+    usermod -a -G www-data bokehuser && \
+    chown -R bokehuser:bokehuser /app
+USER bokehuser
 # Set environment variables from configuration
 
 
@@ -56,5 +82,5 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
 
 
 # Run dashboard entry point
-CMD ["sh", "-c", "python3 -m bokeh serve ./4d_dashboardopt.py --allow-websocket-origin=$DOMAIN_NAME --allow-websocket-origin=127.0.0.1 --allow-websocket-origin=0.0.0.0 --port=8057 --address=0.0.0.0 --use-xheaders --session-token-expiration=86400"]
+CMD ["sh", "-c", "WS_ORIGIN=${DOMAIN_NAME:-scientistcloud.com}; python3 -m bokeh serve ./4d_dashboardopt.py --allow-websocket-origin=$WS_ORIGIN --allow-websocket-origin=scientistcloud.com --allow-websocket-origin=www.scientistcloud.com --allow-websocket-origin=127.0.0.1 --allow-websocket-origin=0.0.0.0 --port=8057 --address=0.0.0.0 --use-xheaders --session-token-expiration=86400"]
 

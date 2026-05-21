@@ -1,6 +1,6 @@
 #!/bin/bash
 #
-# ScientistCloud 2.0 — deploy helper (SC-native; no VisusDataPortalPrivate required)
+# ScientistCloud 2.0 — deploy helper (SC-native; no VisusDataPortalPrivate / visstore_* images required)
 #
 # Usage:
 #   ./allServicesStart.sh              Git pull only (all repos + env sync)
@@ -11,7 +11,7 @@
 # Modes (after git pull):
 #   s   SCLib (auth, fastapi, background-service) — rebuild via scientistCloudLib/Docker/start.sh
 #   w   SC_Web portal (scientistcloud-portal) — rebuild via SC_Docker/start.sh
-#   d   All enabled dashboards — init, build, docker-compose up, nginx configs
+#   d   All enabled dashboards — SC base images, init, build, docker-compose up, nginx configs
 #   x   SC edge nginx — scientistcloud-nginx, default.conf override, certs, dashboards, dozzle
 #   z   Dozzle log UI (visstore_dozzle) — https://DOMAIN/dozzle/  (also runs with x)
 #
@@ -428,6 +428,11 @@ mode_dashboards() {
     fi
     ensure_docker_network
     pushd "$DASHBOARDS_DIR" >/dev/null
+
+    if [ -x ./docker/bases/build-base-images.sh ]; then
+        echo "🐳 SC dashboard base images (sc-bokeh / sc-plotly / sc-4d)..."
+        ./docker/bases/build-base-images.sh 2>&1 | grep -E '(Building|✅|❌|sc-)' || true
+    fi
 
     [ -f ./scripts/regenerate_registry.sh ] && ./scripts/regenerate_registry.sh 2>&1 | grep -E '(✅|⚠️|❌|Registering|Port registry)' || true
     [ -f ./scripts/export_dashboard_list.sh ] && ./scripts/export_dashboard_list.sh 2>&1 | grep -E '(✅|⚠️|❌|Total)' || true

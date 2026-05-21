@@ -7,7 +7,7 @@
   "entry_point": "plotly_dashboard.py",
   "entry_point_type": "python",
   "port": 8050,
-  "base_image": "plotly-dashboard-base",
+  "base_image": "sc-bokeh-dashboard-base",
   "base_image_tag": "latest",
   "requirements_file": "requirements.txt",
   "additional_requirements": [

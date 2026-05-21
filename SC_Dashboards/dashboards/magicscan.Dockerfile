@@ -2,10 +2,11 @@
 # Generated from dashboard.json configuration
 # DO NOT EDIT MANUALLY - Regenerate using scripts/generate_dockerfile.sh
 
-FROM visstore-bokeh-dashboard-base:latest
+FROM sc-bokeh-dashboard-base:latest
 
 # Build arguments
 ARG D_GIT_TOKEN
+
 ARG DEPLOY_SERVER
 ARG DOMAIN_NAME
 
@@ -34,6 +35,8 @@ COPY SCLib_Dashboards/utils_bokeh_dashboard.py ./utils_bokeh_dashboard.py
 COPY SCLib_Dashboards/utils_bokeh_auth.py ./utils_bokeh_auth.py
 # Copy shared utility: utils_bokeh_param.py
 COPY SCLib_Dashboards/utils_bokeh_param.py ./utils_bokeh_param.py
+# Copy shared utility: SCDash_dataset_resolver.py
+COPY SCLib_Dashboards/SCDash_dataset_resolver.py ./SCDash_dataset_resolver.py
 # Copy shared utility: msc_py.cpython-310-x86_64-linux-gnu.so
 COPY SCLib_Dashboards/msc_py.cpython-310-x86_64-linux-gnu.so ./msc_py.cpython-310-x86_64-linux-gnu.so
 
@@ -64,7 +67,6 @@ RUN groupadd -f www-data && \
     usermod -a -G www-data bokehuser && \
     chown -R bokehuser:bokehuser /app
 USER bokehuser
-
 # Set environment variables from configuration
 
 
@@ -78,5 +80,5 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
 
 
 # Run dashboard entry point
-CMD ["sh", "-c", "python3 -m panel serve ./magicscan.py --allow-websocket-origin=$DOMAIN_NAME --port=8053 --address=0.0.0.0 --use-xheaders"]
+CMD ["sh", "-c", "WS_ORIGIN=${DOMAIN_NAME:-scientistcloud.com}; python3 -m panel serve ./magicscan.py --allow-websocket-origin=$WS_ORIGIN --allow-websocket-origin=scientistcloud.com --allow-websocket-origin=www.scientistcloud.com --port=8053 --address=0.0.0.0 --use-xheaders"]
 

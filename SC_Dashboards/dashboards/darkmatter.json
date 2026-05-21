@@ -7,7 +7,7 @@
     "entry_point": "darkmatter.py",
     "entry_point_type": "python",
     "port": 8058,
-    "base_image": "visstore-bokeh-dashboard-base",
+    "base_image": "sc-bokeh-dashboard-base",
     "base_image_tag": "latest",
     "requirements_file": "requirements.txt",
     "additional_requirements": [

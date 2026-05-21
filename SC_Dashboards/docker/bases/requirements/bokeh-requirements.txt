@@ -1,0 +1,16 @@
+# Bokeh dashboard stack
+bokeh==3.8.0
+panel>=1.3.0
+jupyter
+boto3
+scikit-image
+bokeh[server]
+tornado>=6.1
+markupsafe>=2.0
+six>=1.16
+packaging>=21.0
+pyyaml>=5.4
+python-dateutil>=2.8
+babel>=2.9
+click>=8.0
+pillow>=8.0

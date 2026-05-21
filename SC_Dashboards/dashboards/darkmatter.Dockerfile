@@ -2,7 +2,7 @@
 # Generated from dashboard.json configuration
 # DO NOT EDIT MANUALLY - Regenerate using scripts/generate_dockerfile.sh
 
-FROM visstore-bokeh-dashboard-base:latest
+FROM sc-bokeh-dashboard-base:latest
 
 # Build arguments
 ARG D_GIT_TOKEN

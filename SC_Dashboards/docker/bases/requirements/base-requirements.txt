@@ -1,0 +1,13 @@
+# Base requirements common to all SC dashboard images
+numpy>=1.21.0
+requests
+PyJWT
+pymongo
+brotlipy
+urllib3<2
+python-dotenv
+matplotlib
+scipy
+h5py
+colorcet
+xmltodict

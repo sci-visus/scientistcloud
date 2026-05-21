@@ -1,0 +1,29 @@
+# ScientistCloud Plotly/Dash dashboard base (replaces visstore-plotly-dashboard-base)
+FROM python:3.10-slim
+
+ENV PYTHONUNBUFFERED=True \
+    TZ=America/Chicago
+
+RUN ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && \
+    echo $TZ > /etc/timezone && \
+    apt-get update && \
+    apt-get install -y --no-install-recommends \
+        git zlib1g zlib1g-dev libjpeg-dev unzip patchelf passwd build-essential python3-dev \
+        curl libx11-6 libxext6 libxrender1 libxtst6 libxi6 libxrandr2 libxss1 libxcb1 \
+        libxcomposite1 libxcursor1 libxdamage1 libxfixes3 libxinerama1 \
+    && python3 -m pip install --upgrade pip \
+    && apt-get clean && rm -rf /var/lib/apt/lists/*
+
+COPY requirements/ /tmp/requirements/
+
+RUN python3 -m pip install --no-cache-dir -r /tmp/requirements/base-requirements.txt && \
+    python3 -m pip install --no-cache-dir -r /tmp/requirements/ubuntu-python310-requirements.txt && \
+    python3 -m pip install --no-cache-dir -r /tmp/requirements/plotly-requirements.txt && \
+    python3 -m OpenVisus configure || true
+
+RUN mkdir -p /plotly && \
+    (id -u plotlyuser >/dev/null 2>&1 || useradd -m -s /bin/bash -u 10001 plotlyuser) && \
+    chown -R plotlyuser:plotlyuser /plotly
+
+WORKDIR /plotly
+USER plotlyuser

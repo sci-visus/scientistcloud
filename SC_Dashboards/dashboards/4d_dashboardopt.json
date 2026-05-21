@@ -7,7 +7,7 @@
   "entry_point": "4d_dashboardopt.py",
   "entry_point_type": "python",
   "port": 8057,
-  "base_image": "visstore-4d-dashboard-base",
+  "base_image": "sc-4d-dashboard-base",
   "base_image_tag": "latest",
   "requirements_file": "4d_dashboardopt_requirements.txt",
   "additional_requirements": [],

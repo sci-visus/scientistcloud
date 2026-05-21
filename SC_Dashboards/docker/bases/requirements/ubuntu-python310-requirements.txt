@@ -1,0 +1,4 @@
+# OpenVisus stack (pip; no VisusDataPortalPrivate git clone)
+OpenVisus==2.2.141
+OpenVisusNoGui==2.2.141
+openvisuspy==1.0.71
