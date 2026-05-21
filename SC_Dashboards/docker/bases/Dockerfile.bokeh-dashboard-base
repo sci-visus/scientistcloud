@@ -3,7 +3,8 @@ FROM python:3.10-slim
 
 ENV PYTHONUNBUFFERED=True \
     TZ=America/Chicago \
-    INSTALL_HOME=/home/scientistcloud
+    INSTALL_HOME=/home/scientistcloud \
+    PYTHONPATH=${INSTALL_HOME}/dataportal/openvisuspy/src
 
 RUN ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && \
     echo $TZ > /etc/timezone && \
@@ -19,6 +20,11 @@ RUN python3 -m pip install --no-cache-dir -r /tmp/requirements/base-requirements
     python3 -m pip install --no-cache-dir -r /tmp/requirements/ubuntu-python310-requirements.txt && \
     python3 -m pip install --no-cache-dir -r /tmp/requirements/bokeh-requirements.txt && \
     python3 -m OpenVisus configure || true
+
+# PyPI openvisuspy lacks Slices/GetBackend used by OpenVisusSlice; install sci-visus source (public repo).
+RUN git clone --depth 1 https://github.com/sci-visus/openvisuspy.git ${INSTALL_HOME}/dataportal/openvisuspy && \
+    python3 -m pip uninstall -y openvisuspy 2>/dev/null || true && \
+    python3 -m pip install --no-cache-dir -e ${INSTALL_HOME}/dataportal/openvisuspy
 
 RUN mkdir -p ${INSTALL_HOME} /app /srv/tmp && \
     (id -u bokehuser >/dev/null 2>&1 || useradd -m -s /bin/bash -u 10001 bokehuser) && \

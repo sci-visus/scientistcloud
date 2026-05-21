@@ -334,9 +334,25 @@ verify_edge_nginx() {
     code=$(curl -sk -o /dev/null -w '%{http_code}' -H "Host: $domain" "https://127.0.0.1/portal/health" 2>/dev/null || echo "000")
     if [ "$code" = "200" ]; then
         echo "   ✅ HTTPS /portal/health → $code"
-        return 0
+    else
+        echo "   ⚠️  /portal/health returned HTTP=$code (portal may still be starting)"
     fi
-    echo "   ⚠️  /portal/health returned HTTP=$code (portal may still be starting)"
+    # Bokeh dashboards load /static/js/bokeh.min.js from site root (not /dashboard/.../static/)
+    local static_code
+    static_code=$(curl -sk -o /dev/null -w '%{http_code}' -H "Host: $domain" \
+        "https://127.0.0.1/static/js/bokeh.min.js" 2>/dev/null || echo "000")
+    if [ "$static_code" = "200" ]; then
+        echo "   ✅ HTTPS /static/js/bokeh.min.js → $static_code"
+    else
+        echo "   ❌ HTTPS /static/js/bokeh.min.js → $static_code (run ./allServicesStart.sh x after git pull)"
+    fi
+    static_code=$(curl -sk -o /dev/null -w '%{http_code}' -H "Host: $domain" \
+        "https://127.0.0.1/static/extensions/panel/panel.min.js" 2>/dev/null || echo "000")
+    if [ "$static_code" = "200" ]; then
+        echo "   ✅ HTTPS /static/extensions/panel/panel.min.js → $static_code"
+    else
+        echo "   ❌ HTTPS /static/extensions/panel/panel.min.js → $static_code"
+    fi
     return 0
 }
 
