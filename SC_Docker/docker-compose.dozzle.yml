@@ -1,0 +1,16 @@
+# Optional container log UI — proxied at /dozzle/ by scientistcloud-nginx
+#   docker compose -f docker-compose.yml -f docker-compose.nginx.yml -f docker-compose.dozzle.yml up -d
+
+services:
+  visstore_dozzle:
+    image: amir20/dozzle:latest
+    container_name: visstore_dozzle
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    networks:
+      - docker_visstore_web
+    restart: unless-stopped
+
+networks:
+  docker_visstore_web:
+    external: true

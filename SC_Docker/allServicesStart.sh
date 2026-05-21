@@ -4,20 +4,23 @@
 #
 # Usage:
 #   ./allServicesStart.sh              Git pull only (all repos + env sync)
-#   ./allServicesStart.sh s w d x      Git pull, then rebuild/restart each part
-#   ./allServicesStart.sh swdx         Same as separate letters
+#   ./allServicesStart.sh s w d x z    Git pull, then rebuild/restart each part
+#   ./allServicesStart.sh swdx         Nginx + dozzle (z is included with x)
+#   ./allServicesStart.sh swdxz        Same as swdx
 #
 # Modes (after git pull):
 #   s   SCLib (auth, fastapi, background-service) — rebuild via scientistCloudLib/Docker/start.sh
 #   w   SC_Web portal (scientistcloud-portal) — rebuild via SC_Docker/start.sh
 #   d   All enabled dashboards — init, build, docker-compose up, nginx configs
-#   x   SC edge nginx — scientistcloud-nginx + setup_dashboards_nginx.sh sc
+#   x   SC edge nginx — scientistcloud-nginx + setup_dashboards_nginx.sh sc (+ dozzle)
+#   z   Dozzle log UI (visstore_dozzle) — https://DOMAIN/dozzle/
 #
 # Long flags (same modes):
 #   -s, --sclib-only          SCLib rebuild
 #   -w, --web-only            Portal rebuild
 #   -sw, --sclib-web          Both
 #   -x, --nginx-only          Nginx only (still runs git pull first)
+#   -z, --dozzle-only         Dozzle only (container log viewer at /dozzle/)
 #   -dm, -vtk, -plotly        Single dashboard (d subset)
 #   --dashboards-only         Skip s/w; only dashboard pipeline (+ x if also passed)
 #
@@ -37,6 +40,7 @@ DO_SCLIB=false
 DO_WEB=false
 DO_DASHBOARDS=false
 DO_NGINX=false
+DO_DOZZLE=false
 REBUILD_SCLIB=false
 REBUILD_WEB=false
 DASHBOARD_ONLY_REGISTRY_KEY=""
@@ -58,9 +62,10 @@ parse_letter_mode() {
             s|S) GIT_PULL_ONLY=false; DO_SCLIB=true; REBUILD_SCLIB=true ;;
             w|W) GIT_PULL_ONLY=false; DO_WEB=true; REBUILD_WEB=true ;;
             d|D) GIT_PULL_ONLY=false; DO_DASHBOARDS=true ;;
-            x|X) GIT_PULL_ONLY=false; DO_NGINX=true ;;
+            x|X) GIT_PULL_ONLY=false; DO_NGINX=true; DO_DOZZLE=true ;;
+            z|Z) GIT_PULL_ONLY=false; DO_DOZZLE=true ;;
             h|H) usage 0 ;;
-            *) echo "❌ Unknown mode letter: $c (use s w d x)"; usage 1 ;;
+            *) echo "❌ Unknown mode letter: $c (use s w d x z)"; usage 1 ;;
         esac
     done
 }
@@ -79,7 +84,10 @@ for arg in "$@"; do
             REBUILD_SCLIB=true; REBUILD_WEB=true
             ;;
         -x|--nginx-only)
-            GIT_PULL_ONLY=false; DO_NGINX=true
+            GIT_PULL_ONLY=false; DO_NGINX=true; DO_DOZZLE=true
+            ;;
+        -z|--dozzle-only)
+            GIT_PULL_ONLY=false; DO_DOZZLE=true
             ;;
         --dashboards-only|--only-dashboards)
             GIT_PULL_ONLY=false; DO_DASHBOARDS=true
@@ -109,7 +117,7 @@ for arg in "$@"; do
             if [[ "$arg" =~ ^- ]]; then
                 echo "❌ Unknown option: $arg"
                 usage 1
-            elif [[ "$arg" =~ ^[swdxSWDX]+$ ]]; then
+            elif [[ "$arg" =~ ^[swdxzSWDXZ]+$ ]]; then
                 parse_letter_mode "$arg"
             else
                 echo "❌ Unknown argument: $arg"
@@ -122,7 +130,7 @@ done
 # Multiple single-letter args: s w d x
 if [ "$#" -gt 0 ] && [ "$GIT_PULL_ONLY" = true ]; then
     for arg in "$@"; do
-        if [[ "$arg" =~ ^[swdxSWDX]$ ]]; then
+        if [[ "$arg" =~ ^[swdxzSWDXZ]$ ]]; then
             parse_letter_mode "$arg"
         fi
     done
@@ -271,6 +279,46 @@ ensure_docker_network() {
     fi
 }
 
+# Compose files for edge nginx + optional dozzle (SC-native)
+nginx_compose_files() {
+    local files="-f docker-compose.yml -f docker-compose.nginx.yml"
+    if [ -f "$PORTAL_DOCKER_DIR/docker-compose.dozzle.yml" ]; then
+        files="$files -f docker-compose.dozzle.yml"
+    fi
+    echo "$files"
+}
+
+mode_dozzle() {
+    echo "════════════════════════════════════════"
+    echo "🔄 Mode z — Dozzle (visstore_dozzle → /dozzle/)"
+    echo "════════════════════════════════════════"
+    ensure_docker_network
+    pushd "$PORTAL_DOCKER_DIR" >/dev/null
+    local compose_files
+    compose_files="$(nginx_compose_files)"
+    if [ -f docker-compose.dozzle.yml ]; then
+        if ! docker compose $compose_files up -d visstore_dozzle 2>&1; then
+            docker-compose $compose_files up -d visstore_dozzle 2>&1 || {
+                echo "❌ Failed to start visstore_dozzle"
+                exit 1
+            }
+        fi
+    else
+        echo "⚠️  docker-compose.dozzle.yml missing — starting dozzle via docker run"
+        docker rm -f visstore_dozzle 2>/dev/null || true
+        docker run -d --name visstore_dozzle --restart unless-stopped \
+            --network docker_visstore_web \
+            -v /var/run/docker.sock:/var/run/docker.sock:ro \
+            amir20/dozzle:latest
+    fi
+    popd >/dev/null
+    if docker ps --format '{{.Names}}' | grep -q '^visstore_dozzle$'; then
+        echo "✅ Dozzle: https://${DOMAIN_NAME:-scientistcloud.com}/dozzle/"
+    else
+        echo "⚠️  visstore_dozzle not running"
+    fi
+}
+
 mode_sclib() {
     echo "════════════════════════════════════════"
     echo "📦 Mode s — SCLib services"
@@ -402,9 +450,11 @@ mode_nginx() {
         exit 1
     }
     pushd "$PORTAL_DOCKER_DIR" >/dev/null
+    local nginx_compose
+    nginx_compose="$(nginx_compose_files)"
     if [ -f docker-compose.nginx.yml ]; then
-        if ! docker compose -f docker-compose.yml -f docker-compose.nginx.yml up -d scientistcloud-nginx 2>&1; then
-            docker-compose -f docker-compose.yml -f docker-compose.nginx.yml up -d scientistcloud-nginx 2>&1 || {
+        if ! docker compose $nginx_compose up -d scientistcloud-nginx 2>&1; then
+            docker-compose $nginx_compose up -d scientistcloud-nginx 2>&1 || {
                 echo "❌ Failed to start $NGINX_CONTAINER (check cert paths SC_CERTBOT_CONF / SC_CERTBOT_WWW and port 80/443)"
                 docker ps -a --filter "name=$NGINX_CONTAINER" --format '{{.Names}} {{.Status}}' 2>/dev/null || true
                 exit 1
@@ -420,13 +470,15 @@ mode_nginx() {
         echo "⚠️  $NGINX_CONTAINER not running — add scientistcloud-server.conf (see NGINX.md) then:"
         echo "   cd $PORTAL_DOCKER_DIR && docker compose -f docker-compose.yml -f docker-compose.nginx.yml up -d"
     fi
+
+    mode_dozzle
 }
 
 print_summary() {
     echo ""
     echo "🕒 Finished: $(date '+%Y-%m-%d %H:%M:%S %Z')"
     if [ "$GIT_PULL_ONLY" = true ]; then
-        echo "   (git pull only — use: ./allServicesStart.sh s w d x)"
+        echo "   (git pull only — use: ./allServicesStart.sh s w d x z)"
         return
     fi
     echo ""
@@ -434,9 +486,11 @@ print_summary() {
     $DO_SCLIB && echo "  s — SCLib"
     $DO_WEB && echo "  w — portal"
     $DO_DASHBOARDS && echo "  d — dashboards"
-    $DO_NGINX && echo "  x — nginx"
+    $DO_NGINX && echo "  x — nginx (+ dozzle)"
+    $DO_DOZZLE && ! $DO_NGINX && echo "  z — dozzle"
     echo ""
     echo "  Portal: https://${DOMAIN_NAME:-scientistcloud.com}/portal/"
+    $DO_DOZZLE && echo "  Dozzle: https://${DOMAIN_NAME:-scientistcloud.com}/dozzle/"
     if [ -f "$DASHBOARDS_DIR/config/dashboard-registry.json" ]; then
         local base="https://${DOMAIN_NAME:-scientistcloud.com}"
         jq -r --arg b "$base" '.dashboards | to_entries[] | select(.value.enabled == true) | "  \(.key): \($b)\(.value.nginx_path // "")"' \
@@ -458,6 +512,7 @@ $DO_WEB && mode_web
 $DO_DASHBOARDS && mode_dashboards
 # Nginx after dashboards so conf.d/dashboards/ exists
 $DO_NGINX && mode_nginx
+$DO_DOZZLE && ! $DO_NGINX && mode_dozzle
 # If only dashboards, still refresh nginx configs when d without x? Optional: run setup nginx after d
 if $DO_DASHBOARDS && ! $DO_NGINX; then
     if [ -d "$DASHBOARDS_DIR" ]; then

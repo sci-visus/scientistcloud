@@ -2,7 +2,8 @@
 # Rendered at container start: DOMAIN_NAME → /etc/nginx/conf.d/scientistcloud-server.conf
 
 server {
-    listen 80;
+    listen 80 default_server;
+    listen [::]:80 default_server;
     server_name ${DOMAIN_NAME};
 
     set $portal_upstream "scientistcloud-portal";
