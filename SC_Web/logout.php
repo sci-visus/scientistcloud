@@ -4,7 +4,7 @@
  * Handles user logout via Auth0
  */
 
-// Start session
+require_once(__DIR__ . '/includes/session_cookie_params.php');
 if (session_status() !== PHP_SESSION_ACTIVE) {
     session_start();
 }

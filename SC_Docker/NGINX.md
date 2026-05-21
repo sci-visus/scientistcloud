@@ -2,6 +2,8 @@
 
 Edge routing for ScientistCloud 2.0 lives under **`scientistcloud/SC_Docker/nginx/`**. The **`scientistcloud-nginx`** container replaces **`visstore_nginx`** from VisusDataPortalPrivate.
 
+**Legacy reference:** `VisusDataPortalPrivate/Docker/nginx/conf.d/default.conf.https` — that file defined what worked (portal API, `/static/`, `/static/extensions/panel/`, per-dashboard Bokeh/Plotly paths, Dozzle, SCLib). SC configs should preserve those patterns; only container names and URL prefixes changed (`/dataExplorer/` → `/dashboard/OpenVisusSlice/`, `visstore_bokeh` → `dashboard_openvisusslice`, etc.).
+
 ## Layout
 
 ```
@@ -27,10 +29,12 @@ SC_Docker/nginx/
 | `/api/v1/`, `/api/upload/`, `/api/auth/` | SCLib |
 | `/dashboard/*` | `dashboard_*` (via `dashboards/*_dashboard.conf`) |
 | `/dozzle/` | `visstore_dozzle` (optional) |
-| `/static/extensions/panel/` | `dashboard_3dvtk` (always; legacy-specific) |
-| `/static/js/`, `/static/css/`, … | Bokeh container from Referer map (legacy global `/static/` → `visstore_bokeh`) |
+| `/static/extensions/panel/` | `dashboard_3dvtk:8051` (same as `default.conf.https`) |
+| `/static/js/`, `/static/css/`, … | `dashboard_openvisusslice:8054` (replaces `visstore_bokeh:5006/static/`) |
 
-**Omitted** (legacy): `visstore_user` at `/`, `visstore_bokeh_*`, `dataExplorer`, old `/plotly/`, `/Visus/`, `visstore_bg_service` routes.
+**Literal `proxy_pass` only** on `/static/` blocks — do not use `$variables` in `proxy_pass` for these paths (see `default.conf.https` lines 404–422).
+
+**Omitted** (legacy, not needed for SC 2.0): `visstore_user` at `/`, `visstore_bokeh` container, `/dataExplorer/` root path (use `/dashboard/OpenVisusSlice/`), old `/plotly/` root (use `/dashboard/…`), `/Visus/`, `visstore_bg_service`.
 
 ## Environment
 

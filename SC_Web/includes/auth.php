@@ -215,10 +215,56 @@ function isAuthenticated() {
 }
 
 /**
+ * Clear Auth0 SDK / portal cookies (legacy Visus logout pattern).
+ */
+function clearAuth0Cookies() {
+    $secure = isHttpsRequest();
+    $names = [
+        'auth0.is.authenticated',
+        'auth0_session',
+        'auth0_session_0',
+        'auth0_session_1',
+        'auth0_session_2',
+        'auth_token',
+        'session_token',
+    ];
+    foreach ($names as $name) {
+        setcookie($name, '', [
+            'expires' => time() - 3600,
+            'path' => '/',
+            'secure' => $secure,
+            'httponly' => true,
+            'samesite' => 'Lax',
+        ]);
+    }
+}
+
+/**
+ * Portal path prefix: '' on localhost, '/portal' on production host.
+ */
+function scPortalPathPrefix() {
+    $isLocal = (strpos(SC_SERVER_URL, 'localhost') !== false
+        || strpos(SC_SERVER_URL, '127.0.0.1') !== false);
+    return $isLocal ? '' : '/portal';
+}
+
+/**
+ * URL shown after Auth0 logout — must NOT auto-start login (unlike login.php).
+ */
+function getPostLogoutUrl() {
+    $base = rtrim(SC_SERVER_URL, '/');
+    if (strpos($base, '/portal') !== false) {
+        $base = str_replace('/portal', '', $base);
+    }
+    return $base . scPortalPathPrefix() . '/logged_out.php';
+}
+
+/**
  * Logout user
  */
 function logoutUser() {
     clearDashboardAuthCookie();
+    clearAuth0Cookies();
 
     // Clear all session variables
     $_SESSION = array();
@@ -243,27 +289,24 @@ function logoutUser() {
  * Logout user with Auth0
  */
 function logoutUserWithAuth0() {
-    // Clear session first
-    logoutUser();
-    
-    // Redirect to Auth0 logout
     require_once(__DIR__ . '/../config_auth0.php');
     global $auth0;
-    
-    // Determine login path based on environment (same logic as login.php)
-    // For remote server, always use /portal/login.php
-    $isLocal = (strpos(SC_SERVER_URL, 'localhost') !== false || strpos(SC_SERVER_URL, '127.0.0.1') !== false);
-    $loginPath = $isLocal ? '/login.php' : '/portal/login.php';
-    
-    // Build return URL - ensure SC_SERVER_URL doesn't already include /portal
-    $baseUrl = rtrim(SC_SERVER_URL, '/');
-    // Remove /portal if it's already in the base URL to avoid double /portal/portal
-    if (strpos($baseUrl, '/portal') !== false) {
-        $baseUrl = str_replace('/portal', '', $baseUrl);
+
+    clearDashboardAuthCookie();
+    clearAuth0Cookies();
+
+    // Auth0 SDK clears its session store; return URL must not be login.php (that auto-starts OAuth).
+    $returnUrl = getPostLogoutUrl();
+    try {
+        $logoutUrl = $auth0->logout($returnUrl, ['federated' => '']);
+    } catch (Throwable $e) {
+        error_log('Auth0 logout failed: ' . $e->getMessage());
+        logoutUser();
+        header('Location: ' . $returnUrl);
+        exit;
     }
-    $returnUrl = $baseUrl . $loginPath;
-    
-    $logoutUrl = $auth0->logout($returnUrl);
+
+    logoutUser();
     header('Location: ' . $logoutUrl);
     exit;
 }
