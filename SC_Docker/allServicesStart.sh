@@ -279,6 +279,8 @@ git_pull_all() {
         fi
     fi
     sync_env_files || true
+    # git clean -fd removes nginx/conf.d/default.conf; recreate before any compose mount
+    ensure_sc_nginx_files || true
     echo "✅ Git pull complete"
 }
 
@@ -313,16 +315,40 @@ EOF
     for f in \
         nginx/templates/scientistcloud-server.conf.template \
         nginx/includes/scientistcloud-locations.conf \
+        nginx/includes/scientistcloud-bokeh-static-map.conf \
         docker-compose.nginx.yml; do
         if [ ! -f "$PORTAL_DOCKER_DIR/$f" ]; then
             echo "❌ Missing SC_Docker/$f"
             missing=1
         fi
     done
+    if [ -f "$PORTAL_DOCKER_DIR/nginx/nginx.conf" ] && \
+        ! grep -q 'scientistcloud-bokeh-static-map.conf' "$PORTAL_DOCKER_DIR/nginx/nginx.conf"; then
+        echo "❌ nginx/nginx.conf must include scientistcloud-bokeh-static-map.conf in http {}"
+        missing=1
+    fi
     if [ "$missing" -ne 0 ]; then
         echo "   Run: cd $SCIENTISTCLOUD_DIR && git pull && git checkout -B workingPrivateRepo origin/workingPrivateRepo"
         exit 1
     fi
+}
+
+# Reload edge nginx after dashboard deploy (map vars require http{} include in nginx.conf).
+reload_sc_nginx() {
+    if ! docker ps --format '{{.Names}}' | grep -q "^${NGINX_CONTAINER}$"; then
+        echo "   ℹ️  $NGINX_CONTAINER not running — run: ./allServicesStart.sh x"
+        return 0
+    fi
+    ensure_sc_nginx_files
+    if docker exec "$NGINX_CONTAINER" nginx -t 2>&1; then
+        docker exec "$NGINX_CONTAINER" nginx -s reload
+        echo "✅ $NGINX_CONTAINER reloaded"
+        verify_edge_nginx || true
+        return 0
+    fi
+    echo "❌ $NGINX_CONTAINER config test failed (often: unknown sc_bokeh_static_host — recreate nginx)"
+    echo "   Fix: ./allServicesStart.sh x"
+    return 1
 }
 
 # Quick edge checks after nginx starts (replaces manual curl smoke tests)
@@ -578,9 +604,16 @@ mode_nginx() {
     popd >/dev/null
 
     if docker ps --format '{{.Names}}' | grep -q "^${NGINX_CONTAINER}$"; then
-        docker exec "$NGINX_CONTAINER" nginx -t && docker exec "$NGINX_CONTAINER" nginx -s reload
-        echo "✅ $NGINX_CONTAINER reloaded"
-        verify_edge_nginx || true
+        if ! reload_sc_nginx; then
+            echo "   🔄 Recreating $NGINX_CONTAINER (pick up nginx.conf + map include + default.conf)..."
+            pushd "$PORTAL_DOCKER_DIR" >/dev/null
+            local nginx_compose
+            nginx_compose="$(nginx_compose_files)"
+            docker compose $nginx_compose up -d --force-recreate scientistcloud-nginx 2>&1 || \
+                docker-compose $nginx_compose up -d --force-recreate scientistcloud-nginx 2>&1 || true
+            popd >/dev/null
+            reload_sc_nginx || true
+        fi
     else
         echo "⚠️  $NGINX_CONTAINER not running — see NGINX.md or run: ./allServicesStart.sh x"
     fi
@@ -633,9 +666,7 @@ if $DO_DASHBOARDS && ! $DO_NGINX; then
         pushd "$DASHBOARDS_DIR" >/dev/null
         ./scripts/setup_dashboards_nginx.sh sc 2>&1 | grep -E '(✅|⚠️|❌|Copied)' || true
         popd >/dev/null
-        if docker ps --format '{{.Names}}' | grep -q "^${NGINX_CONTAINER}$"; then
-            docker exec "$NGINX_CONTAINER" nginx -s reload 2>/dev/null || true
-        fi
+        reload_sc_nginx || echo "   ⚠️  Nginx not reloaded — run: ./allServicesStart.sh x"
     fi
 fi
 
