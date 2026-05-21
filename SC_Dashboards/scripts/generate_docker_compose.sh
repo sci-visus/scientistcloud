@@ -7,6 +7,8 @@ set -e
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 CONFIG_DIR="$(cd "$SCRIPT_DIR/../config" && pwd)"
 DASHBOARDS_DIR="$(cd "$SCRIPT_DIR/../dashboards" && pwd)"
+# shellcheck source=resolve_health_check_url.sh
+source "$SCRIPT_DIR/resolve_health_check_url.sh"
 
 # Default output file
 OUTPUT_FILE=""
@@ -143,14 +145,15 @@ while IFS= read -r DASHBOARD_NAME; do
     # Get build args
     BUILD_ARGS=$(echo "$DASHBOARD_CONFIG" | jq -r '.build_args // {} | to_entries[] | "        \(.key): ${\(.key)}"' || echo "")
     
-    # Get health check path
-    HEALTH_CHECK_PATH=$(echo "$DASHBOARD_CONFIG" | jq -r '.health_check_path // "/health"')
-    
     # Get depends_on
     DEPENDS_ON=$(echo "$DASHBOARD_CONFIG" | jq -r '.depends_on // [] | .[]' | tr '\n' ' ' || echo "")
     
     # Get port (from config or registry)
     PORT=$(echo "$DASHBOARD_CONFIG" | jq -r '.port // 8050')
+    
+    # Health check URL (Bokeh apps live under /AppName/, not server root /health)
+    HEALTH_CHECK_PATH=$(echo "$DASHBOARD_CONFIG" | jq -r '.health_check_path // ""')
+    HEALTH_CHECK_URL=$(resolve_dashboard_health_url "$PORT" "$DASHBOARD_TYPE" "$ENTRY_POINT" "$HEALTH_CHECK_PATH")
     
     # Get exposed_ports (for port mapping)
     EXPOSED_PORTS=$(echo "$DASHBOARD_CONFIG" | jq -r '.exposed_ports // [] | .[]' || echo "")
@@ -244,7 +247,7 @@ while IFS= read -r DASHBOARD_NAME; do
     
     # Health check
     COMPOSE_CONTENT="${COMPOSE_CONTENT}    healthcheck:\n"
-    COMPOSE_CONTENT="${COMPOSE_CONTENT}      test: [\"CMD\", \"curl\", \"-f\", \"http://localhost:${PORT}${HEALTH_CHECK_PATH}\"]\n"
+    COMPOSE_CONTENT="${COMPOSE_CONTENT}      test: [\"CMD\", \"curl\", \"-f\", \"${HEALTH_CHECK_URL}\"]\n"
     COMPOSE_CONTENT="${COMPOSE_CONTENT}      interval: 30s\n"
     COMPOSE_CONTENT="${COMPOSE_CONTENT}      timeout: 10s\n"
     COMPOSE_CONTENT="${COMPOSE_CONTENT}      retries: 3\n"

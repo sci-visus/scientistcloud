@@ -7,6 +7,8 @@ set -e
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 DASHBOARDS_DIR="$(cd "$SCRIPT_DIR/../dashboards" && pwd)"
 TEMPLATES_DIR="$(cd "$SCRIPT_DIR/../templates" && pwd)"
+# shellcheck source=resolve_health_check_url.sh
+source "$SCRIPT_DIR/resolve_health_check_url.sh"
 
 # Try multiple possible paths for SCLib_Dashboards
 SCLIB_DASHBOARDS_DIR=""
@@ -67,7 +69,7 @@ fi
 SHARED_UTILITIES=$(jq -r '.shared_utilities[]' "$CONFIG_FILE" 2>/dev/null | tr '\n' ' ' || echo "")
 DASHBOARD_VERSION=$(jq -r '.version // "1.0.0"' "$CONFIG_FILE")
 DASHBOARD_PORT=$(jq -r '.port' "$CONFIG_FILE")
-HEALTH_CHECK_PATH=$(jq -r '.health_check_path // empty' "$CONFIG_FILE")
+HEALTH_CHECK_PATH=$(jq -r '.health_check_path // ""' "$CONFIG_FILE")
 BUILD_ARGS=$(jq -r '.build_args // {} | keys[]' "$CONFIG_FILE" 2>/dev/null | tr '\n' ' ' || echo "")
 ENVIRONMENT_VARS=$(jq -r '.environment_variables // {}' "$CONFIG_FILE")
 
@@ -81,6 +83,8 @@ if [ -z "$ENTRY_POINT" ] || [ "$ENTRY_POINT" = "plotly_dashboard.py" ] || [ "$EN
         ENTRY_POINT="${DASHBOARD_NAME}.ipynb"
     fi
 fi
+
+HEALTH_CHECK_URL=$(resolve_dashboard_health_url "$DASHBOARD_PORT" "$DASHBOARD_TYPE" "$ENTRY_POINT" "$HEALTH_CHECK_PATH")
 
 # Default requirements file to {name}_requirements.txt if not specified
 if [ -z "$REQUIREMENTS_FILE" ]; then
@@ -180,17 +184,6 @@ else
     rm -f "$TEMP_FILE.bak"
 fi
 
-# Handle HEALTH_CHECK_PATH conditional
-if [ -n "$HEALTH_CHECK_PATH" ]; then
-    # Keep the section, just remove the conditional markers
-    sed -i.bak 's|{{#if HEALTH_CHECK_PATH}}||g; s|{{/if HEALTH_CHECK_PATH}}||g' "$TEMP_FILE"
-    rm -f "$TEMP_FILE.bak"
-else
-    # Remove the entire conditional section (named closing tag)
-    sed -i.bak '/{{#if HEALTH_CHECK_PATH}}/,/{{\/if HEALTH_CHECK_PATH}}/d' "$TEMP_FILE"
-    rm -f "$TEMP_FILE.bak"
-fi
-
 # Requirements file is always present (build script ensures it), so always include it
 sed -i.bak 's|{{#if REQUIREMENTS_FILE}}||g; s|{{/if REQUIREMENTS_FILE}}||g' "$TEMP_FILE"
 rm -f "$TEMP_FILE.bak"
@@ -215,7 +208,7 @@ sed -e "s|{{BASE_IMAGE}}|$BASE_IMAGE|g" \
     -e "s|{{DASHBOARD_PORT}}|$DASHBOARD_PORT|g" \
     -e "s|{{REQUIREMENTS_FILE}}|$REQUIREMENTS_FILE|g" \
     -e "s|{{ADDITIONAL_REQUIREMENTS}}|$ADDITIONAL_REQUIREMENTS|g" \
-    -e "s|{{HEALTH_CHECK_PATH}}|$HEALTH_CHECK_PATH|g" \
+    -e "s|{{HEALTH_CHECK_URL}}|$HEALTH_CHECK_URL|g" \
     -e "s|{{SHARED_UTILITIES_SECTION}}|$SHARED_UTILITIES_SECTION|g" \
     -e "s|{{ENVIRONMENT_VARIABLES_SECTION}}|$ENVIRONMENT_VARIABLES_SECTION|g" \
     -e "s|{{CMD_SECTION}}|$CMD_SECTION|g" \

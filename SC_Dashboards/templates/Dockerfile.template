@@ -48,10 +48,8 @@ RUN python3 -m pip install --no-cache-dir {{ADDITIONAL_REQUIREMENTS}}
 EXPOSE {{DASHBOARD_PORT}}
 
 # Health check (if specified)
-{{#if HEALTH_CHECK_PATH}}
 HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
-  CMD curl -f http://localhost:{{DASHBOARD_PORT}}{{HEALTH_CHECK_PATH}} || exit 1
-{{/if HEALTH_CHECK_PATH}}
+  CMD curl -f {{HEALTH_CHECK_URL}} || exit 1
 
 # Run dashboard entry point
 {{CMD_SECTION}}
