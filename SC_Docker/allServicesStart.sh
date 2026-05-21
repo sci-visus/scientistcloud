@@ -284,9 +284,26 @@ ensure_docker_network() {
 
 # Required SC nginx files (replaces manual default.conf / visstore_nginx steps)
 ensure_sc_nginx_files() {
-    local missing=0 f
+    local missing=0 f default_conf="$PORTAL_DOCKER_DIR/nginx/conf.d/default.conf"
+    mkdir -p "$PORTAL_DOCKER_DIR/nginx/conf.d"
+
+    if [ ! -f "$default_conf" ]; then
+        echo "   📝 Creating nginx/conf.d/default.conf (disables stock nginx welcome server on :80)"
+        cat > "$default_conf" <<'EOF'
+# Overrides the stock nginx image welcome server on :80.
+# ScientistCloud edge uses scientistcloud-server.conf (listen 80 default_server).
+
+server {
+    listen 127.0.0.1:41889;
+    server_name _sc_disabled_default;
+    location / {
+        return 404;
+    }
+}
+EOF
+    fi
+
     for f in \
-        nginx/conf.d/default.conf \
         nginx/templates/scientistcloud-server.conf.template \
         nginx/includes/scientistcloud-locations.conf \
         docker-compose.nginx.yml; do
