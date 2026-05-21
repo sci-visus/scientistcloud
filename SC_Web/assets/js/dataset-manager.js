@@ -711,8 +711,9 @@ class DatasetManager {
     resolveDatasetConnection(dataset = {}) {
         const link = dataset.google_drive_link || dataset.download_url || dataset.viewer_url || '';
         const sensor = String(dataset.sensor || '').trim().toUpperCase();
+        const hasLocal = dataset.has_local_files === true;
         const explicitServer = String(dataset.server || '').trim().toLowerCase() === 'true';
-        const isRemote = explicitServer || this.isRemoteLinkedDataset(link);
+        const isRemote = !hasLocal && (explicitServer || this.isRemoteLinkedDataset(link));
         const datasetServer = isRemote ? 'true' : 'false';
         // Keep legacy behavior only for mod_visus HTTP IDX links.
         const useRemoteLinkAsUuid = sensor === 'IDX' && this.isModVisusHttpLink(link);

@@ -7,6 +7,7 @@
 require_once(__DIR__ . '/../config.php');
 require_once(__DIR__ . '/auth.php');
 require_once(__DIR__ . '/dataset_manager.php');
+require_once(__DIR__ . '/dataset_local_files.php');
 require_once(__DIR__ . '/sclib_client.php');
 
 /**
@@ -56,30 +57,9 @@ foreach ($datasets as $dataset) {
     }
 }
 
-// Function to determine server flag: true for URI links (http/s3/pelican/...) except Google Drive links
+// Function to determine server flag (see dataset_local_files.php / SCLib openvisus policy)
 function getDatasetServerFlag($dataset) {
-    $explicit = strtolower(trim((string)($dataset['server'] ?? '')));
-    if ($explicit === 'true' || $explicit === 'false') {
-        return $explicit;
-    }
-
-    // Check google_drive_link first (primary field for remote data)
-    $link = $dataset['google_drive_link'] ?? $dataset['download_url'] ?? $dataset['viewer_url'] ?? '';
-
-    $linkLower = strtolower(trim((string)$link));
-    $remoteSchemes = ['s3://', 'http://', 'https://', 'pelican://'];
-    $hasRemoteScheme = false;
-    foreach ($remoteSchemes as $scheme) {
-        if (strpos($linkLower, $scheme) === 0) {
-            $hasRemoteScheme = true;
-            break;
-        }
-    }
-    if ($hasRemoteScheme && strpos($linkLower, 'google.com') === false) {
-        return 'true';
-    }
-    
-    return 'false';
+    return sc_dataset_server_flag($dataset);
 }
 
 // Function to get file format icon

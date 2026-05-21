@@ -6,6 +6,7 @@
 
 require_once(__DIR__ . '/../config.php');
 require_once(__DIR__ . '/auth.php');
+require_once(__DIR__ . '/dataset_local_files.php');
 // SCLib client is conditionally included - only when needed
 if (!function_exists('getSCLibClient')) {
     require_once(__DIR__ . '/sclib_client.php');
@@ -282,6 +283,9 @@ function formatDataset($dataset) {
         $errorMessage = null;
     }
 
+    $hasLocalFiles = sc_dataset_has_local_dashboard_files($dataset);
+    $serverFlag = sc_dataset_server_flag($dataset);
+
     // Base dataset structure
     $formatted = [
         'id' => $dataset['uuid'] ?? $dataset['id'] ?? '',
@@ -305,7 +309,8 @@ function formatDataset($dataset) {
         'viewer_url' => $dataset['viewer_url'] ?? '',
         'download_url' => $dataset['download_url'] ?? '',
         'source_path' => $dataset['source_path'] ?? $dataset['metadata']['source_path'] ?? '',
-        'server' => $dataset['server'] ?? $dataset['metadata']['server'] ?? '',
+        'has_local_files' => $hasLocalFiles,
+        'server' => $serverFlag,
         'canonical_state' => $canonicalState,
         'error_message' => $errorMessage,
         'status_message' => $statusMessage,

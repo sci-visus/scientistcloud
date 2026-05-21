@@ -6,6 +6,7 @@
 
 require_once(__DIR__ . '/../config.php');
 require_once(__DIR__ . '/auth.php');
+require_once(__DIR__ . '/dataset_local_files.php');
 
 /**
  * Get user's preferred dashboard
@@ -363,33 +364,7 @@ function generateViewerUrl($dataset, $dashboardType) {
 }
 
 function datasetHasLocalDashboardFiles($dataset) {
-    $uuid = trim((string)($dataset['uuid'] ?? $dataset['id'] ?? ''));
-    if ($uuid === '') {
-        return false;
-    }
-
-    $roots = [
-        rtrim(getenv('JOB_OUT_DATA_DIR') ?: '/mnt/visus_datasets/converted', '/') . '/' . $uuid,
-        rtrim(getenv('JOB_IN_DATA_DIR') ?: '/mnt/visus_datasets/upload', '/') . '/' . $uuid
-    ];
-
-    foreach ($roots as $root) {
-        if (!is_dir($root)) {
-            continue;
-        }
-        $iterator = new RecursiveIteratorIterator(new RecursiveDirectoryIterator($root, FilesystemIterator::SKIP_DOTS));
-        foreach ($iterator as $fileInfo) {
-            if (!$fileInfo->isFile()) {
-                continue;
-            }
-            $ext = strtolower($fileInfo->getExtension());
-            if (in_array($ext, ['idx', 'nxs', 'h5', 'hdf5'], true)) {
-                return true;
-            }
-        }
-    }
-
-    return false;
+    return sc_dataset_has_local_dashboard_files($dataset);
 }
 
 /**

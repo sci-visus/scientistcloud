@@ -373,7 +373,10 @@ class ViewerManager {
             normalized.startsWith('pelican://');
     }
 
-    normalizeServerFlag(datasetUuid, datasetServer, datasetName = '') {
+    normalizeServerFlag(datasetUuid, datasetServer, datasetName = '', dataset = null) {
+        if (dataset && dataset.has_local_files === true) {
+            return 'false';
+        }
         if (this.isRemoteLinkedValue(datasetUuid) || this.isRemoteLinkedValue(datasetName)) {
             return 'true';
         }
@@ -425,7 +428,8 @@ class ViewerManager {
         if (!viewerContainer) return;
 
         // Hard rule: remote links must always load with server=true.
-        datasetServer = this.normalizeServerFlag(datasetUuid, datasetServer, datasetName);
+        const dsForServer = window.datasetManager?.currentDataset || null;
+        datasetServer = this.normalizeServerFlag(datasetUuid, datasetServer, datasetName, dsForServer);
         dashboardType = this.resolveDashboardId(dashboardType) || 'OpenVisusSlice';
 
         // Validate dashboardType - it should be a dashboard ID, not a dataset name
@@ -1335,7 +1339,8 @@ window.loadDashboard = function(datasetId, dashboardType) {
                 const normalizedServer = window.viewerManager.normalizeServerFlag(
                     dataset.uuid || datasetId,
                     dataset.server || 'false',
-                    dataset.name || ''
+                    dataset.name || '',
+                    dataset
                 );
                 window.viewerManager.loadDashboard(
                     dataset.id,
