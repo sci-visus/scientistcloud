@@ -5,6 +5,9 @@ services:
   visstore_dozzle:
     image: amir20/dozzle:latest
     container_name: visstore_dozzle
+    environment:
+      # Serve UI under https://DOMAIN/dozzle/ (assets at /dozzle/assets/, not /assets/)
+      - DOZZLE_BASE=/dozzle
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
     networks:
