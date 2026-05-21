@@ -27,7 +27,8 @@ SC_Docker/nginx/
 | `/api/v1/`, `/api/upload/`, `/api/auth/` | SCLib |
 | `/dashboard/*` | `dashboard_*` (via `dashboards/*_dashboard.conf`) |
 | `/dozzle/` | `visstore_dozzle` (optional) |
-| `/static/extensions/panel/` | `dashboard_3dvtk` |
+| `/static/extensions/panel/` | `dashboard_3dvtk` (always; legacy-specific) |
+| `/static/js/`, `/static/css/`, … | Bokeh container from Referer map (legacy global `/static/` → `visstore_bokeh`) |
 
 **Omitted** (legacy): `visstore_user` at `/`, `visstore_bokeh_*`, `dataExplorer`, old `/plotly/`, `/Visus/`, `visstore_bg_service` routes.
 
