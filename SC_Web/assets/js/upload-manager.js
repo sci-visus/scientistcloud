@@ -17,7 +17,188 @@ class UploadManager {
         this.currentUploadSession = null; // Current upload session data
         this.dashboards = []; // Cached dashboard list from API
         this.localBrowserUploadInProgress = false;
+        /** Above this count, UI shows one summary bar instead of per-file rows */
+        this.bulkUploadFileThreshold = 12;
+        this._progressWidgetUpdateTimer = null;
+        this._modalRenderTimer = null;
         this.initialize();
+    }
+
+    isBulkUploadSession(session = this.currentUploadSession) {
+        return !!(session && session.totalFiles >= this.bulkUploadFileThreshold);
+    }
+
+    summarizeUploadSession(session) {
+        if (!session) {
+            return null;
+        }
+        const files = Array.isArray(session.files) ? session.files : [];
+        const uploading = files.filter((f) => f.status === 'uploading');
+        const retrying = files.filter((f) => f.status === 'retrying');
+        const failedFiles = files.filter((f) => f.status === 'failed');
+        const queued = files.filter((f) => f.status === 'queued');
+        const doneCount = session.completedFiles + session.failedFiles;
+        const total = session.totalFiles || files.length || 0;
+        const progress = total > 0 ? Math.round((doneCount / total) * 100) : 0;
+        const currentFile = uploading.length > 0
+            ? uploading[uploading.length - 1].name
+            : (retrying.length > 0 ? retrying[retrying.length - 1].name : null);
+
+        return {
+            datasetName: session.datasetName || 'Upload',
+            datasetUuid: session.datasetUuid || null,
+            willConvert: !!session.willConvert,
+            total,
+            completed: session.completedFiles,
+            failed: session.failedFiles,
+            uploading: uploading.length,
+            retrying: retrying.length,
+            queued: queued.length,
+            doneCount,
+            progress,
+            failedFiles,
+            currentFile,
+            isFinished: total > 0 && doneCount >= total,
+        };
+    }
+
+    groupActiveUploadsByDataset() {
+        const groups = new Map();
+        this.activeUploads.forEach((upload, jobId) => {
+            const key = upload.dataset_uuid || upload.dataset_name || jobId;
+            if (!groups.has(key)) {
+                groups.set(key, {
+                    dataset_name: upload.dataset_name,
+                    dataset_uuid: upload.dataset_uuid || null,
+                    will_convert: !!upload.will_convert,
+                    jobs: [],
+                });
+            }
+            groups.get(key).jobs.push({ jobId, ...upload });
+        });
+        return groups;
+    }
+
+    summarizeActiveUploadGroup(group) {
+        const jobs = group.jobs || [];
+        const total = jobs.length;
+        let progressSum = 0;
+        let failed = 0;
+        let completed = 0;
+        let active = 0;
+        jobs.forEach((job) => {
+            const status = String(job.status || '').toLowerCase();
+            const progress = Number(job.progress || 0);
+            progressSum += progress;
+            if (status === 'failed' || status === 'error') {
+                failed += 1;
+            } else if (['ready', 'uploaded', 'completed', 'done'].includes(status)) {
+                completed += 1;
+            } else {
+                active += 1;
+            }
+        });
+        const progress = total > 0 ? Math.round(progressSum / total) : 0;
+        return { total, failed, completed, active, progress };
+    }
+
+    renderFailedFilesListHTML(failedFiles, options = {}) {
+        if (!failedFiles || failedFiles.length === 0) {
+            return '';
+        }
+        const maxInline = options.maxInline || 8;
+        const listId = options.listId || `failed-${Date.now()}`;
+        const visible = failedFiles.slice(0, maxInline);
+        const hidden = failedFiles.slice(maxInline);
+        let itemsHtml = visible.map((file) => {
+            const name = this.escapeHtml(file.name || file.file_name || 'Unknown file');
+            const err = file.error ? `<small class="text-danger d-block">${this.escapeHtml(file.error)}</small>` : '';
+            const retries = file.retryCount > 0
+                ? `<small class="text-muted d-block">Attempts: ${file.retryCount}</small>`
+                : '';
+            return `<li class="small mb-1"><strong>${name}</strong>${err}${retries}</li>`;
+        }).join('');
+
+        if (hidden.length > 0) {
+            itemsHtml += hidden.map((file) => {
+                const name = this.escapeHtml(file.name || file.file_name || 'Unknown file');
+                const err = file.error ? `<small class="text-danger d-block">${this.escapeHtml(file.error)}</small>` : '';
+                return `<li class="small mb-1 sc-failed-file-extra" style="display:none;"><strong>${name}</strong>${err}</li>`;
+            }).join('');
+        }
+
+        const expandBtn = hidden.length > 0
+            ? `<button type="button" class="btn btn-link btn-sm p-0 sc-show-more-failed" onclick="uploadManager.expandFailedFileList('${listId}')">Show ${hidden.length} more</button>`
+            : '';
+
+        return `
+            <details class="mt-2 sc-failed-files-details" open>
+                <summary class="text-danger small">
+                    <i class="fas fa-exclamation-circle"></i>
+                    ${failedFiles.length} failed file${failedFiles.length === 1 ? '' : 's'}
+                </summary>
+                <ul class="mb-0 ps-3" id="${listId}">${itemsHtml}</ul>
+                ${expandBtn}
+            </details>
+        `;
+    }
+
+    renderBulkProgressItemHTML(opts) {
+        const {
+            title,
+            subtitle,
+            progress,
+            statusLabel,
+            statusColor,
+            detailLines = [],
+            failedFiles = [],
+            completionMessage = '',
+        } = opts;
+        const failedHtml = this.renderFailedFilesListHTML(failedFiles);
+        const detailsHtml = detailLines.map((line) => `<small class="text-muted d-block">${line}</small>`).join('');
+
+        return `
+            <div class="upload-progress-item mb-2">
+                <div class="d-flex justify-content-between align-items-center">
+                    <span class="small fw-semibold" title="${this.escapeHtml(title)}">${this.escapeHtml(title)}</span>
+                    <span class="badge bg-${statusColor}">${this.escapeHtml(statusLabel)}</span>
+                </div>
+                ${subtitle ? `<small class="text-muted d-block">${this.escapeHtml(subtitle)}</small>` : ''}
+                <div class="progress mt-1" style="height: 8px;">
+                    <div class="progress-bar bg-${statusColor}"
+                         role="progressbar"
+                         style="width: ${progress}%"
+                         aria-valuenow="${progress}"
+                         aria-valuemin="0"
+                         aria-valuemax="100"></div>
+                </div>
+                ${detailsHtml}
+                ${completionMessage}
+                ${failedHtml}
+            </div>
+        `;
+    }
+
+    scheduleProgressWidgetUpdate() {
+        if (this._progressWidgetUpdateTimer) {
+            return;
+        }
+        const delay = this.isBulkUploadSession() ? 350 : 0;
+        this._progressWidgetUpdateTimer = setTimeout(() => {
+            this._progressWidgetUpdateTimer = null;
+            this.updateProgressWidget();
+        }, delay);
+    }
+
+    scheduleUploadModalRender() {
+        if (this._modalRenderTimer) {
+            clearTimeout(this._modalRenderTimer);
+        }
+        const delay = this.isBulkUploadSession() ? 200 : 0;
+        this._modalRenderTimer = setTimeout(() => {
+            this._modalRenderTimer = null;
+            this.renderUploadModal();
+        }, delay);
     }
     
     /**
@@ -2491,7 +2672,7 @@ class UploadManager {
         this.pollUploadProgress(jobId);
         
         // Update progress widget
-        this.updateProgressWidget();
+        this.scheduleProgressWidgetUpdate();
     }
 
     /**
@@ -2535,7 +2716,7 @@ class UploadManager {
                             upload.dataset_uuid = data.dataset_uuid;
                         }
                         
-                        this.updateProgressWidget();
+                        this.scheduleProgressWidgetUpdate();
 
                         // Continue polling only while status is active/in-progress.
                         const status = String(data.canonical_state || data.status || '').toLowerCase();
@@ -2551,7 +2732,7 @@ class UploadManager {
                                 upload.status = status === 'uploaded' ? 'completed' : status;
                                 this.markCurrentSessionJobComplete(jobId);
                                 // Update widget to show completion message
-                                this.updateProgressWidget();
+                                this.scheduleProgressWidgetUpdate();
                                 
                                 // Refresh dataset list
                                 if (window.datasetManager) {
@@ -2624,115 +2805,213 @@ class UploadManager {
             return;
         }
 
-        const renderItems = [];
+        let html = '';
+        const session = this.currentUploadSession;
+        const sessionSummary = session ? this.summarizeUploadSession(session) : null;
+        const sessionKey = session?.datasetUuid || session?.datasetName || null;
 
-        // 1) Tracked jobs (have job_id and polling status)
-        this.activeUploads.forEach((upload, jobId) => {
-            renderItems.push({
-                key: `job:${jobId}`,
-                job_id: jobId,
-                dataset_name: upload.dataset_name,
-                dataset_uuid: upload.dataset_uuid || null,
-                file_name: upload.file_name || upload.dataset_name,
-                will_convert: !!upload.will_convert,
-                status: upload.status || 'queued',
-                progress: Number(upload.progress || 0),
-                message: upload.message || ''
+        // Large in-browser upload: one summary row for the whole batch
+        if (sessionSummary && sessionSummary.total >= this.bulkUploadFileThreshold) {
+            let statusLabel = 'Uploading';
+            let statusColor = 'primary';
+            if (sessionSummary.isFinished) {
+                if (sessionSummary.failed > 0 && sessionSummary.completed === 0) {
+                    statusLabel = 'Failed';
+                    statusColor = 'danger';
+                } else if (sessionSummary.failed > 0) {
+                    statusLabel = 'Partial';
+                    statusColor = 'warning';
+                } else {
+                    statusLabel = sessionSummary.willConvert ? 'Uploaded' : 'Complete';
+                    statusColor = sessionSummary.willConvert ? 'info' : 'success';
+                }
+            } else if (sessionSummary.retrying > 0) {
+                statusLabel = 'Retrying';
+                statusColor = 'warning';
+            }
+
+            const detailLines = [];
+            if (sessionSummary.currentFile && !sessionSummary.isFinished) {
+                detailLines.push(`Current: ${sessionSummary.currentFile}`);
+            }
+            if (sessionSummary.retrying > 0) {
+                detailLines.push(`Retrying ${sessionSummary.retrying} file(s) automatically`);
+            }
+            if (sessionSummary.uploading > 1) {
+                detailLines.push(`${sessionSummary.uploading} files sending in parallel`);
+            }
+
+            let completionMessage = '';
+            if (sessionSummary.isFinished) {
+                if (sessionSummary.failed === 0 && sessionSummary.willConvert) {
+                    completionMessage = '<small class="text-info d-block mt-1"><i class="fas fa-sync-alt"></i> All files uploaded. Conversion in progress...</small>';
+                } else if (sessionSummary.failed === 0) {
+                    completionMessage = '<small class="text-success d-block mt-1"><i class="fas fa-check-circle"></i> All files uploaded successfully.</small>';
+                }
+            }
+
+            html += this.renderBulkProgressItemHTML({
+                title: sessionSummary.datasetName,
+                subtitle: `${sessionSummary.doneCount} of ${sessionSummary.total} files (${sessionSummary.completed} ok, ${sessionSummary.failed} failed)`,
+                progress: sessionSummary.progress,
+                statusLabel,
+                statusColor,
+                detailLines,
+                failedFiles: sessionSummary.failedFiles,
+                completionMessage,
+            });
+        }
+
+        // Group server-side jobs by dataset (avoids hundreds of rows after upload)
+        const groups = this.groupActiveUploadsByDataset();
+        groups.forEach((group, groupKey) => {
+            const stats = this.summarizeActiveUploadGroup(group);
+            const sameSessionDataset = sessionKey && (
+                groupKey === sessionKey ||
+                group.dataset_uuid === session?.datasetUuid ||
+                group.dataset_name === session?.datasetName
+            );
+            if (sameSessionDataset && sessionSummary) {
+                // Browser session row covers the batch until server-side work remains
+                const serverStillActive = stats.active > 0 || (stats.completed + stats.failed < stats.total);
+                if (!sessionSummary.isFinished || (!serverStillActive && sessionSummary.total >= this.bulkUploadFileThreshold)) {
+                    return;
+                }
+            }
+            if (stats.total >= this.bulkUploadFileThreshold) {
+                let statusLabel = 'Processing';
+                let statusColor = 'primary';
+                if (stats.failed === stats.total) {
+                    statusLabel = 'Failed';
+                    statusColor = 'danger';
+                } else if (stats.completed === stats.total) {
+                    statusLabel = group.will_convert ? 'Uploaded' : 'Ready';
+                    statusColor = group.will_convert ? 'info' : 'success';
+                } else if (stats.failed > 0) {
+                    statusLabel = 'Partial';
+                    statusColor = 'warning';
+                }
+
+                const detailLines = [
+                    `${stats.completed} complete, ${stats.active} in progress, ${stats.failed} failed`,
+                ];
+                if (group.will_convert && stats.completed > 0) {
+                    detailLines.push('Server conversion may still be running');
+                }
+
+                html += this.renderBulkProgressItemHTML({
+                    title: group.dataset_name || 'Dataset upload',
+                    subtitle: `${stats.completed + stats.failed} of ${stats.total} server jobs finished`,
+                    progress: stats.progress,
+                    statusLabel,
+                    statusColor,
+                    detailLines,
+                    failedFiles: group.jobs
+                        .filter((j) => ['failed', 'error'].includes(String(j.status || '').toLowerCase()))
+                        .map((j) => ({
+                            name: j.file_name || j.jobId,
+                            error: j.message || 'Upload failed on server',
+                        })),
+                });
+                return;
+            }
+
+            group.jobs.forEach((upload) => {
+                html += this.renderSingleUploadProgressItemHTML(upload);
             });
         });
 
-        // 2) Current modal session files (queued/uploading rows often appear here first)
-        // Include them so closing the modal does not make file list "disappear".
-        if (this.currentUploadSession && Array.isArray(this.currentUploadSession.files)) {
-            const sessionDataset = this.currentUploadSession.datasetName || 'Current upload';
-            const sessionWillConvert = !!this.currentUploadSession.willConvert;
-            const sessionDatasetUuid = this.currentUploadSession.datasetUuid || null;
-            this.currentUploadSession.files.forEach((file, idx) => {
-                const jobId = file.jobId || '';
-                // If we already track this job in activeUploads, avoid duplicate row.
-                if (jobId && this.activeUploads.has(jobId)) return;
+        // Small uploads: per-file rows from session when not already in activeUploads
+        if (!sessionSummary || sessionSummary.total < this.bulkUploadFileThreshold) {
+            if (session && Array.isArray(session.files)) {
+                const sessionDataset = session.datasetName || 'Current upload';
+                const sessionWillConvert = !!session.willConvert;
+                session.files.forEach((file, idx) => {
+                    const jobId = file.jobId || '';
+                    if (jobId && this.activeUploads.has(jobId)) {
+                        return;
+                    }
+                    const fileStatus = String(file.status || 'queued').toLowerCase();
+                    let inferredProgress = 0;
+                    if (['completed', 'done', 'ready'].includes(fileStatus)) {
+                        inferredProgress = 100;
+                    } else if (['uploading', 'processing', 'retrying'].includes(fileStatus)) {
+                        inferredProgress = 50;
+                    }
+                    html += this.renderSingleUploadProgressItemHTML({
+                        job_id: jobId || null,
+                        dataset_name: sessionDataset,
+                        dataset_uuid: session.datasetUuid || null,
+                        file_name: file.name || sessionDataset,
+                        will_convert: sessionWillConvert,
+                        status: fileStatus || 'queued',
+                        progress: inferredProgress,
+                        message: file.error || '',
+                    });
+                });
+            }
 
-                const fileStatus = String(file.status || 'queued').toLowerCase();
-                let inferredProgress = 0;
-                if (fileStatus === 'completed' || fileStatus === 'done' || fileStatus === 'ready') {
-                    inferredProgress = 100;
-                } else if (fileStatus === 'uploading' || fileStatus === 'processing' || fileStatus === 'retrying') {
-                    inferredProgress = 50;
+            this.activeUploads.forEach((upload, jobId) => {
+                const groupKey = upload.dataset_uuid || upload.dataset_name || jobId;
+                const group = groups.get(groupKey);
+                // Jobs in a group were already rendered in the groups loop above
+                if (group) {
+                    return;
                 }
-
-                renderItems.push({
-                    key: `session:${idx}:${file.name || 'file'}`,
-                    job_id: jobId || null,
-                    dataset_name: sessionDataset,
-                    dataset_uuid: sessionDatasetUuid,
-                    file_name: file.name || sessionDataset,
-                    will_convert: sessionWillConvert,
-                    status: fileStatus || 'queued',
-                    progress: inferredProgress,
-                    message: file.error || ''
+                html += this.renderSingleUploadProgressItemHTML({
+                    job_id: jobId,
+                    ...upload,
                 });
             });
         }
 
-        console.log(`🔄 updateProgressWidget called: ${renderItems.length} render item(s), ${this.activeUploads.size} tracked job(s)`);
-
-        if (renderItems.length === 0) {
+        if (!html) {
             progressList.innerHTML = '<p class="text-muted small">No active uploads</p>';
             return;
         }
 
-        let html = '';
-        renderItems.forEach((upload) => {
-            console.log(`  Rendering upload: key=${upload.key}, file=${upload.file_name}, dataset=${upload.dataset_name}, status=${upload.status}, progress=${upload.progress}`);
-            const rawStatus = String(upload.status || '').toLowerCase();
-            const isUploadComplete = rawStatus === 'completed' || rawStatus === 'done' || rawStatus === 'ready';
-            const conversionInProgress = !!upload.will_convert && isUploadComplete;
-
-            // "completed" previously looked like the whole pipeline was done.
-            // For IDX flows, upload completion is only phase 1; conversion follows.
-            const displayStatus = conversionInProgress ? 'uploaded' : (upload.status || 'queued');
-            const statusColor = conversionInProgress ? 'info' :
-                              rawStatus === 'completed' || rawStatus === 'done' || rawStatus === 'ready' ? 'success' :
-                              rawStatus === 'failed' || rawStatus === 'error' ? 'danger' : 'primary';
-            
-            // Show file name (preferred) or dataset name as fallback
-            const displayName = upload.file_name || upload.dataset_name;
-            
-            // Add completion message if upload is done
-            let completionMessage = '';
-            if (isUploadComplete) {
-                if (upload.will_convert) {
-                    completionMessage = '<small class="text-info d-block mt-1"><i class="fas fa-sync-alt"></i> Upload complete. Conversion in progress...</small>';
-                } else {
-                    completionMessage = '<small class="text-success d-block mt-1"><i class="fas fa-check-circle"></i> Ready to view</small>';
-                }
-            }
-            
-            html += `
-                <div class="upload-progress-item mb-2">
-                    <div class="d-flex justify-content-between align-items-center">
-                        <span class="small" title="${this.escapeHtml(upload.dataset_name)}">${this.escapeHtml(displayName)}</span>
-                        <span class="badge bg-${statusColor}">${this.escapeHtml(displayStatus)}</span>
-                    </div>
-                    ${upload.dataset_uuid ? `<small class="text-muted d-block">Dataset UUID: ${this.escapeHtml(upload.dataset_uuid)}</small>` : ''}
-                    ${upload.job_id ? `<small class="text-muted d-block">Job ID: ${this.escapeHtml(upload.job_id)}</small>` : ''}
-                    <div class="progress mt-1" style="height: 5px;">
-                        <div class="progress-bar bg-${statusColor}" 
-                             role="progressbar" 
-                             style="width: ${upload.progress}%"
-                             aria-valuenow="${upload.progress}" 
-                             aria-valuemin="0" 
-                             aria-valuemax="100">
-                        </div>
-                    </div>
-                    ${upload.message ? `<small class="text-muted">${this.escapeHtml(upload.message)}</small>` : ''}
-                    ${completionMessage}
-                </div>
-            `;
-        });
-
         progressList.innerHTML = html;
-        console.log(`✅ Progress widget updated with ${renderItems.length} item(s)`);
+    }
+
+    renderSingleUploadProgressItemHTML(upload) {
+        const rawStatus = String(upload.status || '').toLowerCase();
+        const isUploadComplete = ['completed', 'done', 'ready'].includes(rawStatus);
+        const conversionInProgress = !!upload.will_convert && isUploadComplete;
+        const displayStatus = conversionInProgress ? 'uploaded' : (upload.status || 'queued');
+        const statusColor = conversionInProgress ? 'info' :
+            ['completed', 'done', 'ready'].includes(rawStatus) ? 'success' :
+            ['failed', 'error'].includes(rawStatus) ? 'danger' : 'primary';
+        const displayName = upload.file_name || upload.dataset_name;
+
+        let completionMessage = '';
+        if (isUploadComplete) {
+            if (upload.will_convert) {
+                completionMessage = '<small class="text-info d-block mt-1"><i class="fas fa-sync-alt"></i> Upload complete. Conversion in progress...</small>';
+            } else {
+                completionMessage = '<small class="text-success d-block mt-1"><i class="fas fa-check-circle"></i> Ready to view</small>';
+            }
+        }
+
+        return `
+            <div class="upload-progress-item mb-2">
+                <div class="d-flex justify-content-between align-items-center">
+                    <span class="small" title="${this.escapeHtml(upload.dataset_name || '')}">${this.escapeHtml(displayName)}</span>
+                    <span class="badge bg-${statusColor}">${this.escapeHtml(String(displayStatus))}</span>
+                </div>
+                ${upload.dataset_uuid ? `<small class="text-muted d-block">Dataset UUID: ${this.escapeHtml(upload.dataset_uuid)}</small>` : ''}
+                ${upload.job_id ? `<small class="text-muted d-block">Job ID: ${this.escapeHtml(upload.job_id)}</small>` : ''}
+                <div class="progress mt-1" style="height: 5px;">
+                    <div class="progress-bar bg-${statusColor}"
+                         role="progressbar"
+                         style="width: ${Number(upload.progress || 0)}%"
+                         aria-valuenow="${Number(upload.progress || 0)}"
+                         aria-valuemin="0"
+                         aria-valuemax="100"></div>
+                </div>
+                ${upload.message ? `<small class="text-muted">${this.escapeHtml(upload.message)}</small>` : ''}
+                ${completionMessage}
+            </div>
+        `;
     }
 
     /**
@@ -2841,7 +3120,9 @@ class UploadManager {
         document.getElementById('uploadModalFileList').innerHTML = '<p class="text-muted text-center">Preparing uploads...</p>';
         document.getElementById('uploadModalCloseBtn').disabled = false; // Closing the dialog is ok; leaving the page is not.
         document.getElementById('uploadModalViewJobsBtn').style.display = 'none';
-        document.getElementById('uploadModalStatusText').textContent = 'Preparing uploads... Keep this page open until every selected file is completed.';
+        const fileWord = totalFiles >= this.bulkUploadFileThreshold ? 'files' : 'file(s)';
+        document.getElementById('uploadModalStatusText').textContent =
+            `Preparing uploads... Keep this page open until all ${totalFiles} ${fileWord} finish (failed files retry automatically).`;
         document.getElementById('uploadModalStatusMessage').className = 'flex-grow-1 text-warning small';
 
         // Show modal
@@ -2898,10 +3179,22 @@ class UploadManager {
         }
         // Note: 'retrying' and 'uploading' are intermediate states, not counted separately
 
-        // Update modal display
-        this.renderUploadModal();
-        // Keep the lower-right widget in sync immediately, even when modal is closed.
-        this.updateProgressWidget();
+        // Update modal display (debounced for large multi-file uploads)
+        this.scheduleUploadModalRender();
+        // Keep the lower-right widget in sync, even when modal is closed.
+        this.scheduleProgressWidgetUpdate();
+    }
+
+    expandFailedFileList(listId) {
+        const list = document.getElementById(listId);
+        if (!list) return;
+        list.querySelectorAll('.sc-failed-file-extra').forEach((el) => {
+            el.style.display = 'list-item';
+        });
+        const btn = list.parentElement?.querySelector('.sc-show-more-failed');
+        if (btn) {
+            btn.style.display = 'none';
+        }
     }
 
     /**
@@ -2951,10 +3244,64 @@ class UploadManager {
             statusBadge.className = 'badge bg-info';
         }
 
-        // Render file list
+        // Render file list (summary for large batches; per-file list for small uploads)
         const fileList = document.getElementById('uploadModalFileList');
+        const bulkSummary = this.summarizeUploadSession(session);
+
         if (session.files.length === 0) {
             fileList.innerHTML = '<p class="text-muted text-center">Preparing uploads...</p>';
+        } else if (bulkSummary && bulkSummary.total >= this.bulkUploadFileThreshold) {
+            const statsRows = [
+                ['Completed', bulkSummary.completed, 'success'],
+                ['Failed', bulkSummary.failed, bulkSummary.failed > 0 ? 'danger' : 'secondary'],
+                ['Uploading', bulkSummary.uploading, 'primary'],
+                ['Retrying', bulkSummary.retrying, bulkSummary.retrying > 0 ? 'warning' : 'secondary'],
+                ['Queued', bulkSummary.queued, 'secondary'],
+            ];
+            const statsHtml = statsRows.map(([label, count, color]) => `
+                <div class="col-6 col-md-4 mb-2">
+                    <div class="border rounded p-2 text-center h-100">
+                        <div class="small text-muted">${label}</div>
+                        <div class="fw-bold text-${color}">${count}</div>
+                    </div>
+                </div>
+            `).join('');
+
+            let currentHtml = '';
+            if (bulkSummary.currentFile && !bulkSummary.isFinished) {
+                currentHtml = `
+                    <p class="small text-muted mb-2">
+                        <i class="fas fa-spinner fa-spin"></i>
+                        Sending: <span class="fw-semibold">${this.escapeHtml(bulkSummary.currentFile)}</span>
+                    </p>
+                `;
+            }
+
+            const failedHtml = this.renderFailedFilesListHTML(bulkSummary.failedFiles, {
+                listId: 'upload-modal-failed-files',
+                maxInline: 12,
+            });
+
+            const retryNote = bulkSummary.retrying > 0
+                ? `<p class="small text-warning mb-2"><i class="fas fa-redo"></i> Automatically retrying failed uploads (up to ${session.maxRetries} attempts per file).</p>`
+                : '';
+
+            fileList.innerHTML = `
+                <div class="upload-bulk-summary">
+                    <p class="mb-2">
+                        <strong>${bulkSummary.doneCount}</strong> of <strong>${bulkSummary.total}</strong>
+                        files processed
+                        (${bulkSummary.completed} succeeded${bulkSummary.failed > 0 ? `, <span class="text-danger">${bulkSummary.failed} failed</span>` : ''}).
+                    </p>
+                    ${currentHtml}
+                    ${retryNote}
+                    <div class="row">${statsHtml}</div>
+                    ${failedHtml}
+                    <p class="text-muted small mt-3 mb-0">
+                        Individual file names are hidden for large uploads. Expand failed files above if you need to re-upload specific images.
+                    </p>
+                </div>
+            `;
         } else {
             let html = '<div class="list-group">';
             session.files.sort((a, b) => a.index - b.index).forEach(file => {
@@ -3000,22 +3347,20 @@ class UploadManager {
             document.getElementById('uploadModalViewJobsBtn').style.display = 'inline-block';
             
             if (failed > 0) {
-                statusText.textContent = `⚠️ ${failed} file(s) failed after ${session.maxRetries} retries. Check errors above.`;
+                statusText.textContent = `⚠️ ${failed} of ${total} file(s) failed after ${session.maxRetries} automatic retries. See the failed-files list below.`;
                 statusMessage.className = 'flex-grow-1 text-warning small';
                 
-                // Show warning in file list
-                const fileList = document.getElementById('uploadModalFileList');
-                // Remove existing warning if any
-                const existingWarning = fileList.querySelector('.alert-warning');
-                if (!existingWarning) {
+                const fileListEl = document.getElementById('uploadModalFileList');
+                const existingWarning = fileListEl?.querySelector('.alert-warning');
+                if (fileListEl && !existingWarning) {
                     const warningHtml = `
                         <div class="alert alert-warning mt-3" role="alert">
                             <i class="fas fa-exclamation-triangle"></i>
-                            <strong>Warning:</strong> ${failed} file(s) failed to upload after ${session.maxRetries} retry attempts.
-                            Please check the errors above and try uploading those files again.
+                            <strong>${failed} file(s) could not be uploaded</strong> after ${session.maxRetries} retry attempts.
+                            Expand the failed-files section to see names and errors, then re-upload only those files.
                         </div>
                     `;
-                    fileList.insertAdjacentHTML('beforeend', warningHtml);
+                    fileListEl.insertAdjacentHTML('afterbegin', warningHtml);
                 }
             } else {
                 // All uploads completed successfully - check if conversion was requested
