@@ -252,7 +252,19 @@ if ($defaultShareSeconds > $shareMaxSeconds) {
       height: 100px;
       width: 100px;
       object-fit: contain;
-      margin-right: 8px;
+      margin-right: 10px;
+      flex-shrink: 0;
+    }
+    .sc-s3-path-row {
+      background: var(--bs-secondary-bg);
+      border: 1px solid var(--sc-border);
+      border-radius: 0.375rem;
+      padding: 0.5rem 0.75rem;
+    }
+    .sc-s3-path-row .breadcrumb {
+      margin-bottom: 0;
+      background: transparent;
+      padding: 0;
     }
     .card {
       border-color: var(--sc-border);
@@ -334,7 +346,7 @@ if ($defaultShareSeconds > $shareMaxSeconds) {
 <body>
   <div class="container-fluid" style="max-width: 1260px;">
     <div class="d-flex justify-content-between align-items-center mb-3">
-      <h1 class="h3 mb-0 sc-title"><img src="../logos/scientistCloudLogo_512.png" alt="ScientistCloud" class="sc-logo"> <?php echo htmlspecialchars($pageTitle); ?></h1>
+      <h1 class="h3 mb-0 sc-title"><img src="assets/images/scientistcloud-logo.png" alt="" class="sc-logo" role="presentation"> <?php echo htmlspecialchars($pageTitle); ?></h1>
       <a class="btn btn-outline-secondary btn-sm" href="<?php echo htmlspecialchars($portalHome); ?>"><i class="fas fa-arrow-left"></i> Portal</a>
     </div>
     <p class="text-muted small">Browse and download objects from an S3-compatible bucket. Credentials are kept in your server session only (not logged).</p>
@@ -436,9 +448,6 @@ if ($defaultShareSeconds > $shareMaxSeconds) {
             </select>
             <span class="small text-muted">max <?php echo htmlspecialchars(s3_format_duration($shareMaxSeconds)); ?></span>
           </div>
-          <a class="btn btn-sm btn-outline-primary" href="<?php echo htmlspecialchars($currentFolderDl); ?>" title="Download the current folder as a zip archive">
-            <i class="fas fa-file-archive"></i> Download Current Folder
-          </a>
           <form method="post" action="<?php echo htmlspecialchars($selfPath); ?>" class="m-0">
             <input type="hidden" name="action" value="disconnect">
             <button type="submit" class="btn btn-sm btn-outline-danger">Disconnect</button>
@@ -449,29 +458,34 @@ if ($defaultShareSeconds > $shareMaxSeconds) {
       <?php if ($list['error']): ?>
         <div class="alert alert-danger"><?php echo htmlspecialchars($list['error']); ?></div>
       <?php else: ?>
-        <nav aria-label="breadcrumb">
-          <ol class="breadcrumb mb-2">
-            <li class="breadcrumb-item">
-              <a href="<?php echo htmlspecialchars($selfPath); ?>"><i class="fas fa-home"></i> <?php echo htmlspecialchars($root === '' ? 'bucket' : $root); ?></a>
-            </li>
-            <?php
-            if ($rel !== '') {
-                $acc = '';
-                $segments = array_filter(explode('/', rtrim($rel, '/')));
-                foreach ($segments as $i => $seg) {
-                    $acc .= $seg . '/';
-                    $isLast = $i === count($segments) - 1;
-                    if ($isLast) {
-                        echo '<li class="breadcrumb-item active" aria-current="page">' . htmlspecialchars($seg) . '</li>';
-                    } else {
-                        $href = $selfPath . '?rel=' . rawurlencode($acc);
-                        echo '<li class="breadcrumb-item"><a href="' . htmlspecialchars($href) . '">' . htmlspecialchars($seg) . '</a></li>';
-                    }
-                }
-            }
-            ?>
-          </ol>
-        </nav>
+        <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-2 sc-s3-path-row">
+          <nav aria-label="breadcrumb" class="flex-grow-1 min-w-0">
+            <ol class="breadcrumb mb-0">
+              <li class="breadcrumb-item">
+                <a href="<?php echo htmlspecialchars($selfPath); ?>"><i class="fas fa-home"></i> <?php echo htmlspecialchars($root === '' ? 'bucket' : $root); ?></a>
+              </li>
+              <?php
+              if ($rel !== '') {
+                  $acc = '';
+                  $segments = array_filter(explode('/', rtrim($rel, '/')));
+                  foreach ($segments as $i => $seg) {
+                      $acc .= $seg . '/';
+                      $isLast = $i === count($segments) - 1;
+                      if ($isLast) {
+                          echo '<li class="breadcrumb-item active" aria-current="page">' . htmlspecialchars($seg) . '</li>';
+                      } else {
+                          $href = $selfPath . '?rel=' . rawurlencode($acc);
+                          echo '<li class="breadcrumb-item"><a href="' . htmlspecialchars($href) . '">' . htmlspecialchars($seg) . '</a></li>';
+                      }
+                  }
+              }
+              ?>
+            </ol>
+          </nav>
+          <a class="btn btn-sm btn-outline-primary flex-shrink-0" href="<?php echo htmlspecialchars($currentFolderDl); ?>" title="Download the current folder as a zip archive">
+            <i class="fas fa-file-archive"></i> Download Current Folder
+          </a>
+        </div>
 
         <ul class="list-group shadow-sm">
           <?php if ($rel !== ''): ?>
