@@ -199,9 +199,7 @@ if ($s3DefaultEndpoint === '') {
 if ($s3DefaultBucket === '') {
     $s3DefaultBucket = 'scientistcloud';
 }
-if ($s3DefaultPrefix === '') {
-    $s3DefaultPrefix = 'utk';
-}
+// Prefix: leave blank unless S3_PREFIX / AWS env is set (bucket root by default).
 
 define('S3_DEFAULT_BUCKET', $s3DefaultBucket);
 define('S3_DEFAULT_PREFIX', $s3DefaultPrefix);
