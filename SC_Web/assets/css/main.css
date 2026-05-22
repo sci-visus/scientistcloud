@@ -367,11 +367,15 @@ body {
   overflow: hidden;
 }
 
-/* Allow scrolling when upload interface is shown */
-.viewer-container .upload-interface {
+/* Allow scrolling when upload interface or welcome home is shown */
+.viewer-container .upload-interface,
+.viewer-container .welcome-content {
   overflow-y: auto;
-  overflow-x: hidden;
+  overflow-x: auto;
   max-height: 100%;
+}
+
+.viewer-container .upload-interface {
   padding: 1rem;
 }
 
@@ -777,17 +781,77 @@ body:not(.light-theme) .viewer-container #dashboardFrame {
 
 .processing-content,
 .unsupported-content,
-.error-content,
-.welcome-content {
+.error-content {
   display: flex;
   align-items: center;
   justify-content: center;
   min-height: 400px;
 }
 
-.welcome-content {
-  align-items: flex-start;
-  padding-top: 2rem;
+/* Welcome home — scroll inside center panel (sidebars squeeze width) */
+.dashboard-content.welcome-content {
+  display: block;
+  overflow-x: auto;
+  overflow-y: auto;
+  padding: 1rem 1.25rem;
+  min-height: 0;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.sc-welcome-row {
+  width: 100%;
+  min-width: min(100%, 280px);
+  margin-left: 0;
+  margin-right: 0;
+}
+
+.sc-welcome-card-title {
+  font-size: 1rem;
+  font-weight: 600;
+  line-height: 1.3;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.sc-welcome-stats-card {
+  min-width: 0;
+}
+
+.sc-stats-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1rem 1.25rem;
+  width: 100%;
+}
+
+@media (max-width: 360px) {
+  .sc-stats-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.sc-stat-item {
+  min-width: 0;
+  text-align: center;
+  padding: 0.25rem 0.5rem;
+}
+
+.sc-stat-value {
+  font-size: clamp(1.25rem, 2.2vw, 1.75rem);
+  font-weight: 600;
+  line-height: 1.25;
+  margin-bottom: 0.35rem;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+  hyphens: auto;
+}
+
+.sc-stat-label {
+  font-size: 0.8125rem;
+  color: var(--muted-color, #6c757d);
+  line-height: 1.2;
 }
 
 /* Card styles */

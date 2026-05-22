@@ -172,36 +172,30 @@ function displayWelcomeScreen($user) {
     ?>
     <div class="dashboard-container">
         <div class="dashboard-content welcome-content">
-            <div class="row">
-                <div class="col-md-6">
-                    <div class="card">
-                        <div class="card-header">
-                            <h5><i class="fas fa-chart-bar"></i> Your Statistics</h5>
+            <div class="row g-3 sc-welcome-row">
+                <div class="col-12 col-xl-6">
+                    <div class="card sc-welcome-stats-card h-100">
+                        <div class="card-header py-2">
+                            <h5 class="sc-welcome-card-title mb-0"><i class="fas fa-chart-bar"></i> Your Statistics</h5>
                         </div>
-                        <div class="card-body">
-                            <div class="d-flex justify-content-around align-items-center flex-wrap gap-3 text-center">
-                                <div class="flex-fill" style="min-width: 120px;">
-                                    <h3 class="text-primary mb-1"><?php echo $stats['total_datasets']; ?></h3>
-                                    <p class="text-muted mb-0 small">Datasets</p>
+                        <div class="card-body py-3">
+                            <div class="sc-stats-grid">
+                                <div class="sc-stat-item">
+                                    <div class="sc-stat-value text-primary"><?php echo (int) $stats['total_datasets']; ?></div>
+                                    <div class="sc-stat-label">Datasets</div>
                                 </div>
-                                <div class="flex-fill" style="min-width: 120px;">
-                                    <h3 class="text-success mb-1"><?php echo formatFileSize($stats['total_size']); ?></h3>
-                                    <p class="text-muted mb-0 small">Total Size</p>
+                                <div class="sc-stat-item">
+                                    <div class="sc-stat-value text-success"><?php echo htmlspecialchars(formatFileSize($stats['total_size'])); ?></div>
+                                    <div class="sc-stat-label">Total Size</div>
                                 </div>
-                                <?php /* Status types metric disabled — count of distinct `status` values; not useful in welcome UI for now.
-                                <div class="flex-fill" style="min-width: 120px;">
-                                    <h3 class="text-info mb-1"><?php echo count($stats['status_counts']); ?></h3>
-                                    <p class="text-muted mb-0 small">Status Types</p>
-                                </div>
-                                */ ?>
                             </div>
                         </div>
                     </div>
                 </div>
-                <div class="col-md-6">
-                    <div class="card">
-                        <div class="card-header">
-                            <h5><i class="fas fa-bolt"></i> Quick Actions</h5>
+                <div class="col-12 col-xl-6">
+                    <div class="card h-100">
+                        <div class="card-header py-2">
+                            <h5 class="sc-welcome-card-title mb-0"><i class="fas fa-bolt"></i> Quick Actions</h5>
                         </div>
                         <div class="card-body">
                             <div class="d-grid gap-2">
@@ -223,11 +217,11 @@ function displayWelcomeScreen($user) {
                 </div>
             </div>
             
-            <div class="row mt-4">
+            <div class="row g-3 mt-1 sc-welcome-row">
                 <div class="col-12">
                     <div class="card">
-                        <div class="card-header">
-                            <h5><i class="fas fa-info-circle"></i> Getting Started</h5>
+                        <div class="card-header py-2">
+                            <h5 class="sc-welcome-card-title mb-0"><i class="fas fa-info-circle"></i> Getting Started</h5>
                         </div>
                         <div class="card-body">
                             <div class="row">
@@ -297,17 +291,11 @@ if (!function_exists('formatFileSize')) {
 
 .processing-content,
 .unsupported-content,
-.error-content,
-.welcome-content {
+.error-content {
     display: flex;
     align-items: center;
     justify-content: center;
     min-height: 400px;
-}
-
-.welcome-content {
-    align-items: flex-start;
-    padding-top: 2rem;
 }
 
 .card {
