@@ -32,6 +32,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
 require_once(__DIR__ . '/../config.php');
 require_once(__DIR__ . '/../includes/auth.php');
 require_once(__DIR__ . '/../includes/sclib_client.php');
+require_once(__DIR__ . '/../includes/parse_emails.php');
 
 try {
     // Check authentication
@@ -87,9 +88,36 @@ try {
         $parents = empty($parents) ? [] : [$parents];
     }
     
-    // Ensure emails is an array
+    // Ensure emails is an array; accept bulk pasted text in emails[0] or emails_bulk
     if (!is_array($emails)) {
         $emails = empty($emails) ? [] : [$emails];
+    }
+    $bulkText = $input['emails_bulk'] ?? null;
+    if ($bulkText !== null && trim((string) $bulkText) !== '') {
+        $parsed = sc_parse_email_list($bulkText);
+        $emails = $parsed['valid'];
+    } elseif (count($emails) === 1 && is_string($emails[0]) && (strpos($emails[0], ',') !== false || strpos($emails[0], '@') !== false && strpos($emails[0], ' ') !== false)) {
+        $parsed = sc_parse_email_list($emails[0]);
+        $emails = $parsed['valid'];
+    } else {
+        $merged = [];
+        foreach ($emails as $item) {
+            if (!is_string($item)) {
+                continue;
+            }
+            $parsed = sc_parse_email_list($item);
+            foreach ($parsed['valid'] as $e) {
+                $merged[] = $e;
+            }
+        }
+        $emails = array_values(array_unique($merged));
+    }
+
+    if (empty($emails)) {
+        ob_end_clean();
+        http_response_code(400);
+        echo json_encode(['success' => false, 'error' => 'At least one valid member email is required']);
+        exit;
     }
 
     // Create team using SCLib Sharing and Team API

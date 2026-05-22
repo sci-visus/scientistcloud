@@ -32,6 +32,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
 require_once(__DIR__ . '/../config.php');
 require_once(__DIR__ . '/../includes/auth.php');
 require_once(__DIR__ . '/../includes/sclib_client.php');
+require_once(__DIR__ . '/../includes/parse_emails.php');
 
 try {
     // Check authentication
@@ -118,19 +119,9 @@ try {
         // If emails array is provided, use it directly
         $updateData['emails'] = $emails;
     } elseif ($newMemberEmail !== null && trim((string) $newMemberEmail) !== '') {
-        $raw = trim((string) $newMemberEmail);
-        $emailsToAdd = [];
-        foreach (array_map('trim', explode(',', $raw)) as $e) {
-            if ($e === '') {
-                continue;
-            }
-            if (filter_var($e, FILTER_VALIDATE_EMAIL)) {
-                $emailsToAdd[] = $e;
-            } else {
-                $invalid[] = $e;
-            }
-        }
-        $emailsToAdd = array_values(array_unique($emailsToAdd));
+        $parsed = sc_parse_email_list((string) $newMemberEmail);
+        $emailsToAdd = $parsed['valid'];
+        $invalid = $parsed['invalid'];
 
         if (empty($emailsToAdd)) {
             ob_end_clean();

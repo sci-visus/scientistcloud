@@ -43,6 +43,11 @@ try {
 } catch (Exception $e) {
     error_log("Error fetching teams: " . $e->getMessage());
 }
+
+$isLocal = (strpos(SC_SERVER_URL, 'localhost') !== false || strpos(SC_SERVER_URL, '127.0.0.1') !== false);
+$portalApiBase = $isLocal ? '/api' : '/portal/api';
+$portalAssetsBase = $isLocal ? '/assets' : '/portal/assets';
+$ownerEmailJs = json_encode($user['email'] ?? '');
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -56,7 +61,7 @@ try {
     <!-- FontAwesome Icons -->
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
     <!-- Custom CSS -->
-    <link href="../assets/css/main.css" rel="stylesheet">
+    <link href="<?php echo htmlspecialchars($portalAssetsBase); ?>/css/main.css" rel="stylesheet">
     <style>
         body {
             background-color: var(--bg-color);
@@ -303,7 +308,7 @@ try {
         }
     })();
 </script>
-<div class="container">
+<div class="container" data-sc-owner-email="<?php echo htmlspecialchars($user['email'] ?? ''); ?>">
     <div class="panel panel-default">
         <div class="panel-heading">
             <h4 class="panel-title pull-left">
@@ -311,10 +316,10 @@ try {
             </h4>
         </div>
         <div class="panel-body">
-            <form class="form-horizontal" id="team_form">
+            <form class="form-horizontal" id="team_form" action="javascript:void(0)" method="post" onsubmit="return false;">
                 <div class="form-group">
                     <label for="team_name" class="team-name-label">Team Name:</label>
-                    <input type="text" class="team-name-input-text" id="team_name" name="team_name" required/>
+                    <input type="text" class="team-name-input-text" id="team_name" name="team_name" autocomplete="organization" required/>
                 </div>
                 <div class="form-group">
                     <label for="team_parent" class="team-parent-label" id="team_parent_label">Parent Team: (optional)</label>
@@ -325,17 +330,14 @@ try {
                         <?php endforeach; ?>
                     </select>
                 </div>
-                <div class="form-group email-entries">
-                    <div class="email-entry" id="email-entry-1">
-                        <label for="email-1" class="email-label">Email Address 1:</label>
-                        <input type="email" class="email-input-text" id="email-1" name="email[]" required/>
-                    </div>
-                </div>
-                <div class="add-email-btn-container">
-                    <button type="button" class="btn btn-secondary" onclick="addEmailEntry()">Add Another Email</button>
+                <div class="form-group">
+                    <label for="team_emails_bulk" class="email-label">Member emails</label>
+                    <textarea class="team-name-input-text" id="team_emails_bulk" name="team_emails_bulk" rows="6"
+                        placeholder="Paste one or more addresses. Supports comma/newline lists and formats like Name &lt;email@domain.com&gt;"></textarea>
+                    <small class="text-muted">Owner is added automatically. Paste a mailing list or spreadsheet column as-is.</small>
                 </div>
                 <div class="panel-footer">
-                    <button id="create_team_btn" type="submit" class="btn btn-primary" disabled>
+                    <button id="create_team_btn" type="button" class="btn btn-primary" disabled>
                         Create Team
                     </button>
                 </div>
@@ -357,7 +359,8 @@ try {
                             <div class="team-info">
                                 <span id="team-name-display-<?php echo htmlspecialchars($team['uuid'] ?? ''); ?>" class="team-name"><?php echo htmlspecialchars($team['team_name'] ?? ''); ?></span>
                                 <input type="text" id="team-name-edit-<?php echo htmlspecialchars($team['uuid'] ?? ''); ?>" class="team-name-edit" value="<?php echo htmlspecialchars($team['team_name'] ?? ''); ?>" style="display:none;">
-                                <button onclick="toggleEditTeamName('<?php echo htmlspecialchars($team['uuid'] ?? ''); ?>')" class="edit-btn">
+                                <button type="button" class="edit-btn sc-team-edit-name-btn"
+                                    data-team-uuid="<?php echo htmlspecialchars($team['uuid'] ?? ''); ?>">
                                     <i class="fas fa-edit"></i>
                                 </button>
                             </div>
@@ -369,20 +372,27 @@ try {
                                 ?>
                                     <li>
                                         <span class="member-email"><?php echo htmlspecialchars($email); ?></span>
-                                        <button onclick="removeMember('<?php echo htmlspecialchars($team['uuid'] ?? ''); ?>', '<?php echo htmlspecialchars($email); ?>')" class="remove-btn">Remove</button>
+                                        <button type="button" class="remove-btn sc-team-remove-member-btn"
+                                            data-team-uuid="<?php echo htmlspecialchars($team['uuid'] ?? ''); ?>"
+                                            data-member-email="<?php echo htmlspecialchars($email); ?>">Remove</button>
                                     </li>
                                 <?php endforeach; ?>
                                 <div class="add-member-section">
-                                    <button onclick="toggleAddMember('<?php echo htmlspecialchars($team['uuid'] ?? ''); ?>')" class="add-member-btn">
+                                    <button type="button" class="add-member-btn sc-team-add-member-btn"
+                                        data-team-uuid="<?php echo htmlspecialchars($team['uuid'] ?? ''); ?>">
                                         <i class="fas fa-plus"></i>
                                     </button>
                                     <div id="add-member-container-<?php echo htmlspecialchars($team['uuid'] ?? ''); ?>" class="add-member-container" style="display:none;">
-                                        <input type="text" id="new-member-<?php echo htmlspecialchars($team['uuid'] ?? ''); ?>" placeholder="Emails (comma-separated)" autocomplete="off">
-                                        <button type="button" onclick="updateTeam('<?php echo htmlspecialchars($team['uuid'] ?? ''); ?>')" class="add-btn">Add</button>
+                                        <input type="text" id="new-member-<?php echo htmlspecialchars($team['uuid'] ?? ''); ?>"
+                                            placeholder="Paste emails (comma, newline, or Name &lt;email&gt;)" autocomplete="off">
+                                        <button type="button" class="add-btn sc-team-update-members-btn"
+                                            data-team-uuid="<?php echo htmlspecialchars($team['uuid'] ?? ''); ?>">Add</button>
                                     </div>
                                 </div>
                             </ul>
-                            <button onclick="deleteTeam('<?php echo htmlspecialchars($team['uuid'] ?? ''); ?>')" class="delete-team-btn">Delete Team</button>
+                            <button type="button" class="delete-team-btn"
+                                data-team-uuid="<?php echo htmlspecialchars($team['uuid'] ?? ''); ?>"
+                                data-team-name="<?php echo htmlspecialchars($team['team_name'] ?? ''); ?>">Delete Team</button>
                         </div>
                     <?php endforeach; ?>
                 </div>
@@ -427,329 +437,16 @@ try {
 
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 <script>
-    let emailEntryIndex = 1;
-
-    function addEmailEntry() {
-        emailEntryIndex++;
-        var newEntry = '<div class="email-entry" id="email-entry-' + emailEntryIndex + '">' +
-            '<label for="email-' + emailEntryIndex + '" class="email-label">Email Address ' + emailEntryIndex + ':</label>' +
-            '<input type="email" class="email-input-text" id="email-' + emailEntryIndex + '" name="email[]" />' +
-            '</div>';
-        document.querySelector('.email-entries').insertAdjacentHTML('beforeend', newEntry);
-        updateDeleteIcons();
-        checkFormValidity();
-    }
-
-    function removeEmailEntry(index) {
-        var entry = document.getElementById('email-entry-' + index);
-        if (entry && entry.parentNode) {
-            entry.parentNode.removeChild(entry);
-            emailEntryIndex--;
-            updateDeleteIcons();
-            checkFormValidity();
+    window.SC_PORTAL_API_BASE = <?php echo json_encode($portalApiBase); ?>;
+    window.SC_PORTAL_ASSETS_BASE = <?php echo json_encode($portalAssetsBase); ?>;
+</script>
+<script src="<?php echo htmlspecialchars($portalAssetsBase); ?>/js/team-management.js"></script>
+<script>
+    document.addEventListener('DOMContentLoaded', function () {
+        if (typeof scInitTeamManagement === 'function') {
+            scInitTeamManagement(<?php echo $ownerEmailJs; ?>);
         }
-    }
-
-    function updateDeleteIcons() {
-        var entries = document.querySelectorAll('.email-entry');
-        entries.forEach((entry, index) => {
-            var label = entry.querySelector('.email-label');
-            label.textContent = 'Email Address ' + (index + 1) + ':';
-            var existingIcon = entry.querySelector('.delete-icon');
-            if (existingIcon) {
-                existingIcon.remove();
-            }
-            if (entries.length > 1) {
-                var deleteIcon = document.createElement('span');
-                deleteIcon.innerHTML = '<i class="fas fa-trash"></i>';
-                deleteIcon.className = 'delete-icon';
-                deleteIcon.onclick = function() { removeEmailEntry(index + 1); };
-                entry.appendChild(deleteIcon);
-            }
-        });
-    }
-
-    function deleteTeam(teamId) {
-        if (confirm("Are you sure you want to delete this team?")) {
-            fetch('../api/delete-team.php', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({ team_uuid: teamId })
-            })
-            .then(response => response.json())
-            .then(data => {
-                if (data.success) {
-                    alert("Team deleted successfully.");
-                    location.reload();
-                } else {
-                    alert("Error deleting the team: " + (data.error || 'Unknown error'));
-                }
-            })
-            .catch(error => {
-                console.error('Error:', error);
-                alert("Error deleting the team.");
-            });
-        }
-    }
-
-    function removeMember(teamId, memberEmail) {
-        if (confirm("Are you sure you want to remove this member?")) {
-            fetch('../api/remove-member.php', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({
-                    team_uuid: teamId,
-                    member_email: memberEmail
-                })
-            })
-            .then(response => response.json())
-            .then(data => {
-                if (data.success) {
-                    alert("Member removed successfully.");
-                    location.reload();
-                } else {
-                    alert("Error removing the member: " + (data.error || 'Unknown error'));
-                }
-            })
-            .catch(error => {
-                console.error('Error:', error);
-                alert("Error removing the member.");
-            });
-        }
-    }
-
-    function toggleAddMember(teamId) {
-        var addMemberContainer = document.getElementById('add-member-container-' + teamId);
-        if (addMemberContainer.style.display === 'none' || addMemberContainer.style.display === '') {
-            addMemberContainer.style.display = 'block';
-        } else {
-            addMemberContainer.style.display = 'none';
-        }
-    }
-
-    function toggleEditTeamName(teamId) {
-        var displayElement = document.getElementById('team-name-display-' + teamId);
-        var editElement = document.getElementById('team-name-edit-' + teamId);
-
-        if (editElement.style.display === 'none') {
-            displayElement.style.display = 'none';
-            editElement.style.display = 'inline';
-            editElement.focus();
-        } else {
-            var newName = editElement.value.trim();
-            if (newName === '') {
-                alert("Team name cannot be empty.");
-                return;
-            }
-            displayElement.textContent = newName;
-            displayElement.style.display = 'inline';
-            editElement.style.display = 'none';
-            updateTeamName(teamId, newName);
-        }
-    }
-
-    function updateTeamName(teamId, newName) {
-        if (newName.trim() === '') {
-            alert("Team name cannot be empty.");
-            return;
-        }
-
-        fetch('../api/update-team-name.php', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-                team_uuid: teamId,
-                team_name: newName
-            })
-        })
-        .then(response => response.json())
-        .then(data => {
-            if (data.success) {
-                alert("Team name updated successfully.");
-                location.reload();
-            } else {
-                alert("Error updating the team name: " + (data.error || 'Unknown error'));
-            }
-        })
-        .catch(error => {
-            console.error('Error:', error);
-            alert("Error updating the team name.");
-        });
-    }
-
-    function memberAlreadyListed(teamId, email) {
-        var container = document.getElementById('add-member-container-' + teamId);
-        if (!container) {
-            return false;
-        }
-        var teamEl = container.closest('.team');
-        if (!teamEl) {
-            return false;
-        }
-        var spans = teamEl.querySelectorAll('.member-email');
-        for (var i = 0; i < spans.length; i++) {
-            if (spans[i].textContent.trim() === email) {
-                return true;
-            }
-        }
-        return false;
-    }
-
-    function appendMemberRow(teamId, email) {
-        var container = document.getElementById('add-member-container-' + teamId);
-        if (!container) {
-            return;
-        }
-        var section = container.closest('.add-member-section');
-        if (!section) {
-            return;
-        }
-        var li = document.createElement('li');
-        var span = document.createElement('span');
-        span.className = 'member-email';
-        span.textContent = email;
-        var btn = document.createElement('button');
-        btn.type = 'button';
-        btn.className = 'remove-btn';
-        btn.textContent = 'Remove';
-        btn.onclick = function() {
-            removeMember(teamId, email);
-        };
-        li.appendChild(span);
-        li.appendChild(btn);
-        section.parentNode.insertBefore(li, section);
-    }
-
-    function updateTeam(teamId) {
-        var newMemberEmail = document.getElementById('new-member-' + teamId).value.trim();
-
-        if (newMemberEmail === '') {
-            alert("Please enter at least one email address.");
-            return;
-        }
-
-        fetch('../api/update-team.php', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-                team_uuid: teamId,
-                new_member_email: newMemberEmail
-            })
-        })
-        .then(function(response) {
-            return response.json().then(function(data) {
-                return { ok: response.ok, status: response.status, data: data };
-            });
-        })
-        .then(function(result) {
-            var data = result.data;
-            if (!result.ok || !data.success) {
-                alert("Error updating the team: " + (data.error || 'Unknown error'));
-                return;
-            }
-            var added = data.added || [];
-            var appended = 0;
-            added.forEach(function(email) {
-                if (!memberAlreadyListed(teamId, email)) {
-                    appendMemberRow(teamId, email);
-                    appended++;
-                }
-            });
-            var inputEl = document.getElementById('new-member-' + teamId);
-            inputEl.value = '';
-            inputEl.focus();
-            var parts = [];
-            if (appended > 0) {
-                parts.push('Added ' + appended + ' member(s).');
-            } else if (added.length > 0) {
-                parts.push('Those addresses were already on the team.');
-            } else if (data.message && data.message.indexOf('No new members') !== -1) {
-                parts.push('Those addresses were already on the team.');
-            }
-            if (data.invalid && data.invalid.length) {
-                parts.push('Skipped invalid: ' + data.invalid.join(', '));
-            }
-            if (parts.length) {
-                alert(parts.join(' '));
-            }
-        })
-        .catch(function(error) {
-            console.error('Error:', error);
-            alert("Error updating the team.");
-        });
-    }
-
-    function checkFormValidity() {
-        var teamName = document.getElementById('team_name').value.trim();
-        var emailInputs = document.querySelectorAll('.email-input-text');
-        var validEmails = Array.from(emailInputs).filter(input => input.value.trim() !== '').length;
-
-        var createButton = document.getElementById('create_team_btn');
-        if (teamName !== '' && validEmails > 0) {
-            createButton.disabled = false;
-        } else {
-            createButton.disabled = true;
-        }
-    }
-
-    // Handle form submission
-    document.getElementById('team_form').addEventListener('submit', function(e) {
-        e.preventDefault();
-        
-        var teamName = document.getElementById('team_name').value.trim();
-        var parentTeam = document.getElementById('team_parent').value;
-        var emailInputs = document.querySelectorAll('.email-input-text');
-        var emails = Array.from(emailInputs)
-            .map(input => input.value.trim())
-            .filter(email => email !== '');
-        
-        if (teamName === '' || emails.length === 0) {
-            alert('Please fill in all required fields.');
-            return;
-        }
-
-        var parents = parentTeam ? [parentTeam] : [];
-
-        fetch('../api/create-team.php', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-                team_name: teamName,
-                emails: emails,
-                parents: parents,
-                owner_email: '<?php echo htmlspecialchars($user['email'] ?? ''); ?>'
-            })
-        })
-        .then(response => response.json())
-        .then(data => {
-            if (data.success) {
-                alert('Team created successfully!');
-                location.reload();
-            } else {
-                alert('Error creating team: ' + (data.error || 'Unknown error'));
-            }
-        })
-        .catch(error => {
-            console.error('Error:', error);
-            alert('Error creating team: ' + error.message);
-        });
     });
-
-    document.getElementById('team_name').addEventListener('input', checkFormValidity);
-    document.querySelector('.email-entries').addEventListener('input', checkFormValidity);
-
-    updateDeleteIcons();
-    checkFormValidity();
 </script>
 
 </body>

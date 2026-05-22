@@ -3392,6 +3392,32 @@ class UploadManager {
     /**
      * Show create team page in viewer container
      */
+    async ensureTeamManagementScript(assetsBase) {
+        if (typeof scInitTeamManagement === 'function') {
+            return;
+        }
+        const src = `${assetsBase}/js/team-management.js`;
+        const existing = document.querySelector(`script[src="${src}"]`);
+        if (existing) {
+            await new Promise((resolve, reject) => {
+                if (typeof scInitTeamManagement === 'function') {
+                    resolve();
+                    return;
+                }
+                existing.addEventListener('load', resolve);
+                existing.addEventListener('error', () => reject(new Error('team-management.js failed to load')));
+            });
+            return;
+        }
+        await new Promise((resolve, reject) => {
+            const script = document.createElement('script');
+            script.src = src;
+            script.onload = resolve;
+            script.onerror = () => reject(new Error('team-management.js failed to load'));
+            document.head.appendChild(script);
+        });
+    }
+
     async showCreateTeamPage() {
         const viewerContainer = document.getElementById('viewerContainer');
         if (!viewerContainer) return;
@@ -3408,21 +3434,32 @@ class UploadManager {
 
         try {
             const isLocal = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
-            const basePath = isLocal ? '' : '/portal';
-            const url = `${basePath}/createTeam/index.php`;
+            const portalBase = typeof getPortalBasePath === 'function' ? getPortalBasePath() : (isLocal ? '' : '/portal');
+            const apiBase = typeof getApiBasePath === 'function' ? getApiBasePath() : (isLocal ? '/api' : '/portal/api');
+            const assetsBase = portalBase === '' ? '/assets' : `${portalBase}/assets`;
+            window.SC_PORTAL_API_BASE = apiBase;
+            window.SC_PORTAL_ASSETS_BASE = assetsBase;
+
+            const url = `${portalBase}/createTeam/index.php`;
             
             // Fetch the page content
-            const response = await fetch(url);
+            const response = await fetch(url, { credentials: 'same-origin' });
             if (!response.ok) {
                 throw new Error(`HTTP ${response.status}: ${response.statusText}`);
             }
             
-            const html = await response.text();
+            let html = await response.text();
+            html = html
+                .replace(/\.\.\/api\//g, `${apiBase}/`)
+                .replace(/\.\.\/assets\//g, `${assetsBase}/`);
             
             // Extract body content and styles from the HTML
             const parser = new DOMParser();
             const doc = parser.parseFromString(html, 'text/html');
-            const bodyContent = doc.body.innerHTML;
+            let bodyContent = doc.body.innerHTML;
+            bodyContent = bodyContent
+                .replace(/\.\.\/api\//g, `${apiBase}/`)
+                .replace(/\.\.\/assets\//g, `${assetsBase}/`);
             
             // Extract styles from head
             const styles = doc.head.querySelectorAll('style, link[rel="stylesheet"]');
@@ -3431,7 +3468,11 @@ class UploadManager {
                 if (style.tagName === 'STYLE') {
                     stylesHTML += `<style>${style.innerHTML}</style>`;
                 } else if (style.tagName === 'LINK') {
-                    stylesHTML += style.outerHTML;
+                    let linkHtml = style.outerHTML;
+                    linkHtml = linkHtml
+                        .replace(/\.\.\/assets\//g, `${assetsBase}/`)
+                        .replace(/href="\/assets\//g, `href="${assetsBase}/`);
+                    stylesHTML += linkHtml;
                 }
             });
             
@@ -3446,17 +3487,26 @@ class UploadManager {
                     ${bodyContent}
                 </div>
             `;
-            
-            // Re-initialize scripts and event handlers from the loaded page
+
+            // Run inline config scripts only (skip external src — loaded explicitly below)
             const scripts = viewerContainer.querySelectorAll('script');
             scripts.forEach(oldScript => {
+                if (oldScript.src) {
+                    oldScript.remove();
+                    return;
+                }
                 const newScript = document.createElement('script');
-                Array.from(oldScript.attributes).forEach(attr => {
-                    newScript.setAttribute(attr.name, attr.value);
-                });
                 newScript.textContent = oldScript.textContent;
                 oldScript.parentNode.replaceChild(newScript, oldScript);
             });
+
+            await this.ensureTeamManagementScript(assetsBase);
+
+            const ownerEl = viewerContainer.querySelector('[data-sc-owner-email]');
+            const ownerEmail = ownerEl ? (ownerEl.getAttribute('data-sc-owner-email') || '') : '';
+            if (typeof scInitTeamManagement === 'function') {
+                scInitTeamManagement(ownerEmail);
+            }
             
         } catch (error) {
             console.error('Error loading create team page:', error);
