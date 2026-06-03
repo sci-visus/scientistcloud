@@ -348,7 +348,7 @@ function shouldPromptAccountSelection() {
 /**
  * Authorization params for Auth0->login().
  */
-function buildAuth0LoginParams($chooseAccount = false) {
+function buildAuth0LoginParams($chooseAccount = false, $connection = null) {
     $params = [
         'scope' => 'openid profile email offline_access https://www.googleapis.com/auth/drive.readonly https://www.googleapis.com/auth/gmail.send',
     ];
@@ -356,6 +356,9 @@ function buildAuth0LoginParams($chooseAccount = false) {
         // Force account picker (and re-auth) instead of silent SSO.
         $params['prompt'] = 'select_account';
         $params['max_age'] = 0;
+    }
+    if ($connection !== null && $connection !== '') {
+        $params['connection'] = $connection;
     }
     return $params;
 }
@@ -369,6 +372,17 @@ function getPortalLoginUrl($chooseAccount = false) {
         return $base;
     }
     return $base . '?choose_account=1';
+}
+
+/**
+ * Google-only login — skips unverified email/password accounts on the same address.
+ */
+function getPortalGoogleLoginUrl() {
+    $base = rtrim(SC_SERVER_URL, '/') . scPortalPathPrefix() . '/login.php';
+    return $base . '?' . http_build_query([
+        'connection' => 'google-oauth2',
+        'choose_account' => '1',
+    ]);
 }
 
 /**

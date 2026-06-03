@@ -14,7 +14,7 @@ require_once(__DIR__ . '/includes/auth.php');
 $isLocal = (strpos(SC_SERVER_URL, 'localhost') !== false || strpos(SC_SERVER_URL, '127.0.0.1') !== false);
 $loginPath = $isLocal ? '/login.php' : '/portal/login.php';
 $signupPath = $isLocal ? '/signup.php' : '/portal/signup.php';
-$googleLoginPath = getPortalLoginUrl(true);
+$googleLoginPath = getPortalGoogleLoginUrl();
 
 $flash = null;
 $email = '';

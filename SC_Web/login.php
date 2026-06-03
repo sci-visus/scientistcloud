@@ -31,6 +31,7 @@ if (!empty($_GET['return_to'])) {
 }
 
 $chooseAccount = shouldPromptAccountSelection();
+$googleConnection = isset($_GET['connection']) && $_GET['connection'] === 'google-oauth2';
 
 $isLocal = (strpos(SC_SERVER_URL, 'localhost') !== false || strpos(SC_SERVER_URL, '127.0.0.1') !== false);
 $verifiedLandingPath = $isLocal ? '/login_verification_sent.php' : '/portal/login_verification_sent.php';
@@ -61,7 +62,7 @@ if ($chooseAccount && isAuthenticated()) {
     }
 }
 
-if ($chooseAccount) {
+if ($chooseAccount || $googleConnection) {
     scClearPendingEmailVerification();
 }
 
@@ -81,7 +82,7 @@ if (isset($_GET['success']) && $_GET['success'] === 'true' && isset($_GET['code'
 $hasOAuthCode = isset($_GET['code']) && $_GET['code'] !== '' && $_GET['code'] !== 'success';
 
 // Do not auto-redirect to Auth0 while email verification is still pending (prevents login loop).
-if (!$hasOAuthCode && scHasPendingEmailVerification() && !$chooseAccount && empty($_GET['verification_retry'])) {
+if (!$hasOAuthCode && scHasPendingEmailVerification() && !$chooseAccount && !$googleConnection && empty($_GET['verification_retry'])) {
     scRedirectToEmailVerificationPage((string) $_SESSION['pending_verification_email']);
 }
 
@@ -104,7 +105,7 @@ if (!$hasOAuthCode) {
         // choose_account=1 shows Auth0 / Google account picker (see logged_out.php).
         $loginUrl = $auth0->login(
             $callbackUrl,
-            buildAuth0LoginParams($chooseAccount)
+            buildAuth0LoginParams($chooseAccount, $googleConnection ? 'google-oauth2' : null)
         );
         
         if ($loginUrl) {

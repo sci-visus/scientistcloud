@@ -26,6 +26,17 @@ if (!empty($_GET['error'])) {
         'error' => $_GET['error'],
         'description' => $errDesc,
     ]);
+    $descLower = strtolower((string) $errDesc);
+    if (str_contains($descLower, 'client secret') || str_contains($descLower, 'client_id')) {
+        http_response_code(503);
+        echo '<h2>Login configuration error</h2>';
+        echo '<p>Auth0 rejected the portal application credentials (<code>invalid_request</code>).</p>';
+        echo '<p>An administrator must set <code>AUTH0_CLIENT_SECRET</code> on the server to match ';
+        echo '<a href="https://manage.auth0.com/" target="_blank" rel="noopener">Auth0 Dashboard</a> ';
+        echo '→ Applications → Settings, then restart <code>scientistcloud-portal</code>.</p>';
+        echo '<p><a href="' . htmlspecialchars($loginPath) . '">Try again</a></p>';
+        exit;
+    }
     header('Location: ' . rtrim(SC_SERVER_URL, '/') . $loginPath);
     exit;
 }
