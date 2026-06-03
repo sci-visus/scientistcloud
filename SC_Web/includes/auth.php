@@ -215,19 +215,29 @@ function isAuthenticated() {
 }
 
 /**
- * Clear Auth0 SDK / portal cookies (legacy Visus logout pattern).
+ * Clear Auth0 SDK / portal cookies (legacy Visus logout pattern + SDK cookie names).
  */
 function clearAuth0Cookies() {
     $secure = isHttpsRequest();
     $names = [
         'auth0.is.authenticated',
         'auth0_session',
+        'auth0_transient',
         'auth0_session_0',
         'auth0_session_1',
         'auth0_session_2',
+        'auth0_transient_0',
+        'auth0_transient_1',
+        'auth0_transient_2',
         'auth_token',
         'session_token',
     ];
+    foreach (array_keys($_COOKIE) as $cookieName) {
+        if (preg_match('/^auth0/i', $cookieName)) {
+            $names[] = $cookieName;
+        }
+    }
+    $names = array_unique($names);
     foreach ($names as $name) {
         setcookie($name, '', [
             'expires' => time() - 3600,
@@ -237,6 +247,64 @@ function clearAuth0Cookies() {
             'samesite' => 'Lax',
         ]);
     }
+}
+
+/**
+ * Clear portal session cookies without redirecting to Auth0.
+ */
+function scClearLocalAuthState(bool $destroyPhpSession = false) {
+    clearDashboardAuthCookie();
+    clearAuth0Cookies();
+
+    if ($destroyPhpSession) {
+        $_SESSION = [];
+        if (ini_get('session.use_cookies')) {
+            $params = session_get_cookie_params();
+            setcookie(session_name(), '', time() - 42000,
+                $params['path'], $params['domain'],
+                $params['secure'], $params['httponly']
+            );
+        }
+        session_destroy();
+        session_start();
+    }
+}
+
+/**
+ * True when login should show the Auth0 / Google account picker.
+ */
+function shouldPromptAccountSelection() {
+    if (!empty($_GET['choose_account']) || !empty($_GET['switch_account'])) {
+        return true;
+    }
+    $prompt = isset($_GET['prompt']) ? (string) $_GET['prompt'] : '';
+    return $prompt === 'select_account' || $prompt === 'login';
+}
+
+/**
+ * Authorization params for Auth0->login().
+ */
+function buildAuth0LoginParams($chooseAccount = false) {
+    $params = [
+        'scope' => 'openid profile email offline_access https://www.googleapis.com/auth/drive.readonly https://www.googleapis.com/auth/gmail.send',
+    ];
+    if ($chooseAccount) {
+        // Force account picker (and re-auth) instead of silent SSO.
+        $params['prompt'] = 'select_account';
+        $params['max_age'] = 0;
+    }
+    return $params;
+}
+
+/**
+ * Portal login URL; pass true to require account selection on next sign-in.
+ */
+function getPortalLoginUrl($chooseAccount = false) {
+    $base = rtrim(SC_SERVER_URL, '/') . scPortalPathPrefix() . '/login.php';
+    if (!$chooseAccount) {
+        return $base;
+    }
+    return $base . '?choose_account=1';
 }
 
 /**
@@ -263,26 +331,7 @@ function getPostLogoutUrl() {
  * Logout user
  */
 function logoutUser() {
-    clearDashboardAuthCookie();
-    clearAuth0Cookies();
-
-    // Clear all session variables
-    $_SESSION = array();
-    
-    // Destroy the session cookie
-    if (ini_get("session.use_cookies")) {
-        $params = session_get_cookie_params();
-        setcookie(session_name(), '', time() - 42000,
-            $params["path"], $params["domain"],
-            $params["secure"], $params["httponly"]
-        );
-    }
-    
-    // Destroy the session
-    session_destroy();
-    
-    // Start a new session
-    session_start();
+    scClearLocalAuthState(true);
 }
 
 /**
@@ -292,21 +341,20 @@ function logoutUserWithAuth0() {
     require_once(__DIR__ . '/../config_auth0.php');
     global $auth0;
 
-    clearDashboardAuthCookie();
-    clearAuth0Cookies();
-
-    // Auth0 SDK clears its session store; return URL must not be login.php (that auto-starts OAuth).
     $returnUrl = getPostLogoutUrl();
+
+    // Clear portal session and cookies before Auth0 federated logout.
+    scClearLocalAuthState(true);
+
     try {
-        $logoutUrl = $auth0->logout($returnUrl, ['federated' => '']);
+        // federated=1 also clears Google/IdP SSO so silent re-login does not occur.
+        $logoutUrl = $auth0->logout($returnUrl, ['federated' => '1']);
     } catch (Throwable $e) {
         error_log('Auth0 logout failed: ' . $e->getMessage());
-        logoutUser();
         header('Location: ' . $returnUrl);
         exit;
     }
 
-    logoutUser();
     header('Location: ' . $logoutUrl);
     exit;
 }

@@ -30,12 +30,26 @@ if (!empty($_GET['return_to'])) {
     storeLoginReturnTo($_GET['return_to']);
 }
 
-// Check if user is already authenticated
-// isAuthenticated() now verifies getCurrentUser(), so this should be safe
-if (isAuthenticated()) {
+$chooseAccount = shouldPromptAccountSelection();
+
+// Check if user is already authenticated (skip when switching accounts)
+if (isAuthenticated() && !$chooseAccount) {
     setDashboardAuthCookieFromSession();
     header('Location: ' . getPostLoginRedirectUrl());
     exit;
+}
+
+if ($chooseAccount && isAuthenticated()) {
+    $savedReturnTo = $_SESSION['login_return_to'] ?? null;
+    scClearLocalAuthState(true);
+    if ($savedReturnTo) {
+        storeLoginReturnTo($savedReturnTo);
+    }
+    try {
+        $auth0->clear();
+    } catch (Throwable $e) {
+        error_log('Auth0 clear before account switch: ' . $e->getMessage());
+    }
 }
 
 // Email verification complete (Auth0 Redirect To should be login.php, not callback.php)
@@ -66,11 +80,10 @@ if (!$hasOAuthCode) {
         
         // Do not force prompt=consent on every login — it breaks some database sign-up flows.
         // Google Drive consent is requested when needed via connection=google-oauth2.
+        // choose_account=1 shows Auth0 / Google account picker (see logged_out.php).
         $loginUrl = $auth0->login(
             $callbackUrl,
-            [
-                'scope' => 'openid profile email offline_access https://www.googleapis.com/auth/drive.readonly https://www.googleapis.com/auth/gmail.send',
-            ]
+            buildAuth0LoginParams($chooseAccount)
         );
         
         if ($loginUrl) {

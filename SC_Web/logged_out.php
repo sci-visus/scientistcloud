@@ -9,13 +9,11 @@ if (session_status() !== PHP_SESSION_ACTIVE) {
 require_once(__DIR__ . '/config.php');
 require_once(__DIR__ . '/includes/auth.php');
 
-// If still authenticated, send to portal home (stale session edge case)
-if (isAuthenticated()) {
-    header('Location: ' . getPostLoginRedirectUrl());
-    exit;
-}
+// Ensure no stale portal / dashboard cookies remain after Auth0 redirect.
+scClearLocalAuthState(true);
 
-$loginUrl = rtrim(SC_SERVER_URL, '/') . scPortalPathPrefix() . '/login.php';
+$loginUrl = getPortalLoginUrl(false);
+$switchAccountUrl = getPortalLoginUrl(true);
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -46,9 +44,14 @@ $loginUrl = rtrim(SC_SERVER_URL, '/') . scPortalPathPrefix() . '/login.php';
     <div class="card-box">
         <h1><i class="fas fa-cloud"></i> ScientistCloud</h1>
         <p class="text-muted mt-3">You have been signed out.</p>
-        <a href="<?php echo htmlspecialchars($loginUrl); ?>" class="btn btn-primary mt-3">
-            Sign in again
-        </a>
+        <div class="d-grid gap-2 mt-3">
+            <a href="<?php echo htmlspecialchars($loginUrl); ?>" class="btn btn-primary">
+                Sign in again
+            </a>
+            <a href="<?php echo htmlspecialchars($switchAccountUrl); ?>" class="btn btn-outline-secondary">
+                Use a different account
+            </a>
+        </div>
     </div>
 </body>
 </html>
