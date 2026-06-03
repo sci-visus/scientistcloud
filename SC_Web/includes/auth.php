@@ -271,6 +271,70 @@ function scClearLocalAuthState(bool $destroyPhpSession = false) {
 }
 
 /**
+ * Portal path for the email-verification landing page.
+ */
+function scVerificationSentPath() {
+    return scPortalPathPrefix() . '/login_verification_sent.php';
+}
+
+/**
+ * True when the user must verify email before another Auth0 login attempt.
+ */
+function scHasPendingEmailVerification() {
+    return !empty($_SESSION['pending_verification_email'])
+        || !empty($_SESSION['email_verification_pending']);
+}
+
+/**
+ * Remember that this browser session must verify email before login.php sends them to Auth0.
+ */
+function scMarkEmailVerificationPending($email = null) {
+    $_SESSION['email_verification_pending'] = true;
+    if ($email !== null && $email !== '') {
+        $_SESSION['pending_verification_email'] = trim((string) $email);
+    }
+}
+
+/**
+ * Auth0 may return access_denied when a database user has not verified email yet.
+ */
+function scAuth0ErrorIsUnverifiedEmail($error, $description) {
+    $desc = strtolower((string) $description);
+    $err = strtolower((string) $error);
+    if ($desc === '' && $err === '') {
+        return false;
+    }
+    if (str_contains($desc, 'verify') && str_contains($desc, 'email')) {
+        return true;
+    }
+    if (str_contains($desc, 'email') && str_contains($desc, 'verif')) {
+        return true;
+    }
+    return $err === 'access_denied' && str_contains($desc, 'verif');
+}
+
+/**
+ * Send the user to the portal page that explains they must verify via email (no Auth0 loop).
+ */
+function scRedirectToEmailVerificationPage($email = null, array $extraQuery = []) {
+    scMarkEmailVerificationPending($email);
+    $query = array_merge(['pending' => '1'], $extraQuery);
+    $storedEmail = $_SESSION['pending_verification_email'] ?? '';
+    if ($storedEmail !== '' && empty($query['email'])) {
+        $query['email'] = $storedEmail;
+    }
+    header('Location: ' . rtrim(SC_SERVER_URL, '/') . scVerificationSentPath() . '?' . http_build_query($query));
+    exit;
+}
+
+/**
+ * Clear pending verification after the user successfully signs in.
+ */
+function scClearPendingEmailVerification() {
+    unset($_SESSION['pending_verification_email'], $_SESSION['email_verification_pending']);
+}
+
+/**
  * True when login should show the Auth0 / Google account picker.
  */
 function shouldPromptAccountSelection() {

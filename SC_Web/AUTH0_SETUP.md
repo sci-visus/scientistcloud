@@ -68,7 +68,8 @@ Google can work while database sign-up returns **400** on `dev-ep26akpb.auth0.co
 3. **Branding / Email templates**
    - Do not redirect verification to legacy `http://51.81.155.171/login_error.php`.
    - **Redirect To** after sign-up: `https://scientistcloud.com/portal/login_verification_sent.php?signup=1`
-   - **Requires Email Verification** on the database connection must be **ON** or Auth0 will not send mail.
+   - **Requires Email Verification** on the database connection: keep verification **emails** enabled, but turn **OFF** blocking login at the Auth0 hosted page. The portal callback redirects unverified database users to `login_verification_sent.php` with clear instructions. Leaving Auth0 login blocking **ON** traps users on Auth0’s “Verify your email” screen in a loop when they click “Go to login”.
+   - Set **Application Login URI** (Applications → Settings) to `https://scientistcloud.com/portal/login_verification_sent.php` so Auth0’s “Go to login” link lands on the portal instruction page, not `login.php` (which would redirect back to Auth0).
    - **Branding → Email Provider** must be configured (built-in or SMTP).
    - If logs show `451 Authentication failed: Maximum credits exceeded`, the built-in Auth0 mail quota is exhausted — switch to **Use my own email provider** (SendGrid, SES, Mailgun, etc.).
 
@@ -176,8 +177,12 @@ If you're using an Auth0 API (for protected API endpoints), you need to:
 - **Solution**: Add `https://scientistcloud.com/portal/auth/callback.php` to Allowed Callback URLs
 
 ### Error: "access_denied" 
-- **Cause**: Usually means the callback URL isn't configured correctly in Auth0
-- **Solution**: Verify Allowed Callback URLs includes the portal path
+- **Cause**: Usually means the callback URL isn't configured correctly in Auth0, or a database user has not verified their email yet
+- **Solution**: Verify Allowed Callback URLs includes the portal path. For unverified email/password users, the portal shows `login_verification_sent.php` — check inbox for the Auth0 verification link. In Auth0 → Database → Username-Password-Authentication, disable login blocking for unverified users so the portal can show instructions instead of looping on Auth0.
+
+### Login loop on Auth0 “Verify your email” page
+- **Cause**: Auth0 blocks unverified database users before OAuth completes; “Go to login” sends them to `login.php`, which redirects back to Auth0
+- **Solution**: (1) Auth0 Database connection — turn off “Requires Email Verification” **login blocking** (verification emails still sent). (2) Set Application Login URI to `https://scientistcloud.com/portal/login_verification_sent.php`. (3) Deploy portal updates so `login.php` stops auto-redirecting while verification is pending.
 
 ### Other Issues
 - Check Auth0 application settings match the callback URLs

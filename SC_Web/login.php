@@ -32,6 +32,15 @@ if (!empty($_GET['return_to'])) {
 
 $chooseAccount = shouldPromptAccountSelection();
 
+$isLocal = (strpos(SC_SERVER_URL, 'localhost') !== false || strpos(SC_SERVER_URL, '127.0.0.1') !== false);
+$verifiedLandingPath = $isLocal ? '/login_verification_sent.php' : '/portal/login_verification_sent.php';
+
+// Auth0 blocked login (unverified email) — stay on portal instead of looping back to Auth0.
+if (!empty($_GET['error']) && scAuth0ErrorIsUnverifiedEmail($_GET['error'], $_GET['error_description'] ?? '')) {
+    $errEmail = isset($_GET['email']) ? trim((string) $_GET['email']) : '';
+    scRedirectToEmailVerificationPage($errEmail !== '' ? $errEmail : null);
+}
+
 // Check if user is already authenticated (skip when switching accounts)
 if (isAuthenticated() && !$chooseAccount) {
     setDashboardAuthCookieFromSession();
@@ -52,21 +61,33 @@ if ($chooseAccount && isAuthenticated()) {
     }
 }
 
+if ($chooseAccount) {
+    scClearPendingEmailVerification();
+}
+
 // Email verification complete (Auth0 Redirect To should be login.php, not callback.php)
 if (isset($_GET['success']) && $_GET['success'] === 'true' && isset($_GET['code']) && $_GET['code'] === 'success') {
-    $isLocal = (strpos(SC_SERVER_URL, 'localhost') !== false || strpos(SC_SERVER_URL, '127.0.0.1') !== false);
-    $landing = $isLocal ? '/login_verification_sent.php' : '/portal/login_verification_sent.php';
     $email = isset($_GET['email']) ? trim((string) $_GET['email']) : '';
+    scClearPendingEmailVerification();
     $query = http_build_query(array_filter([
         'verified' => '1',
         'email' => $email !== '' ? $email : null,
     ]));
-    header('Location: ' . rtrim(SC_SERVER_URL, '/') . $landing . '?' . $query);
+    header('Location: ' . rtrim(SC_SERVER_URL, '/') . $verifiedLandingPath . '?' . $query);
     exit;
 }
 
 // OAuth authorization code (long string) — forward to callback; not email verification (code=success)
 $hasOAuthCode = isset($_GET['code']) && $_GET['code'] !== '' && $_GET['code'] !== 'success';
+
+// Do not auto-redirect to Auth0 while email verification is still pending (prevents login loop).
+if (!$hasOAuthCode && scHasPendingEmailVerification() && !$chooseAccount && empty($_GET['verification_retry'])) {
+    scRedirectToEmailVerificationPage((string) $_SESSION['pending_verification_email']);
+}
+
+if (!empty($_GET['verification_retry']) && $_GET['verification_retry'] === '1') {
+    scClearPendingEmailVerification();
+}
 
 if (!$hasOAuthCode) {
     // Not coming from callback, redirect to Auth0

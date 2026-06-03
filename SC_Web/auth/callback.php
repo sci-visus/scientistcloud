@@ -16,6 +16,20 @@ $isLocal = (strpos(SC_SERVER_URL, 'localhost') !== false || strpos(SC_SERVER_URL
 $loginPath = $isLocal ? '/login.php' : '/portal/login.php';
 $verifiedLandingPath = $isLocal ? '/login_verification_sent.php' : '/portal/login_verification_sent.php';
 
+if (!empty($_GET['error'])) {
+    $errDesc = $_GET['error_description'] ?? '';
+    if (scAuth0ErrorIsUnverifiedEmail($_GET['error'], $errDesc)) {
+        $errEmail = isset($_GET['email']) ? trim((string) $_GET['email']) : '';
+        scRedirectToEmailVerificationPage($errEmail !== '' ? $errEmail : null);
+    }
+    logMessage('WARNING', 'Auth callback OAuth error', [
+        'error' => $_GET['error'],
+        'description' => $errDesc,
+    ]);
+    header('Location: ' . rtrim(SC_SERVER_URL, '/') . $loginPath);
+    exit;
+}
+
 // Auth0 email-verification link redirect (success=true&code=success) — not an OAuth callback.
 if (
     isset($_GET['success']) && $_GET['success'] === 'true'
@@ -23,7 +37,7 @@ if (
 ) {
     $email = isset($_GET['email']) ? trim((string) $_GET['email']) : '';
     if ($email !== '') {
-        unset($_SESSION['pending_verification_email']);
+        scClearPendingEmailVerification();
     }
     $query = http_build_query(array_filter([
         'verified' => '1',
@@ -56,10 +70,9 @@ try {
     $is_database_user = (str_starts_with($auth0_sub, 'auth0|'));
 
     if ($is_database_user && !$email_verified) {
-        $_SESSION['pending_verification_email'] = $user_email;
-        header('Location: ' . rtrim(SC_SERVER_URL, '/') . $verifiedLandingPath . '?pending=1');
-        exit;
+        scRedirectToEmailVerificationPage($user_email);
     }
+    scClearPendingEmailVerification();
     $user_name = $userInfo['name'] ?? $userInfo['email'];
     $_SESSION['access_token'] = $auth0->getAccessToken();
     $_SESSION['token_expires_at'] = isset($userInfo['exp']) ? $userInfo['exp'] : (time() + 3600);
