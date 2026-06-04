@@ -186,6 +186,9 @@ class UploadManager {
         if (jobId) {
             this.trackUpload(jobId, uploadData.dataset_name, fileName, uploadData.convert, datasetUuid);
         }
+        if (window.datasetManager) {
+            window.datasetManager.loadDatasets();
+        }
 
         let resumeInfo = null;
         try {
@@ -283,6 +286,7 @@ class UploadManager {
         }
         const result = JSON.parse(completeText.trim());
         const finalJobId = result.job_id || jobId;
+        const resultDatasetUuid = result.dataset_uuid || datasetUuid;
         this.updateUploadModalFile(fileIndex, fileName, 'completed', finalJobId);
         this.setFileTransferProgress(fileIndex, {
             phase: 'done',
@@ -291,7 +295,11 @@ class UploadManager {
             percent: 100,
             detail: 'Upload complete',
         });
-        return { job_id: finalJobId, ...result };
+        if (window.datasetManager) {
+            window.datasetManager.loadDatasets();
+            setTimeout(() => window.datasetManager?.loadDatasets(), 3000);
+        }
+        return { job_id: finalJobId, dataset_uuid: resultDatasetUuid, ...result };
     }
 
     uploadFileViaPhpWithProgress(uploadUrl, uploadFormData, fileIndex, fileName, fileSize) {
@@ -2315,12 +2323,12 @@ class UploadManager {
 
             // job tracking: chunked path tracks in uploadFileLargeChunked; small files in uploadFileViaPhpWithProgress
 
-            // Refresh dataset list immediately to show new upload
             if (window.datasetManager && successful.length > 0) {
-                setTimeout(() => {
-                    window.datasetManager.loadDatasets();
-                    console.log('✅ Dataset list refreshed after upload');
-                }, 1000); // Small delay to ensure MongoDB entry is visible
+                const refreshList = () => window.datasetManager.loadDatasets();
+                refreshList();
+                setTimeout(refreshList, 1500);
+                setTimeout(refreshList, 5000);
+                console.log('✅ Dataset list refresh scheduled after upload');
             }
             
             // Log if any uploads were successful but not tracked
