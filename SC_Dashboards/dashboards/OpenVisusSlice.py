@@ -171,39 +171,52 @@ else:
     
     if not init_result['success']:
         print(f"❌ Dashboard initialization failed: {init_result['error']}")
-        # Create error layout
-        error_div = Div(text=f"<h2>❌ Error: {init_result['error']}</h2>", 
-                       styles={'color': 'red', 'font-size': '14px'})
+        error_div = Div(
+            text=f"<h2>❌ Error: {init_result['error']}</h2>",
+            styles={'color': 'red', 'font-size': '14px'},
+        )
         curdoc().add_root(error_div)
-        exit()
-    
-    # Extract initialization results
-    auth_result = init_result['auth_result']
-    mongodb = init_result['mongodb']
-    params = init_result['params']
-    
-    # Set global variables from initialization
-    uuid = params['uuid']
-    # Keep portal dataset UUID for OpenVisus resolved-idx API (do not overwrite when swapping in google_drive_link).
-    portal_uuid_param = str(params.get('uuid') or '').strip()
-    server = params['server']
-    name = params['name']
-    base_dir = params.get('base_dir')
-    save_dir = params.get('save_dir')
-    is_authorized = auth_result['is_authorized']
-    user_email = auth_result['user_email']
-    
-    # Set MongoDB variables if available
-    if mongodb:
-        mymongodb = mongodb['mymongodb']
-        collection = mongodb['collection']
-        collection1 = mongodb['collection1']
-        team_collection = mongodb['team_collection']
-    else:
+        # Do not exit() — kills the Bokeh session and nginx returns 502 Bad Gateway
+        SKIP_DATASET_LOAD = True
+        is_authorized = False
+        uuid = ''
+        server = 'false'
+        name = ''
+        portal_uuid_param = None
+        user_email = None
+        openvisus_load_target = None
+        dataset_url = None
         mymongodb = None
         collection = None
         collection1 = None
         team_collection = None
+        base_dir = save_dir = None
+    else:
+        # Extract initialization results
+        auth_result = init_result['auth_result']
+        mongodb = init_result['mongodb']
+        params = init_result['params']
+
+        uuid = params['uuid']
+        # Portal MongoDB uuid for auth, resolved-idx API, and upload/converted paths.
+        portal_uuid_param = str(params.get('portal_uuid') or params.get('uuid') or '').strip()
+        server = params['server']
+        name = params['name']
+        base_dir = params.get('base_dir')
+        save_dir = params.get('save_dir')
+        is_authorized = auth_result['is_authorized']
+        user_email = auth_result['user_email']
+
+        if mongodb:
+            mymongodb = mongodb['mymongodb']
+            collection = mongodb['collection']
+            collection1 = mongodb['collection1']
+            team_collection = mongodb['team_collection']
+        else:
+            mymongodb = None
+            collection = None
+            collection1 = None
+            team_collection = None
     
 if has_args:
     print(f"base_dir: {base_dir}")
