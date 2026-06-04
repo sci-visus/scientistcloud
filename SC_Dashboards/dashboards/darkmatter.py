@@ -1948,17 +1948,33 @@ class AppState:
                 idx_for_read = resolve_local_idx_path(self.runtime_dataset["idx_path"], str(mid_file))
                 if idx_for_read != self.runtime_dataset["idx_path"]:
                     print(f"[DarkMatter][DEBUG] local_explicit using template-resolved idx: {idx_for_read}")
-                self.detector_to_channels = create_channel_metadata_map(
-                    self.runtime_dataset["txt_path"]
+                _dataset_root = os.path.dirname(os.path.abspath(idx_for_read))
+                disk_sidecars = try_read_darkmatter_sidecars_from_disk(
+                    mid_file,
+                    self.runtime_dataset,
+                    _dataset_root,
+                    str(getattr(self, "uuid", "") or ""),
                 )
-                self.event_to_metadata = create_event_metadata_map(
-                    self.runtime_dataset["csv_path"]
-                )
+                if disk_sidecars is not None:
+                    txt_lines, csv_lines = disk_sidecars
+                    self.detector_to_channels = create_channel_metadata_map_from_lines(txt_lines)
+                    self.event_to_metadata = create_event_metadata_map_from_lines(csv_lines)
+                elif os.path.isfile(self.runtime_dataset["txt_path"]) and os.path.isfile(self.runtime_dataset["csv_path"]):
+                    self.detector_to_channels = create_channel_metadata_map(
+                        self.runtime_dataset["txt_path"]
+                    )
+                    self.event_to_metadata = create_event_metadata_map(
+                        self.runtime_dataset["csv_path"]
+                    )
+                else:
+                    raise RuntimeError(
+                        f"Dark Matter requires {mid_file}.txt and {mid_file}.csv next to the .idx in "
+                        f"{_dataset_root}. Upload the metadata sidecars with the dataset."
+                    )
                 print(f"[DarkMatter][DEBUG] LoadDataset input={idx_for_read}")
                 # OpenVisus commonly resolves relative filename_template paths (e.g. ./%04x.bin)
                 # against the process cwd, not the .idx directory — so `bokeh serve` must not
                 # depend on the shell's working directory. Temporarily chdir to the dataset root.
-                _dataset_root = os.path.dirname(os.path.abspath(idx_for_read))
                 _prev_cwd = os.getcwd()
                 try:
                     os.chdir(_dataset_root)

@@ -13,7 +13,7 @@ require_once(__DIR__ . '/includes/auth.php');
 scClearLocalAuthState(true);
 
 $loginUrl = getPortalLoginUrl(false);
-$switchAccountUrl = getPortalLoginUrl(true);
+$switchAccountUrl = getPortalGoogleLoginUrl();
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -49,7 +49,7 @@ $switchAccountUrl = getPortalLoginUrl(true);
                 Sign in again
             </a>
             <a href="<?php echo htmlspecialchars($switchAccountUrl); ?>" class="btn btn-outline-secondary">
-                Use a different account
+                Use a different Google account
             </a>
         </div>
     </div>

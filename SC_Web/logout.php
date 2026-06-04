@@ -12,6 +12,7 @@ if (session_status() !== PHP_SESSION_ACTIVE) {
 require_once(__DIR__ . '/config.php');
 require_once(__DIR__ . '/includes/auth.php');
 
-// Use Auth0 logout
-logoutUserWithAuth0();
+// ?federated=1 also signs out of Google (shows accounts.google.com); default stays on ScientistCloud.
+$federatedLogout = isset($_GET['federated']) && $_GET['federated'] === '1';
+logoutUserWithAuth0($federatedLogout);
 ?>

@@ -414,19 +414,27 @@ function logoutUser() {
 
 /**
  * Logout user with Auth0
+ *
+ * @param bool $federated When true, also sign out of Google/IdP (extra redirect via accounts.google.com).
+ *                        Default false so users land on logged_out.php on ScientistCloud.
  */
-function logoutUserWithAuth0() {
+function logoutUserWithAuth0(bool $federated = false) {
     require_once(__DIR__ . '/../config_auth0.php');
     global $auth0;
 
     $returnUrl = getPostLogoutUrl();
 
-    // Clear portal session and cookies before Auth0 federated logout.
+    // Clear portal session and cookies before Auth0 logout.
     scClearLocalAuthState(true);
 
+    $params = [];
+    if ($federated) {
+        // Optional: clears Google SSO so the next login cannot silently reuse the same account.
+        $params['federated'] = '1';
+    }
+
     try {
-        // federated=1 also clears Google/IdP SSO so silent re-login does not occur.
-        $logoutUrl = $auth0->logout($returnUrl, ['federated' => '1']);
+        $logoutUrl = $auth0->logout($returnUrl, $params);
     } catch (Throwable $e) {
         error_log('Auth0 logout failed: ' . $e->getMessage());
         header('Location: ' . $returnUrl);
