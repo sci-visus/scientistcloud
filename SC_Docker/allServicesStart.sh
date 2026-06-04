@@ -3,7 +3,7 @@
 # ScientistCloud 2.0 — deploy helper (SC-native; no VisusDataPortalPrivate / visstore_* images required)
 #
 # Usage:
-#   ./allServicesStart.sh              Git pull only (all repos + env sync)
+#   ./allServicesStart.sh              Git pull (scientistCloudLib + scientistcloud) + env sync
 #   ./allServicesStart.sh s w d x z    Git pull, then rebuild/restart each part
 #   ./allServicesStart.sh swdx         Nginx + dozzle (z is included with x)
 #   ./allServicesStart.sh swdxz        Same as swdx
@@ -188,7 +188,7 @@ discover_certbot_paths() {
 # Canonical deploy env (same as manual deploy):
 #   cp $SC20_ROOT/SCLib_TryTest/env.scientistcloud $SC20_ROOT/scientistCloudLib/Docker/.env
 #   cp $SC20_ROOT/SCLib_TryTest/env.scientistcloud $SC20_ROOT/scientistcloud/SC_Docker/.env
-# Must run after git pull — git clean -fd removes untracked .env files.
+# Must run after git pull — git clean -fd may remove untracked Docker .env files.
 sync_env_files() {
     local env_file="$SCLIB_TRYTEST_DIR/env.scientistcloud"
     local sclib_env="$SCLIB_DOCKER_DIR/.env"
@@ -226,16 +226,18 @@ git_pull_all() {
     echo "📥 Git pull — ScientistCloud 2.0 repos"
     echo "════════════════════════════════════════"
 
-    if [ -d "$SCLIB_TRYTEST_DIR" ]; then
-        echo "📦 SCLib_TryTest"
-        pushd "$SCLIB_TRYTEST_DIR" >/dev/null
-        local bak="/tmp/sc_env_scientistcloud_$$.bak"
-        [ -f env.scientistcloud ] && cp env.scientistcloud "$bak"
-        git fetch origin
-        git reset --hard origin/main
-        [ -f "$bak" ] && cp "$bak" env.scientistcloud && rm -f "$bak"
-        popd >/dev/null
-    fi
+    # SCLib_TryTest is not a deployed git repo on the server — env.scientistcloud lives
+    # there locally and is synced to Docker .env files via sync_env_files().
+    # if [ -d "$SCLIB_TRYTEST_DIR" ]; then
+    #     echo "📦 SCLib_TryTest"
+    #     pushd "$SCLIB_TRYTEST_DIR" >/dev/null
+    #     local bak="/tmp/sc_env_scientistcloud_$$.bak"
+    #     [ -f env.scientistcloud ] && cp env.scientistcloud "$bak"
+    #     git fetch origin
+    #     git reset --hard origin/main
+    #     [ -f "$bak" ] && cp "$bak" env.scientistcloud && rm -f "$bak"
+    #     popd >/dev/null
+    # fi
 
     if [ -d "$SCLIB_CODE_DIR" ]; then
         echo "📦 scientistCloudLib (workingPrivateRepo)"
