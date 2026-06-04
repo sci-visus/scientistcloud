@@ -237,7 +237,50 @@ body {
 .sidebar .logo {
   display: block;
   width: 100px;
-  margin: 0 auto 1rem;
+  margin: 0 auto 0.5rem;
+}
+
+.sidebar-user {
+  flex-shrink: 0;
+  text-align: center;
+  font-size: 0.7rem;
+  color: var(--fg-color);
+  opacity: 0.88;
+  padding: 0 0.5rem 0.75rem;
+  line-height: 1.25;
+}
+
+.sidebar-user .fa-user-circle {
+  margin-right: 0.2rem;
+  opacity: 0.75;
+}
+
+.sidebar-user-email {
+  display: inline-block;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  vertical-align: bottom;
+}
+
+.user-session-logout {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 0.12rem;
+}
+
+.user-session-email {
+  font-size: 0.65rem;
+  color: var(--fg-color);
+  opacity: 0.85;
+  max-width: 14rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  line-height: 1.1;
+  padding-right: 0.1rem;
 }
 
 .sidebar h5, .details h5 {

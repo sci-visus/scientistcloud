@@ -874,8 +874,19 @@ class ViewerManager {
             return;
         }
 
+        // Mongo uuid for dashboard auth when viewer uuid is a remote link id
+        const details = window.datasetManager?.currentDataset?.details;
+        const mongoUuid = (details && (details.uuid || details.id)) || null;
+        const authPortalUuid = (mongoUuid && mongoUuid !== datasetUuid) ? mongoUuid : null;
+
         // Generate viewer URL using the url_template
-        let viewerUrl = this.generateViewerUrl(datasetUuid, datasetServer, datasetName, viewer.url_template);
+        let viewerUrl = this.generateViewerUrl(
+            datasetUuid,
+            datasetServer,
+            datasetName,
+            viewer.url_template,
+            authPortalUuid
+        );
         const dashKey = (resolvedDashboardType || dashboardType || '').toString();
         if (dashKey === 'ORNL_CHESS_strain' && datasetId && window.datasetManager?.fetchDashboardShareUrl) {
             try {
@@ -927,7 +938,7 @@ class ViewerManager {
     /**
      * Generate viewer URL with uuid, server, and name parameters
      */
-    generateViewerUrl(datasetUuid, datasetServer, datasetName, urlTemplate) {
+    generateViewerUrl(datasetUuid, datasetServer, datasetName, urlTemplate, portalUuid = null) {
         if (!urlTemplate || typeof urlTemplate !== 'string') {
             console.error('generateViewerUrl: urlTemplate is empty or invalid:', urlTemplate);
             return '#';
@@ -1000,6 +1011,10 @@ class ViewerManager {
         // Use currentTheme already declared at function start (line 692)
         url += `${separator}theme=${encodeURIComponent(currentTheme)}`;
         url += '&embedded=1';
+
+        if (portalUuid && portalUuid !== datasetUuid) {
+            url += `&portal_uuid=${encodeURIComponent(portalUuid)}`;
+        }
 
         return url;
     }

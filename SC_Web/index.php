@@ -41,6 +41,8 @@ setDashboardAuthCookieFromSession();
 $datasets = getUserDatasets($user['id']);
 $preferredDashboard = getUserPreferredDashboard($user['id']);
 
+$loggedInEmail = trim((string) ($user['email'] ?? ($_SESSION['user_email'] ?? '')));
+
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -59,6 +61,12 @@ $preferredDashboard = getUserPreferredDashboard($user['id']);
   <!-- Left Sidebar -->
   <aside class="sidebar d-flex flex-column align-items-stretch" id="folderSidebar">
     <img src="assets/images/scientistcloud-logo.png" class="logo" alt="ScientistCloud Logo">
+    <?php if ($loggedInEmail !== ''): ?>
+    <div class="sidebar-user" title="Signed in as <?php echo htmlspecialchars($loggedInEmail); ?>">
+      <i class="fas fa-user-circle" aria-hidden="true"></i>
+      <span class="sidebar-user-email"><?php echo htmlspecialchars($loggedInEmail); ?></span>
+    </div>
+    <?php endif; ?>
     <div class="d-flex align-items-center justify-content-between w-100 px-2 mb-2">
       <h5 class="mb-0">Datasets</h5>
       <button class="btn btn-sm btn-outline-secondary" id="refreshDatasetsBtn" title="Refresh Datasets">
@@ -105,9 +113,16 @@ $preferredDashboard = getUserPreferredDashboard($user['id']);
           <a href="docs.php" class="btn btn-outline-light" title="Documentation" target="_blank">
             <i class="fas fa-book"></i> Docs
           </a>
-          <button type="button" class="btn btn-outline-light" id="logoutBtn" title="Logout">
-            <i class="fas fa-sign-out-alt"></i> Logout
-          </button>
+          <div class="user-session-logout">
+            <button type="button" class="btn btn-outline-light" id="logoutBtn" title="Logout">
+              <i class="fas fa-sign-out-alt"></i> Logout
+            </button>
+            <?php if ($loggedInEmail !== ''): ?>
+            <span class="user-session-email" title="Signed in as <?php echo htmlspecialchars($loggedInEmail); ?>">
+              <?php echo htmlspecialchars($loggedInEmail); ?>
+            </span>
+            <?php endif; ?>
+          </div>
         </div>
       </div>
     </div>
