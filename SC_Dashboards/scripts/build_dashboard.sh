@@ -10,8 +10,8 @@ DASHBOARDS_DIR="$(cd "$SCRIPT_DIR/../dashboards" && pwd)"
 # Try multiple possible paths for SCLib_Dashboards
 SCLIB_DASHBOARDS_DIR=""
 POSSIBLE_PATHS=(
-    "$SCRIPT_DIR/../../scientistCloudLib/SCLib_Dashboards"
     "$SCRIPT_DIR/../../../scientistCloudLib/SCLib_Dashboards"
+    "$SCRIPT_DIR/../../scientistCloudLib/SCLib_Dashboards"
     "/Users/amygooch/GIT/ScientistCloud_2.0/scientistCloudLib/SCLib_Dashboards"
     "$(cd "$SCRIPT_DIR/../.." && pwd)/scientistCloudLib/SCLib_Dashboards"
 )

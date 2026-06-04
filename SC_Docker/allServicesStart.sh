@@ -11,7 +11,9 @@
 # Modes (after git pull):
 #   s   SCLib (auth, fastapi, background-service) — rebuild via scientistCloudLib/Docker/start.sh
 #   w   SC_Web portal (scientistcloud-portal) — rebuild via SC_Docker/start.sh
-#   d   All enabled dashboards — SC base images, init, build, docker-compose up, nginx configs
+#   d   All enabled dashboards — SC base images, init, build_dashboard.sh (staged context),
+#       then docker-compose up. Do NOT run: docker compose -f dashboards-docker-compose.yml build
+#       (that context lacks SCLib_Dashboards and requirements.txt).
 #   x   SC edge nginx — scientistcloud-nginx, default.conf override, certs, dashboards, dozzle
 #   z   Dozzle log UI (visstore_dozzle) — https://DOMAIN/dozzle/  (also runs with x)
 #
@@ -24,14 +26,16 @@
 #   -sw, --sclib-web          Both
 #   -x, --nginx-only          Nginx only (still runs git pull first)
 #   -z, --dozzle-only         Dozzle only (container log viewer at /dozzle/)
-#   -dm, -vtk, -plotly        Single dashboard (d subset)
+#   -dm, -ovs, -vtk, -plotly  Single dashboard rebuild (uses build_dashboard.sh, then compose up)
 #   --dashboards-only         Skip s/w; only dashboard pipeline (+ x if also passed)
 #
 # Examples:
 #   ./allServicesStart.sh
 #   ./allServicesStart.sh s w
-#   ./allServicesStart.sh d x
-#   ./allServicesStart.sh -dm
+#   ./allServicesStart.sh d x          # all enabled dashboards + nginx
+#   ./allServicesStart.sh w d          # portal + all dashboards (auth/utils fixes in images)
+#   ./allServicesStart.sh -dm          # Dark Matter only
+#   ./allServicesStart.sh -ovs         # OpenVisusSlice only
 #   ./allServicesStart.sh --dashboards-only -dm
 
 set -euo pipefail
@@ -100,6 +104,12 @@ for arg in "$@"; do
             DASHBOARD_ONLY_REGISTRY_KEY="darkmatter"
             DASHBOARD_ONLY_SERVICE="darkmatter"
             DASHBOARD_ONLY_CONTAINER="dashboard_darkmatter"
+            ;;
+        -ovs|--openvisus-only|--openvisusslice-only)
+            GIT_PULL_ONLY=false; DO_DASHBOARDS=true
+            DASHBOARD_ONLY_REGISTRY_KEY="OpenVisusSlice"
+            DASHBOARD_ONLY_SERVICE="openvisusslice"
+            DASHBOARD_ONLY_CONTAINER="dashboard_openvisusslice"
             ;;
         -vtk|--vtk-only|--3dvtk-only)
             GIT_PULL_ONLY=false; DO_DASHBOARDS=true
@@ -485,6 +495,8 @@ mode_web() {
 mode_dashboards() {
     echo "════════════════════════════════════════"
     echo "📊 Mode d — dashboards"
+    echo "   Build: SC_Dashboards/scripts/build_dashboard.sh (copies SCLib_Dashboards + requirements.txt)"
+    echo "   Not:   docker compose -f dashboards-docker-compose.yml build  ← wrong context, will fail"
     echo "════════════════════════════════════════"
     if [ ! -d "$DASHBOARDS_DIR" ]; then
         echo "❌ Missing $DASHBOARDS_DIR"
@@ -518,7 +530,7 @@ mode_dashboards() {
             [ -n "$name" ] || continue
             echo "   📦 init $name"
             ./scripts/init_dashboard.sh "$name" --overwrite 2>&1 | grep -E '(✅|⚠️|❌|Generated)' || true
-            echo "   🐳 build $name"
+            echo "   🐳 build $name (staged context via build_dashboard.sh)"
             if ! ./scripts/build_dashboard.sh "$name"; then
                 echo "   ❌ Docker build failed: $name"
                 DASHBOARD_BUILD_FAILED=true
@@ -540,9 +552,9 @@ mode_dashboards() {
     if [ -n "$DASHBOARD_ONLY_CONTAINER" ]; then
         docker rm -f "$DASHBOARD_ONLY_CONTAINER" 2>/dev/null || true
         if [ -n "$env_file" ]; then
-            docker-compose -f dashboards-docker-compose.yml --env-file "$env_file" up -d "$DASHBOARD_ONLY_SERVICE"
+            docker-compose -f dashboards-docker-compose.yml --env-file "$env_file" up -d --force-recreate "$DASHBOARD_ONLY_SERVICE"
         else
-            docker-compose -f dashboards-docker-compose.yml up -d "$DASHBOARD_ONLY_SERVICE"
+            docker-compose -f dashboards-docker-compose.yml up -d --force-recreate "$DASHBOARD_ONLY_SERVICE"
         fi
     else
         docker ps -a --filter 'name=dashboard_' --format '{{.Names}}' | while read -r c; do
