@@ -34,6 +34,14 @@ This page summarizes the current ScientistCloud API surface used by the portal.
 Portal UI: **Jobs** toolbar button or `index.php?jobs=1`. Admins: set `SC_PORTAL_ADMIN_EMAILS=you@example.com,other@example.com` in server env.
 | `/api/upload/supported-sources` | GET | Supported upload source/sensor types |
 | `/api/upload/limits` | GET | Upload limits and thresholds |
+| `/portal/api/upload-large-initiate.php` | POST | Session-auth; starts resumable large upload (JSON body) |
+| `/api/upload/large/initiate` | POST | FastAPI initiate (portal proxies via PHP above) |
+| `/api/upload/large/chunk/{upload_id}/{index}` | POST | 100 MB chunk (`multipart` field `chunk`) |
+| `/api/upload/large/resume/{upload_id}` | GET | Missing chunk indices for resume |
+| `/api/upload/large/complete/{upload_id}` | POST | Finalize sparse staging file → dataset path |
+| `/api/upload/large/limits` | GET | Chunk size and `MAX_FILE_SIZE` (default 10 TB) |
+
+**Scale:** Portal sends files ≥ 100 MB via chunked upload (4 parallel chunks). Single-shot PHP upload is for smaller files only. Datasets larger than `MAX_FILE_SIZE` (or multi‑PB): copy to `JOB_IN_DATA_DIR/upload/{uuid}/` and use `/api/upload/upload-path`, or rsync from HPC.
 
 ### Datasets (v1)
 

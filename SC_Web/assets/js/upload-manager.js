@@ -9,6 +9,28 @@ function getUploadApiBasePath() {
     return getApiBasePath();
 }
 
+/** Files at or above this size use resumable 100MB chunked upload (TB/PB-capable path). */
+const SC_LARGE_UPLOAD_THRESHOLD = 100 * 1024 * 1024;
+const SC_CHUNK_SIZE = 100 * 1024 * 1024;
+/** Parallel chunk posts (throughput for TB/PB transfers on fast links). */
+const SC_CHUNK_UPLOAD_CONCURRENCY = 4;
+const SC_SERVER_VERIFY_HASH = 'server_verify';
+/** Client-side full-file hash only below this size (PB files use server_verify). */
+const SC_CLIENT_HASH_MAX_BYTES = 2 * 1024 * 1024 * 1024;
+
+function getLargeUploadApiBase() {
+    return `${window.location.origin}/api/upload/large`;
+}
+
+function formatUploadBytes(bytes) {
+    const n = Number(bytes);
+    if (!n || n <= 0) return '0 B';
+    const units = ['B', 'KB', 'MB', 'GB', 'TB', 'PB'];
+    let pow = Math.floor(Math.log(n) / Math.log(1024));
+    pow = Math.min(pow, units.length - 1);
+    return `${(n / Math.pow(1024, pow)).toFixed(pow >= 3 ? 2 : 1)} ${units[pow]}`;
+}
+
 class UploadManager {
     constructor() {
         this.activeUploads = new Map(); // job_id -> upload info
@@ -60,6 +82,269 @@ class UploadManager {
             currentFile,
             isFinished: total > 0 && doneCount >= total,
         };
+    }
+
+    setFileTransferProgress(fileIndex, patch) {
+        if (!this.currentUploadSession) return;
+        const fileInfo = this.currentUploadSession.files.find((f) => f.index === fileIndex);
+        if (!fileInfo) return;
+        Object.assign(fileInfo, patch);
+        this.scheduleUploadModalRender();
+    }
+
+    async computeFileHashIfFeasible(file, onProgress) {
+        if (file.size > SC_CLIENT_HASH_MAX_BYTES) {
+            return SC_SERVER_VERIFY_HASH;
+        }
+        if (!window.crypto?.subtle) {
+            return SC_SERVER_VERIFY_HASH;
+        }
+        const buffer = await file.arrayBuffer();
+        const digest = await crypto.subtle.digest('SHA-256', buffer);
+        if (onProgress) onProgress(100);
+        return Array.from(new Uint8Array(digest))
+            .map((b) => b.toString(16).padStart(2, '0'))
+            .join('');
+    }
+
+    buildLargeUploadInitiateBody(file, uploadData, userEmail, datasetUuid, relativePath, expectedFilesJson) {
+        const body = {
+            filename: file.name,
+            file_size: file.size,
+            file_hash: SC_SERVER_VERIFY_HASH,
+            user_email: userEmail,
+            dataset_name: uploadData.dataset_name,
+            sensor: uploadData.sensor,
+            convert: !!uploadData.convert,
+            is_public: !!uploadData.is_public,
+            is_downloadable: uploadData.is_downloadable || 'only owner',
+            dataset_identifier: datasetUuid,
+        };
+        if (uploadData.folder) body.folder = uploadData.folder;
+        if (uploadData.team_uuid) body.team_uuid = uploadData.team_uuid;
+        if (uploadData.tags) body.tags = uploadData.tags;
+        if (relativePath) body.relative_path = relativePath;
+        if (expectedFilesJson) {
+            try {
+                body.expected_files = JSON.parse(expectedFilesJson);
+            } catch (e) {
+                console.warn('expected_files JSON parse failed', e);
+            }
+        }
+        return body;
+    }
+
+    resolveDirectoryRelativePath(file, isDirectoryUpload, baseDirectoryName) {
+        if (!isDirectoryUpload || !file?.webkitRelativePath) {
+            return null;
+        }
+        const fullPath = file.webkitRelativePath;
+        if (!fullPath.startsWith(`${baseDirectoryName}/`)) {
+            return null;
+        }
+        let relativePath = fullPath.substring(baseDirectoryName.length + 1);
+        if (!relativePath || relativePath === file.name) {
+            return null;
+        }
+        const pathParts = relativePath.split('/');
+        pathParts.pop();
+        return pathParts.length > 0 ? pathParts.join('/') : null;
+    }
+
+    async uploadFileLargeChunked({
+        file, fileIndex, fileName, uploadData, userEmail, datasetUuid,
+        relativePath, expectedFilesJson,
+    }) {
+        this.updateUploadModalFile(fileIndex, fileName, 'uploading');
+        this.setFileTransferProgress(fileIndex, {
+            phase: 'preparing',
+            bytesSent: 0,
+            bytesTotal: file.size,
+            detail: 'Starting resumable upload (100 MB chunks)…',
+        });
+
+        const initiateBody = this.buildLargeUploadInitiateBody(
+            file, uploadData, userEmail, datasetUuid, relativePath, expectedFilesJson
+        );
+
+        const initResponse = await fetch(`${getApiBasePath()}/upload-large-initiate.php`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'same-origin',
+            body: JSON.stringify(initiateBody),
+        });
+        const initText = await initResponse.text();
+        if (!initResponse.ok) {
+            throw new Error(initText.substring(0, 300) || `Initiate failed (${initResponse.status})`);
+        }
+        const session = JSON.parse(initText.trim());
+        const uploadId = session.upload_id;
+        const totalChunks = session.total_chunks;
+        const chunkSize = session.chunk_size || SC_CHUNK_SIZE;
+        const jobId = session.job_id;
+
+        if (jobId) {
+            this.trackUpload(jobId, uploadData.dataset_name, fileName, uploadData.convert, datasetUuid);
+        }
+
+        let resumeInfo = null;
+        try {
+            const resumeRes = await fetch(`${getLargeUploadApiBase()}/resume/${encodeURIComponent(uploadId)}`, {
+                credentials: 'same-origin',
+            });
+            if (resumeRes.ok) {
+                resumeInfo = await resumeRes.json();
+            }
+        } catch (e) {
+            console.warn('Resume check skipped', e);
+        }
+
+        const chunksToUpload = resumeInfo?.missing_chunks?.length
+            ? resumeInfo.missing_chunks
+            : Array.from({ length: totalChunks }, (_, i) => i);
+
+        const startTime = Date.now();
+        let lastProgressAt = startTime;
+        let lastBytesSent = 0;
+        const completedChunks = new Set();
+
+        const bytesForChunkIndex = (idx) => {
+            const offset = idx * chunkSize;
+            return Math.min(chunkSize, file.size - offset);
+        };
+
+        const reportChunkProgress = () => {
+            let bytesSent = 0;
+            completedChunks.forEach((idx) => {
+                bytesSent += bytesForChunkIndex(idx);
+            });
+            const now = Date.now();
+            const elapsed = (now - lastProgressAt) / 1000;
+            let speedBps = 0;
+            if (elapsed > 0.5) {
+                speedBps = (bytesSent - lastBytesSent) / elapsed;
+                lastProgressAt = now;
+                lastBytesSent = bytesSent;
+            }
+            const pct = file.size > 0 ? Math.round((bytesSent / file.size) * 100) : 0;
+            this.setFileTransferProgress(fileIndex, {
+                phase: 'uploading',
+                bytesSent,
+                bytesTotal: file.size,
+                chunkIndex: completedChunks.size,
+                totalChunks,
+                percent: pct,
+                speedBps,
+                detail: `${completedChunks.size} / ${totalChunks} chunks · ${formatUploadBytes(bytesSent)} / ${formatUploadBytes(file.size)} (${pct}%)`,
+            });
+        };
+
+        const uploadOneChunk = async (chunkIndex) => {
+            const offset = chunkIndex * chunkSize;
+            const end = Math.min(offset + chunkSize, file.size);
+            const blob = file.slice(offset, end);
+            const formData = new FormData();
+            formData.append('chunk', blob, `chunk_${chunkIndex}`);
+            formData.append('chunk_hash', 'skip');
+            const chunkUrl = `${getLargeUploadApiBase()}/chunk/${encodeURIComponent(uploadId)}/${chunkIndex}`;
+            const chunkResponse = await fetch(chunkUrl, {
+                method: 'POST',
+                body: formData,
+                credentials: 'same-origin',
+            });
+            if (!chunkResponse.ok) {
+                const errText = await chunkResponse.text();
+                throw new Error(errText.substring(0, 300) || `Chunk ${chunkIndex} failed`);
+            }
+            completedChunks.add(chunkIndex);
+            reportChunkProgress();
+        };
+
+        for (let i = 0; i < chunksToUpload.length; i += SC_CHUNK_UPLOAD_CONCURRENCY) {
+            const batch = chunksToUpload.slice(i, i + SC_CHUNK_UPLOAD_CONCURRENCY);
+            await Promise.all(batch.map((chunkIndex) => uploadOneChunk(chunkIndex)));
+        }
+
+        this.setFileTransferProgress(fileIndex, {
+            phase: 'finalizing',
+            bytesSent: file.size,
+            bytesTotal: file.size,
+            percent: 100,
+            detail: 'Finalizing on server (assemble + queue)…',
+        });
+
+        const completeRes = await fetch(`${getLargeUploadApiBase()}/complete/${encodeURIComponent(uploadId)}`, {
+            method: 'POST',
+            credentials: 'same-origin',
+        });
+        const completeText = await completeRes.text();
+        if (!completeRes.ok) {
+            throw new Error(completeText.substring(0, 300) || 'Complete failed');
+        }
+        const result = JSON.parse(completeText.trim());
+        const finalJobId = result.job_id || jobId;
+        this.updateUploadModalFile(fileIndex, fileName, 'completed', finalJobId);
+        this.setFileTransferProgress(fileIndex, {
+            phase: 'done',
+            bytesSent: file.size,
+            bytesTotal: file.size,
+            percent: 100,
+            detail: 'Upload complete',
+        });
+        return { job_id: finalJobId, ...result };
+    }
+
+    uploadFileViaPhpWithProgress(uploadUrl, uploadFormData, fileIndex, fileName, fileSize) {
+        return new Promise((resolve, reject) => {
+            const xhr = new XMLHttpRequest();
+            const timeoutMs = Math.min(
+                6 * 60 * 60 * 1000,
+                Math.max(600000, 120000 + (fileSize / (1024 * 1024)) * 3000)
+            );
+            xhr.timeout = timeoutMs;
+            const startTime = Date.now();
+            let lastLoaded = 0;
+            let lastAt = startTime;
+
+            xhr.upload.addEventListener('progress', (event) => {
+                if (!event.lengthComputable) return;
+                const now = Date.now();
+                const elapsed = (now - lastAt) / 1000;
+                let speedBps = 0;
+                if (elapsed > 0.4) {
+                    speedBps = (event.loaded - lastLoaded) / elapsed;
+                    lastLoaded = event.loaded;
+                    lastAt = now;
+                }
+                const pct = Math.round((event.loaded / event.total) * 100);
+                this.setFileTransferProgress(fileIndex, {
+                    phase: 'uploading',
+                    bytesSent: event.loaded,
+                    bytesTotal: event.total,
+                    percent: pct,
+                    speedBps,
+                    detail: `Sending ${formatUploadBytes(event.loaded)} / ${formatUploadBytes(event.total)} (${pct}%)`,
+                });
+            });
+
+            xhr.addEventListener('load', () => {
+                const text = xhr.responseText || '';
+                if (xhr.status < 200 || xhr.status >= 300) {
+                    reject(new Error(text.substring(0, 300) || `HTTP ${xhr.status}`));
+                    return;
+                }
+                try {
+                    resolve(JSON.parse(text.trim()));
+                } catch (e) {
+                    reject(new Error('Invalid JSON: ' + text.substring(0, 200)));
+                }
+            });
+            xhr.addEventListener('error', () => reject(new Error('Network error during upload')));
+            xhr.addEventListener('timeout', () => reject(new Error('Upload timed out — try again or use a wired connection')));
+            xhr.open('POST', uploadUrl);
+            xhr.withCredentials = true;
+            xhr.send(uploadFormData);
+        });
     }
 
     groupActiveUploadsByDataset() {
@@ -1934,81 +2219,59 @@ class UploadManager {
                 
                 // The browser starts sending bytes as soon as fetch begins. Apache/PHP
                 // logs often appear only after the full request body is received.
-                this.updateUploadModalFile(fileIndex, fileName, 'uploading');
-                
-                uploadPromises.push(
-                    fetch(uploadUrl, {
-                        method: 'POST',
-                        body: uploadFormData,
-                        // Add timeout: 5 minutes for small files, up to 10 minutes for larger files
-                        signal: AbortSignal.timeout(Math.min(600000, 300000 + (file.size / 1024 / 1024) * 1000)) // 5-10 min based on file size
-                    }).then(async response => {
-                        const text = await response.text();
-                        
-                        // Log response for debugging
-                        console.log('Upload response status:', response.status);
-                        console.log('Upload response preview:', text.substring(0, 200));
-                        
-                        // Check if response is empty
-                        if (!text || text.trim().length === 0) {
-                            throw new Error('Empty response from server');
-                        }
-                        
-                        // Try to parse JSON
-                        try {
-                            // Remove any leading/trailing whitespace
-                            const cleanedText = text.trim();
-                            
-                            // Check if it looks like JSON
-                            if (cleanedText[0] !== '{' && cleanedText[0] !== '[') {
-                                console.error('Response does not start with JSON:', cleanedText.substring(0, 200));
-                                throw new Error('Response is not valid JSON. Server may have returned an error page.');
-                            }
-                            
-                            const result = JSON.parse(cleanedText);
+                const useChunkedUpload = file.size >= SC_LARGE_UPLOAD_THRESHOLD;
+                if (useChunkedUpload) {
+                    console.log(`📦 Large-file path (chunked): ${fileName} (${formatUploadBytes(file.size)})`);
+                }
 
-                            if (!response.ok) {
-                                const errorMsg = result.error || result.message || `Upload rejected by server (HTTP ${response.status})`;
-                                this.updateUploadModalFile(fileIndex, fileName, 'failed', null, errorMsg);
-                                const uploadError = new Error(errorMsg);
-                                uploadError.nonRetryable = response.status >= 400 && response.status < 500 && response.status !== 408 && response.status !== 429;
-                                throw uploadError;
-                            }
-                            
-                            // Check if upload was successful
-                            if (result.job_id && response.status === 200) {
-                                // Mark file as completed
+                uploadPromises.push((async () => {
+                    try {
+                        let result;
+                        if (useChunkedUpload) {
+                            result = await this.uploadFileLargeChunked({
+                                file,
+                                fileIndex,
+                                fileName,
+                                uploadData,
+                                userEmail,
+                                datasetUuid,
+                                relativePath,
+                                expectedFilesJson,
+                            });
+                        } else {
+                            this.updateUploadModalFile(fileIndex, fileName, 'uploading');
+                            result = await this.uploadFileViaPhpWithProgress(
+                                uploadUrl,
+                                uploadFormData,
+                                fileIndex,
+                                fileName,
+                                file.size
+                            );
+                            if (result.job_id) {
                                 this.updateUploadModalFile(fileIndex, fileName, 'completed', result.job_id);
-                                return result;
+                                this.trackUpload(result.job_id, uploadData.dataset_name, fileName, uploadData.convert, datasetUuid);
                             } else {
-                                // Mark file as failed
                                 const errorMsg = result.error || result.message || 'Upload failed';
                                 this.updateUploadModalFile(fileIndex, fileName, 'failed', null, errorMsg);
-                                return result;
                             }
-                        } catch (e) {
-                            console.error('JSON parse error:', e);
-                            console.error('Full response:', text);
-                            const errorMsg = 'Invalid JSON response: ' + e.message;
-                            this.updateUploadModalFile(fileIndex, fileName, 'failed', null, errorMsg);
-                            throw new Error(errorMsg + '. Response preview: ' + text.substring(0, 200));
                         }
-                    }).catch(error => {
-                        console.error('Upload fetch error:', error);
-                        // Mark file as failed
+                        if (!result?.job_id) {
+                            const errorMsg = result?.error || result?.message || 'Upload failed (no job_id)';
+                            if (useChunkedUpload) {
+                                throw new Error(errorMsg);
+                            }
+                        }
+                        return result;
+                    } catch (error) {
+                        console.error('Upload error:', error);
                         let errorMsg = error.message || 'Network error';
-                        
-                        // Handle specific error types
-                        if (error.name === 'AbortError' || error.name === 'TimeoutError') {
-                            errorMsg = 'Upload timeout - the server took too long to respond. The upload may still be processing in the background.';
-                        } else if (error.message && error.message.includes('Failed to fetch')) {
-                            errorMsg = 'Connection failed - unable to reach the upload server. Please check your connection and try again.';
+                        if (error.message && error.message.includes('Failed to fetch')) {
+                            errorMsg = 'Connection failed — check network and try again.';
                         }
-                        
                         this.updateUploadModalFile(fileIndex, fileName, 'failed', null, errorMsg);
                         throw error;
-                    })
-                );
+                    }
+                })());
             }
 
             // Wait for all uploads to complete (or fail)
@@ -2050,23 +2313,8 @@ class UploadManager {
                 }
             });
 
-            // Track successful uploads with file names
-            console.log(`Tracking ${successful.length} successful upload(s) in activeUploads`);
-            successful.forEach((result, idx) => {
-                // Find the file name for this result by matching job_id in the upload session
-                let fileName = uploadData.dataset_name; // fallback to dataset name
-                const fileInfo = this.currentUploadSession?.files.find(f => f.jobId === result.job_id);
-                if (fileInfo) {
-                    fileName = fileInfo.name;
-                } else if (files[idx]) {
-                    // Fallback: use file from array if we can match by index
-                    fileName = files[idx].name;
-                }
-                console.log(`Adding to activeUploads: job_id=${result.job_id}, file=${fileName}, dataset=${uploadData.dataset_name}`);
-                this.trackUpload(result.job_id, uploadData.dataset_name, fileName, uploadData.convert, datasetUuid);
-                // Note: trackUpload() already calls pollUploadProgress() automatically
-            });
-            
+            // job tracking: chunked path tracks in uploadFileLargeChunked; small files in uploadFileViaPhpWithProgress
+
             // Refresh dataset list immediately to show new upload
             if (window.datasetManager && successful.length > 0) {
                 setTimeout(() => {
@@ -3065,6 +3313,7 @@ class UploadManager {
                             <div class="mt-2 small text-muted">
                                 <span id="uploadModalFileCount">0</span> of <span id="uploadModalTotalFiles">0</span> files completed
                             </div>
+                            <div class="mt-2 small fw-semibold text-primary" id="uploadModalTransferDetail"></div>
                         </div>
                         <hr>
                         <div class="upload-file-list" id="uploadModalFileList" style="max-height: 400px; overflow-y: auto;">
@@ -3122,8 +3371,12 @@ class UploadManager {
         document.getElementById('uploadModalViewJobsBtn').style.display = 'none';
         const fileWord = totalFiles >= this.bulkUploadFileThreshold ? 'files' : 'file(s)';
         document.getElementById('uploadModalStatusText').textContent =
-            `Preparing uploads... Keep this page open until all ${totalFiles} ${fileWord} finish (failed files retry automatically).`;
+            'Keep this tab open. Files ≥ 100 MB upload as resumable 100 MB chunks (TB-scale; up to ~10 TB per file via API). Multi‑PB datasets: use server-side ingest (rsync to upload volume). Failed files retry automatically.';
         document.getElementById('uploadModalStatusMessage').className = 'flex-grow-1 text-warning small';
+        const transferDetail = document.getElementById('uploadModalTransferDetail');
+        if (transferDetail) {
+            transferDetail.textContent = '';
+        }
 
         // Show modal
         this.uploadModal.show();
@@ -3208,16 +3461,43 @@ class UploadManager {
         const completed = session.completedFiles;
         const failed = session.failedFiles;
         const inProgress = session.files.filter(f => f.status === 'uploading' || f.status === 'queued' || f.status === 'retrying').length;
-        
-        // Calculate overall progress
-        const progress = total > 0 ? Math.round(((completed + failed) / total) * 100) : 0;
-        
-        // Update overall progress bar
+
+        let progress = total > 0 ? Math.round(((completed + failed) / total) * 100) : 0;
+        const totalBytes = session.files.reduce((sum, f) => sum + (f.bytesTotal || 0), 0);
+        const sentBytes = session.files.reduce((sum, f) => {
+            if (f.status === 'completed') {
+                return sum + (f.bytesTotal || 0);
+            }
+            return sum + (f.bytesSent || 0);
+        }, 0);
+        if (totalBytes > 0 && sentBytes > 0) {
+            progress = Math.min(99, Math.round((sentBytes / totalBytes) * 100));
+            if (completed + failed >= total) {
+                progress = 100;
+            }
+        }
+
         const progressBar = document.getElementById('uploadModalOverallProgress');
         const progressText = document.getElementById('uploadModalProgressText');
         progressBar.style.width = `${progress}%`;
         progressBar.setAttribute('aria-valuenow', progress);
         progressText.textContent = `${progress}%`;
+
+        const transferDetailEl = document.getElementById('uploadModalTransferDetail');
+        if (transferDetailEl) {
+            const active = session.files.find((f) => f.status === 'uploading' || f.status === 'retrying');
+            if (active?.detail) {
+                let line = active.detail;
+                if (active.speedBps > 0) {
+                    line += ` · ${formatUploadBytes(active.speedBps)}/s`;
+                }
+                transferDetailEl.textContent = line;
+            } else if (totalBytes > 0) {
+                transferDetailEl.textContent = `Total transferred: ${formatUploadBytes(sentBytes)} / ${formatUploadBytes(totalBytes)}`;
+            } else {
+                transferDetailEl.textContent = '';
+            }
+        }
 
         // Update file count
         document.getElementById('uploadModalFileCount').textContent = completed + failed;
@@ -3324,6 +3604,7 @@ class UploadManager {
                                     <i class="fas ${statusIcon} text-${statusColor} me-2"></i>
                                     <span class="small">${this.escapeHtml(file.name)}</span>
                                 </div>
+                                ${file.detail ? `<small class="text-primary d-block mt-1">${this.escapeHtml(file.detail)}</small>` : ''}
                                 ${file.jobId ? `<small class="text-muted d-block mt-1">Job ID: ${file.jobId}</small>` : ''}
                                 ${file.error ? `<small class="text-danger d-block mt-1">Error: ${this.escapeHtml(file.error)}${retryInfo}</small>` : ''}
                                 ${file.status === 'retrying' ? `<small class="text-warning d-block mt-1">Retrying... (attempt ${file.retryCount}/${session.maxRetries})</small>` : ''}
@@ -3429,81 +3710,67 @@ class UploadManager {
                 const file = failedFile.file;
                 const fileIndex = failedFile.fileIndex;
                 const fileName = file.name;
+                const relativePath = this.resolveDirectoryRelativePath(
+                    file, isDirectoryUpload, baseDirectoryName
+                );
+                const expectedFilesJson = uploadData.expected_files_json || null;
 
                 try {
-                    // Prepare upload form data (same as original upload)
-                    const uploadFormData = new FormData();
-                    uploadFormData.append('file', file);
-                    uploadFormData.append('user_email', userEmail);
-                    uploadFormData.append('dataset_name', uploadData.dataset_name);
-                    uploadFormData.append('sensor', uploadData.sensor);
-                    uploadFormData.append('convert', uploadData.convert);
-                    uploadFormData.append('is_public', uploadData.is_public);
-                    if (uploadData.expected_files_json) {
-                        uploadFormData.append('expected_files', uploadData.expected_files_json);
-                    }
-                    
-                    if (uploadData.folder) {
-                        uploadFormData.append('folder', uploadData.folder);
-                    }
-                    
-                    // Handle directory uploads
-                    if (isDirectoryUpload && file.webkitRelativePath) {
-                        const fullPath = file.webkitRelativePath;
-                        let relativePath = null;
-                        if (fullPath.startsWith(baseDirectoryName + '/')) {
-                            relativePath = fullPath.substring(baseDirectoryName.length + 1);
-                            if (!relativePath || relativePath === file.name) {
-                                relativePath = null;
-                            } else {
-                                const pathParts = relativePath.split('/');
-                                pathParts.pop();
-                                relativePath = pathParts.length > 0 ? pathParts.join('/') : null;
-                            }
+                    this.updateUploadModalFile(fileIndex, fileName, 'uploading', null, null, attempt);
+
+                    let result;
+                    if (file.size >= SC_LARGE_UPLOAD_THRESHOLD) {
+                        result = await this.uploadFileLargeChunked({
+                            file,
+                            fileIndex,
+                            fileName,
+                            uploadData,
+                            userEmail,
+                            datasetUuid,
+                            relativePath,
+                            expectedFilesJson,
+                        });
+                    } else {
+                        const uploadFormData = new FormData();
+                        uploadFormData.append('file', file);
+                        uploadFormData.append('user_email', userEmail);
+                        uploadFormData.append('dataset_name', uploadData.dataset_name);
+                        uploadFormData.append('sensor', uploadData.sensor);
+                        uploadFormData.append('convert', uploadData.convert);
+                        uploadFormData.append('is_public', uploadData.is_public);
+                        if (expectedFilesJson) {
+                            uploadFormData.append('expected_files', expectedFilesJson);
+                        }
+                        if (uploadData.folder) {
+                            uploadFormData.append('folder', uploadData.folder);
                         }
                         if (relativePath) {
                             uploadFormData.append('relative_path', relativePath);
                         }
-                    }
-                    
-                    if (uploadData.team_uuid) uploadFormData.append('team_uuid', uploadData.team_uuid);
-                    if (uploadData.tags) uploadFormData.append('tags', uploadData.tags);
-                    uploadFormData.append('dataset_identifier', datasetUuid);
+                        if (uploadData.team_uuid) uploadFormData.append('team_uuid', uploadData.team_uuid);
+                        if (uploadData.tags) uploadFormData.append('tags', uploadData.tags);
+                        uploadFormData.append('dataset_identifier', datasetUuid);
 
-                    const uploadUrl = `${getUploadApiBasePath()}/upload-dataset.php`;
-                    
-                    // Mark as uploading
-                    this.updateUploadModalFile(fileIndex, fileName, 'uploading', null, null, attempt);
-
-                    const response = await fetch(uploadUrl, {
-                        method: 'POST',
-                        body: uploadFormData
-                    });
-
-                    const text = await response.text();
-                    
-                    if (!text || text.trim().length === 0) {
-                        throw new Error('Empty response from server');
+                        const uploadUrl = `${getUploadApiBasePath()}/upload-dataset.php`;
+                        result = await this.uploadFileViaPhpWithProgress(
+                            uploadUrl,
+                            uploadFormData,
+                            fileIndex,
+                            fileName,
+                            file.size
+                        );
+                        if (result.job_id) {
+                            this.updateUploadModalFile(fileIndex, fileName, 'completed', result.job_id, null, attempt);
+                            this.trackUpload(result.job_id, uploadData.dataset_name, fileName, uploadData.convert, datasetUuid);
+                        }
                     }
 
-                    const cleanedText = text.trim();
-                    if (cleanedText[0] !== '{' && cleanedText[0] !== '[') {
-                        throw new Error('Response is not valid JSON');
-                    }
-
-                    const result = JSON.parse(cleanedText);
-
-                    if (result.job_id && response.status === 200) {
-                        // Success!
-                        this.updateUploadModalFile(fileIndex, fileName, 'completed', result.job_id, null, attempt);
-                        this.trackUpload(result.job_id, uploadData.dataset_name, fileName, uploadData.convert, datasetUuid);
+                    if (result?.job_id) {
                         return { success: true, fileIndex, result };
-                    } else {
-                        // Still failed
-                        const errorMsg = result.error || result.message || 'Upload failed';
-                        this.updateUploadModalFile(fileIndex, fileName, 'failed', null, errorMsg, attempt);
-                        return { success: false, fileIndex, error: errorMsg };
                     }
+                    const errorMsg = result?.error || result?.message || 'Upload failed';
+                    this.updateUploadModalFile(fileIndex, fileName, 'failed', null, errorMsg, attempt);
+                    return { success: false, fileIndex, error: errorMsg };
                 } catch (error) {
                     const errorMsg = error.message || 'Network error';
                     this.updateUploadModalFile(fileIndex, fileName, 'failed', null, errorMsg, attempt);
