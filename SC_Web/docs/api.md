@@ -27,6 +27,11 @@ This page summarizes the current ScientistCloud API surface used by the portal.
 | `/api/upload/status/{job_id}` | GET | Job progress/status |
 | `/api/upload/jobs` | GET | Recent jobs for a user |
 | `/api/upload/cancel/{job_id}` | POST | Cancel job |
+| `/portal/api/jobs.php` | GET | Portal job list (user or admin); query `scope=active\|all`, `admin=1` for admins |
+| `/portal/api/upload-status.php?job_id=` | GET | Portal proxy to upload status (live % and bytes) |
+| `/portal/api/conversion-logs.php?dataset_uuid=` | GET | Conversion log tail for a dataset |
+
+Portal UI: **Jobs** toolbar button or `index.php?jobs=1`. Admins: set `SC_PORTAL_ADMIN_EMAILS=you@example.com,other@example.com` in server env.
 | `/api/upload/supported-sources` | GET | Supported upload source/sensor types |
 | `/api/upload/limits` | GET | Upload limits and thresholds |
 

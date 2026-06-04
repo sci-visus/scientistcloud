@@ -54,69 +54,44 @@ try {
     }
 
     $userEmail = $user['email'];
-    
-    // Get query parameters
-    $status = $_GET['status'] ?? null;
-    $limit = isset($_GET['limit']) ? intval($_GET['limit']) : 50;
-    $offset = isset($_GET['offset']) ? intval($_GET['offset']) : 0;
+    $isAdmin = isPortalAdmin($userEmail);
 
-    // Canonical job view from visstoredatas only (single source of truth).
+    $status = $_GET['status'] ?? null;
+    $limit = isset($_GET['limit']) ? max(1, min(intval($_GET['limit']), 200)) : 50;
+    $offset = isset($_GET['offset']) ? max(0, intval($_GET['offset'])) : 0;
+    $scope = $_GET['scope'] ?? 'active';
+    $adminView = $isAdmin && isset($_GET['admin']) && $_GET['admin'] === '1';
+    $filterUser = $adminView ? trim((string) ($_GET['user_email'] ?? '')) : '';
+
     $jobs = [];
     try {
-        $queuedDatasets = getQueuedConversionDatasets($userEmail, $limit);
-        foreach ($queuedDatasets as $dataset) {
-            $state = $dataset['canonical_state'] ?? $dataset['status'] ?? 'unknown';
-            $jobs[] = [
-                'job_id' => 'dataset_' . $dataset['uuid'],
-                'id' => 'dataset_' . $dataset['uuid'],
-                'job_type' => 'dataset_conversion',
-                'status' => $state,
-                'canonical_state' => $state,
-                'dataset_uuid' => $dataset['uuid'],
-                'dataset_name' => $dataset['name'] ?? 'Unnamed Dataset',
-                'created_at' => isset($dataset['created_at']) ? (is_object($dataset['created_at']) ? $dataset['created_at']->toDateTime()->format('c') : $dataset['created_at']) : null,
-                'updated_at' => isset($dataset['updated_at']) ? (is_object($dataset['updated_at']) ? $dataset['updated_at']->toDateTime()->format('c') : $dataset['updated_at']) : null,
-                'completed_at' => null,
-                'progress_percentage' => 0,
-                'error' => $dataset['conversion_last_error'] ?? $dataset['error_message'] ?? null
-            ];
+        if ($adminView) {
+            $jobs = getAdminPortalJobs($filterUser, $scope, $limit);
+        } else {
+            $jobs = getUserPortalJobs($userEmail, $scope, $limit, $status);
         }
-
-        $uploadDatasets = getQueuedUploadDatasets($userEmail, $limit);
-        foreach ($uploadDatasets as $dataset) {
-            $state = $dataset['canonical_state'] ?? $dataset['status'] ?? 'uploading';
-            $jobId = $dataset['job_id'] ?? ('upload_' . $dataset['uuid']);
-            $jobs[] = [
-                'job_id' => $jobId,
-                'id' => $jobId,
-                'job_type' => 'upload',
-                'status' => $state,
-                'canonical_state' => $state,
-                'dataset_uuid' => $dataset['uuid'],
-                'dataset_name' => $dataset['name'] ?? 'Unnamed Dataset',
-                'created_at' => isset($dataset['created_at']) ? (is_object($dataset['created_at']) ? $dataset['created_at']->toDateTime()->format('c') : $dataset['created_at']) : null,
-                'updated_at' => isset($dataset['updated_at']) ? (is_object($dataset['updated_at']) ? $dataset['updated_at']->toDateTime()->format('c') : $dataset['updated_at']) : null,
-                'completed_at' => null,
-                'progress_percentage' => 0,
-                'error' => $dataset['error_message'] ?? null
-            ];
-        }
+        $mongoJobs = getJobsFromMongoDB($adminView && $filterUser !== '' ? $filterUser : $userEmail, $status, $limit, $offset);
+        $jobs = mergePortalJobs($jobs, $mongoJobs);
     } catch (Exception $e) {
-        error_log("Error getting jobs from visstoredatas: " . $e->getMessage());
+        error_log("Error getting jobs: " . $e->getMessage());
     }
 
-    // Sort by created_at (most recent first)
-    usort($jobs, function($a, $b) {
-        $timeA = isset($a['created_at']) ? strtotime($a['created_at']) : 0;
-        $timeB = isset($b['created_at']) ? strtotime($b['created_at']) : 0;
+    usort($jobs, function ($a, $b) {
+        $timeA = isset($a['updated_at']) ? strtotime($a['updated_at']) : (isset($a['created_at']) ? strtotime($a['created_at']) : 0);
+        $timeB = isset($b['updated_at']) ? strtotime($b['updated_at']) : (isset($b['created_at']) ? strtotime($b['created_at']) : 0);
         return $timeB - $timeA;
     });
+    $jobs = array_slice($jobs, $offset, $limit);
 
     ob_end_clean();
     echo json_encode([
         'success' => true,
         'jobs' => $jobs,
-        'total' => count($jobs)
+        'total' => count($jobs),
+        'is_admin' => $isAdmin,
+        'admin_view' => $adminView,
+        'scope' => $scope,
+        'viewer_email' => $userEmail,
     ]);
 
 } catch (Exception $e) {
@@ -322,6 +297,162 @@ function getQueuedConversionDatasets($userEmail, $limit = 50) {
         error_log("Error getting queued conversion datasets: " . $e->getMessage());
         return [];
     }
+}
+
+function portalJobActiveStatuses() {
+    return ['uploading', 'processing', 'converting', 'conversion queued', 'queued', 'pending', 'running'];
+}
+
+function portalJobTerminalStatuses() {
+    return ['done', 'completed', 'ready', 'uploaded', 'failed', 'error', 'conversion failed', 'cancelled', 'canceled'];
+}
+
+function formatMongoTimestamp($value) {
+    if ($value === null || $value === '') {
+        return null;
+    }
+    if (is_object($value) && method_exists($value, 'toDateTime')) {
+        return $value->toDateTime()->format('c');
+    }
+    return is_string($value) ? $value : null;
+}
+
+function datasetOwnerEmail($dataset) {
+    return $dataset['user'] ?? $dataset['user_email'] ?? $dataset['user_id'] ?? null;
+}
+
+function mapDatasetToPortalJob($dataset, $jobType = 'upload') {
+    $state = $dataset['canonical_state'] ?? $dataset['status'] ?? 'unknown';
+    $uuid = $dataset['uuid'] ?? null;
+    $jobId = $dataset['job_id'] ?? null;
+    if (!$jobId && $jobType === 'upload' && $uuid) {
+        $jobId = 'upload_' . $uuid;
+    }
+    if (!$jobId && $uuid) {
+        $jobId = 'dataset_' . $uuid;
+    }
+    $progress = $dataset['progress_percentage'] ?? $dataset['progress'] ?? 0;
+    return [
+        'job_id' => $jobId,
+        'id' => $jobId,
+        'job_type' => $jobType,
+        'status' => $state,
+        'canonical_state' => $state,
+        'dataset_uuid' => $uuid,
+        'dataset_name' => $dataset['name'] ?? 'Unnamed Dataset',
+        'owner_email' => datasetOwnerEmail($dataset),
+        'team_uuid' => $dataset['team_uuid'] ?? $dataset['team_id'] ?? null,
+        'folder' => $dataset['folder'] ?? null,
+        'sensor' => $dataset['sensor'] ?? null,
+        'message' => $dataset['status_message'] ?? $dataset['message'] ?? null,
+        'created_at' => formatMongoTimestamp($dataset['created_at'] ?? null),
+        'updated_at' => formatMongoTimestamp($dataset['updated_at'] ?? null),
+        'completed_at' => formatMongoTimestamp($dataset['completed_at'] ?? null),
+        'progress_percentage' => is_numeric($progress) ? floatval($progress) : 0,
+        'bytes_uploaded' => $dataset['bytes_uploaded'] ?? $dataset['total_size_bytes'] ?? null,
+        'bytes_total' => $dataset['bytes_total'] ?? $dataset['total_size_bytes'] ?? null,
+        'error' => $dataset['conversion_last_error'] ?? $dataset['error_message'] ?? $dataset['error'] ?? null,
+    ];
+}
+
+function mergePortalJobs($primary, $secondary) {
+    $seen = [];
+    $merged = [];
+    foreach (array_merge($primary, $secondary) as $job) {
+        $key = ($job['job_id'] ?? '') . '|' . ($job['dataset_uuid'] ?? '');
+        if ($key === '|' || isset($seen[$key])) {
+            continue;
+        }
+        $seen[$key] = true;
+        $merged[] = $job;
+    }
+    return $merged;
+}
+
+function getUserPortalJobs($userEmail, $scope = 'active', $limit = 50, $statusFilter = null) {
+    $jobs = [];
+    $statuses = portalJobActiveStatuses();
+    if ($scope === 'all') {
+        $statuses = array_values(array_unique(array_merge($statuses, portalJobTerminalStatuses())));
+    }
+    if ($statusFilter) {
+        $statuses = [$statusFilter];
+    }
+
+    foreach (getQueuedConversionDatasets($userEmail, $limit) as $dataset) {
+        $jobs[] = mapDatasetToPortalJob($dataset, 'dataset_conversion');
+    }
+    foreach (getQueuedUploadDatasets($userEmail, $limit) as $dataset) {
+        $jobs[] = mapDatasetToPortalJob($dataset, 'upload');
+    }
+    foreach (getUserDatasetsByStatuses($userEmail, $statuses, $limit) as $dataset) {
+        $jobType = ($dataset['status'] ?? '') === 'uploading' ? 'upload' : 'dataset_conversion';
+        $jobs[] = mapDatasetToPortalJob($dataset, $jobType);
+    }
+    return $jobs;
+}
+
+function getAdminPortalJobs($filterUserEmail = '', $scope = 'active', $limit = 100) {
+    $statuses = portalJobActiveStatuses();
+    if ($scope === 'all') {
+        $statuses = array_values(array_unique(array_merge($statuses, portalJobTerminalStatuses())));
+    }
+    return getDatasetsByStatuses($filterUserEmail, $statuses, $limit);
+}
+
+function getUserDatasetsByStatuses($userEmail, $statuses, $limit = 50) {
+    $jobs = [];
+    try {
+        if (!class_exists('MongoDB\Client')) {
+            return [];
+        }
+        $mongo_url = defined('MONGO_URL') ? MONGO_URL : (getenv('MONGO_URL') ?: 'mongodb://localhost:27017');
+        $db_name = defined('DB_NAME') ? DB_NAME : (getenv('DB_NAME') ?: 'scientistcloud');
+        $mongo_client = new MongoDB\Client($mongo_url);
+        $collection = $mongo_client->selectDatabase($db_name)->selectCollection('visstoredatas');
+        $datasets = $collection->find([
+            '$and' => [
+                ['$or' => [['user' => $userEmail], ['user_id' => $userEmail], ['user_email' => $userEmail]]],
+                ['status' => ['$in' => array_values($statuses)]],
+            ],
+        ])->sort(['updated_at' => -1])->limit($limit)->toArray();
+        foreach ($datasets as $dataset) {
+            $jobType = ($dataset['status'] ?? '') === 'uploading' ? 'upload' : 'dataset_conversion';
+            $jobs[] = mapDatasetToPortalJob($dataset, $jobType);
+        }
+    } catch (Exception $e) {
+        error_log('getUserDatasetsByStatuses: ' . $e->getMessage());
+    }
+    return $jobs;
+}
+
+function getDatasetsByStatuses($filterUserEmail, $statuses, $limit = 100) {
+    $jobs = [];
+    try {
+        if (!class_exists('MongoDB\Client')) {
+            return [];
+        }
+        $mongo_url = defined('MONGO_URL') ? MONGO_URL : (getenv('MONGO_URL') ?: 'mongodb://localhost:27017');
+        $db_name = defined('DB_NAME') ? DB_NAME : (getenv('DB_NAME') ?: 'scientistcloud');
+        $mongo_client = new MongoDB\Client($mongo_url);
+        $collection = $mongo_client->selectDatabase($db_name)->selectCollection('visstoredatas');
+        $query = ['status' => ['$in' => array_values($statuses)]];
+        if ($filterUserEmail !== '') {
+            $query['$or'] = [
+                ['user' => $filterUserEmail],
+                ['user_id' => $filterUserEmail],
+                ['user_email' => $filterUserEmail],
+            ];
+        }
+        $datasets = $collection->find($query)->sort(['updated_at' => -1])->limit($limit)->toArray();
+        foreach ($datasets as $dataset) {
+            $jobType = ($dataset['status'] ?? '') === 'uploading' ? 'upload' : 'dataset_conversion';
+            $jobs[] = mapDatasetToPortalJob($dataset, $jobType);
+        }
+    } catch (Exception $e) {
+        error_log('getDatasetsByStatuses: ' . $e->getMessage());
+    }
+    return $jobs;
 }
 
 /**

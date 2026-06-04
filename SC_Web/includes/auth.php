@@ -732,6 +732,26 @@ function clearDashboardAuthCookie() {
 /**
  * True if the request has a valid portal session or auth_token cookie.
  */
+/**
+ * Portal admins (comma-separated SC_PORTAL_ADMIN_EMAILS) can view all users' jobs.
+ */
+function isPortalAdmin($email) {
+    if (!$email) {
+        return false;
+    }
+    $raw = getenv('SC_PORTAL_ADMIN_EMAILS') ?: '';
+    if ($raw === '') {
+        return false;
+    }
+    $email = strtolower(trim((string) $email));
+    foreach (explode(',', $raw) as $entry) {
+        if (strtolower(trim($entry)) === $email) {
+            return true;
+        }
+    }
+    return false;
+}
+
 function hasDashboardAccess() {
     // Fast path: portal session from Auth0 callback (no SCLib round-trip)
     if (!empty($_SESSION['user_email'])) {

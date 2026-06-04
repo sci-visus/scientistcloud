@@ -49,19 +49,22 @@ try {
         exit;
     }
 
+    $email = $user['email'] ?? '';
     ob_end_clean();
     echo json_encode([
         'success' => true,
         'user' => [
-            'email' => $user['email'] ?? '',
+            'email' => $email,
             'id' => $user['id'] ?? '',
             'name' => $user['name'] ?? '',
-            'team_id' => $user['team_id'] ?? null
+            'team_id' => $user['team_id'] ?? null,
+            'is_admin' => isPortalAdmin($email),
         ],
-        'email' => $user['email'] ?? '',  // Keep for backward compatibility
-        'id' => $user['id'] ?? '',  // Keep for backward compatibility
-        'name' => $user['name'] ?? '',  // Keep for backward compatibility
-        'team_id' => $user['team_id'] ?? null  // Keep for backward compatibility
+        'email' => $email,
+        'id' => $user['id'] ?? '',
+        'name' => $user['name'] ?? '',
+        'team_id' => $user['team_id'] ?? null,
+        'is_admin' => isPortalAdmin($email),
     ]);
 
 } catch (Exception $e) {

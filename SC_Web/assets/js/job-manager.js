@@ -1,11 +1,8 @@
 /**
- * Job Manager JavaScript
- * Handles viewing and monitoring of user jobs (uploads, conversions, etc.)
+ * Job Manager — upload/conversion status for the current user (and all users for admins).
  */
 
-// Helper function to get API base path
 function getApiBasePath() {
-    // Check if we're in a subdirectory (like /portal/)
     const path = window.location.pathname;
     if (path.includes('/portal/')) {
         return '/portal/api';
@@ -16,40 +13,44 @@ function getApiBasePath() {
 class JobManager {
     constructor() {
         this.activeJobs = [];
+        this.liveStatus = new Map();
         this.refreshInterval = null;
+        this.isAdmin = false;
+        this.adminView = false;
+        this.scope = 'active';
+        this.filterUserEmail = '';
         this.initialize();
     }
 
-    /**
-     * Initialize the job manager
-     */
     initialize() {
-        this.setupEventListeners();
-    }
-
-    /**
-     * Setup event listeners
-     */
-    setupEventListeners() {
-        // View Jobs button
         const viewJobsBtn = document.getElementById('viewJobsBtn');
         if (viewJobsBtn) {
-            viewJobsBtn.addEventListener('click', () => {
-                this.showJobsInterface();
-            });
+            viewJobsBtn.addEventListener('click', () => this.showJobsInterface());
+        }
+        this.loadUserCapabilities();
+    }
+
+    async loadUserCapabilities() {
+        try {
+            const response = await fetch(`${getApiBasePath()}/user-info.php`);
+            if (!response.ok) {
+                return;
+            }
+            const data = await response.json();
+            this.isAdmin = !!(data.is_admin || data.user?.is_admin);
+        } catch (e) {
+            console.warn('Could not load user capabilities for jobs page:', e);
         }
     }
 
-    /**
-     * Show jobs interface
-     */
     async showJobsInterface() {
         const viewerContainer = document.getElementById('viewerContainer');
-        if (!viewerContainer) return;
+        if (!viewerContainer) {
+            return;
+        }
 
-        // Show loading state
         viewerContainer.innerHTML = `
-            <div class="text-center">
+            <div class="text-center py-5">
                 <div class="spinner-border text-primary" role="status">
                     <span class="visually-hidden">Loading...</span>
                 </div>
@@ -58,19 +59,17 @@ class JobManager {
         `;
 
         try {
-            // Fetch jobs
             const jobs = await this.fetchJobs();
             this.activeJobs = jobs;
-
-            // Render jobs interface
+            await this.enrichActiveJobStatuses(jobs);
             this.renderJobsInterface(jobs);
         } catch (error) {
             console.error('Error loading jobs:', error);
             viewerContainer.innerHTML = `
-                <div class="alert alert-danger" role="alert">
+                <div class="alert alert-danger m-4" role="alert">
                     <h5><i class="fas fa-exclamation-triangle"></i> Error Loading Jobs</h5>
-                    <p>Failed to load jobs: ${error.message}</p>
-                    <button class="btn btn-primary" onclick="window.jobManager.showJobsInterface()">
+                    <p class="mb-0">Failed to load jobs: ${this.escapeHtml(error.message)}</p>
+                    <button class="btn btn-primary mt-3" type="button" onclick="window.jobManager.showJobsInterface()">
                         <i class="fas fa-redo"></i> Retry
                     </button>
                 </div>
@@ -78,11 +77,21 @@ class JobManager {
         }
     }
 
-    /**
-     * Fetch jobs from API
-     */
+    buildJobsQuery() {
+        const params = new URLSearchParams();
+        params.set('limit', '100');
+        params.set('scope', this.scope);
+        if (this.adminView && this.isAdmin) {
+            params.set('admin', '1');
+            if (this.filterUserEmail.trim()) {
+                params.set('user_email', this.filterUserEmail.trim());
+            }
+        }
+        return params.toString();
+    }
+
     async fetchJobs() {
-        const response = await fetch(`${getApiBasePath()}/jobs.php`);
+        const response = await fetch(`${getApiBasePath()}/jobs.php?${this.buildJobsQuery()}`);
         if (!response.ok) {
             throw new Error(`HTTP ${response.status}: ${response.statusText}`);
         }
@@ -90,102 +99,141 @@ class JobManager {
         if (!data.success) {
             throw new Error(data.error || 'Failed to fetch jobs');
         }
+        if (typeof data.is_admin === 'boolean') {
+            this.isAdmin = data.is_admin;
+        }
         return data.jobs || [];
     }
 
-    /**
-     * Render jobs interface
-     */
+    isTerminalStatus(status) {
+        const s = String(status || '').toLowerCase();
+        return ['ready', 'uploaded', 'completed', 'done', 'failed', 'error', 'conversion failed', 'cancelled', 'canceled'].includes(s);
+    }
+
+    shouldPollUploadStatus(job) {
+        const jobId = job.job_id || job.id;
+        if (!jobId || String(jobId).startsWith('dataset_')) {
+            return false;
+        }
+        return !this.isTerminalStatus(job.canonical_state || job.status);
+    }
+
+    async enrichActiveJobStatuses(jobs) {
+        const toPoll = jobs.filter((job) => this.shouldPollUploadStatus(job));
+        await Promise.all(toPoll.map(async (job) => {
+            const jobId = job.job_id || job.id;
+            try {
+                const response = await fetch(`${getApiBasePath()}/upload-status.php?job_id=${encodeURIComponent(jobId)}`);
+                if (!response.ok) {
+                    return;
+                }
+                const status = await response.json();
+                if (status.job_id) {
+                    this.liveStatus.set(jobId, status);
+                }
+            } catch (e) {
+                console.warn(`upload-status failed for ${jobId}:`, e);
+            }
+        }));
+    }
+
+    getJobDisplayFields(job) {
+        const jobId = job.job_id || job.id;
+        const live = this.liveStatus.get(jobId);
+        return {
+            status: live?.canonical_state || live?.status || job.canonical_state || job.status,
+            progress: live?.progress_percentage ?? job.progress_percentage ?? job.progress ?? 0,
+            message: live?.message || job.message || '',
+            bytesUploaded: live?.bytes_uploaded ?? job.bytes_uploaded,
+            bytesTotal: live?.bytes_total ?? job.bytes_total,
+            error: live?.error || job.error,
+        };
+    }
+
     renderJobsInterface(jobs) {
         const viewerContainer = document.getElementById('viewerContainer');
-        
-        // Group jobs by status (include converting status)
+        const enriched = jobs.map((job) => ({ job, display: this.getJobDisplayFields(job) }));
+
         const jobsByStatus = {
-            'processing': jobs.filter(j => j.status === 'processing' || j.status === 'queued' || j.status === 'converting' || j.status === 'conversion queued'),
-            'completed': jobs.filter(j => j.status === 'completed' || j.status === 'done'),
-            'failed': jobs.filter(j => j.status === 'failed' || j.status === 'error' || j.status === 'conversion failed'),
-            'cancelled': jobs.filter(j => j.status === 'cancelled')
+            processing: enriched.filter(({ display }) => {
+                const s = String(display.status || '').toLowerCase();
+                return ['processing', 'queued', 'converting', 'conversion queued', 'uploading', 'pending', 'running'].includes(s);
+            }),
+            completed: enriched.filter(({ display }) => {
+                const s = String(display.status || '').toLowerCase();
+                return ['completed', 'done', 'ready', 'uploaded'].includes(s);
+            }),
+            failed: enriched.filter(({ display }) => {
+                const s = String(display.status || '').toLowerCase();
+                return ['failed', 'error', 'conversion failed'].includes(s);
+            }),
+            cancelled: enriched.filter(({ display }) => String(display.status || '').toLowerCase() === 'cancelled'),
         };
 
-        const html = `
-            <div class="jobs-interface container mt-4">
+        const adminControls = this.isAdmin ? `
+            <div class="card mb-3 border-warning">
+                <div class="card-body py-2">
+                    <div class="form-check form-switch mb-2">
+                        <input class="form-check-input" type="checkbox" id="jobsAdminViewToggle" ${this.adminView ? 'checked' : ''}>
+                        <label class="form-check-label" for="jobsAdminViewToggle">Admin: show all users' jobs</label>
+                    </div>
+                    <div class="row g-2 ${this.adminView ? '' : 'd-none'}" id="jobsAdminFilters">
+                        <div class="col-md-4">
+                            <select class="form-select form-select-sm" id="jobsScopeSelect">
+                                <option value="active" ${this.scope === 'active' ? 'selected' : ''}>Active only</option>
+                                <option value="all" ${this.scope === 'all' ? 'selected' : ''}>Active + recent finished</option>
+                            </select>
+                        </div>
+                        <div class="col-md-8">
+                            <input type="email" class="form-control form-control-sm" id="jobsUserFilter"
+                                   placeholder="Filter by owner email (optional)"
+                                   value="${this.escapeHtml(this.filterUserEmail)}">
+                        </div>
+                    </div>
+                    <small class="text-muted">Set <code>SC_PORTAL_ADMIN_EMAILS</code> on the server to grant admin access.</small>
+                </div>
+            </div>
+        ` : '';
+
+        viewerContainer.innerHTML = `
+            <div class="jobs-interface container-fluid mt-3 mb-4">
                 <div class="card">
-                    <div class="card-header bg-primary text-white d-flex justify-content-between align-items-center">
-                        <h5 class="mb-0">
-                            <i class="fas fa-tasks"></i> Job Status
-                        </h5>
+                    <div class="card-header bg-primary text-white d-flex justify-content-between align-items-center flex-wrap gap-2">
+                        <h5 class="mb-0"><i class="fas fa-tasks"></i> Jobs &amp; Upload Status</h5>
                         <div>
-                            <button class="btn btn-sm btn-light" onclick="window.jobManager.refreshJobs()" title="Refresh">
+                            <button class="btn btn-sm btn-light" type="button" onclick="window.jobManager.refreshJobs()" title="Refresh">
                                 <i class="fas fa-sync-alt"></i> Refresh
                             </button>
-                            <button class="btn btn-sm btn-light ms-2" onclick="window.jobManager.showJobsInterface()" title="Close">
+                            <button class="btn btn-sm btn-light ms-1" type="button" onclick="window.jobManager.closeJobsInterface()" title="Close">
                                 <i class="fas fa-times"></i>
                             </button>
                         </div>
                     </div>
                     <div class="card-body">
-                        <!-- Job Statistics -->
-                        <div class="row mb-4">
-                            <div class="col-md-3">
-                                <div class="card bg-info text-white">
-                                    <div class="card-body text-center">
-                                        <h3>${jobsByStatus.processing.length}</h3>
-                                        <p class="mb-0">Processing</p>
-                                    </div>
-                                </div>
-                            </div>
-                            <div class="col-md-3">
-                                <div class="card bg-success text-white">
-                                    <div class="card-body text-center">
-                                        <h3>${jobsByStatus.completed.length}</h3>
-                                        <p class="mb-0">Completed</p>
-                                    </div>
-                                </div>
-                            </div>
-                            <div class="col-md-3">
-                                <div class="card bg-danger text-white">
-                                    <div class="card-body text-center">
-                                        <h3>${jobsByStatus.failed.length}</h3>
-                                        <p class="mb-0">Failed</p>
-                                    </div>
-                                </div>
-                            </div>
-                            <div class="col-md-3">
-                                <div class="card bg-secondary text-white">
-                                    <div class="card-body text-center">
-                                        <h3>${jobs.length}</h3>
-                                        <p class="mb-0">Total</p>
-                                    </div>
-                                </div>
-                            </div>
+                        <p class="text-muted small mb-3">
+                            Live progress comes from <code>upload-status.php</code> (FastAPI). Browser uploads show here after the server accepts the file and returns a <code>job_id</code>.
+                        </p>
+                        ${adminControls}
+                        <div class="row mb-4 g-2">
+                            <div class="col-md-3"><div class="card bg-info text-white"><div class="card-body text-center py-2"><h4 class="mb-0">${jobsByStatus.processing.length}</h4><small>Active</small></div></div></div>
+                            <div class="col-md-3"><div class="card bg-success text-white"><div class="card-body text-center py-2"><h4 class="mb-0">${jobsByStatus.completed.length}</h4><small>Completed</small></div></div></div>
+                            <div class="col-md-3"><div class="card bg-danger text-white"><div class="card-body text-center py-2"><h4 class="mb-0">${jobsByStatus.failed.length}</h4><small>Failed</small></div></div></div>
+                            <div class="col-md-3"><div class="card bg-secondary text-white"><div class="card-body text-center py-2"><h4 class="mb-0">${jobs.length}</h4><small>Listed</small></div></div></div>
                         </div>
-
-                        <!-- Jobs List -->
                         <div class="accordion" id="jobsAccordion">
-                            ${this.renderJobSection('Processing', jobsByStatus.processing, 'processing')}
+                            ${this.renderJobSection('Active', jobsByStatus.processing, 'processing')}
                             ${this.renderJobSection('Completed', jobsByStatus.completed, 'completed')}
                             ${this.renderJobSection('Failed', jobsByStatus.failed, 'failed')}
                             ${this.renderJobSection('Cancelled', jobsByStatus.cancelled, 'cancelled')}
                         </div>
-
-                        ${jobs.length === 0 ? `
-                            <div class="alert alert-info mt-4" role="alert">
-                                <i class="fas fa-info-circle"></i> No jobs found. Upload a dataset to see jobs here.
-                            </div>
-                        ` : ''}
+                        ${jobs.length === 0 ? `<div class="alert alert-info mt-3 mb-0"><i class="fas fa-info-circle"></i> No jobs in this view. Try scope &quot;Active + recent finished&quot; or start an upload.</div>` : ''}
                     </div>
                 </div>
             </div>
         `;
 
-        viewerContainer.innerHTML = html;
-
-        // Set up event listeners for log expansion after rendering
-        setTimeout(() => {
-            this.setupLogViewers();
-        }, 100);
-
-        // Start auto-refresh for processing jobs
+        this.bindJobsControls();
+        setTimeout(() => this.setupLogViewers(), 100);
         if (jobsByStatus.processing.length > 0) {
             this.startAutoRefresh();
         } else {
@@ -193,97 +241,141 @@ class JobManager {
         }
     }
 
-    /**
-     * Render a job section
-     */
-    renderJobSection(title, jobs, statusId) {
-        if (jobs.length === 0) {
+    bindJobsControls() {
+        const adminToggle = document.getElementById('jobsAdminViewToggle');
+        if (adminToggle) {
+            adminToggle.addEventListener('change', (e) => {
+                this.adminView = e.target.checked;
+                const filters = document.getElementById('jobsAdminFilters');
+                if (filters) {
+                    filters.classList.toggle('d-none', !this.adminView);
+                }
+                this.showJobsInterface();
+            });
+        }
+        const scopeSelect = document.getElementById('jobsScopeSelect');
+        if (scopeSelect) {
+            scopeSelect.addEventListener('change', (e) => {
+                this.scope = e.target.value;
+                this.showJobsInterface();
+            });
+        }
+        const userFilter = document.getElementById('jobsUserFilter');
+        if (userFilter) {
+            userFilter.addEventListener('change', (e) => {
+                this.filterUserEmail = e.target.value;
+            });
+            userFilter.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter') {
+                    this.filterUserEmail = e.target.value;
+                    this.showJobsInterface();
+                }
+            });
+        }
+    }
+
+    closeJobsInterface() {
+        this.stopAutoRefresh();
+        const viewerContainer = document.getElementById('viewerContainer');
+        if (viewerContainer) {
+            viewerContainer.innerHTML = `
+                <div class="text-center text-muted py-5">
+                    <i class="fas fa-chart-area fa-3x mb-3"></i>
+                    <p>Select a dataset to view</p>
+                </div>
+            `;
+        }
+    }
+
+    renderJobSection(title, items, statusId) {
+        if (!items.length) {
             return '';
         }
-
         const isExpanded = statusId === 'processing';
-        const jobsHtml = jobs.map((job, index) => this.renderJobItem(job, index)).join('');
-
         return `
             <div class="accordion-item">
                 <h2 class="accordion-header" id="heading${statusId}">
-                    <button class="accordion-button ${isExpanded ? '' : 'collapsed'}" type="button" 
-                            data-bs-toggle="collapse" data-bs-target="#collapse${statusId}" 
+                    <button class="accordion-button ${isExpanded ? '' : 'collapsed'}" type="button"
+                            data-bs-toggle="collapse" data-bs-target="#collapse${statusId}"
                             aria-expanded="${isExpanded}">
-                        <i class="fas fa-${this.getStatusIcon(statusId)} me-2"></i>
-                        ${title} (${jobs.length})
+                        <i class="fas fa-${this.getStatusIcon(statusId)} me-2"></i>${title} (${items.length})
                     </button>
                 </h2>
-                <div id="collapse${statusId}" class="accordion-collapse collapse ${isExpanded ? 'show' : ''}" 
-                     data-bs-parent="#jobsAccordion">
+                <div id="collapse${statusId}" class="accordion-collapse collapse ${isExpanded ? 'show' : ''}" data-bs-parent="#jobsAccordion">
                     <div class="accordion-body">
-                        ${jobsHtml}
+                        ${items.map(({ job }, index) => this.renderJobItem(job, index)).join('')}
                     </div>
                 </div>
             </div>
         `;
     }
 
-    /**
-     * Render a single job item
-     */
+    formatBytes(value) {
+        const n = Number(value);
+        if (!n || n <= 0) {
+            return null;
+        }
+        const units = ['B', 'KB', 'MB', 'GB', 'TB'];
+        let pow = Math.floor(Math.log(n) / Math.log(1024));
+        pow = Math.min(pow, units.length - 1);
+        return `${(n / Math.pow(1024, pow)).toFixed(pow >= 2 ? 1 : 0)} ${units[pow]}`;
+    }
+
     renderJobItem(job, index) {
-        const statusBadge = this.getStatusBadge(job.status);
-        const progressBar = this.getProgressBar(job);
-        const timeInfo = this.getTimeInfo(job);
+        const display = this.getJobDisplayFields(job);
         const jobId = job.job_id || job.id;
         const datasetUuid = job.dataset_uuid;
-        
-        // Show conversion logs for converting/processing jobs
-        const showLogs = (job.status === 'processing' || job.status === 'converting' || job.status === 'queued') && datasetUuid;
-        const logId = `logs-${jobId}`;
+        const statusBadge = this.getStatusBadge(display.status);
+        const progressBar = this.getProgressBar(job, display);
+        const timeInfo = this.getTimeInfo(job);
+        const bytesLine = (display.bytesUploaded != null && display.bytesTotal != null)
+            ? `<small class="text-muted d-block">Transferred: ${this.formatBytes(display.bytesUploaded)} / ${this.formatBytes(display.bytesTotal)}</small>`
+            : '';
+        const ownerLine = job.owner_email
+            ? `<small class="text-muted d-block"><i class="fas fa-user"></i> ${this.escapeHtml(job.owner_email)}</small>`
+            : '';
+        const metaLine = [
+            job.team_uuid ? `Team: ${this.escapeHtml(String(job.team_uuid))}` : '',
+            job.folder ? `Folder: ${this.escapeHtml(String(job.folder))}` : '',
+            job.sensor ? `Sensor: ${this.escapeHtml(String(job.sensor))}` : '',
+        ].filter(Boolean).join(' · ');
+        const showLogs = datasetUuid && !this.isTerminalStatus(display.status);
+        const logId = `logs-${jobId}-${index}`.replace(/[^a-zA-Z0-9_-]/g, '_');
 
         return `
-            <div class="card mb-3" data-job-id="${jobId}">
+            <div class="card mb-3 job-status-card" data-job-id="${this.escapeHtml(jobId)}">
                 <div class="card-body">
-                    <div class="d-flex justify-content-between align-items-start">
+                    <div class="d-flex justify-content-between align-items-start gap-2">
                         <div class="flex-grow-1">
-                            <h6 class="card-title">
-                                ${job.dataset_name || job.name || 'Unnamed Dataset'}
+                            <h6 class="card-title mb-1">
+                                ${this.escapeHtml(job.dataset_name || job.name || 'Unnamed Dataset')}
                                 ${statusBadge}
                             </h6>
-                            <p class="card-text text-muted mb-2">
-                                <small>
-                                    <i class="fas fa-tag"></i> ${job.job_type || 'upload'} 
-                                    ${datasetUuid ? `| <i class="fas fa-database"></i> ${datasetUuid.substring(0, 8)}...` : ''}
-                                </small>
+                            <p class="card-text text-muted mb-1 small">
+                                <i class="fas fa-tag"></i> ${this.escapeHtml(job.job_type || 'job')}
+                                ${datasetUuid ? ` · <i class="fas fa-database"></i> <code>${this.escapeHtml(datasetUuid)}</code>` : ''}
                             </p>
+                            ${ownerLine}
+                            ${metaLine ? `<small class="text-muted d-block">${metaLine}</small>` : ''}
+                            ${display.message ? `<small class="d-block mt-1">${this.escapeHtml(display.message)}</small>` : ''}
+                            ${bytesLine}
                             ${progressBar}
                             ${timeInfo}
-                            ${job.error ? `
-                                <div class="alert alert-danger alert-sm mt-2 mb-0">
-                                    <i class="fas fa-exclamation-triangle"></i> 
-                                    <strong>Error:</strong> ${job.error}
-                                </div>
-                            ` : ''}
+                            ${display.error ? `<div class="alert alert-danger py-1 px-2 mt-2 mb-0 small"><strong>Error:</strong> ${this.escapeHtml(display.error)}</div>` : ''}
                             ${showLogs ? `
-                                <div class="mt-3">
-                                    <button class="btn btn-sm btn-outline-info" type="button" data-bs-toggle="collapse" data-bs-target="#${logId}" aria-expanded="false" aria-controls="${logId}">
-                                        <i class="fas fa-file-alt"></i> View Conversion Logs
+                                <div class="mt-2">
+                                    <button class="btn btn-sm btn-outline-info" type="button" data-bs-toggle="collapse" data-bs-target="#${logId}">
+                                        <i class="fas fa-file-alt"></i> Conversion logs
                                     </button>
                                     <div class="collapse mt-2" id="${logId}">
-                                        <div class="card card-body bg-dark text-light" style="max-height: 300px; overflow-y: auto; font-family: monospace; font-size: 0.85rem;">
-                                            <div class="conversion-logs" data-dataset-uuid="${datasetUuid}">
-                                                <div class="text-center py-2">
-                                                    <div class="spinner-border spinner-border-sm text-light" role="status">
-                                                        <span class="visually-hidden">Loading logs...</span>
-                                                    </div>
-                                                    <p class="mt-2 mb-0">Loading conversion logs...</p>
-                                                </div>
-                                            </div>
-                                        </div>
+                                        <pre class="job-logs-pre conversion-logs small mb-0" data-dataset-uuid="${this.escapeHtml(datasetUuid)}">Loading…</pre>
                                     </div>
                                 </div>
                             ` : ''}
                         </div>
-                        <div class="ms-3">
-                            ${job.status === 'processing' || job.status === 'queued' || job.status === 'converting' ? `
-                                <button class="btn btn-sm btn-outline-danger" onclick="window.jobManager.cancelJob('${jobId}')" title="Cancel Job">
+                        <div>
+                            ${!this.isTerminalStatus(display.status) ? `
+                                <button class="btn btn-sm btn-outline-danger" type="button" onclick="window.jobManager.cancelJob('${this.escapeHtml(jobId)}')" title="Cancel">
                                     <i class="fas fa-times"></i>
                                 </button>
                             ` : ''}
@@ -294,90 +386,60 @@ class JobManager {
         `;
     }
 
-    /**
-     * Get status badge HTML
-     */
     getStatusBadge(status) {
-        const badges = {
-            'queued': '<span class="badge bg-secondary">Queued</span>',
-            'processing': '<span class="badge bg-info">Processing</span>',
-            'converting': '<span class="badge bg-info">Converting</span>',
-            'conversion queued': '<span class="badge bg-secondary">Conversion Queued</span>',
-            'completed': '<span class="badge bg-success">Completed</span>',
-            'done': '<span class="badge bg-success">Done</span>',
-            'failed': '<span class="badge bg-danger">Failed</span>',
-            'conversion failed': '<span class="badge bg-danger">Conversion Failed</span>',
-            'error': '<span class="badge bg-danger">Error</span>',
-            'cancelled': '<span class="badge bg-secondary">Cancelled</span>'
+        const s = String(status || '').toLowerCase();
+        const map = {
+            queued: 'secondary', processing: 'info', converting: 'info',
+            'conversion queued': 'secondary', uploading: 'info',
+            completed: 'success', done: 'success', ready: 'success', uploaded: 'success',
+            failed: 'danger', 'conversion failed': 'danger', error: 'danger',
+            cancelled: 'secondary',
         };
-        return badges[status] || `<span class="badge bg-secondary">${status}</span>`;
+        const color = map[s] || 'secondary';
+        return `<span class="badge bg-${color} ms-1">${this.escapeHtml(status || 'unknown')}</span>`;
     }
 
-    /**
-     * Get progress bar HTML
-     */
-    getProgressBar(job) {
-        const progress = job.progress_percentage || job.progress || 0;
-        // Show progress for processing, converting, or queued jobs
-        if (job.status === 'processing' || job.status === 'queued' || job.status === 'converting' || job.status === 'conversion queued') {
-            // For converting status, show indeterminate progress if no specific progress
-            const isIndeterminate = (job.status === 'converting' || job.status === 'conversion queued') && progress === 0;
-            return `
-                <div class="progress mt-2" style="height: 20px;">
-                    <div class="progress-bar progress-bar-striped ${isIndeterminate ? 'progress-bar-animated' : ''}" 
-                         role="progressbar" 
-                         style="width: ${isIndeterminate ? '100' : progress}%"
-                         aria-valuenow="${progress}" 
-                         aria-valuemin="0" 
-                         aria-valuemax="100">
-                        ${isIndeterminate ? 'Converting...' : `${progress}%`}
-                    </div>
+    getProgressBar(job, display) {
+        const progress = Number(display.progress) || 0;
+        if (this.isTerminalStatus(display.status)) {
+            return progress > 0 ? `
+                <div class="progress mt-2" style="height: 18px;">
+                    <div class="progress-bar bg-success" style="width: ${Math.min(100, progress)}%">${progress}%</div>
                 </div>
-            `;
+            ` : '';
         }
-        return '';
+        const indeterminate = progress <= 0;
+        return `
+            <div class="progress mt-2" style="height: 20px;">
+                <div class="progress-bar progress-bar-striped ${indeterminate ? 'progress-bar-animated' : ''} bg-info"
+                     style="width: ${indeterminate ? '100' : Math.min(100, progress)}%">
+                    ${indeterminate ? 'In progress…' : `${progress}%`}
+                </div>
+            </div>
+        `;
     }
 
-    /**
-     * Get time information HTML
-     */
     getTimeInfo(job) {
-        const times = [];
+        const parts = [];
         if (job.created_at) {
-            const created = new Date(job.created_at);
-            times.push(`<i class="fas fa-clock"></i> Created: ${created.toLocaleString()}`);
+            parts.push(`Created: ${new Date(job.created_at).toLocaleString()}`);
         }
         if (job.updated_at) {
-            const updated = new Date(job.updated_at);
-            times.push(`<i class="fas fa-sync"></i> Updated: ${updated.toLocaleString()}`);
+            parts.push(`Updated: ${new Date(job.updated_at).toLocaleString()}`);
         }
-        if (job.completed_at) {
-            const completed = new Date(job.completed_at);
-            times.push(`<i class="fas fa-check-circle"></i> Completed: ${completed.toLocaleString()}`);
-        }
-        return times.length > 0 ? `<small class="text-muted d-block mt-2">${times.join(' | ')}</small>` : '';
+        return parts.length ? `<small class="text-muted d-block mt-2">${parts.join(' · ')}</small>` : '';
     }
 
-    /**
-     * Get status icon
-     */
     getStatusIcon(statusId) {
-        const icons = {
-            'processing': 'spinner fa-spin',
-            'completed': 'check-circle',
-            'failed': 'exclamation-triangle',
-            'cancelled': 'ban'
-        };
+        const icons = { processing: 'spinner fa-spin', completed: 'check-circle', failed: 'exclamation-triangle', cancelled: 'ban' };
         return icons[statusId] || 'circle';
     }
 
-    /**
-     * Refresh jobs
-     */
     async refreshJobs() {
         try {
             const jobs = await this.fetchJobs();
             this.activeJobs = jobs;
+            await this.enrichActiveJobStatuses(jobs);
             this.renderJobsInterface(jobs);
         } catch (error) {
             console.error('Error refreshing jobs:', error);
@@ -385,19 +447,11 @@ class JobManager {
         }
     }
 
-    /**
-     * Start auto-refresh
-     */
     startAutoRefresh() {
-        this.stopAutoRefresh(); // Clear any existing interval
-        this.refreshInterval = setInterval(() => {
-            this.refreshJobs();
-        }, 10000); // Refresh every 10 seconds
+        this.stopAutoRefresh();
+        this.refreshInterval = setInterval(() => this.refreshJobs(), 8000);
     }
 
-    /**
-     * Stop auto-refresh
-     */
     stopAutoRefresh() {
         if (this.refreshInterval) {
             clearInterval(this.refreshInterval);
@@ -405,84 +459,65 @@ class JobManager {
         }
     }
 
-    /**
-     * Setup log viewers - load logs when collapse is expanded
-     */
     setupLogViewers() {
-        // Find all log collapse elements
-        const logCollapses = document.querySelectorAll('.collapse[id^="logs-"]');
-        logCollapses.forEach(collapse => {
-            // Add event listener for when collapse is shown
-            collapse.addEventListener('show.bs.collapse', (e) => {
-                const logContainer = collapse.querySelector('.conversion-logs');
-                if (logContainer) {
-                    const datasetUuid = logContainer.getAttribute('data-dataset-uuid');
-                    if (datasetUuid && !logContainer.dataset.loaded) {
-                        this.loadConversionLogs(datasetUuid, logContainer);
-                        logContainer.dataset.loaded = 'true';
-                    }
+        document.querySelectorAll('.collapse[id^="logs-"]').forEach((collapse) => {
+            collapse.addEventListener('show.bs.collapse', () => {
+                const pre = collapse.querySelector('.conversion-logs');
+                if (pre && pre.dataset.datasetUuid && !pre.dataset.loaded) {
+                    this.loadConversionLogs(pre.dataset.datasetUuid, pre);
+                    pre.dataset.loaded = 'true';
                 }
             });
         });
     }
 
-    /**
-     * Load conversion logs for a dataset
-     */
     async loadConversionLogs(datasetUuid, container) {
         try {
-            // TODO: Implement log loading from API
-            // For now, just show a message
-            container.innerHTML = `
-                <div class="text-center py-2">
-                    <p class="text-muted">Log loading not yet implemented</p>
-                </div>
-            `;
+            const response = await fetch(`${getApiBasePath()}/conversion-logs.php?dataset_uuid=${encodeURIComponent(datasetUuid)}`);
+            const data = await response.json();
+            if (data.success && data.logs) {
+                container.textContent = data.logs;
+            } else {
+                container.textContent = data.error || 'No logs available.';
+            }
         } catch (error) {
-            console.error('Error loading conversion logs:', error);
-            container.innerHTML = `
-                <div class="text-center py-2">
-                    <p class="text-danger">Error loading logs: ${error.message}</p>
-                </div>
-            `;
+            container.textContent = 'Error loading logs: ' + error.message;
         }
     }
 
-    /**
-     * Cancel a job
-     */
     async cancelJob(jobId) {
-        if (!confirm('Are you sure you want to cancel this job?')) {
+        if (!confirm('Cancel this job?')) {
             return;
         }
-
         try {
             const response = await fetch(`${getApiBasePath()}/cancel-job.php`, {
                 method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({ job_id: jobId })
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ job_id: jobId }),
             });
-
             const data = await response.json();
             if (data.success) {
-                alert('Job cancelled successfully');
-                this.refreshJobs();
+                await this.refreshJobs();
             } else {
                 alert('Error cancelling job: ' + (data.error || 'Unknown error'));
             }
         } catch (error) {
-            console.error('Error cancelling job:', error);
             alert('Failed to cancel job: ' + error.message);
         }
     }
+
+    escapeHtml(text) {
+        if (text == null) {
+            return '';
+        }
+        const div = document.createElement('div');
+        div.textContent = String(text);
+        return div.innerHTML;
+    }
 }
 
-// Initialize job manager
 let jobManager;
 document.addEventListener('DOMContentLoaded', () => {
     jobManager = new JobManager();
-    window.jobManager = jobManager; // Make it globally accessible
+    window.jobManager = jobManager;
 });
-

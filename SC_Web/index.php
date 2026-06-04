@@ -96,8 +96,8 @@ $loggedInEmail = trim((string) ($user['email'] ?? ($_SESSION['user_email'] ?? ''
           <button type="button" class="btn btn-outline-light" id="uploadDatasetBtn" title="Upload">
             <i class="fas fa-upload"></i> Upload
           </button>
-          <button type="button" class="btn btn-outline-light" id="viewJobsBtn" title="View Jobs" style="display: none;">
-            <i class="fas fa-tasks"></i> View Jobs
+          <button type="button" class="btn btn-outline-light" id="viewJobsBtn" title="Upload and conversion job status">
+            <i class="fas fa-tasks"></i> Jobs
           </button>
           <button type="button" class="btn btn-outline-light" id="createTeamBtn" title="Team">
             <i class="fas fa-users"></i> Team

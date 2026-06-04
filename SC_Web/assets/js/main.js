@@ -73,6 +73,14 @@ document.addEventListener('DOMContentLoaded', function() {
  */
 function initializeApp() {
     console.log('Initializing ScientistCloud Data Portal...');
+
+    const viewJobsBtn = document.getElementById('viewJobsBtn');
+    if (viewJobsBtn) {
+        viewJobsBtn.style.display = '';
+    }
+    if (new URLSearchParams(window.location.search).get('jobs') === '1') {
+        setTimeout(() => window.jobManager?.showJobsInterface(), 600);
+    }
     
     // Set initial theme
     if (AppState.theme === 'light') {
