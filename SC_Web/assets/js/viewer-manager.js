@@ -203,6 +203,8 @@ class ViewerManager {
             'magicscan': 'magicscan',
             '4d dashboard (new)': '4d_dashboardLite',
             '4d dashboard': '4d_dashboard',
+            '4d dashboard (2x2)': '4d_dashboardopt',
+            '4d_dashboardopt': '4d_dashboardopt',
             'ornl chess strain': 'ORNL_CHESS_strain',
             'ornl_chess_strain': 'ORNL_CHESS_strain'
         };

@@ -80,6 +80,8 @@ function normalizeDashboardType($dashboardType) {
         '4d_dashboardlite' => '4d_dashboardLite',
         '4d_dashboard' => '4d_dashboard',
         '4d dashboard' => '4d_dashboard',
+        '4d dashboard (2x2)' => '4d_dashboardopt',
+        '4d_dashboardopt' => '4d_dashboardopt',
         'ornl chess strain dashboard' => 'ORNL_CHESS_strain',
         'ornl chess strain' => 'ORNL_CHESS_strain',
         'ornl_chess_strain' => 'ORNL_CHESS_strain',
@@ -487,6 +489,7 @@ function getViewableFormatConfig() {
     $default = [
         'viewable_formats' => ['IDX', '4D_NEXUS', 'ORNL_CHESS_STRAIN'],
         'dashboard_formats' => [
+            '4d_dashboardopt' => ['4D_NEXUS'],
             '4d_dashboardLite' => ['4D_NEXUS'],
             '4D_Dashboard' => ['4D_NEXUS'],
             '4d_dashboard' => ['4D_NEXUS'],
@@ -519,18 +522,29 @@ function getViewableFormatConfig() {
 function getDashboardRequiredFormats($dashboardType) {
     $config = getViewableFormatConfig();
     $dashboardFormats = $config['dashboard_formats'] ?? [];
+    $normalized = normalizeDashboardType($dashboardType);
     $aliases = [
         '4D_Dashboard' => '4d_dashboardLite',
-        '4d_dashboard' => '4d_dashboardLite',
-        '4D_dashboard' => '4d_dashboardLite'
+        '4D_dashboard' => '4d_dashboardLite',
     ];
-    $keys = array_filter([$dashboardType, $aliases[$dashboardType] ?? null, strtolower((string)$dashboardType), 'default']);
+    $keys = array_filter([
+        $normalized,
+        $dashboardType,
+        $aliases[$normalized] ?? null,
+        $aliases[$dashboardType] ?? null,
+        strtolower((string)$normalized),
+        strtolower((string)$dashboardType),
+    ]);
     foreach ($keys as $key) {
-        if (isset($dashboardFormats[$key]) && is_array($dashboardFormats[$key])) {
+        if ($key && isset($dashboardFormats[$key]) && is_array($dashboardFormats[$key])) {
             return array_values(array_unique(array_map('strtoupper', $dashboardFormats[$key])));
         }
     }
-    return array_values(array_unique(array_map('strtoupper', $config['viewable_formats'] ?? ['IDX', '4D_NEXUS'])));
+    // 4D CHESS dashboards consume NeXus/HDF5 directly — not IDX conversion.
+    if ($normalized && preg_match('/^4d_dashboard/i', (string)$normalized)) {
+        return ['4D_NEXUS'];
+    }
+    return array_values(array_unique(array_map('strtoupper', $dashboardFormats['default'] ?? ['IDX'])));
 }
 
 function getDatasetRemoteLink($dataset) {

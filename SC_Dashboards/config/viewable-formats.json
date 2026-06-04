@@ -1,5 +1,9 @@
 {
   "dashboard_formats": {
+    "4d_dashboardopt": ["4D_NEXUS"],
+    "4d_dashboardLite": ["4D_NEXUS"],
+    "4d_dashboard": ["4D_NEXUS"],
+    "4D_Dashboard": ["4D_NEXUS"],
     "ORNL_CHESS_strain": ["ORNL_CHESS_STRAIN"]
   },
   "remote_viewable_requirements": {
