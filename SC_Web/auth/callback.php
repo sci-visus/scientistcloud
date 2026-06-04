@@ -184,10 +184,21 @@ try {
     header('Location: ' . getPostLoginRedirectUrl());
     exit;
     
-} catch (Exception $e) {
+} catch (Throwable $e) {
     logMessage('ERROR', 'Auth0 callback error', ['error' => $e->getMessage()]);
+    $redirectUri = rtrim(SC_SERVER_URL, '/') . ($isLocal ? '/auth/callback.php' : '/portal/auth/callback.php');
     echo "<h2>Login Error</h2><p>There was a problem signing you in. Please try again.</p>";
     echo "<p>Error: " . htmlspecialchars($e->getMessage()) . "</p>";
+    if (str_contains($e->getMessage(), 'network error')) {
+        echo "<p><strong>Note:</strong> Auth0 SDK hides the real token-endpoint error behind this message. ";
+        echo "It usually means Auth0 returned HTTP 403/401 during code exchange (not a browser network failure).</p>";
+        echo "<p>Expected redirect URI: <code>" . htmlspecialchars($redirectUri) . "</code></p>";
+        echo "<p>Check Auth0 → Applications → Allowed Callback URLs matches exactly, then open ";
+        echo "<a href=\"" . htmlspecialchars(scPortalPathPrefix() . '/auth0-credential-check.php') . "\">auth0-credential-check.php</a> ";
+        echo "and confirm <code>http_test_via_sdk.ok</code> is true.</p>";
+        echo "<p>If HTTP test fails, run inside the portal container: ";
+        echo "<code>cd /var/www/html &amp;&amp; composer install --no-dev --optimize-autoloader</code></p>";
+    }
     echo "<p><a href='" . $loginPath . "'>Try again</a></p>";
 }
 ?>

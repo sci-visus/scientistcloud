@@ -34,12 +34,31 @@ try {
 
 $usedSecret = getEnvVar('AUTH0_CLIENT_SECRET', AUTH0_CLIENT_SECRET);
 $usedClientId = getEnvVar('AUTH0_CLIENT_ID', AUTH0_CLIENT_ID);
+$domain = getEnvVar('AUTH0_DOMAIN', AUTH0_DOMAIN);
+
+$httpTest = ['ok' => false, 'status' => null, 'error' => null, 'guzzle' => class_exists('GuzzleHttp\Client')];
+try {
+    global $auth0;
+    $authApi = new \Auth0\SDK\API\Authentication($auth0->configuration());
+    $response = $authApi->clientCredentials([
+        'audience' => 'https://' . $domain . '/api/v2/',
+    ]);
+    $httpTest['status'] = $response->getStatusCode();
+    $httpTest['ok'] = \Auth0\SDK\Utility\HttpResponse::wasSuccessful($response);
+    if (!$httpTest['ok']) {
+        $body = json_decode((string) $response->getBody(), true);
+        $httpTest['error'] = is_array($body) ? ($body['error_description'] ?? $body['error'] ?? 'unknown') : 'non-json response';
+    }
+} catch (Throwable $e) {
+    $httpTest['error'] = $e->getMessage();
+}
 
 echo json_encode([
     'sapi' => php_sapi_name(),
     'client_id' => $usedClientId,
     'redirect_uri' => rtrim(SC_SERVER_URL, '/') . SC_PORTAL_PREFIX . '/auth/callback.php',
-    'auth0_domain' => getEnvVar('AUTH0_DOMAIN', AUTH0_DOMAIN),
+    'auth0_domain' => $domain,
+    'http_test_via_sdk' => $httpTest,
     'fingerprints' => [
         'getenv_AUTH0_CLIENT_SECRET' => secretFingerprint($fromGetenv !== false ? $fromGetenv : ''),
         'server_AUTH0_CLIENT_SECRET' => secretFingerprint(is_string($fromServer) ? $fromServer : ''),

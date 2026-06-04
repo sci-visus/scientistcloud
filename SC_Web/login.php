@@ -98,7 +98,7 @@ if (!$hasOAuthCode) {
         // For server, use /portal/auth/callback.php
         $isLocal = (strpos(SC_SERVER_URL, 'localhost') !== false || strpos(SC_SERVER_URL, '127.0.0.1') !== false);
         $callbackPath = $isLocal ? '/auth/callback.php' : '/portal/auth/callback.php';
-        $callbackUrl = SC_SERVER_URL . $callbackPath;
+        $callbackUrl = rtrim(SC_SERVER_URL, '/') . $callbackPath;
         
         // Do not force prompt=consent on every login — it breaks some database sign-up flows.
         // Google Drive consent is requested when needed via connection=google-oauth2.
