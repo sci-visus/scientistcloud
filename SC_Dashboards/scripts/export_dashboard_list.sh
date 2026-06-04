@@ -32,7 +32,7 @@ jq '{
       "name": .value.display_name,
       "type": (if (.value.config_file | test("plotly|Plotly")) then "plotly" elif (.value.config_file | test("bokeh|Bokeh")) then "bokeh" elif (.value.config_file | test("jupyter|Jupyter|notebook")) then "jupyter" elif (.value.config_file | test("vtk|VTK")) then "vtk" else "dash" end),
       "display_name": .value.display_name,
-      "description": (try (.value.config_file | . as $config | input | .description) catch "Dashboard description"),
+      "description": .value.display_name,
       "port": .value.port,
       "nginx_path": .value.nginx_path,
       "url_template": ((.value.nginx_path | if endswith("/") then . else . + "/" end) + "?uuid={uuid}&server={server}&name={name}"),
@@ -43,17 +43,37 @@ jq '{
 } | .dashboards |= map(select(.enabled == true))' \
 "$REGISTRY_FILE" > "$OUTPUT_FILE.tmp"
 
-# Load full configs from individual dashboard.json files (flat structure: {name}.json)
-# Pass DASHBOARDS_DIR as environment variable to jq
-export DASHBOARDS_DIR
-jq --arg dashboards_dir "$DASHBOARDS_DIR" '.dashboards = (.dashboards | map(
-  .config_file as $config_file |
-  ($config_file | gsub("^\\.\\./dashboards/"; "")) as $config_rel |
-  ($config_rel | gsub("\\.json$"; "")) as $dashboard_name |
-  ($dashboard_name | split("/") | .[0]) as $dashboard_name_clean |
-  (. + (try (($dashboards_dir + "/" + $dashboard_name_clean + ".json") | @json | fromjson) catch {})) |
-  .description //= "Dashboard for " + .display_name
-))' "$OUTPUT_FILE.tmp" > "$OUTPUT_FILE"
+# Enrich entries from per-dashboard JSON (description, type, etc.)
+export DASHBOARDS_DIR CONFIG_DIR OUTPUT_FILE
+python3 <<'PY'
+import json
+import os
+
+tmp = os.path.join(os.environ["CONFIG_DIR"], "dashboards-list.json.tmp")
+out = os.environ.get("OUTPUT_FILE", os.path.join(os.environ["CONFIG_DIR"], "dashboards-list.json"))
+dashboards_dir = os.environ["DASHBOARDS_DIR"]
+
+with open(tmp, encoding="utf-8") as f:
+    data = json.load(f)
+
+for entry in data.get("dashboards", []):
+    dash_id = entry.get("id") or ""
+    path = os.path.join(dashboards_dir, f"{dash_id}.json")
+    if not os.path.isfile(path):
+        entry.setdefault("description", f"Dashboard for {entry.get('display_name', dash_id)}")
+        continue
+    with open(path, encoding="utf-8") as jf:
+        extra = json.load(jf)
+    if extra.get("description"):
+        entry["description"] = extra["description"]
+    if extra.get("type"):
+        entry["type"] = extra["type"]
+    entry.setdefault("description", f"Dashboard for {entry.get('display_name', dash_id)}")
+
+with open(out, "w", encoding="utf-8") as f:
+    json.dump(data, f, indent=2)
+    f.write("\n")
+PY
 
 rm -f "$OUTPUT_FILE.tmp"
 

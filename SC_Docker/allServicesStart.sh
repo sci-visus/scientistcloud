@@ -512,7 +512,15 @@ mode_dashboards() {
     fi
 
     [ -f ./scripts/regenerate_registry.sh ] && ./scripts/regenerate_registry.sh 2>&1 | grep -E '(✅|⚠️|❌|Registering|Port registry)' || true
-    [ -f ./scripts/export_dashboard_list.sh ] && ./scripts/export_dashboard_list.sh 2>&1 | grep -E '(✅|⚠️|❌|Total)' || true
+    if [ -f ./scripts/export_dashboard_list.sh ]; then
+        if ! ./scripts/export_dashboard_list.sh; then
+            echo "❌ export_dashboard_list.sh failed — /portal/api/dashboards.php may return errors"
+        fi
+    fi
+    if [ -n "$DASHBOARD_ONLY_REGISTRY_KEY" ]; then
+        export SC_DASHBOARD_BUILD_NO_CACHE=1
+        echo "🔄 Single-dashboard rebuild: SC_DASHBOARD_BUILD_NO_CACHE=1"
+    fi
 
     local dashboards
     if [ -n "$DASHBOARD_ONLY_REGISTRY_KEY" ]; then

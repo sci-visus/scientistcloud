@@ -213,10 +213,17 @@ fi
 echo "📦 Build context contents:"
 ls -la "$BUILD_CONTEXT" | grep -E "(requirements|Dockerfile|\.py|\.ipynb)" | sed 's/^/   /' || true
 
+NO_CACHE_FLAG=""
+if [ "${SC_DASHBOARD_BUILD_NO_CACHE:-}" = "1" ]; then
+    NO_CACHE_FLAG="--no-cache"
+    echo "🔄 Building with --no-cache (SC_DASHBOARD_BUILD_NO_CACHE=1)"
+fi
+
 # Build image with platform specification to match base images (amd64)
 if [ -n "$BUILD_ARGS" ]; then
     docker build \
         --platform "$PLATFORM" \
+        $NO_CACHE_FLAG \
         -f "$BUILD_CONTEXT/Dockerfile" \
         -t "${IMAGE_NAME}:${TAG}" \
         $BUILD_ARGS \
@@ -224,6 +231,7 @@ if [ -n "$BUILD_ARGS" ]; then
 else
     docker build \
         --platform "$PLATFORM" \
+        $NO_CACHE_FLAG \
         -f "$BUILD_CONTEXT/Dockerfile" \
         -t "${IMAGE_NAME}:${TAG}" \
         "$BUILD_CONTEXT"
