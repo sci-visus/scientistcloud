@@ -14,6 +14,7 @@
 #   d   All enabled dashboards — SC base images, init, build_dashboard.sh (staged context),
 #       then docker-compose up. Do NOT run: docker compose -f dashboards-docker-compose.yml build
 #       (that context lacks SCLib_Dashboards and requirements.txt).
+#       Optional: scripts/sync_ornl_nsdf_dashboard.sh pulls/links external nsdf_dashboard if present.
 #   x   SC edge nginx — scientistcloud-nginx, default.conf override, certs, dashboards, dozzle
 #   z   Dozzle log UI (visstore_dozzle) — https://DOMAIN/dozzle/  (also runs with x)
 #
@@ -231,6 +232,16 @@ load_env() {
     sync_env_files || true
 }
 
+# Optional external ORNL/NSDF dashboard checkout (never fails deploy unless script uses --strict).
+sync_ornl_nsdf_dashboard() {
+    local helper="$SCRIPT_DIR/scripts/sync_ornl_nsdf_dashboard.sh"
+    if [ ! -x "$helper" ]; then
+        echo "   ℹ️  No $helper — skipping ORNL/NSDF dashboard sync"
+        return 0
+    fi
+    SC20_ROOT="$SC20_ROOT" "$helper" || true
+}
+
 git_pull_all() {
     echo "════════════════════════════════════════"
     echo "📥 Git pull — ScientistCloud 2.0 repos"
@@ -291,6 +302,7 @@ git_pull_all() {
         fi
     fi
     sync_env_files || true
+    sync_ornl_nsdf_dashboard
     # git clean -fd removes nginx/conf.d/default.conf; recreate before any compose mount
     ensure_sc_nginx_files || true
     echo "✅ Git pull complete"
@@ -498,6 +510,7 @@ mode_dashboards() {
     echo "   Build: SC_Dashboards/scripts/build_dashboard.sh (copies SCLib_Dashboards + requirements.txt)"
     echo "   Not:   docker compose -f dashboards-docker-compose.yml build  ← wrong context, will fail"
     echo "════════════════════════════════════════"
+    sync_ornl_nsdf_dashboard
     if [ ! -d "$DASHBOARDS_DIR" ]; then
         echo "❌ Missing $DASHBOARDS_DIR"
         exit 1

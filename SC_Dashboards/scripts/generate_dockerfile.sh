@@ -144,7 +144,8 @@ fi
 ENVIRONMENT_VARIABLES_SECTION=""
 if [ -n "$ENVIRONMENT_VARS" ] && [ "$ENVIRONMENT_VARS" != "{}" ]; then
     while IFS= read -r line; do
-        if [[ "$line" =~ \"([^\"]+)\":\ *\"([^\"]+)\" ]]; then
+        [ -n "$line" ] || continue
+        if [[ "$line" =~ ^([^:]+):(.+)$ ]]; then
             KEY="${BASH_REMATCH[1]}"
             VALUE="${BASH_REMATCH[2]}"
             ENVIRONMENT_VARIABLES_SECTION="${ENVIRONMENT_VARIABLES_SECTION}ENV ${KEY}=${VALUE}\n"

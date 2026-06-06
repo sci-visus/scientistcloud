@@ -1,8 +1,8 @@
 {
   "name": "ORNL_CHESS_strain",
   "display_name": "ORNL CHESS Strain",
-  "description": "ORNL/CHESS strain resampled JSON: measurement locations, GP-style estimate, variance",
-  "version": "1.0.0",
+  "description": "ORNL/CHESS NSDF measurements: data.json, surrogate.json, next_x.json → measurement, estimate, variance heatmaps",
+  "version": "2.0.0",
   "type": "bokeh",
   "entry_point": "ORNL_CHESS_strain.py",
   "entry_point_type": "python",
@@ -24,7 +24,8 @@
     "SECRET_KEY": "${SECRET_KEY}",
     "DEPLOY_SERVER": "${DEPLOY_SERVER}",
     "DB_NAME": "${DB_NAME}",
-    "MONGO_URL": "${MONGO_URL}"
+    "MONGO_URL": "${MONGO_URL}",
+    "PYTHONPATH": "/app/SCLib_Dashboards"
   },
   "nginx_path": "/dashboard/ORNL_CHESS_strain",
   "health_check_path": "",

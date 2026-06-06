@@ -17,6 +17,9 @@ ENV DOMAIN_NAME=${DOMAIN_NAME}
 # Echo build information
 RUN echo "DEPLOY SERVER: ${DEPLOY_SERVER}"
 
+# Base images end as non-root; apt-get and permission fixes need root during build
+USER root
+
 
 # Copy application code
 ENV APP_HOME=/app
@@ -72,13 +75,22 @@ RUN groupadd -f www-data && \
     chown -R bokehuser:bokehuser /app
 USER bokehuser
 # Set environment variables from configuration
+ENV SECRET_KEY=${SECRET_KEY}
+ENV DEPLOY_SERVER=${DEPLOY_SERVER}
+ENV DB_NAME=${DB_NAME}
+ENV MONGO_URL=${MONGO_URL}
+ENV PYTHONPATH=/app/SCLib_Dashboards
 
 
 # Expose dashboard port
 EXPOSE 8059
 
 # Health check (if specified)
+HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
+  CMD curl -f http://localhost:8059/ORNL_CHESS_strain/ || exit 1
 
-# Run dashboard entry point
+# Run dashboard entry point (match base image runtime user)
+USER bokehuser
+
 CMD ["sh", "-c", "WS_ORIGIN=${DOMAIN_NAME:-scientistcloud.com}; python3 -m bokeh serve ./ORNL_CHESS_strain.py --allow-websocket-origin=$WS_ORIGIN --allow-websocket-origin=scientistcloud.com --allow-websocket-origin=www.scientistcloud.com --allow-websocket-origin=127.0.0.1 --allow-websocket-origin=0.0.0.0 --port=8059 --address=0.0.0.0 --use-xheaders --session-token-expiration=86400"]
 
