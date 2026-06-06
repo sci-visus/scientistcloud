@@ -57,8 +57,8 @@ ENABLE_CORS=$(jq -r '.enable_cors // false' "$CONFIG_FILE")
 APP_PATH=$(jq -r '.app_path // empty' "$CONFIG_FILE")
 # If app_path is not specified, determine it based on dashboard type
 if [ -z "$APP_PATH" ] || [ "$APP_PATH" == "null" ]; then
-    if [[ "$DASHBOARD_TYPE" == "bokeh" ]]; then
-        # For Bokeh apps, the app path matches the entry_point filename (without .py extension)
+    if [[ "$DASHBOARD_TYPE" == "bokeh" || "$DASHBOARD_TYPE" == "panel" ]]; then
+        # Bokeh/Panel apps mount at /{script_name}/ (e.g. magicscan.py -> /magicscan/)
         # Bokeh serves OpenVisusSlice.py at /OpenVisusSlice/ (preserving case)
         ENTRY_POINT=$(jq -r '.entry_point // empty' "$CONFIG_FILE")
         if [ -n "$ENTRY_POINT" ] && [ "$ENTRY_POINT" != "null" ]; then
@@ -209,8 +209,8 @@ location ${NGINX_PATH}assets/ {
     proxy_set_header X-Forwarded-Proto \$scheme;
 }
 STATICEOF
-elif [[ "$DASHBOARD_TYPE" == "bokeh" ]]; then
-    # Bokeh uses /static/ for static files (shared across all apps, served from root).
+elif [[ "$DASHBOARD_TYPE" == "bokeh" || "$DASHBOARD_TYPE" == "panel" ]]; then
+    # Bokeh/Panel use /static/ for static files (shared across all apps, served from root).
     # Always include Panel extension routes for Bokeh dashboards, since Panel may come
     # from the base image rather than dashboard-specific requirements.
     cat > "$STATIC_TEMP" << STATICEOF
@@ -282,7 +282,7 @@ fi
 
 # Build Bokeh/Dash specific headers section
 BOKEH_HEADERS_TEMP=$(mktemp)
-if [[ "$DASHBOARD_TYPE" == "bokeh" || "$DASHBOARD_TYPE" == "dash" ]]; then
+if [[ "$DASHBOARD_TYPE" == "bokeh" || "$DASHBOARD_TYPE" == "panel" || "$DASHBOARD_TYPE" == "dash" ]]; then
     cat > "$BOKEH_HEADERS_TEMP" << BOKEHEOF
     # Cookie path must match the URL the browser uses (public nginx path when proxied)
     proxy_cookie_path / ${COOKIE_PATH};
