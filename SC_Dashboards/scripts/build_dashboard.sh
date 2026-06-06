@@ -193,10 +193,21 @@ else
     exit 1
 fi
 
-# Copy shared utilities
+# Copy shared utilities (dereference symlinks so nsdf_dashboard lands in the image)
 if [ -n "$SCLIB_DASHBOARDS_DIR" ] && [ -d "$SCLIB_DASHBOARDS_DIR" ]; then
     mkdir -p "$BUILD_CONTEXT/SCLib_Dashboards"
-    cp -r "$SCLIB_DASHBOARDS_DIR"/* "$BUILD_CONTEXT/SCLib_Dashboards/" 2>/dev/null || true
+    cp -aL "$SCLIB_DASHBOARDS_DIR"/* "$BUILD_CONTEXT/SCLib_Dashboards/" 2>/dev/null || true
+    if [ "$DASHBOARD_NAME" = "ORNL_CHESS_strain" ]; then
+        if [ ! -f "$BUILD_CONTEXT/SCLib_Dashboards/nsdf_dashboard/ORNL_CHESS_strain.py" ]; then
+            echo "❌ ORNL_CHESS_strain build is missing nsdf_dashboard (required package)."
+            echo "   On the build host, run:"
+            echo "     $(cd "$SCRIPT_DIR/../../SC_Docker" && pwd)/scripts/sync_ornl_nsdf_dashboard.sh"
+            echo "   Or clone the NSDF dashboard repo and set NSDF_DASHBOARD_HOME in env.scientistcloud."
+            echo "   Expected: SCLib_Dashboards/nsdf_dashboard/ORNL_CHESS_strain.py"
+            exit 1
+        fi
+        echo "   ✅ nsdf_dashboard package staged for ORNL_CHESS_strain"
+    fi
 fi
 
 # Copy Dockerfile
