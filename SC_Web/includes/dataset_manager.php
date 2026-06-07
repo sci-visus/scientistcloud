@@ -323,6 +323,7 @@ function formatDataset($dataset) {
         'team_name' => $dataset['team_name'] ?? '',
         'is_owner' => $dataset['is_owner'] ?? null,
         'can_download' => $dataset['can_download'] ?? null,
+        'can_view_files' => $dataset['can_view_files'] ?? null,
     ];
     
     return $formatted;

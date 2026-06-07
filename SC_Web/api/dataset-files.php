@@ -76,10 +76,8 @@ try {
         exit;
     }
 
-    // Check if user has access to this dataset
-    if ($dataset['user_id'] !== $user['id'] && 
-        !in_array($user['id'], $dataset['shared_with'] ?? []) &&
-        $dataset['team_id'] !== $user['team_id']) {
+    // Check if user has access to this dataset (owner, shared, or team — same as SCLib)
+    if (!canAccessDataset($datasetUuid)) {
         ob_end_clean();
         http_response_code(403);
         echo json_encode(['success' => false, 'error' => 'Access denied']);

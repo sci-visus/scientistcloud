@@ -816,44 +816,24 @@ class DatasetManager {
                 }
             }
 
-            // Check download permissions
-            let canDownload = true;
-            if (dataset) {
-                canDownload = await this.canDownloadDataset(dataset);
-            }
-
             const response = await fetch(`${getApiBasePath()}/dataset-files.php?dataset_uuid=${datasetUuid}`);
             const data = await response.json();
 
             console.log('Dataset files API response:', data);
 
             if (data.success) {
-                // If user can't download, show restricted message instead of files
-                if (!canDownload) {
-                    container.innerHTML = `
-                        <div class="alert alert-info small mb-0">
-                            <i class="fas fa-info-circle me-2"></i>
-                            File access is restricted. Only ${dataset?.is_downloadable === 'only owner' ? 'the owner' : dataset?.is_downloadable === 'only team' ? 'team members' : 'authorized users'} can download files from this dataset.
+                let html = '';
+                if (dataset && !(await this.canDownloadDataset(dataset))) {
+                    html += `
+                        <div class="alert alert-info small mb-2 py-1">
+                            <i class="fas fa-eye me-1"></i>
+                            View-only: team members can browse files and use dashboards.
+                            Download/export is limited to ${dataset?.is_downloadable === 'only owner' ? 'the owner' : dataset?.is_downloadable === 'only team' ? 'team members' : 'authorized users'}.
                         </div>
                     `;
-                    return;
                 }
-
-                // Log detailed information for debugging
-                const uploadDir = data.directories?.upload;
-                const convertedDir = data.directories?.converted;
-                const uploadCount = uploadDir?.files?.length || 0;
-                const convertedCount = convertedDir?.files?.length || 0;
-                
-                console.log(`Files found - Upload: ${uploadCount}, Converted: ${convertedCount}`);
-                console.log(`Upload directory exists: ${uploadDir?.exists}, readable: ${uploadDir?.readable}, path: ${uploadDir?.path}`);
-                console.log(`Converted directory exists: ${convertedDir?.exists}, readable: ${convertedDir?.readable}, path: ${convertedDir?.path}`);
-                
-                if (uploadCount === 0 && uploadDir?.exists) {
-                    console.warn('Upload directory exists but no files found. Check if files are in subdirectories or excluded.');
-                }
-                
-                container.innerHTML = this.renderDatasetFilesInline(data, datasetUuid);
+                html += this.renderDatasetFilesInline(data, datasetUuid);
+                container.innerHTML = html;
                 
                 // Attach click handlers for clickable files
                 this.attachFileClickHandlers(container, datasetUuid);
@@ -906,27 +886,18 @@ class DatasetManager {
                 }
             }
 
-            // Check download permissions
-            let canDownload = true;
-            if (dataset) {
-                canDownload = await this.canDownloadDataset(dataset);
-            }
-
             const response = await fetch(`${getApiBasePath()}/dataset-files.php?dataset_uuid=${datasetUuid}`);
             const data = await response.json();
 
             if (data.success) {
-                // If user can't download, show restricted message
-                if (!canDownload) {
+                if (dataset && !(await this.canDownloadDataset(dataset))) {
                     filesContainer.innerHTML = `
-                        <div class="alert alert-info small mb-0">
-                            <i class="fas fa-info-circle me-2"></i>
-                            File access is restricted. Only ${dataset?.is_downloadable === 'only owner' ? 'the owner' : dataset?.is_downloadable === 'only team' ? 'team members' : 'authorized users'} can download files from this dataset.
+                        <div class="alert alert-info small mb-2 py-1">
+                            <i class="fas fa-eye me-1"></i>
+                            View-only: browse and dashboards allowed; download/export restricted.
                         </div>
                     `;
-                    return;
                 }
-
                 this.displayDatasetFiles(data);
             } else {
                 filesContainer.innerHTML = `<p class="text-muted small">${data.error || 'Failed to load files'}</p>`;
@@ -1155,37 +1126,6 @@ class DatasetManager {
             return;
         }
 
-        // Check download permissions before allowing file viewing
-        let dataset = this.currentDataset?.details || null;
-        if (!dataset) {
-            try {
-                const datasetResponse = await fetch(`${getApiBasePath()}/dataset-details.php?dataset_id=${datasetUuid}`);
-                if (datasetResponse.ok) {
-                    const datasetData = await datasetResponse.json();
-                    if (datasetData.success) {
-                        dataset = datasetData.dataset;
-                    }
-                }
-            } catch (error) {
-                console.warn('Could not fetch dataset details for permission check:', error);
-            }
-        }
-
-        if (dataset) {
-            const canDownload = await this.canDownloadDataset(dataset);
-            if (!canDownload) {
-                viewerContainer.innerHTML = `
-                    <div class="container-fluid p-4">
-                        <div class="alert alert-warning">
-                            <i class="fas fa-lock me-2"></i>
-                            File access is restricted. Only ${dataset.is_downloadable === 'only owner' ? 'the owner' : dataset.is_downloadable === 'only team' ? 'team members' : 'authorized users'} can access files from this dataset.
-                        </div>
-                    </div>
-                `;
-                return;
-            }
-        }
-
         // Show loading state
         viewerContainer.innerHTML = `
             <div class="container-fluid p-4">
@@ -1261,37 +1201,6 @@ class DatasetManager {
         if (!viewerContainer) {
             console.error('Viewer container not found');
             return;
-        }
-
-        // Check download permissions before allowing file viewing
-        let dataset = this.currentDataset?.details || null;
-        if (!dataset) {
-            try {
-                const datasetResponse = await fetch(`${getApiBasePath()}/dataset-details.php?dataset_id=${datasetUuid}`);
-                if (datasetResponse.ok) {
-                    const datasetData = await datasetResponse.json();
-                    if (datasetData.success) {
-                        dataset = datasetData.dataset;
-                    }
-                }
-            } catch (error) {
-                console.warn('Could not fetch dataset details for permission check:', error);
-            }
-        }
-
-        if (dataset) {
-            const canDownload = await this.canDownloadDataset(dataset);
-            if (!canDownload) {
-                viewerContainer.innerHTML = `
-                    <div class="container-fluid p-4">
-                        <div class="alert alert-warning">
-                            <i class="fas fa-lock me-2"></i>
-                            File access is restricted. Only ${dataset.is_downloadable === 'only owner' ? 'the owner' : dataset.is_downloadable === 'only team' ? 'team members' : 'authorized users'} can access files from this dataset.
-                        </div>
-                    </div>
-                `;
-                return;
-            }
         }
 
         // Show loading state
@@ -2386,7 +2295,7 @@ class DatasetManager {
                                 <option value="only team" ${dataset.is_downloadable === 'only team' ? 'selected' : ''}>Only Team</option>
                                 <option value="public" ${dataset.is_downloadable === 'public' ? 'selected' : ''}>Public</option>
                             </select>
-                            <small class="form-text text-muted d-block">Who can download this dataset</small>
+                            <small class="form-text text-muted d-block">Who can download/export copies (team members can still view in the portal)</small>
                         </div>
                         
                         <div class="mb-2">
