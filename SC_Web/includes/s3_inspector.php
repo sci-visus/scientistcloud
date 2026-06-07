@@ -191,3 +191,63 @@ function s3_inspector_key_allowed(string $key, string $rootPrefix): bool
     }
     return str_starts_with($key, $root);
 }
+
+/**
+ * Download one object to a local file.
+ *
+ * Ceph/RGW and similar gateways often return HTTP 200/206 bodies that the AWS SDK
+ * rejects on GetObject+SaveAs ("AWS HTTP error: (server): 200 OK"). Presigned URL
+ * + curl matches s3-download.php preview handling and works on those endpoints.
+ */
+function s3_inspector_download_object_to_file(
+    S3Client $client,
+    string $bucket,
+    string $key,
+    string $localPath
+): void {
+    if (function_exists('curl_init')) {
+        $cmd = $client->getCommand('GetObject', [
+            'Bucket' => $bucket,
+            'Key' => $key,
+        ]);
+        $signed = $client->createPresignedRequest($cmd, '+600 seconds');
+        $signedUrl = (string) $signed->getUri();
+        if ($signedUrl === '') {
+            throw new RuntimeException('Could not create presigned download URL for ' . $key);
+        }
+
+        $fp = fopen($localPath, 'wb');
+        if ($fp === false) {
+            throw new RuntimeException('Could not open temp file for ' . $key);
+        }
+
+        $ch = curl_init($signedUrl);
+        curl_setopt_array($ch, [
+            CURLOPT_FILE => $fp,
+            CURLOPT_FOLLOWLOCATION => true,
+            CURLOPT_CONNECTTIMEOUT => 30,
+            CURLOPT_TIMEOUT => 0,
+            CURLOPT_USERAGENT => 'ScientistCloud-Portal/s3-folder-zip',
+        ]);
+        $ok = curl_exec($ch);
+        $httpCode = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        $curlError = curl_error($ch);
+        curl_close($ch);
+        fclose($fp);
+
+        if (!$ok || !in_array($httpCode, [200, 206], true)) {
+            @unlink($localPath);
+            throw new RuntimeException(
+                'Download failed for ' . $key . ': HTTP ' . $httpCode
+                . ($curlError !== '' ? ' (' . $curlError . ')' : '')
+            );
+        }
+        return;
+    }
+
+    $client->getObject([
+        'Bucket' => $bucket,
+        'Key' => $key,
+        'SaveAs' => $localPath,
+    ]);
+}

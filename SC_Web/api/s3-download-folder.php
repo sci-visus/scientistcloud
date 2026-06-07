@@ -121,11 +121,7 @@ try {
             }
 
             $localPath = $tmpDir . '/file_' . $fileCount;
-            $client->getObject([
-                'Bucket' => $session['bucket'],
-                'Key' => $key,
-                'SaveAs' => $localPath,
-            ]);
+            s3_inspector_download_object_to_file($client, $session['bucket'], $key, $localPath);
             $tmpFiles[] = $localPath;
             $zip->addFile($localPath, $relativeName);
         }
