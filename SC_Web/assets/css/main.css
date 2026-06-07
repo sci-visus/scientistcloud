@@ -265,22 +265,8 @@ body {
 }
 
 .user-session-logout {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-end;
-  gap: 0.12rem;
-}
-
-.user-session-email {
-  font-size: 0.65rem;
-  color: var(--fg-color);
-  opacity: 0.85;
-  max-width: 14rem;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  line-height: 1.1;
-  padding-right: 0.1rem;
+  display: inline-flex;
+  align-items: center;
 }
 
 .sidebar h5, .details h5 {

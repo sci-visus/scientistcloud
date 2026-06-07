@@ -301,6 +301,8 @@ function formatDataset($dataset) {
         'folder_uuid' => $resolvedFolder,
         'team_uuid' => $dataset['team_uuid'] ?? $dataset['team_id'] ?? '',
         'user_id' => $dataset['user'] ?? $dataset['user_email'] ?? $dataset['user_id'] ?? '',
+        'owner_email' => trim((string) ($dataset['user'] ?? $dataset['user_email'] ?? $dataset['owner'] ?? $dataset['user_id'] ?? '')),
+        'user_email' => trim((string) ($dataset['user_email'] ?? $dataset['user'] ?? $dataset['owner'] ?? '')),
         'tags' => $tags,
         'preferred_dashboard' => $dataset['preferred_dashboard'] ?? $dataset['metadata']['preferred_dashboard'] ?? '',
         'is_public' => $is_public,

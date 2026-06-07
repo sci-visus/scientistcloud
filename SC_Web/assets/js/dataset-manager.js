@@ -1683,6 +1683,21 @@ class DatasetManager {
     }
 
     /**
+     * Owner email for permission / contact (team-shared and direct-share datasets).
+     */
+    getDatasetOwnerEmail(dataset) {
+        if (!dataset) return '';
+        return String(
+            dataset.owner_email ||
+            dataset.user ||
+            dataset.user_email ||
+            dataset.owner ||
+            dataset.user_id ||
+            ''
+        ).trim();
+    }
+
+    /**
      * True if the current user owns this dataset.
      */
     isDatasetOwner(dataset) {
@@ -2111,6 +2126,24 @@ class DatasetManager {
 
         await this.ensureUserContext();
         const isOwner = this.isDatasetOwner(dataset);
+        const ownerEmail = this.getDatasetOwnerEmail(dataset);
+        const isTeamOrSharedAccess = !isOwner && (
+            Boolean(dataset.team_uuid || dataset.team_name) ||
+            this.userInDatasetTeam(dataset) ||
+            dataset.is_owner === false
+        );
+        const ownerDetailHtml = ownerEmail ? `
+                        <div class="detail-item mb-2">
+                            <span class="detail-label">Owner:</span>
+                            <span class="detail-value">${this.escapeHtml(ownerEmail)}</span>
+                            ${isTeamOrSharedAccess ? `
+                            <div class="small text-muted mt-1">
+                                Contact the owner to request permissions or changes.
+                            </div>
+                            ` : ''}
+                        </div>
+        ` : '';
+        const teamDisplay = dataset.team_name || dataset.team_uuid || 'None';
         const ownerActionButtons = isOwner ? `
                         <button type="button" class="btn btn-sm btn-outline-primary" data-action="share" data-dataset-id="${dataset.id || dataset.uuid}">
                             <i class="fas fa-share"></i> Share
@@ -2191,6 +2224,8 @@ class DatasetManager {
                             <span class="detail-value">${this.escapeHtml(tagsValue || 'None')}</span>
                         </div>
                         
+                        ${ownerDetailHtml}
+                        
                         <div class="detail-item mb-2">
                             <span class="detail-label">Folder:</span>
                             <span class="detail-value">${this.escapeHtml(folderName)}</span>
@@ -2198,7 +2233,7 @@ class DatasetManager {
                         
                         <div class="detail-item mb-2">
                             <span class="detail-label">Team/Group:</span>
-                            <span class="detail-value">${this.escapeHtml(dataset.team_uuid || 'None')}</span>
+                            <span class="detail-value">${this.escapeHtml(teamDisplay)}</span>
                         </div>
                         
                         <div class="detail-item mb-2">

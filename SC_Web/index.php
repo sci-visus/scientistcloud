@@ -117,11 +117,6 @@ $loggedInEmail = trim((string) ($user['email'] ?? ($_SESSION['user_email'] ?? ''
             <button type="button" class="btn btn-outline-light" id="logoutBtn" title="Logout">
               <i class="fas fa-sign-out-alt"></i> Logout
             </button>
-            <?php if ($loggedInEmail !== ''): ?>
-            <span class="user-session-email" title="Signed in as <?php echo htmlspecialchars($loggedInEmail); ?>">
-              <?php echo htmlspecialchars($loggedInEmail); ?>
-            </span>
-            <?php endif; ?>
           </div>
         </div>
       </div>
