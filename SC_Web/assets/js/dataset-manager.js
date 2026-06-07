@@ -4464,8 +4464,10 @@ class DatasetManager {
      * Format date
      */
     formatDate(dateString) {
+        if (typeof formatPortalDate === 'function') {
+            return formatPortalDate(dateString);
+        }
         if (!dateString) return 'Unknown';
-        
         const date = new Date(dateString);
         return date.toLocaleDateString() + ' ' + date.toLocaleTimeString();
     }

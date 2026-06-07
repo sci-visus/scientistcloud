@@ -421,11 +421,16 @@ class JobManager {
 
     getTimeInfo(job) {
         const parts = [];
+        const formatTime = (value) => (
+            typeof formatPortalDate === 'function'
+                ? formatPortalDate(value)
+                : new Date(value).toLocaleString()
+        );
         if (job.created_at) {
-            parts.push(`Created: ${new Date(job.created_at).toLocaleString()}`);
+            parts.push(`Created: ${formatTime(job.created_at)}`);
         }
         if (job.updated_at) {
-            parts.push(`Updated: ${new Date(job.updated_at).toLocaleString()}`);
+            parts.push(`Updated: ${formatTime(job.updated_at)}`);
         }
         return parts.length ? `<small class="text-muted d-block mt-2">${parts.join(' · ')}</small>` : '';
     }

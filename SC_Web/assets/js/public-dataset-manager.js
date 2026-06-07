@@ -627,6 +627,9 @@ class PublicDatasetManager {
     }
 
     formatDate(dateString) {
+        if (typeof formatPortalDate === 'function') {
+            return formatPortalDate(dateString, 'N/A');
+        }
         if (!dateString) return 'N/A';
         const date = new Date(dateString);
         return date.toLocaleDateString() + ' ' + date.toLocaleTimeString();

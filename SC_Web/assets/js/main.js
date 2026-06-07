@@ -721,13 +721,36 @@ function formatFileSize(bytes) {
 }
 
 /**
+ * Company default display timezone (Utah / Mountain Time).
+ * TODO: replace with per-user preference when available.
+ */
+const PORTAL_DISPLAY_TIMEZONE = 'America/Denver';
+const PORTAL_TIMEZONE_LABEL = 'MT';
+
+/**
+ * Format an ISO or parseable date string in Mountain Time with MT suffix.
+ */
+function formatPortalDate(dateString, emptyLabel = 'Unknown') {
+    if (!dateString) return emptyLabel;
+
+    const date = new Date(dateString);
+    if (Number.isNaN(date.getTime())) return emptyLabel;
+
+    const options = { timeZone: PORTAL_DISPLAY_TIMEZONE };
+    return (
+        date.toLocaleDateString(undefined, options) +
+        ' ' +
+        date.toLocaleTimeString(undefined, options) +
+        ' ' +
+        PORTAL_TIMEZONE_LABEL
+    );
+}
+
+/**
  * Format date
  */
 function formatDate(dateString) {
-    if (!dateString) return 'Unknown';
-    
-    const date = new Date(dateString);
-    return date.toLocaleDateString() + ' ' + date.toLocaleTimeString();
+    return formatPortalDate(dateString);
 }
 
 /**
