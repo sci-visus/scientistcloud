@@ -27,7 +27,7 @@
 #   -sw, --sclib-web          Both
 #   -x, --nginx-only          Nginx only (still runs git pull first)
 #   -z, --dozzle-only         Dozzle only (container log viewer at /dozzle/)
-#   -dm, -ovs, -vtk, -plotly  Single dashboard rebuild (uses build_dashboard.sh, then compose up)
+#   -dm, -ovs, -vtk, -plotly, -strain  Single dashboard rebuild (build_dashboard.sh, then compose up)
 #   --dashboards-only         Skip s/w; only dashboard pipeline (+ x if also passed)
 #
 # Examples:
@@ -35,6 +35,7 @@
 #   ./allServicesStart.sh s w
 #   ./allServicesStart.sh d x          # all enabled dashboards + nginx
 #   ./allServicesStart.sh w d          # portal + all dashboards (auth/utils fixes in images)
+#   ./allServicesStart.sh -strain      # ORNL CHESS Strain only (git pull + NSDF sync + rebuild)
 #   ./allServicesStart.sh -dm          # Dark Matter only
 #   ./allServicesStart.sh -ovs         # OpenVisusSlice only
 #   ./allServicesStart.sh --dashboards-only -dm
@@ -123,6 +124,12 @@ for arg in "$@"; do
             DASHBOARD_ONLY_REGISTRY_KEY="3DPlotly"
             DASHBOARD_ONLY_SERVICE="3dplotly"
             DASHBOARD_ONLY_CONTAINER="dashboard_3dplotly"
+            ;;
+        -strain|--strain-only|--ornl-chess-strain-only)
+            GIT_PULL_ONLY=false; DO_DASHBOARDS=true
+            DASHBOARD_ONLY_REGISTRY_KEY="ORNL_CHESS_strain"
+            DASHBOARD_ONLY_SERVICE="ornl_chess_strain"
+            DASHBOARD_ONLY_CONTAINER="dashboard_ornl_chess_strain"
             ;;
         --skip-main|--portal-only)
             : # no-op; legacy Visus main stack is not started
@@ -533,6 +540,10 @@ mode_dashboards() {
     if [ -n "$DASHBOARD_ONLY_REGISTRY_KEY" ]; then
         export SC_DASHBOARD_BUILD_NO_CACHE=1
         echo "🔄 Single-dashboard rebuild: SC_DASHBOARD_BUILD_NO_CACHE=1"
+        if [ "$DASHBOARD_ONLY_REGISTRY_KEY" = "ORNL_CHESS_strain" ]; then
+            echo "   📡 ORNL CHESS Strain: syncing external nsdf_dashboard checkout"
+            sync_ornl_nsdf_dashboard
+        fi
     fi
 
     local dashboards
@@ -668,7 +679,7 @@ print_summary() {
     echo "Modes run:"
     $DO_SCLIB && echo "  s — SCLib"
     $DO_WEB && echo "  w — portal"
-    $DO_DASHBOARDS && echo "  d — dashboards"
+    $DO_DASHBOARDS && echo "  d — dashboards${DASHBOARD_ONLY_REGISTRY_KEY:+ ($DASHBOARD_ONLY_REGISTRY_KEY only)}"
     $DO_NGINX && echo "  x — nginx (+ dozzle)"
     $DO_DOZZLE && ! $DO_NGINX && echo "  z — dozzle"
     echo ""
