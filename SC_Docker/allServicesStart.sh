@@ -526,9 +526,15 @@ mode_dashboards() {
     sync_env_files || true
     pushd "$DASHBOARDS_DIR" >/dev/null
 
+    # Single-dashboard flags (-strain, -dm, …) only need that dashboard's base image;
+    # build_dashboard.sh builds the matching base on demand if it is missing.
     if [ -x ./docker/bases/build-base-images.sh ]; then
-        echo "🐳 SC dashboard base images (sc-bokeh / sc-plotly / sc-4d)..."
-        ./docker/bases/build-base-images.sh 2>&1 | grep -E '(Building|✅|❌|sc-)' || true
+        if [ -n "$DASHBOARD_ONLY_REGISTRY_KEY" ]; then
+            echo "⏭️  Skipping full base-image rebuild (single-dashboard mode; build_dashboard.sh ensures the needed base exists)"
+        else
+            echo "🐳 SC dashboard base images (sc-bokeh / sc-plotly / sc-4d)..."
+            ./docker/bases/build-base-images.sh 2>&1 | grep -E '(Building|✅|❌|sc-)' || true
+        fi
     fi
 
     [ -f ./scripts/regenerate_registry.sh ] && ./scripts/regenerate_registry.sh 2>&1 | grep -E '(✅|⚠️|❌|Registering|Port registry)' || true
@@ -538,8 +544,11 @@ mode_dashboards() {
         fi
     fi
     if [ -n "$DASHBOARD_ONLY_REGISTRY_KEY" ]; then
-        export SC_DASHBOARD_BUILD_NO_CACHE=1
-        echo "🔄 Single-dashboard rebuild: SC_DASHBOARD_BUILD_NO_CACHE=1"
+        if [ "${SC_DASHBOARD_BUILD_NO_CACHE:-}" = "1" ]; then
+            echo "🔄 Single-dashboard rebuild with SC_DASHBOARD_BUILD_NO_CACHE=1"
+        else
+            echo "🔄 Single-dashboard rebuild (Docker layer cache enabled; export SC_DASHBOARD_BUILD_NO_CACHE=1 to force full rebuild)"
+        fi
         if [ "$DASHBOARD_ONLY_REGISTRY_KEY" = "ORNL_CHESS_strain" ]; then
             echo "   📡 ORNL CHESS Strain: syncing external nsdf_dashboard checkout"
             sync_ornl_nsdf_dashboard
