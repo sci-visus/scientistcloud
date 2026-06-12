@@ -315,6 +315,14 @@ if ($defaultShareSeconds > $shareMaxSeconds) {
       gap: 0.45rem;
       flex-wrap: wrap;
     }
+    .s3-file-list-scroll {
+      max-height: min(45vh, 420px);
+      overflow-y: auto;
+      border-radius: 0.375rem;
+    }
+    .s3-file-list-scroll .list-group {
+      margin-bottom: 0;
+    }
     .s3-preview {
       border: 1px solid var(--sc-border);
       border-radius: 6px;
@@ -487,7 +495,8 @@ if ($defaultShareSeconds > $shareMaxSeconds) {
           </a>
         </div>
 
-        <ul class="list-group shadow-sm">
+        <div class="s3-file-list-scroll shadow-sm">
+        <ul class="list-group">
           <?php if ($rel !== ''): ?>
             <?php
               $parentRel = '';
@@ -589,6 +598,7 @@ if ($defaultShareSeconds > $shareMaxSeconds) {
             <li class="list-group-item text-muted">This folder is empty (under prefix <code class="key"><?php echo htmlspecialchars($full); ?></code>).</li>
           <?php endif; ?>
         </ul>
+        </div>
 
         <?php if (!empty($list['next_token'])): ?>
           <div class="mt-2">
@@ -816,6 +826,9 @@ if ($defaultShareSeconds > $shareMaxSeconds) {
           previewPanel.style.display = 'block';
           previewTitle.textContent = 'Preview — ' + fileName;
           previewContent.textContent = 'Loading...';
+          requestAnimationFrame(function () {
+            previewPanel.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+          });
 
           try {
             const res = await fetch(endpoint, { credentials: 'same-origin' });
