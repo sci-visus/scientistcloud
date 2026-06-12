@@ -1,6 +1,6 @@
 # Dashboard Services - Auto-generated from dashboard-registry.json
 # DO NOT EDIT MANUALLY - Regenerate using scripts/generate_docker_compose.sh
-# Generated: Thu May 21 16:25:49 CDT 2026
+# Generated: Fri Jun 12 13:42:46 CDT 2026
 
 services:
   # 3D Plotly Dashboard
@@ -216,6 +216,7 @@ services:
       - DEPLOY_SERVER=${DEPLOY_SERVER}
       - DB_NAME=${DB_NAME}
       - MONGO_URL=${MONGO_URL}
+      - PYTHONPATH=${PYTHONPATH}
       - DOMAIN_NAME=${DOMAIN_NAME}
       - DASHBOARD_PORT=8059
     ports:
@@ -226,6 +227,9 @@ services:
     volumes:
       - ${VISUS_DB}:/mnt/visus_db
       - ${VISUS_DATASETS}:/mnt/visus_datasets
+    group_add:
+      - "33"
+
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8059/ORNL_CHESS_strain/"]
       interval: 30s

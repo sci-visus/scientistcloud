@@ -135,6 +135,19 @@ while IFS= read -r DASHBOARD_NAME; do
     # Get environment variables
     ENV_VARS=$(echo "$DASHBOARD_CONFIG" | jq -r '.environment_variables // {} | to_entries[] | "      - \(.key)=${\(.key)}"' || echo "")
     
+    # group_add (host www-data GID) for dashboards that write under /mnt/visus_datasets/upload
+    VISUS_DATASET_WRITE=$(echo "$DASHBOARD_CONFIG" | jq -r '.visus_dataset_write // false')
+    GROUP_ADD_LINES=""
+    GROUP_ADD_RAW=$(echo "$DASHBOARD_CONFIG" | jq -r '.group_add // [] | .[]' 2>/dev/null || echo "")
+    if [ -n "$GROUP_ADD_RAW" ]; then
+        while IFS= read -r gid; do
+            [ -n "$gid" ] || continue
+            GROUP_ADD_LINES="${GROUP_ADD_LINES}      - \"${gid}\"\n"
+        done <<< "$GROUP_ADD_RAW"
+    elif [ "$VISUS_DATASET_WRITE" = "true" ]; then
+        GROUP_ADD_LINES="      - \"33\"\n"
+    fi
+
     # Get volume mounts
     VOLUME_MOUNTS=$(echo "$DASHBOARD_CONFIG" | jq -r '.volume_mounts // [] | .[] | "      - \(.host):\(.container)"' || echo "")
     # Add default volumes if not specified
@@ -243,6 +256,16 @@ while IFS= read -r DASHBOARD_NAME; do
                 COMPOSE_CONTENT="${COMPOSE_CONTENT}${VOL}\n"
             fi
         done <<< "$VOLUME_MOUNTS"
+    fi
+
+    # Supplementary groups (match host www-data GID for mounted upload dirs)
+    if [ -n "$GROUP_ADD_LINES" ]; then
+        COMPOSE_CONTENT="${COMPOSE_CONTENT}    group_add:\n"
+        while IFS= read -r GID_LINE; do
+            if [ -n "$GID_LINE" ]; then
+                COMPOSE_CONTENT="${COMPOSE_CONTENT}${GID_LINE}\n"
+            fi
+        done <<< "$GROUP_ADD_LINES"
     fi
     
     # Health check

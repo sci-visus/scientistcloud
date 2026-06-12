@@ -73,7 +73,13 @@ RUN groupadd -f www-data && \
     (id -u bokehuser >/dev/null 2>&1 || useradd -m -s /bin/bash -u 10001 bokehuser) && \
     usermod -a -G www-data bokehuser && \
     chown -R bokehuser:bokehuser /app
-USER bokehuser
+# visus_dataset_write: fix mounted upload dirs, then run as bokehuser
+RUN apt-get update && apt-get install -y --no-install-recommends gosu && apt-get clean && rm -rf /var/lib/apt/lists/*
+COPY fix_permissions_entrypoint.sh /usr/local/bin/fix_permissions_entrypoint.sh
+RUN chmod +x /usr/local/bin/fix_permissions_entrypoint.sh
+ENV DASHBOARD_RUN_USER=bokehuser
+USER root
+ENTRYPOINT ["/usr/local/bin/fix_permissions_entrypoint.sh"]
 # Set environment variables from configuration
 ENV SECRET_KEY=${SECRET_KEY}
 ENV DEPLOY_SERVER=${DEPLOY_SERVER}
@@ -90,7 +96,6 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
   CMD curl -f http://localhost:8059/ORNL_CHESS_strain/ || exit 1
 
 # Run dashboard entry point (match base image runtime user)
-USER bokehuser
 
 CMD ["sh", "-c", "WS_ORIGIN=${DOMAIN_NAME:-scientistcloud.com}; python3 -m bokeh serve ./ORNL_CHESS_strain.py --allow-websocket-origin=$WS_ORIGIN --allow-websocket-origin=scientistcloud.com --allow-websocket-origin=www.scientistcloud.com --allow-websocket-origin=127.0.0.1 --allow-websocket-origin=0.0.0.0 --port=8059 --address=0.0.0.0 --use-xheaders --session-token-expiration=86400"]
 

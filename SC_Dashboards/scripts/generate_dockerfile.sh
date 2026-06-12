@@ -79,6 +79,7 @@ else
 fi
 BUILD_ARGS=$(jq -r '.build_args // {} | keys[]' "$CONFIG_FILE" 2>/dev/null | tr '\n' ' ' || echo "")
 ENVIRONMENT_VARS=$(jq -r '.environment_variables // {}' "$CONFIG_FILE")
+VISUS_DATASET_WRITE=$(jq -r '.visus_dataset_write // false' "$CONFIG_FILE")
 
 # For flat structure, entry point should match dashboard name
 # Default to {name}.py if entry_point is not specified or matches pattern
@@ -285,6 +286,44 @@ if echo "$BASE_IMAGE" | grep -qiE "(sc-4d-dashboard|sc-bokeh-dashboard|sc-plotly
         ' "$PERMS_FILE" "$OUTPUT_FILE" > "${OUTPUT_FILE}.ins" && mv "${OUTPUT_FILE}.ins" "$OUTPUT_FILE"
     fi
     rm -f "$PERMS_FILE" "${OUTPUT_FILE}.bak" 2>/dev/null || true
+fi
+
+# Optional entrypoint: fix upload dir permissions at container start (visus_dataset_write in JSON)
+if [ "$VISUS_DATASET_WRITE" = "true" ] && echo "$BASE_IMAGE" | grep -qiE "(sc-4d-dashboard|sc-bokeh-dashboard|sc-plotly-dashboard|4d-dashboard|bokeh-dashboard|plotly-dashboard|magicscan)"; then
+    if echo "$BASE_IMAGE" | grep -qiE "plotly"; then
+        ENTRYPOINT_RUN_USER="plotlyuser"
+    else
+        ENTRYPOINT_RUN_USER="bokehuser"
+    fi
+    ENTRYPOINT_SECTION="# visus_dataset_write: fix mounted upload dirs, then run as ${ENTRYPOINT_RUN_USER}\n"
+    ENTRYPOINT_SECTION="${ENTRYPOINT_SECTION}RUN apt-get update && apt-get install -y --no-install-recommends gosu && apt-get clean && rm -rf /var/lib/apt/lists/*\n"
+    ENTRYPOINT_SECTION="${ENTRYPOINT_SECTION}COPY fix_permissions_entrypoint.sh /usr/local/bin/fix_permissions_entrypoint.sh\n"
+    ENTRYPOINT_SECTION="${ENTRYPOINT_SECTION}RUN chmod +x /usr/local/bin/fix_permissions_entrypoint.sh\n"
+    ENTRYPOINT_SECTION="${ENTRYPOINT_SECTION}ENV DASHBOARD_RUN_USER=${ENTRYPOINT_RUN_USER}\n"
+    ENTRYPOINT_SECTION="${ENTRYPOINT_SECTION}USER root\n"
+    ENTRYPOINT_SECTION="${ENTRYPOINT_SECTION}ENTRYPOINT [\"/usr/local/bin/fix_permissions_entrypoint.sh\"]\n"
+
+    EP_FILE="$(mktemp)"
+    printf '%b' "$ENTRYPOINT_SECTION" > "$EP_FILE"
+    if grep -q "^USER ${ENTRYPOINT_RUN_USER}$" "$OUTPUT_FILE"; then
+        awk -v user_line="USER ${ENTRYPOINT_RUN_USER}" -v epfile="$EP_FILE" '
+            FNR==NR { ep = ep $0 ORS; next }
+            $0 == user_line && !seen {
+                printf "%s", ep
+                seen = 1
+                next
+            }
+            $0 == user_line && seen { next }
+            { print }
+        ' "$EP_FILE" "$OUTPUT_FILE" > "${OUTPUT_FILE}.ep" && mv "${OUTPUT_FILE}.ep" "$OUTPUT_FILE"
+    else
+        awk -v epfile="$EP_FILE" '
+            FNR==NR { ep = ep $0 ORS; next }
+            /^CMD / && !inserted { printf "%s", ep; inserted = 1 }
+            { print }
+        ' "$EP_FILE" "$OUTPUT_FILE" > "${OUTPUT_FILE}.ep" && mv "${OUTPUT_FILE}.ep" "$OUTPUT_FILE"
+    fi
+    rm -f "$EP_FILE"
 fi
 
 echo "✅ Generated Dockerfile: $OUTPUT_FILE"

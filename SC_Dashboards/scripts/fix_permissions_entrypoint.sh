@@ -1,43 +1,48 @@
 #!/bin/bash
-# Entrypoint script to fix permissions for dashboard sessions
-# This script runs as root to fix permissions, then switches to bokehuser
+# Entrypoint: ensure mounted upload dataset dirs are group-writable, then drop to dashboard user.
+# Used when dashboard JSON sets visus_dataset_write (catalog.json, sessions, etc.).
 
 set -e
 
-# Function to fix permissions on a directory
+RUN_USER="${DASHBOARD_RUN_USER:-bokehuser}"
+
 fix_dir_permissions() {
     local dir="$1"
     if [ -d "$dir" ]; then
-        # Try to set group to www-data and add write permissions for group
-        chgrp -R www-data "$dir" 2>/dev/null || echo "⚠️ Could not change group of $dir"
-        chmod -R g+w "$dir" 2>/dev/null || echo "⚠️ Could not add write permissions to $dir"
-        echo "✅ Fixed permissions for $dir"
+        chgrp www-data "$dir" 2>/dev/null || true
+        chmod g+w "$dir" 2>/dev/null || echo "⚠️  Could not add group write on $dir"
     fi
 }
 
-# Fix permissions on visus_datasets mount point
-if [ -d "/mnt/visus_datasets" ]; then
-    echo "🔧 Fixing permissions on /mnt/visus_datasets..."
-    
-    # Fix permissions on upload directory
-    if [ -d "/mnt/visus_datasets/upload" ]; then
-        # For each dataset directory, ensure sessions subdirectory is writable
-        find /mnt/visus_datasets/upload -maxdepth 1 -type d | while read dataset_dir; do
-            if [ "$dataset_dir" != "/mnt/visus_datasets/upload" ]; then
-                sessions_dir="${dataset_dir}/sessions"
-                if [ ! -d "$sessions_dir" ]; then
-                    # Try to create it
-                    mkdir -p "$sessions_dir" 2>/dev/null || echo "⚠️ Could not create $sessions_dir"
-                fi
-                if [ -d "$sessions_dir" ]; then
-                    fix_dir_permissions "$sessions_dir"
-                fi
-            fi
-        done
-    fi
+if [ -d "/mnt/visus_datasets/upload" ]; then
+    echo "🔧 Ensuring /mnt/visus_datasets/upload dataset dirs are group-writable..."
+    find /mnt/visus_datasets/upload -mindepth 1 -maxdepth 1 -type d | while read -r dataset_dir; do
+        fix_dir_permissions "$dataset_dir"
+        sessions_dir="${dataset_dir}/sessions"
+        if [ ! -d "$sessions_dir" ]; then
+            mkdir -p "$sessions_dir" 2>/dev/null || true
+        fi
+        fix_dir_permissions "$sessions_dir"
+    done
 fi
 
-# Switch to bokehuser and execute the command
-exec gosu bokehuser "$@"
+drop_privileges() {
+    local cmd=("$@")
+    if [ "${#cmd[@]}" -eq 0 ]; then
+        echo "❌ No command provided to entrypoint"
+        exit 1
+    fi
+    if command -v gosu >/dev/null 2>&1; then
+        exec gosu "$RUN_USER" "${cmd[@]}"
+    fi
+    if command -v runuser >/dev/null 2>&1; then
+        exec runuser -u "$RUN_USER" -- "${cmd[@]}"
+    fi
+    if command -v su >/dev/null 2>&1; then
+        exec su -s /bin/sh "$RUN_USER" -c "$(printf '%q ' "${cmd[@]}")"
+    fi
+    echo "❌ Cannot drop privileges to $RUN_USER (install gosu)"
+    exit 1
+}
 
-
+drop_privileges "$@"

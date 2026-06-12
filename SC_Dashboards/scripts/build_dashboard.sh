@@ -210,6 +210,17 @@ if [ -n "$SCLIB_DASHBOARDS_DIR" ] && [ -d "$SCLIB_DASHBOARDS_DIR" ]; then
     fi
 fi
 
+# Entrypoint for visus_dataset_write (catalog.json, sessions under upload/<uuid>)
+VISUS_DATASET_WRITE=$(jq -r '.visus_dataset_write // false' "$CONFIG_FILE")
+if [ "$VISUS_DATASET_WRITE" = "true" ]; then
+    if [ ! -f "$SCRIPT_DIR/fix_permissions_entrypoint.sh" ]; then
+        echo "❌ visus_dataset_write=true but missing $SCRIPT_DIR/fix_permissions_entrypoint.sh"
+        exit 1
+    fi
+    cp "$SCRIPT_DIR/fix_permissions_entrypoint.sh" "$BUILD_CONTEXT/fix_permissions_entrypoint.sh"
+    echo "📋 Staged fix_permissions_entrypoint.sh (visus_dataset_write)"
+fi
+
 # Copy Dockerfile
 if [ -f "$DOCKERFILE" ]; then
     cp "$DOCKERFILE" "$BUILD_CONTEXT/Dockerfile"
