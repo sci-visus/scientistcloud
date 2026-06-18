@@ -15,6 +15,67 @@ function getPortalBasePath() {
     return isLocal ? '' : '/portal';
 }
 
+/**
+ * Redirect to portal login, returning to the current page after Auth0 sign-in.
+ * Used when API calls return 401 (session expired).
+ */
+function redirectToPortalLogin() {
+    if (window.__portalLoginRedirectActive) {
+        return;
+    }
+    window.__portalLoginRedirectActive = true;
+    const base = getPortalBasePath();
+    const loginPath = base === '' ? '/login.php' : `${base}/login.php`;
+    const url = new URL(loginPath, window.location.origin);
+    url.searchParams.set('return_to', window.location.href);
+    window.location.replace(url.toString());
+}
+
+function _portalApiPathFromFetchInput(input) {
+    if (typeof input === 'string') {
+        return input.split('?')[0];
+    }
+    if (input && typeof input.url === 'string') {
+        return input.url.split('?')[0];
+    }
+    return '';
+}
+
+function _isPortalApiFetch(input) {
+    let path = _portalApiPathFromFetchInput(input);
+    if (!path) {
+        return false;
+    }
+    if (path.startsWith('http://') || path.startsWith('https://')) {
+        try {
+            path = new URL(path).pathname;
+        } catch (e) {
+            return false;
+        }
+    }
+    return path === '/api' || path.startsWith('/api/')
+        || path === '/portal/api' || path.startsWith('/portal/api/');
+}
+
+/**
+ * Wrap window.fetch so expired portal sessions redirect to login instead of
+ * surfacing generic "Failed to load …" errors across the UI.
+ */
+(function installPortalFetchAuthRedirect() {
+    if (window.__portalFetchAuthInstalled) {
+        return;
+    }
+    window.__portalFetchAuthInstalled = true;
+    const nativeFetch = window.fetch.bind(window);
+    window.fetch = async function portalFetchWithAuthRedirect(input, init) {
+        const response = await nativeFetch(input, init);
+        if (_isPortalApiFetch(input) && response.status === 401) {
+            redirectToPortalLogin();
+        }
+        return response;
+    };
+})();
+
 function openInspectS3() {
     const base = getPortalBasePath();
     const path = base === '' ? '/s3.php' : `${base}/s3.php`;

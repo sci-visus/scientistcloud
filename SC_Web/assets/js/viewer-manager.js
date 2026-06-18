@@ -631,7 +631,9 @@ class ViewerManager {
             
             // Handle authentication errors
             if (response.status === 401) {
-                console.error('Authentication required for dataset status check');
+                if (typeof redirectToPortalLogin === 'function') {
+                    redirectToPortalLogin();
+                }
                 return 'error';
             }
             
