@@ -2519,6 +2519,9 @@ class DatasetManager {
         // 5. Fallback to OpenVisusSlice
         
         let selectedDashboard = dashboardTypeOverride;
+        if (selectedDashboard && window.viewerManager?.resolveDashboardId) {
+            selectedDashboard = window.viewerManager.resolveDashboardId(selectedDashboard) || selectedDashboard;
+        }
 
         let datasetForSensor = datasetDetails || (this.currentDataset && this.currentDataset.details);
         if (!datasetForSensor || !datasetForSensor.uuid) {
@@ -2535,11 +2538,7 @@ class DatasetManager {
                 console.warn('Could not fetch dataset for ORNL strain routing:', error);
             }
         }
-        if (this.isOrnlChessStrainDataset(datasetForSensor)) {
-            selectedDashboard = 'ORNL_CHESS_strain';
-            console.log('ORNL_CHESS_STRAIN: forcing ORNL_CHESS_strain (other dashboards cannot load this data)');
-        }
-        
+
         // If no override, check dataset's preferred_dashboard field
         if (!selectedDashboard) {
             let dataset = datasetForSensor || datasetDetails;
@@ -2650,12 +2649,16 @@ class DatasetManager {
             }
         }
         
-        // Fallback to OpenVisusSlice if nothing else selected (never for ORNL strain JSON)
+        // Fallback default when nothing else selected
         if (!selectedDashboard) {
             selectedDashboard = this.isOrnlChessStrainDataset(datasetForSensor)
                 ? 'ORNL_CHESS_strain'
                 : 'OpenVisusSlice';
             console.log('Using default dashboard:', selectedDashboard);
+        }
+
+        if (selectedDashboard && window.viewerManager?.resolveDashboardId) {
+            selectedDashboard = window.viewerManager.resolveDashboardId(selectedDashboard) || selectedDashboard;
         }
         
         // Load dashboard using viewer manager
@@ -2804,7 +2807,11 @@ class DatasetManager {
                     'MagicScan': 'magicscan',
                     'ORNL CHESS Strain': 'ORNL_CHESS_strain',
                     'ornl chess strain': 'ORNL_CHESS_strain',
-                    'ORNL_CHESS_strain': 'ORNL_CHESS_strain'
+                    'ORNL_CHESS_strain': 'ORNL_CHESS_strain',
+                    'S3 Browser': 'S3Browser',
+                    's3 browser': 'S3Browser',
+                    'S3Browser': 'S3Browser',
+                    's3_browser': 'S3Browser'
                 };
                 return dashboardNameMapping[raw] || dashboardNameMapping[raw.toLowerCase()] || raw;
             };
@@ -2820,16 +2827,16 @@ class DatasetManager {
             } catch (e) {
                 console.warn('Could not read sensor for dashboard routing:', e);
             }
-            if (ornlStrainDataset) {
-                console.log('✅ ORNL_CHESS_STRAIN dataset → ORNL_CHESS_strain only (OpenVisusSlice/DarkMatter cannot load this data)');
-                return 'ORNL_CHESS_strain';
-            }
 
             const preferredNormalized = normalizePreferredDashboardId(preferredDashboardId);
             if (preferredNormalized) {
-                // Explicit user/dataset preference should win over auto-selection.
                 console.log(`✅ Using preferred dashboard override: ${preferredDashboardId} -> ${preferredNormalized}`);
                 return preferredNormalized;
+            }
+
+            if (ornlStrainDataset) {
+                console.log('✅ ORNL_CHESS_STRAIN dataset → default ORNL_CHESS_strain (S3 Browser available in dropdown)');
+                return 'ORNL_CHESS_strain';
             }
 
             // Step 1: Get dataset dimension

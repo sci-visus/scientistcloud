@@ -141,10 +141,15 @@ class ViewerManager {
             onlyOrnlStrain = false;
         }
 
+        const allowDashboardForOrnlStrain = (dashboardId) => {
+            return dashboardId === 'ORNL_CHESS_strain' || dashboardId === 'S3Browser';
+        };
+
         // Add options from loaded viewers
         // Use dashboard id as value for consistency
         Object.entries(this.viewers).forEach(([viewerKey, viewer]) => {
-            if (onlyOrnlStrain && (viewer.id || viewerKey) !== 'ORNL_CHESS_strain') {
+            const dashboardId = viewer.id || viewerKey || viewer.type;
+            if (onlyOrnlStrain && !allowDashboardForOrnlStrain(dashboardId)) {
                 return;
             }
             const option = document.createElement('option');
@@ -166,8 +171,14 @@ class ViewerManager {
         // Set default viewer if available
         if (viewerType.options.length > 0) {
             if (onlyOrnlStrain) {
-                const ornlOpt = Array.from(viewerType.options).find(o => o.value === 'ORNL_CHESS_strain');
-                viewerType.value = ornlOpt ? ornlOpt.value : viewerType.options[0].value;
+                const ds = window.datasetManager?.currentDataset?.details || window.datasetManager?.currentDataset;
+                const preferredId = this.resolveDashboardId(ds?.preferred_dashboard || '');
+                let target = 'ORNL_CHESS_strain';
+                if (preferredId === 'S3Browser') {
+                    target = 'S3Browser';
+                }
+                const match = Array.from(viewerType.options).find(o => o.value === target);
+                viewerType.value = match ? match.value : viewerType.options[0].value;
             } else {
                 viewerType.value = viewerType.options[0].value;
             }
