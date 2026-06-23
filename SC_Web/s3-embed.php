@@ -109,5 +109,6 @@ if ($queryBase === '?') {
 }
 
 $browserShareUrl = $datasetId !== '' ? dataset_s3_embed_url($datasetId) : '';
+$showStorageMetadata = true;
 
 require __DIR__ . '/includes/s3_inspector_embed_render.php';

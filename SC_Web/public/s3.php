@@ -90,5 +90,6 @@ if ($embedMode) {
 }
 
 $browserShareUrl = $datasetId !== '' ? public_s3_browser_share_url($datasetId) : '';
+$showStorageMetadata = false;
 
 require __DIR__ . '/../includes/s3_inspector_embed_render.php';

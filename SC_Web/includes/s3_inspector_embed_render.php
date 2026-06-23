@@ -5,7 +5,7 @@
  * Expects variables from the including script:
  * $pageTitle, $portalHomeLabel, $portalHomeHref, $selfPath, $apiDl, $apiFolderDl,
  * $datasetId, $bootstrapError, $connected, $session, $list, $shareDurationOptions,
- * $defaultShareSeconds, $queryBase, $embedMode, $browserShareUrl
+ * $defaultShareSeconds, $queryBase, $embedMode, $browserShareUrl, $showStorageMetadata
  */
 
 declare(strict_types=1);
@@ -51,6 +51,7 @@ if (!function_exists('s3_embed_object_url')) {
 }
 
 $embedMode = !empty($embedMode);
+$showStorageMetadata = isset($showStorageMetadata) ? (bool) $showStorageMetadata : true;
 $datasetName = $connected ? (string) ($session['dataset_name'] ?? 'Dataset') : '';
 $assetsPrefix = $embedMode ? 'assets' : '../assets';
 $logoPath = $embedMode ? 'assets/images/scientistcloud-logo.png' : '../assets/images/scientistcloud-logo.png';
@@ -116,17 +117,25 @@ $logoPath = $embedMode ? 'assets/images/scientistcloud-logo.png' : '../assets/im
             $relQuery .= ($relQuery !== '' ? '&' : '') . 'embed=1';
         }
         $currentFolderDl = $apiFolderDl . '?rel=' . rawurlencode($rel) . ($datasetId !== '' ? ('&dataset=' . rawurlencode($datasetId)) : '');
+        $breadcrumbRootLabel = $showStorageMetadata
+            ? ($root === '' ? 'bucket' : $root)
+            : ($datasetName !== '' ? $datasetName : 'Dataset files');
       ?>
+      <?php if ($showStorageMetadata || !$embedMode): ?>
       <div class="card shadow-sm mb-3">
         <div class="card-body py-2">
           <div class="d-flex flex-wrap justify-content-between align-items-center gap-2">
             <div>
+              <?php if (!$embedMode || $showStorageMetadata): ?>
               <strong><?php echo htmlspecialchars($datasetName); ?></strong>
+              <?php endif; ?>
+              <?php if ($showStorageMetadata): ?>
               <div class="small text-muted mt-1">
                 <strong>Bucket:</strong> <code><?php echo htmlspecialchars((string) $session['bucket']); ?></code>
                 &nbsp;·&nbsp;
                 <strong>Root prefix:</strong> <code><?php echo htmlspecialchars($root === '' ? '(bucket root)' : $root); ?></code>
               </div>
+              <?php endif; ?>
             </div>
             <?php if (!$embedMode): ?>
             <div class="d-flex align-items-center gap-2">
@@ -143,6 +152,7 @@ $logoPath = $embedMode ? 'assets/images/scientistcloud-logo.png' : '../assets/im
           </div>
         </div>
       </div>
+      <?php endif; ?>
 
       <?php if ($list['error']): ?>
         <div class="alert alert-danger"><?php echo htmlspecialchars($list['error']); ?></div>
@@ -151,7 +161,7 @@ $logoPath = $embedMode ? 'assets/images/scientistcloud-logo.png' : '../assets/im
           <ol class="breadcrumb mb-0">
             <li class="breadcrumb-item">
               <a href="<?php echo htmlspecialchars($selfPath . $queryBase); ?>">
-                <i class="fas fa-home"></i> <?php echo htmlspecialchars($root === '' ? 'bucket' : $root); ?>
+                <i class="fas fa-home"></i> <?php echo htmlspecialchars($breadcrumbRootLabel); ?>
               </a>
             </li>
             <?php
@@ -241,7 +251,7 @@ $logoPath = $embedMode ? 'assets/images/scientistcloud-logo.png' : '../assets/im
             <?php endforeach; ?>
 
             <?php if ($list['folders'] === [] && $list['files'] === []): ?>
-              <li class="list-group-item text-muted">This folder is empty (under prefix <code class="key"><?php echo htmlspecialchars($full); ?></code>).</li>
+              <li class="list-group-item text-muted">This folder is empty.<?php if ($showStorageMetadata): ?> (under prefix <code class="key"><?php echo htmlspecialchars($full); ?></code>)<?php endif; ?></li>
             <?php endif; ?>
           </ul>
         </div>
