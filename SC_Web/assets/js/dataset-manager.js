@@ -2586,11 +2586,15 @@ class DatasetManager {
                     '3d plotly explorer': '3DPlotly',
                     'ORNL CHESS Strain': 'ORNL_CHESS_strain',
                     'ornl chess strain': 'ORNL_CHESS_strain',
-                    'ORNL_CHESS_strain': 'ORNL_CHESS_strain'
+                    'ORNL_CHESS_strain': 'ORNL_CHESS_strain',
+                    'S3 Browser': 'S3Browser',
+                    's3 browser': 'S3Browser',
+                    'S3Browser': 'S3Browser',
+                    's3_browser': 'S3Browser'
                 };
                 
                 // Check if we need to normalize
-                const normalized = dashboardNormalizations[preferredValue.toLowerCase()] || preferredValue;
+                const normalized = dashboardNormalizations[preferredValue.toLowerCase()] || dashboardNormalizations[preferredValue] || preferredValue;
                 
                 // Try to find matching dashboard in viewer-manager if available
                 if (window.viewerManager && window.viewerManager.viewers) {

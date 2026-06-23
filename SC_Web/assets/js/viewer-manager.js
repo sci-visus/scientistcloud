@@ -494,6 +494,18 @@ class ViewerManager {
         this.isLoading = true;
         this.currentLoadingKey = loadKey;
 
+        // Virtual S3 browser — skip dataset status / Bokeh dashboard checks
+        if (dashboardType === 'S3Browser') {
+            this.updateViewerSelector(dashboardType);
+            try {
+                await this.loadDashboardContent(datasetId, datasetName, datasetUuid, datasetServer, dashboardType);
+            } finally {
+                this.isLoading = false;
+                this.currentLoadingKey = null;
+            }
+            return;
+        }
+
         // Show loading state
         viewerContainer.innerHTML = `
             <div class="text-center">
@@ -780,11 +792,12 @@ class ViewerManager {
      */
     getS3BrowserEmbedUrl(datasetUuid) {
         const uuid = encodeURIComponent(datasetUuid || '');
+        const embedQuery = 'dataset=' + uuid + '&embed=1';
         if (window.IS_PUBLIC_PORTAL === true) {
-            return `s3.php?dataset=${uuid}`;
+            return 's3.php?' + embedQuery;
         }
         const isLocal = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
-        return isLocal ? `/public/s3.php?dataset=${uuid}` : `/portal/public/s3.php?dataset=${uuid}`;
+        return isLocal ? `/s3-embed.php?${embedQuery}` : `/portal/s3-embed.php?${embedQuery}`;
     }
 
     /**
@@ -800,7 +813,9 @@ class ViewerManager {
             || window.datasetManager?.currentDataset?.details
             || window.datasetManager?.currentDataset;
         const mongoUuid = (details && (details.uuid || details.id)) || datasetId || datasetUuid;
-        const browseUrl = details?.public_s3_browse_url || this.getS3BrowserEmbedUrl(mongoUuid);
+        const browseUrl = details?.public_s3_browse_url
+            || details?.dataset_s3_embed_url
+            || this.getS3BrowserEmbedUrl(mongoUuid);
 
         this.currentDashboard = 'S3Browser';
 
