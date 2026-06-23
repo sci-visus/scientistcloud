@@ -84,6 +84,20 @@ try {
             unset($formattedDataset['team_id']);
 
             $formattedDataset = sc_redact_dataset_urls_for_client($formattedDataset);
+
+            require_once(__DIR__ . '/../includes/public_s3_dataset.php');
+            $datasetUuid = (string) ($formattedDataset['uuid'] ?? $formattedDataset['id'] ?? '');
+            if ($datasetUuid !== '') {
+                $formattedDataset['public_portal_url'] = public_s3_portal_share_url($datasetUuid);
+                [$isRemoteLinked] = public_s3_dataset_is_remote_linked($formattedDataset);
+                $serverFlag = strtolower(trim((string) ($formattedDataset['server'] ?? ''))) === 'true';
+                if ($isRemoteLinked || $serverFlag) {
+                    $formattedDataset['has_s3_browser'] = true;
+                    $formattedDataset['public_s3_browse_url'] = public_s3_browser_share_url($datasetUuid);
+                } else {
+                    $formattedDataset['has_s3_browser'] = false;
+                }
+            }
             
             $response = [
                 'success' => true,

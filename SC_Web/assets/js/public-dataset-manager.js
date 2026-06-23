@@ -520,9 +520,12 @@ class PublicDatasetManager {
         const isDownloadable = dataset.is_downloadable === 'public';
         const datasetUuid = dataset.uuid || dataset.id;
         const connection = this.resolveDatasetConnection(dataset);
-        const isRemoteS3 = connection.datasetServer === 'true' || this.isRemoteLinkedDataset(connection.link);
-        const portalShareUrl = this.getPublicPortalShareUrl(datasetUuid);
-        const s3BrowserUrl = this.getPublicS3BrowserUrl(datasetUuid);
+        const isRemoteS3 = dataset.has_s3_browser === true
+            || String(dataset.server || '').toLowerCase() === 'true'
+            || connection.datasetServer === 'true'
+            || this.isRemoteLinkedDataset(connection.link);
+        const portalShareUrl = dataset.public_portal_url || this.getPublicPortalShareUrl(datasetUuid);
+        const s3BrowserUrl = dataset.public_s3_browse_url || this.getPublicS3BrowserUrl(datasetUuid);
         
         const html = `
             <div class="dataset-details">
@@ -538,18 +541,18 @@ class PublicDatasetManager {
                                 data-action="copy-portal-link"
                                 data-share-url="${this.escapeHtml(portalShareUrl)}"
                                 title="Copy link to this dataset on the public portal">
-                            <i class="fas fa-link"></i> Copy Portal Link
+                            <i class="fas fa-link"></i> Share Portal Link
                         </button>
                         ${isRemoteS3 ? `
                         <button type="button" class="btn btn-sm btn-outline-info flex-grow-1"
                                 data-action="copy-s3-link"
                                 data-share-url="${this.escapeHtml(s3BrowserUrl)}"
-                                title="Copy link to browse this dataset's S3 storage">
-                            <i class="fas fa-database"></i> Copy Data Link
+                                title="Copy link to browse this dataset's files on S3">
+                            <i class="fas fa-share-alt"></i> Share S3 Link
                         </button>
                         ` : ''}
                     </div>
-                    <div class="d-flex gap-2">
+                    <div class="d-flex flex-wrap gap-2">
                         <button type="button" class="btn btn-sm btn-outline-primary flex-grow-1" 
                                 data-action="open-dashboard-link"
                                 data-dataset-id="${dataset.id || dataset.uuid}"
@@ -557,14 +560,14 @@ class PublicDatasetManager {
                                 data-dataset-name="${this.escapeHtml(dataset.name || '')}"
                                 data-dataset-server="${this.escapeHtml(dataset.server || 'false')}"
                                 title="Open this dataset's dashboard in a new tab">
-                            <i class="fas fa-external-link-alt"></i>
+                            <i class="fas fa-external-link-alt"></i> Open Dashboard
                         </button>
                         
                         ${isRemoteS3 ? `
                         <a href="${this.escapeHtml(s3BrowserUrl)}" target="_blank" rel="noopener"
-                           class="btn btn-sm btn-outline-info flex-grow-1"
+                           class="btn btn-sm btn-info flex-grow-1 text-white"
                            title="Browse and download files from S3 (no credentials required)">
-                            <i class="fas fa-folder-open"></i> Browse S3 Data
+                            <i class="fas fa-folder-open"></i> Browse on S3
                         </a>
                         ` : ''}
                         
