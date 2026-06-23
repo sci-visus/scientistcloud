@@ -21,7 +21,12 @@ if (session_status() === PHP_SESSION_NONE) {
     session_start();
 }
 
-if (defined('S3_REQUIRE_PORTAL_AUTH') && S3_REQUIRE_PORTAL_AUTH) {
+$inspectorSessionKey = defined('S3_INSPECTOR_SESSION_OVERRIDE')
+    ? (string) S3_INSPECTOR_SESSION_OVERRIDE
+    : 'portal_s3_inspector';
+$skipInspectorAuth = defined('S3_INSPECTOR_SKIP_PORTAL_AUTH') && S3_INSPECTOR_SKIP_PORTAL_AUTH;
+
+if (!$skipInspectorAuth && defined('S3_REQUIRE_PORTAL_AUTH') && S3_REQUIRE_PORTAL_AUTH) {
     $user = getCurrentUser();
     if (!$user) {
         http_response_code(403);
@@ -31,7 +36,7 @@ if (defined('S3_REQUIRE_PORTAL_AUTH') && S3_REQUIRE_PORTAL_AUTH) {
     }
 }
 
-$session = $_SESSION['portal_s3_inspector'] ?? [];
+$session = $_SESSION[$inspectorSessionKey] ?? [];
 if (!s3_inspector_connected($session)) {
     http_response_code(403);
     header('Content-Type: text/plain; charset=UTF-8');

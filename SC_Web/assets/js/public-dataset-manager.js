@@ -129,6 +129,7 @@ class PublicDatasetManager {
             
             // Render dataset list
             this.renderDatasetList();
+            this.selectInitialDatasetFromUrl();
             
         } catch (error) {
             console.error('Error loading public datasets:', error);
@@ -141,6 +142,66 @@ class PublicDatasetManager {
                     </div>
                 `;
             }
+        }
+    }
+
+    /**
+     * Open a dataset from ?dataset=<uuid> deep links.
+     */
+    selectInitialDatasetFromUrl() {
+        const params = new URLSearchParams(window.location.search);
+        const initialDataset = (params.get('dataset') || window.INITIAL_DATASET_ID || '').trim();
+        if (!initialDataset) {
+            return;
+        }
+
+        const escaped = (typeof CSS !== 'undefined' && CSS.escape)
+            ? CSS.escape(initialDataset)
+            : initialDataset.replace(/["\\]/g, '\\$&');
+        const link = document.querySelector(
+            `.dataset-link[data-dataset-id="${escaped}"], .dataset-link[data-dataset-uuid="${escaped}"]`
+        );
+        if (link) {
+            link.click();
+        }
+    }
+
+    getPublicPortalShareUrl(datasetUuid) {
+        const url = new URL(window.location.href);
+        url.search = '';
+        url.searchParams.set('dataset', datasetUuid);
+        return url.toString();
+    }
+
+    getPublicS3BrowserUrl(datasetUuid) {
+        const url = new URL(window.location.href);
+        const path = url.pathname.replace(/index\.php$/i, '').replace(/\/?$/, '/');
+        url.pathname = `${path}s3.php`;
+        url.search = '';
+        url.searchParams.set('dataset', datasetUuid);
+        return url.toString();
+    }
+
+    async copyShareLink(text, buttonEl) {
+        const original = buttonEl.innerHTML;
+        try {
+            if (navigator.clipboard && window.isSecureContext) {
+                await navigator.clipboard.writeText(text);
+            } else {
+                const input = document.createElement('textarea');
+                input.value = text;
+                document.body.appendChild(input);
+                input.select();
+                document.execCommand('copy');
+                input.remove();
+            }
+            buttonEl.innerHTML = '<i class="fas fa-check"></i> Copied';
+            setTimeout(() => {
+                buttonEl.innerHTML = original;
+            }, 1500);
+        } catch (error) {
+            console.error('Failed to copy share link:', error);
+            alert('Failed to copy link. Please copy it manually.');
         }
     }
 
@@ -457,6 +518,11 @@ class PublicDatasetManager {
         
         // Check if dataset is publicly downloadable
         const isDownloadable = dataset.is_downloadable === 'public';
+        const datasetUuid = dataset.uuid || dataset.id;
+        const connection = this.resolveDatasetConnection(dataset);
+        const isRemoteS3 = connection.datasetServer === 'true' || this.isRemoteLinkedDataset(connection.link);
+        const portalShareUrl = this.getPublicPortalShareUrl(datasetUuid);
+        const s3BrowserUrl = this.getPublicS3BrowserUrl(datasetUuid);
         
         const html = `
             <div class="dataset-details">
@@ -467,6 +533,22 @@ class PublicDatasetManager {
                 </div>
                 
                 <div class="dataset-actions mb-3 pb-2 border-bottom">
+                    <div class="d-flex flex-wrap gap-2 mb-2">
+                        <button type="button" class="btn btn-sm btn-outline-secondary flex-grow-1"
+                                data-action="copy-portal-link"
+                                data-share-url="${this.escapeHtml(portalShareUrl)}"
+                                title="Copy link to this dataset on the public portal">
+                            <i class="fas fa-link"></i> Copy Portal Link
+                        </button>
+                        ${isRemoteS3 ? `
+                        <button type="button" class="btn btn-sm btn-outline-info flex-grow-1"
+                                data-action="copy-s3-link"
+                                data-share-url="${this.escapeHtml(s3BrowserUrl)}"
+                                title="Copy link to browse this dataset's S3 storage">
+                            <i class="fas fa-database"></i> Copy Data Link
+                        </button>
+                        ` : ''}
+                    </div>
                     <div class="d-flex gap-2">
                         <button type="button" class="btn btn-sm btn-outline-primary flex-grow-1" 
                                 data-action="open-dashboard-link"
@@ -477,6 +559,14 @@ class PublicDatasetManager {
                                 title="Open this dataset's dashboard in a new tab">
                             <i class="fas fa-external-link-alt"></i>
                         </button>
+                        
+                        ${isRemoteS3 ? `
+                        <a href="${this.escapeHtml(s3BrowserUrl)}" target="_blank" rel="noopener"
+                           class="btn btn-sm btn-outline-info flex-grow-1"
+                           title="Browse and download files from S3 (no credentials required)">
+                            <i class="fas fa-folder-open"></i> Browse S3 Data
+                        </a>
+                        ` : ''}
                         
                         ${isDownloadable ? `
                         <button type="button" class="btn btn-sm btn-primary flex-grow-1" data-action="download" data-dataset-id="${dataset.id || dataset.uuid}">
@@ -550,6 +640,16 @@ class PublicDatasetManager {
                 this.downloadDataset(dataset.id || dataset.uuid);
             });
         }
+
+        detailsContainer.querySelectorAll('[data-action="copy-portal-link"], [data-action="copy-s3-link"]').forEach((btn) => {
+            btn.addEventListener('click', (e) => {
+                e.preventDefault();
+                const shareUrl = btn.getAttribute('data-share-url');
+                if (shareUrl) {
+                    this.copyShareLink(shareUrl, btn);
+                }
+            });
+        });
 
         // Attach open-dashboard button handler (opens the currently loaded dashboard in a new tab)
         const openDashboardBtn = detailsContainer.querySelector('[data-action="open-dashboard-link"]');
