@@ -75,6 +75,9 @@ try {
     // Re-index array
     $enabledDashboards = array_values($enabledDashboards);
 
+    require_once __DIR__ . '/../includes/virtual_dashboards.php';
+    $enabledDashboards = sc_append_virtual_dashboards($enabledDashboards);
+
     ob_end_clean();
 
     echo json_encode([

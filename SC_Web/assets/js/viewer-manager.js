@@ -206,7 +206,10 @@ class ViewerManager {
             '4d dashboard (2x2)': '4d_dashboardopt',
             '4d_dashboardopt': '4d_dashboardopt',
             'ornl chess strain': 'ORNL_CHESS_strain',
-            'ornl_chess_strain': 'ORNL_CHESS_strain'
+            'ornl_chess_strain': 'ORNL_CHESS_strain',
+            's3 browser': 'S3Browser',
+            's3_browser': 'S3Browser',
+            's3browser': 'S3Browser'
         };
         if (aliases[normalized] && this.viewers[aliases[normalized]]) {
             return aliases[normalized];
@@ -773,6 +776,57 @@ class ViewerManager {
     }
 
     /**
+     * Build the embedded public S3 browser URL for a dataset UUID.
+     */
+    getS3BrowserEmbedUrl(datasetUuid) {
+        const uuid = encodeURIComponent(datasetUuid || '');
+        if (window.IS_PUBLIC_PORTAL === true) {
+            return `s3.php?dataset=${uuid}`;
+        }
+        const isLocal = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+        return isLocal ? `/public/s3.php?dataset=${uuid}` : `/portal/public/s3.php?dataset=${uuid}`;
+    }
+
+    /**
+     * Embed the S3 browser in the main viewer panel (virtual dashboard).
+     */
+    async loadS3BrowserContent(datasetId, datasetName, datasetUuid) {
+        const viewerContainer = document.getElementById('viewerContainer');
+        if (!viewerContainer) {
+            return;
+        }
+
+        const details = window.viewerManager?.currentDataset?.details
+            || window.datasetManager?.currentDataset?.details
+            || window.datasetManager?.currentDataset;
+        const mongoUuid = (details && (details.uuid || details.id)) || datasetId || datasetUuid;
+        const browseUrl = details?.public_s3_browse_url || this.getS3BrowserEmbedUrl(mongoUuid);
+
+        this.currentDashboard = 'S3Browser';
+
+        const dashboardContainer = document.createElement('div');
+        dashboardContainer.className = 'dashboard-container s3-browser-embed';
+
+        const dashboardContent = document.createElement('div');
+        dashboardContent.className = 'dashboard-content';
+
+        const iframe = document.createElement('iframe');
+        iframe.id = 'dashboardFrame';
+        iframe.src = browseUrl;
+        iframe.title = `S3 Browser — ${datasetName || 'Dataset'}`;
+        iframe.width = '100%';
+        iframe.height = '100%';
+        iframe.frameBorder = '0';
+        iframe.setAttribute('loading', 'lazy');
+
+        dashboardContent.appendChild(iframe);
+        dashboardContainer.appendChild(dashboardContent);
+
+        viewerContainer.innerHTML = '';
+        viewerContainer.appendChild(dashboardContainer);
+    }
+
+    /**
      * Load dashboard content
      */
     async loadDashboardContent(datasetId, datasetName, datasetUuid, datasetServer, dashboardType) {
@@ -792,11 +846,20 @@ class ViewerManager {
             '4D_dashboard': '4d_dashboardLite',
             'Magicscan': 'magicscan',  // Normalize case
             'magicscan': 'magicscan',
-            'ornl_chess_strain': 'ORNL_CHESS_strain'
+            'ornl_chess_strain': 'ORNL_CHESS_strain',
+            'S3 Browser': 'S3Browser',
+            's3 browser': 'S3Browser',
+            's3_browser': 'S3Browser',
+            'S3Browser': 'S3Browser'
         };
         
         // Resolve dashboard type to actual ID
         let resolvedDashboardType = dashboardAliases[dashboardType] || dashboardType;
+
+        if (resolvedDashboardType === 'S3Browser') {
+            await this.loadS3BrowserContent(datasetId, datasetName, datasetUuid);
+            return;
+        }
         
         // Store the current dashboard type for reference (e.g., for copy dashboard link)
         this.currentDashboard = resolvedDashboardType;

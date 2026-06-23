@@ -343,6 +343,9 @@ class PublicDatasetManager {
                 
                 const viewerType = document.getElementById('viewerType');
                 const selectedDashboardType = this.selectDashboardForPublicDataset(datasetDetails);
+                if (viewerType && selectedDashboardType) {
+                    viewerType.value = selectedDashboardType;
+                }
                 
                 window.viewerManager.loadDashboard(
                     datasetId,
@@ -455,17 +458,24 @@ class PublicDatasetManager {
                     'OpenVisusSlice': 'OpenVisusSlice',
                     'magicscan': 'magicscan',
                     'MagicScan Dashboard': 'magicscan',
-                    'magicscan dashboard': 'magicscan'
+                    'magicscan dashboard': 'magicscan',
+                    'S3 Browser': 'S3Browser',
+                    's3 browser': 'S3Browser',
+                    'S3Browser': 'S3Browser',
+                    's3_browser': 'S3Browser'
                 };
 
                 const mapped =
                     dashboardNameToId[preferred] ||
                     dashboardNameToId[preferred.toLowerCase()] ||
-                    (viewers[preferred] ? preferred : null);
+                    (viewers[preferred] ? preferred : null) ||
+                    (window.viewerManager?.resolveDashboardId
+                        ? window.viewerManager.resolveDashboardId(preferred)
+                        : null);
 
                 if (mapped && viewers[mapped] !== undefined) {
                     // If dataset is 4D, do not allow a non-4D preferred dashboard to override it.
-                    if (effectiveDimension === 4) {
+                    if (effectiveDimension === 4 && mapped !== 'S3Browser') {
                         if (mapped === '4d_dashboard' || mapped === '4d_dashboardLite' || mapped === '4d_dashboardopt') {
                             return mapped;
                         }
@@ -474,6 +484,10 @@ class PublicDatasetManager {
 
                     return mapped;
                 }
+            }
+
+            if (this.isS3DirectoryOnlyDataset(dataset) && viewers['S3Browser'] !== undefined) {
+                return 'S3Browser';
             }
 
             // 2) dimensions
@@ -485,6 +499,9 @@ class PublicDatasetManager {
                 return viewers['3DPlotly'] !== undefined ? '3DPlotly' : 'OpenVisusSlice';
             }
             if (effectiveDimension === 2 || effectiveDimension === 1) {
+                if (this.isS3DirectoryOnlyDataset(dataset) && viewers['S3Browser'] !== undefined) {
+                    return 'S3Browser';
+                }
                 return 'OpenVisusSlice';
             }
 
@@ -501,12 +518,52 @@ class PublicDatasetManager {
             }
 
             // 4) default
+            if (this.isS3DirectoryOnlyDataset(dataset) && viewers['S3Browser'] !== undefined) {
+                return 'S3Browser';
+            }
             if (viewers['OpenVisusSlice'] !== undefined) return 'OpenVisusSlice';
             return Object.keys(viewers)[0] || 'OpenVisusSlice';
         } catch (error) {
             console.error('Error selecting public dashboard:', error);
             return null;
         }
+    }
+
+    /**
+     * Linked S3 folder registrations (not a single .idx / .json visualization target).
+     */
+    isS3DirectoryOnlyDataset(dataset) {
+        if (!dataset) {
+            return false;
+        }
+        if (dataset.has_s3_browser !== true) {
+            const connection = this.resolveDatasetConnection(dataset);
+            const isRemote = String(dataset.server || '').toLowerCase() === 'true'
+                || connection.datasetServer === 'true'
+                || this.isRemoteLinkedDataset(connection.link);
+            if (!isRemote) {
+                return false;
+            }
+        }
+
+        const tagsText = Array.isArray(dataset.tags)
+            ? dataset.tags.join(' ').toLowerCase()
+            : String(dataset.tags || '').toLowerCase();
+        if (tagsText.includes('link to s3')) {
+            return true;
+        }
+
+        const link = String(
+            dataset.google_drive_link || dataset.download_url || dataset.viewer_url || ''
+        ).toLowerCase();
+        if (link) {
+            const leaf = link.split('/').pop().split('?')[0];
+            if (leaf && !leaf.includes('.idx') && !leaf.endsWith('.json')) {
+                return true;
+            }
+        }
+
+        return Number(dataset.data_size || 0) === 0;
     }
 
     /**

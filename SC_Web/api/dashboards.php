@@ -99,6 +99,9 @@ $enabledDashboards = array_filter($dashboardsData['dashboards'] ?? [], function(
 // Re-index array
 $enabledDashboards = array_values($enabledDashboards);
 
+require_once __DIR__ . '/../includes/virtual_dashboards.php';
+$enabledDashboards = sc_append_virtual_dashboards($enabledDashboards);
+
 echo json_encode([
     'success' => true,
     'dashboards' => $enabledDashboards,
