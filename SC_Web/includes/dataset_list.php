@@ -9,6 +9,7 @@ require_once(__DIR__ . '/auth.php');
 require_once(__DIR__ . '/dataset_manager.php');
 require_once(__DIR__ . '/dataset_local_files.php');
 require_once(__DIR__ . '/sclib_client.php');
+require_once(__DIR__ . '/dashboard_share_link.php');
 
 /**
  * @param array<string, mixed> $dataset
@@ -77,6 +78,49 @@ function getFileFormatIcon($sensor) {
     return $icons[$sensor] ?? 'fas fa-file';
 }
 
+/**
+ * @param array<string, mixed> $dataset
+ */
+function dataset_list_is_s3_linked($dataset) {
+    if (!empty($dataset['has_s3_browser'])) {
+        return true;
+    }
+
+    $link = strtolower(trim((string) ($dataset['google_drive_link'] ?? $dataset['download_url'] ?? $dataset['viewer_url'] ?? '')));
+    if (str_starts_with($link, 's3://')) {
+        return true;
+    }
+
+    $tags = $dataset['tags'] ?? '';
+    $tagsText = is_array($tags) ? strtolower(implode(' ', $tags)) : strtolower((string) $tags);
+    if (strpos($tagsText, 'link to s3') !== false) {
+        return true;
+    }
+
+    if (!sc_dataset_is_remote_linked($dataset)) {
+        return false;
+    }
+
+    if ($link !== '') {
+        $leaf = basename(strtok($link, '?'));
+        if ($leaf !== '' && stripos($leaf, '.idx') === false && !str_ends_with(strtolower($leaf), '.json')) {
+            return true;
+        }
+    }
+
+    return (float) ($dataset['data_size'] ?? 0) === 0.0;
+}
+
+/**
+ * @param array<string, mixed> $dataset
+ */
+function getDatasetListIcon($dataset) {
+    if (dataset_list_is_s3_linked($dataset)) {
+        return 'fas fa-cloud text-info';
+    }
+    return getFileFormatIcon($dataset['sensor'] ?? '');
+}
+
 // Function to get status color
 function getStatusColor($status) {
     $colors = [
@@ -115,7 +159,7 @@ function render_dataset_sidebar_row($dataset, $badgeHtml) {
     $name = htmlspecialchars($dataset['name'] ?? 'Unnamed Dataset');
     $uuid = htmlspecialchars($dataset['uuid'] ?? $dataset['id'] ?? '');
     $server = htmlspecialchars(getDatasetServerFlag($dataset));
-    $icon = getFileFormatIcon($dataset['sensor'] ?? '');
+    $icon = getDatasetListIcon($dataset);
     ?>
     <div class="dataset-header">
         <button type="button" class="dataset-files-toggle" data-dataset-uuid="<?php echo $uuid; ?>"
@@ -182,7 +226,7 @@ function render_dataset_sidebar_row($dataset, $badgeHtml) {
                                            data-dataset-name="<?php echo htmlspecialchars($dataset['name']); ?>"
                                            data-dataset-uuid="<?php echo htmlspecialchars($dataset['uuid']); ?>"
                                            data-dataset-server="<?php echo getDatasetServerFlag($dataset); ?>">
-                                            <i class="<?php echo getFileFormatIcon($dataset['sensor']); ?> me-2"></i>
+                                            <i class="<?php echo getDatasetListIcon($dataset); ?> me-2"></i>
                                             <span class="dataset-name"><?php echo htmlspecialchars($dataset['name']); ?></span>
                                             <span class="badge bg-<?php echo getStatusColor($dataset['status']); ?> ms-2">
                                                 <?php echo htmlspecialchars($dataset['status']); ?>
@@ -262,7 +306,7 @@ function render_dataset_sidebar_row($dataset, $badgeHtml) {
                            data-dataset-name="<?php echo htmlspecialchars($dataset['name']); ?>"
                            data-dataset-uuid="<?php echo htmlspecialchars($dataset['uuid']); ?>"
                            data-dataset-server="<?php echo getDatasetServerFlag($dataset); ?>">
-                            <i class="<?php echo getFileFormatIcon($dataset['sensor']); ?> me-2"></i>
+                            <i class="<?php echo getDatasetListIcon($dataset); ?> me-2"></i>
                             <span class="dataset-name"><?php echo htmlspecialchars($dataset['name']); ?></span>
                             <span class="badge bg-info ms-2">Shared</span>
                         </a>
@@ -296,7 +340,7 @@ function render_dataset_sidebar_row($dataset, $badgeHtml) {
                                            data-dataset-name="<?php echo htmlspecialchars($dataset['name']); ?>"
                                            data-dataset-uuid="<?php echo htmlspecialchars($dataset['uuid']); ?>"
                                            data-dataset-server="<?php echo getDatasetServerFlag($dataset); ?>">
-                                            <i class="<?php echo getFileFormatIcon($dataset['sensor']); ?> me-2"></i>
+                                            <i class="<?php echo getDatasetListIcon($dataset); ?> me-2"></i>
                                             <span class="dataset-name"><?php echo htmlspecialchars($dataset['name']); ?></span>
                                             <span class="badge bg-info ms-2">Shared</span>
                                         </a>
@@ -377,7 +421,7 @@ function render_dataset_sidebar_row($dataset, $badgeHtml) {
                            data-dataset-name="<?php echo htmlspecialchars($dataset['name']); ?>"
                            data-dataset-uuid="<?php echo htmlspecialchars($dataset['uuid']); ?>"
                            data-dataset-server="<?php echo getDatasetServerFlag($dataset); ?>">
-                            <i class="<?php echo getFileFormatIcon($dataset['sensor']); ?> me-2"></i>
+                            <i class="<?php echo getDatasetListIcon($dataset); ?> me-2"></i>
                             <span class="dataset-name"><?php echo htmlspecialchars($dataset['name']); ?></span>
                             <span class="badge bg-primary ms-2">Team</span>
                         </a>
@@ -411,7 +455,7 @@ function render_dataset_sidebar_row($dataset, $badgeHtml) {
                                            data-dataset-name="<?php echo htmlspecialchars($dataset['name']); ?>"
                                            data-dataset-uuid="<?php echo htmlspecialchars($dataset['uuid']); ?>"
                                            data-dataset-server="<?php echo getDatasetServerFlag($dataset); ?>">
-                                            <i class="<?php echo getFileFormatIcon($dataset['sensor']); ?> me-2"></i>
+                                            <i class="<?php echo getDatasetListIcon($dataset); ?> me-2"></i>
                                             <span class="dataset-name"><?php echo htmlspecialchars($dataset['name']); ?></span>
                                             <span class="badge bg-primary ms-2">Team</span>
                                         </a>

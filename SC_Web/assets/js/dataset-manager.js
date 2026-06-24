@@ -740,7 +740,7 @@ class DatasetManager {
         const { datasetServer, effectiveUuid } = this.resolveDatasetConnection(dataset);
         
         const statusColor = this.getStatusColor(status);
-        const fileIcon = this.getFileIcon(sensor);
+        const fileIcon = this.getDatasetListIcon(dataset);
         
         // Determine if retry button should be shown
         // Show retry for: failed, conversion failed, or any status containing "failed" or "error"
@@ -4346,6 +4346,56 @@ class DatasetManager {
         };
         
         return icons[sensor] || 'fas fa-file';
+    }
+
+    /**
+     * Sidebar icon: cloud for S3-linked datasets, otherwise sensor/format icon.
+     */
+    isS3LinkedDataset(dataset) {
+        if (!dataset) {
+            return false;
+        }
+        if (dataset.has_s3_browser === true) {
+            return true;
+        }
+
+        const link = String(
+            dataset.google_drive_link || dataset.download_url || dataset.viewer_url || ''
+        ).trim().toLowerCase();
+        if (link.startsWith('s3://')) {
+            return true;
+        }
+
+        const tagsText = Array.isArray(dataset.tags)
+            ? dataset.tags.join(' ').toLowerCase()
+            : String(dataset.tags || '').toLowerCase();
+        if (tagsText.includes('link to s3')) {
+            return true;
+        }
+
+        const connection = this.resolveDatasetConnection(dataset);
+        const isRemote = String(dataset.server || '').toLowerCase() === 'true'
+            || connection.datasetServer === 'true'
+            || this.isRemoteLinkedDataset(connection.link);
+        if (!isRemote) {
+            return false;
+        }
+
+        if (link) {
+            const leaf = link.split('/').pop().split('?')[0];
+            if (leaf && !leaf.includes('.idx') && !leaf.endsWith('.json')) {
+                return true;
+            }
+        }
+
+        return Number(dataset.data_size || 0) === 0;
+    }
+
+    getDatasetListIcon(dataset) {
+        if (this.isS3LinkedDataset(dataset)) {
+            return 'fas fa-cloud text-info';
+        }
+        return this.getFileIcon(dataset?.sensor);
     }
 
     /**

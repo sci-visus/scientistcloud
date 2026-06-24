@@ -275,7 +275,7 @@ class PublicDatasetManager {
      */
     renderDatasetItem(dataset) {
         const statusColor = this.getStatusColor(dataset.status);
-        const fileIcon = this.getFileFormatIcon(dataset.sensor);
+        const fileIcon = this.getDatasetListIcon(dataset);
         const datasetId = dataset.id || dataset.uuid;
         const connection = this.resolveDatasetConnection(dataset);
         
@@ -817,6 +817,41 @@ class PublicDatasetManager {
             'MapIR DRONE': 'fas fa-drone'
         };
         return icons[sensor] || 'fas fa-file';
+    }
+
+    /**
+     * Sidebar icon: cloud for S3-linked datasets, otherwise sensor/format icon.
+     */
+    isS3LinkedDataset(dataset) {
+        if (!dataset) {
+            return false;
+        }
+        if (dataset.has_s3_browser === true) {
+            return true;
+        }
+
+        const link = String(
+            dataset.google_drive_link || dataset.download_url || dataset.viewer_url || ''
+        ).trim().toLowerCase();
+        if (link.startsWith('s3://')) {
+            return true;
+        }
+
+        const tagsText = Array.isArray(dataset.tags)
+            ? dataset.tags.join(' ').toLowerCase()
+            : String(dataset.tags || '').toLowerCase();
+        if (tagsText.includes('link to s3')) {
+            return true;
+        }
+
+        return this.isS3DirectoryOnlyDataset(dataset);
+    }
+
+    getDatasetListIcon(dataset) {
+        if (this.isS3LinkedDataset(dataset)) {
+            return 'fas fa-cloud text-info';
+        }
+        return this.getFileFormatIcon(dataset?.sensor);
     }
 
     /**
