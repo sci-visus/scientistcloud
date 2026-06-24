@@ -116,7 +116,7 @@ function dataset_list_is_s3_linked($dataset) {
  */
 function getDatasetListIcon($dataset) {
     if (dataset_list_is_s3_linked($dataset)) {
-        return 'fas fa-cloud text-info';
+        return 'fas fa-cloud dataset-s3-icon';
     }
     return getFileFormatIcon($dataset['sensor'] ?? '');
 }

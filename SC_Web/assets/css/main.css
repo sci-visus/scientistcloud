@@ -600,6 +600,14 @@ body:not(.light-theme) .viewer-container #dashboardFrame {
   text-align: center;
 }
 
+.dataset-s3-icon {
+  color: var(--info-color);
+}
+
+.light-theme .dataset-s3-icon {
+  color: var(--fg-color);
+}
+
 .dataset-link {
   display: flex;
   align-items: center;

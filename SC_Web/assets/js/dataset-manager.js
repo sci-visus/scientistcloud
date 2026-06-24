@@ -4393,7 +4393,7 @@ class DatasetManager {
 
     getDatasetListIcon(dataset) {
         if (this.isS3LinkedDataset(dataset)) {
-            return 'fas fa-cloud text-info';
+            return 'fas fa-cloud dataset-s3-icon';
         }
         return this.getFileIcon(dataset?.sensor);
     }
