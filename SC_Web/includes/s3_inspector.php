@@ -205,29 +205,25 @@ function s3_inspector_stream_object_to_browser(array $session, string $key, ?str
         'read_timeout' => 0,
     ]);
     $bucket = (string) $session['bucket'];
-
-    try {
-        $head = $client->headObject([
-            'Bucket' => $bucket,
-            'Key' => $key,
-        ]);
-    } catch (AwsException $e) {
-        $code = ($e->getAwsErrorCode() === 'NoSuchKey' || $e->getStatusCode() === 404) ? 404 : 500;
-        throw new RuntimeException($e->getAwsErrorMessage() ?: 'Object not found.', $code);
-    }
-
     $filename = basename($key);
-    $contentType = $head['ContentType'] ?? 'application/octet-stream';
-    header('Content-Type: ' . $contentType);
-    header('Content-Disposition: attachment; filename="' . str_replace('"', '', $filename) . '"');
-    header('Accept-Ranges: bytes');
-    header('X-Accel-Buffering: no');
-    if (isset($head['ContentLength'])) {
-        header('Content-Length: ' . (int) $head['ContentLength']);
-    }
-    if (isset($head['ETag'])) {
-        header('ETag: ' . $head['ETag']);
-    }
+
+    $emitHeaders = static function (array $meta) use ($filename): void {
+        $contentType = $meta['ContentType'] ?? 'application/octet-stream';
+        header('Content-Type: ' . $contentType);
+        header('Content-Disposition: attachment; filename="' . str_replace('"', '', $filename) . '"');
+        header('Accept-Ranges: bytes');
+        header('X-Accel-Buffering: no');
+        if (isset($meta['ContentLength'])) {
+            header('Content-Length: ' . (int) $meta['ContentLength']);
+        }
+        if (isset($meta['ETag'])) {
+            header('ETag: ' . $meta['ETag']);
+        }
+        if (isset($meta['ContentRange'])) {
+            http_response_code(206);
+            header('Content-Range: ' . $meta['ContentRange']);
+        }
+    };
 
     $getParams = [
         'Bucket' => $bucket,
@@ -237,63 +233,150 @@ function s3_inspector_stream_object_to_browser(array $session, string $key, ?str
         $getParams['Range'] = $rangeHeader;
     }
 
+    $errors = [];
+    if (isset($getParams['Range'])) {
+        $emitHeaders(['ContentType' => 'application/octet-stream']);
+        $out = fopen('php://output', 'wb');
+        try {
+            $meta = s3_inspector_stream_get_object($client, $getParams, $out);
+            if (isset($meta['ContentRange'])) {
+                header('Content-Range: ' . $meta['ContentRange'], true, 206);
+            }
+            return;
+        } catch (Throwable $e) {
+            $errors[] = $e->getMessage();
+        }
+        try {
+            s3_inspector_stream_presigned_get_object($client, $getParams, $out);
+            return;
+        } catch (Throwable $e) {
+            $errors[] = $e->getMessage();
+        }
+        throw new RuntimeException(
+            'Download failed for ' . $key . ': ' . implode('; ', $errors),
+            404
+        );
+    }
+
+    $tmpPath = tempnam(sys_get_temp_dir(), 'sc_s3dl_');
+    if ($tmpPath === false) {
+        throw new RuntimeException('Could not create temp file for download.', 500);
+    }
+
     try {
-        $result = $client->getObject($getParams);
-        if (isset($result['ContentRange'])) {
-            http_response_code(206);
-            header('Content-Range: ' . $result['ContentRange']);
-        }
-        if (isset($result['ContentLength'])) {
-            header('Content-Length: ' . (int) $result['ContentLength']);
-        }
-        $body = $result['Body'];
-        if (is_resource($body)) {
-            fpassthru($body);
-        } else {
-            while (!$body->eof()) {
-                echo $body->read(65536);
-                @flush();
-            }
-        }
+        s3_inspector_download_object_to_file($client, $bucket, $key, $tmpPath);
+        $mime = function_exists('mime_content_type') ? (mime_content_type($tmpPath) ?: null) : null;
+        $emitHeaders([
+            'ContentType' => $mime ?: 'application/octet-stream',
+            'ContentLength' => filesize($tmpPath),
+        ]);
+        readfile($tmpPath);
         return;
-    } catch (AwsException $e) {
-        // Fall through to presigned curl streaming below.
-    }
-
-    if (function_exists('curl_init')) {
-        $cmd = $client->getCommand('GetObject', $getParams);
-        $signed = $client->createPresignedRequest($cmd, '+600 seconds');
-        $signedUrl = (string) $signed->getUri();
-        if ($signedUrl !== '') {
-            $ch = curl_init($signedUrl);
-            curl_setopt_array($ch, [
-                CURLOPT_WRITEFUNCTION => static function ($curl, string $data): int {
-                    echo $data;
-                    @flush();
-                    return strlen($data);
-                },
-                CURLOPT_FOLLOWLOCATION => true,
-                CURLOPT_CONNECTTIMEOUT => 30,
-                CURLOPT_TIMEOUT => 0,
-                CURLOPT_USERAGENT => 'ScientistCloud-Portal/s3-download',
-            ]);
-            if (isset($getParams['Range'])) {
-                curl_setopt($ch, CURLOPT_RANGE, preg_replace('/^bytes=/', '', $getParams['Range']));
-            }
-            $ok = curl_exec($ch);
-            $httpCode = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
-            $curlError = curl_error($ch);
-            curl_close($ch);
-            if ($ok && in_array($httpCode, [200, 206], true)) {
-                return;
-            }
-            throw new RuntimeException(
-                'Download failed: HTTP ' . $httpCode . ($curlError !== '' ? ' (' . $curlError . ')' : '')
-            );
+    } catch (Throwable $e) {
+        $errors[] = $e->getMessage();
+    } finally {
+        if (is_string($tmpPath) && is_file($tmpPath)) {
+            @unlink($tmpPath);
         }
     }
 
-    throw new RuntimeException('Download failed.');
+    $listed = s3_inspector_object_exists_in_listing($client, $bucket, $key);
+    $hint = $listed
+        ? ' The file appears in directory listings but the storage gateway rejected download (NoSuchKey). This is usually a gateway/data integrity issue.'
+        : '';
+
+    throw new RuntimeException(
+        'Download failed for ' . $key . ': ' . implode('; ', $errors) . $hint,
+        404
+    );
+}
+
+/**
+ * @param resource $outStream
+ * @return array<string, mixed>
+ */
+function s3_inspector_stream_get_object(S3Client $client, array $getParams, $outStream): array
+{
+    $result = $client->getObject($getParams);
+    $body = $result['Body'];
+    if (is_resource($body)) {
+        stream_copy_to_stream($body, $outStream);
+    } else {
+        while (!$body->eof()) {
+            $chunk = $body->read(65536);
+            if ($chunk === '') {
+                break;
+            }
+            fwrite($outStream, $chunk);
+            @flush();
+        }
+    }
+
+    return [
+        'ContentType' => $result['ContentType'] ?? null,
+        'ContentLength' => $result['ContentLength'] ?? null,
+        'ETag' => $result['ETag'] ?? null,
+        'ContentRange' => $result['ContentRange'] ?? null,
+    ];
+}
+
+/**
+ * @param resource $outStream
+ */
+function s3_inspector_stream_presigned_get_object(S3Client $client, array $getParams, $outStream): void
+{
+    if (!function_exists('curl_init')) {
+        throw new RuntimeException('curl extension is required for presigned downloads.');
+    }
+
+    $cmd = $client->getCommand('GetObject', $getParams);
+    $signed = $client->createPresignedRequest($cmd, '+600 seconds');
+    $signedUrl = (string) $signed->getUri();
+    if ($signedUrl === '') {
+        throw new RuntimeException('Could not create presigned download URL.');
+    }
+
+    $ch = curl_init($signedUrl);
+    curl_setopt_array($ch, [
+        CURLOPT_FILE => $outStream,
+        CURLOPT_FOLLOWLOCATION => true,
+        CURLOPT_CONNECTTIMEOUT => 30,
+        CURLOPT_TIMEOUT => 0,
+        CURLOPT_USERAGENT => 'ScientistCloud-Portal/s3-download',
+    ]);
+    if (isset($getParams['Range'])) {
+        curl_setopt($ch, CURLOPT_RANGE, preg_replace('/^bytes=/', '', (string) $getParams['Range']));
+    }
+    $ok = curl_exec($ch);
+    $httpCode = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    $curlError = curl_error($ch);
+    curl_close($ch);
+
+    if (!$ok || !in_array($httpCode, [200, 206], true)) {
+        throw new RuntimeException(
+            'Presigned download failed: HTTP ' . $httpCode . ($curlError !== '' ? ' (' . $curlError . ')' : '')
+        );
+    }
+}
+
+function s3_inspector_object_exists_in_listing(S3Client $client, string $bucket, string $key): bool
+{
+    try {
+        $result = $client->listObjectsV2([
+            'Bucket' => $bucket,
+            'Prefix' => $key,
+            'MaxKeys' => 5,
+        ]);
+        foreach ($result['Contents'] ?? [] as $obj) {
+            if ((string) ($obj['Key'] ?? '') === $key) {
+                return true;
+            }
+        }
+    } catch (Throwable $e) {
+        return false;
+    }
+
+    return false;
 }
 
 /**
@@ -308,49 +391,55 @@ function s3_inspector_download_object_to_file(
     string $key,
     string $localPath
 ): void {
-    if (function_exists('curl_init')) {
-        $cmd = $client->getCommand('GetObject', [
-            'Bucket' => $bucket,
-            'Key' => $key,
-        ]);
-        $signed = $client->createPresignedRequest($cmd, '+600 seconds');
-        $signedUrl = (string) $signed->getUri();
-        if ($signedUrl === '') {
-            throw new RuntimeException('Could not create presigned download URL for ' . $key);
-        }
-
-        $fp = fopen($localPath, 'wb');
-        if ($fp === false) {
-            throw new RuntimeException('Could not open temp file for ' . $key);
-        }
-
-        $ch = curl_init($signedUrl);
-        curl_setopt_array($ch, [
-            CURLOPT_FILE => $fp,
-            CURLOPT_FOLLOWLOCATION => true,
-            CURLOPT_CONNECTTIMEOUT => 30,
-            CURLOPT_TIMEOUT => 0,
-            CURLOPT_USERAGENT => 'ScientistCloud-Portal/s3-folder-zip',
-        ]);
-        $ok = curl_exec($ch);
-        $httpCode = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
-        $curlError = curl_error($ch);
-        curl_close($ch);
-        fclose($fp);
-
-        if (!$ok || !in_array($httpCode, [200, 206], true)) {
-            @unlink($localPath);
-            throw new RuntimeException(
-                'Download failed for ' . $key . ': HTTP ' . $httpCode
-                . ($curlError !== '' ? ' (' . $curlError . ')' : '')
-            );
-        }
-        return;
-    }
-
-    $client->getObject([
+    $errors = [];
+    $getParams = [
         'Bucket' => $bucket,
         'Key' => $key,
-        'SaveAs' => $localPath,
-    ]);
+    ];
+
+    $fp = fopen($localPath, 'wb');
+    if ($fp === false) {
+        throw new RuntimeException('Could not open temp file for ' . $key);
+    }
+
+    try {
+        s3_inspector_stream_get_object($client, $getParams, $fp);
+        fclose($fp);
+        return;
+    } catch (Throwable $e) {
+        $errors[] = $e->getMessage();
+        fclose($fp);
+        @unlink($localPath);
+    }
+
+    $fp = fopen($localPath, 'wb');
+    if ($fp === false) {
+        throw new RuntimeException('Could not open temp file for ' . $key);
+    }
+
+    try {
+        s3_inspector_stream_presigned_get_object($client, $getParams, $fp);
+        fclose($fp);
+        return;
+    } catch (Throwable $e) {
+        $errors[] = $e->getMessage();
+        fclose($fp);
+        @unlink($localPath);
+    }
+
+    try {
+        $client->getObject([
+            'Bucket' => $bucket,
+            'Key' => $key,
+            'SaveAs' => $localPath,
+        ]);
+        return;
+    } catch (Throwable $e) {
+        $errors[] = $e->getMessage();
+        @unlink($localPath);
+    }
+
+    throw new RuntimeException(
+        'Download failed for ' . $key . ': ' . implode('; ', $errors)
+    );
 }

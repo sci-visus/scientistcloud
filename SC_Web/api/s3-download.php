@@ -44,7 +44,8 @@ if (!s3_inspector_connected($session)) {
     exit;
 }
 
-$key = isset($_GET['k']) ? (string) $_GET['k'] : '';
+$key = isset($_GET['k']) ? rawurldecode((string) $_GET['k']) : '';
+$key = ltrim(str_replace('\\', '/', $key), '/');
 if ($key === '') {
     http_response_code(400);
     header('Content-Type: text/plain; charset=UTF-8');
