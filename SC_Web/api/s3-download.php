@@ -116,27 +116,42 @@ try {
     if ($rangeHeader !== '' && preg_match('/^bytes=\d*-\d*$/', $rangeHeader)) {
         $params['Range'] = $rangeHeader;
     }
-    // For very large files, avoid proxying bytes through PHP/nginx.
-    // Generate a short-lived signed URL and let the browser download directly from S3.
-    if (!$previewMode) {
+
+    $usePresignedRedirect = filter_var(
+        getenv('S3_DOWNLOAD_PRESIGNED_REDIRECT') ?: 'false',
+        FILTER_VALIDATE_BOOLEAN
+    );
+
+    // Optional direct-to-S3 redirect for very large files when the gateway supports presigned URLs.
+    if (!$previewMode && !$shareMode && $usePresignedRedirect) {
         $cmd = $client->getCommand('GetObject', $params);
         $signed = $client->createPresignedRequest($cmd, '+' . $expiresSeconds . ' seconds');
         $signedUrl = (string) $signed->getUri();
         if ($signedUrl !== '') {
-            if ($shareMode) {
-                header('Content-Type: application/json; charset=UTF-8');
-                echo json_encode([
-                    'ok' => true,
-                    'url' => $signedUrl,
-                    'expires_in' => $expiresSeconds,
-                    'max_expires_in' => $maxShareSeconds,
-                ], JSON_UNESCAPED_SLASHES);
-                exit;
-            }
             header('Cache-Control: no-store');
             header('Location: ' . $signedUrl, true, 302);
             exit;
         }
+    }
+
+    if ($shareMode) {
+        $cmd = $client->getCommand('GetObject', $params);
+        $signed = $client->createPresignedRequest($cmd, '+' . $expiresSeconds . ' seconds');
+        $signedUrl = (string) $signed->getUri();
+        if ($signedUrl === '') {
+            http_response_code(500);
+            header('Content-Type: application/json; charset=UTF-8');
+            echo json_encode(['ok' => false, 'error' => 'Could not create share link.']);
+            exit;
+        }
+        header('Content-Type: application/json; charset=UTF-8');
+        echo json_encode([
+            'ok' => true,
+            'url' => $signedUrl,
+            'expires_in' => $expiresSeconds,
+            'max_expires_in' => $maxShareSeconds,
+        ], JSON_UNESCAPED_SLASHES);
+        exit;
     }
 
     if ($previewMode) {
@@ -207,33 +222,15 @@ try {
         exit;
     }
 
-    $result = $client->getObject($params);
-
-    $filename = basename($key);
-    $contentType = $result['ContentType'] ?? 'application/octet-stream';
-    header('Content-Type: ' . $contentType);
-    header('Content-Disposition: attachment; filename="' . str_replace('"', '', $filename) . '"');
-    header('Accept-Ranges: bytes');
-    header('X-Accel-Buffering: no');
-    if (isset($result['ContentRange'])) {
-        http_response_code(206);
-        header('Content-Range: ' . $result['ContentRange']);
-    }
-    if (isset($result['ContentLength'])) {
-        header('Content-Length: ' . (int) $result['ContentLength']);
-    }
-    if (isset($result['ETag'])) {
-        header('ETag: ' . $result['ETag']);
-    }
-
-    $body = $result['Body'];
-    if (is_resource($body)) {
-        fpassthru($body);
-    } else {
-        while (!$body->eof()) {
-            echo $body->read(65536);
-            @flush();
-        }
+    try {
+        s3_inspector_stream_object_to_browser($session, $key, $rangeHeader !== '' ? $rangeHeader : null);
+        exit;
+    } catch (RuntimeException $e) {
+        $status = $e->getCode() >= 400 ? (int) $e->getCode() : 500;
+        http_response_code($status);
+        header('Content-Type: text/plain; charset=UTF-8');
+        echo $e->getMessage();
+        exit;
     }
 } catch (Aws\Exception\AwsException $e) {
     if ($previewMode) {

@@ -193,7 +193,110 @@ function s3_inspector_key_allowed(string $key, string $rootPrefix): bool
 }
 
 /**
- * Download one object to a local file.
+ * Stream an S3 object to the browser (proxy download).
+ * Tries authenticated SDK streaming first, then presigned+curl for picky gateways.
+ *
+ * @throws RuntimeException with code 404 when the object is missing
+ */
+function s3_inspector_stream_object_to_browser(array $session, string $key, ?string $rangeHeader = null): void
+{
+    $client = s3_inspector_create_client($session, [
+        'timeout' => 0,
+        'read_timeout' => 0,
+    ]);
+    $bucket = (string) $session['bucket'];
+
+    try {
+        $head = $client->headObject([
+            'Bucket' => $bucket,
+            'Key' => $key,
+        ]);
+    } catch (AwsException $e) {
+        $code = ($e->getAwsErrorCode() === 'NoSuchKey' || $e->getStatusCode() === 404) ? 404 : 500;
+        throw new RuntimeException($e->getAwsErrorMessage() ?: 'Object not found.', $code);
+    }
+
+    $filename = basename($key);
+    $contentType = $head['ContentType'] ?? 'application/octet-stream';
+    header('Content-Type: ' . $contentType);
+    header('Content-Disposition: attachment; filename="' . str_replace('"', '', $filename) . '"');
+    header('Accept-Ranges: bytes');
+    header('X-Accel-Buffering: no');
+    if (isset($head['ContentLength'])) {
+        header('Content-Length: ' . (int) $head['ContentLength']);
+    }
+    if (isset($head['ETag'])) {
+        header('ETag: ' . $head['ETag']);
+    }
+
+    $getParams = [
+        'Bucket' => $bucket,
+        'Key' => $key,
+    ];
+    if ($rangeHeader !== null && $rangeHeader !== '' && preg_match('/^bytes=\d*-\d*$/', $rangeHeader)) {
+        $getParams['Range'] = $rangeHeader;
+    }
+
+    try {
+        $result = $client->getObject($getParams);
+        if (isset($result['ContentRange'])) {
+            http_response_code(206);
+            header('Content-Range: ' . $result['ContentRange']);
+        }
+        if (isset($result['ContentLength'])) {
+            header('Content-Length: ' . (int) $result['ContentLength']);
+        }
+        $body = $result['Body'];
+        if (is_resource($body)) {
+            fpassthru($body);
+        } else {
+            while (!$body->eof()) {
+                echo $body->read(65536);
+                @flush();
+            }
+        }
+        return;
+    } catch (AwsException $e) {
+        // Fall through to presigned curl streaming below.
+    }
+
+    if (function_exists('curl_init')) {
+        $cmd = $client->getCommand('GetObject', $getParams);
+        $signed = $client->createPresignedRequest($cmd, '+600 seconds');
+        $signedUrl = (string) $signed->getUri();
+        if ($signedUrl !== '') {
+            $ch = curl_init($signedUrl);
+            curl_setopt_array($ch, [
+                CURLOPT_WRITEFUNCTION => static function ($curl, string $data): int {
+                    echo $data;
+                    @flush();
+                    return strlen($data);
+                },
+                CURLOPT_FOLLOWLOCATION => true,
+                CURLOPT_CONNECTTIMEOUT => 30,
+                CURLOPT_TIMEOUT => 0,
+                CURLOPT_USERAGENT => 'ScientistCloud-Portal/s3-download',
+            ]);
+            if (isset($getParams['Range'])) {
+                curl_setopt($ch, CURLOPT_RANGE, preg_replace('/^bytes=/', '', $getParams['Range']));
+            }
+            $ok = curl_exec($ch);
+            $httpCode = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
+            $curlError = curl_error($ch);
+            curl_close($ch);
+            if ($ok && in_array($httpCode, [200, 206], true)) {
+                return;
+            }
+            throw new RuntimeException(
+                'Download failed: HTTP ' . $httpCode . ($curlError !== '' ? ' (' . $curlError . ')' : '')
+            );
+        }
+    }
+
+    throw new RuntimeException('Download failed.');
+}
+
+/**
  *
  * Ceph/RGW and similar gateways often return HTTP 200/206 bodies that the AWS SDK
  * rejects on GetObject+SaveAs ("AWS HTTP error: (server): 200 OK"). Presigned URL

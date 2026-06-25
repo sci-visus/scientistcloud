@@ -184,7 +184,7 @@ $logoPath = $embedMode ? 'assets/images/scientistcloud-logo.png' : '../assets/im
         </nav>
 
         <div class="mb-2 text-end">
-          <a class="btn btn-sm btn-outline-primary" href="<?php echo htmlspecialchars($currentFolderDl); ?>">
+          <a class="btn btn-sm btn-outline-primary" href="<?php echo htmlspecialchars($currentFolderDl); ?>" target="_blank" rel="noopener">
             <i class="fas fa-file-archive"></i> Download Current Folder
           </a>
         </div>
@@ -212,7 +212,7 @@ $logoPath = $embedMode ? 'assets/images/scientistcloud-logo.png' : '../assets/im
               ?>
               <li class="list-group-item d-flex justify-content-between align-items-center">
                 <a href="<?php echo htmlspecialchars($href); ?>"><i class="fas fa-folder text-warning"></i> <?php echo htmlspecialchars($folder['name']); ?>/</a>
-                <a class="btn btn-sm btn-outline-primary" href="<?php echo htmlspecialchars($folderDl); ?>"><i class="fas fa-file-archive"></i> Download Folder</a>
+                <a class="btn btn-sm btn-outline-primary" href="<?php echo htmlspecialchars($folderDl); ?>" target="_blank" rel="noopener"><i class="fas fa-file-archive"></i> Download Folder</a>
               </li>
             <?php endforeach; ?>
 
@@ -240,7 +240,7 @@ $logoPath = $embedMode ? 'assets/images/scientistcloud-logo.png' : '../assets/im
                       <i class="fas fa-eye"></i> Preview
                     </button>
                   <?php endif; ?>
-                  <a class="btn btn-sm btn-outline-primary" href="<?php echo htmlspecialchars($dl); ?>"><i class="fas fa-download"></i> Download</a>
+                  <a class="btn btn-sm btn-outline-primary" href="<?php echo htmlspecialchars($dl); ?>" target="_blank" rel="noopener"><i class="fas fa-download"></i> Download</a>
                   <?php if (!$embedMode): ?>
                   <button type="button" class="btn btn-sm btn-outline-secondary js-copy-share-link" data-share-base="<?php echo htmlspecialchars($apiDl . '?mode=share_link&' . $dlParams); ?>">
                     <i class="fas fa-link"></i> Copy Link

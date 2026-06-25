@@ -691,13 +691,15 @@ class PublicDatasetManager {
         `;
         
         detailsContainer.innerHTML = html;
+
+        this.currentDatasetDetails = dataset;
         
         // Attach download button handler
         const downloadBtn = detailsContainer.querySelector('[data-action="download"]');
         if (downloadBtn) {
             downloadBtn.addEventListener('click', (e) => {
                 e.preventDefault();
-                this.downloadDataset(dataset.id || dataset.uuid);
+                this.downloadDataset(dataset.id || dataset.uuid, dataset);
             });
         }
 
@@ -758,12 +760,27 @@ class PublicDatasetManager {
     }
 
     /**
-     * Download dataset (if publicly downloadable)
+     * Download dataset (if publicly downloadable).
+     * S3-linked datasets zip the dataset root via the public S3 download API.
      */
-    async downloadDataset(datasetId) {
+    async downloadDataset(datasetId, dataset = null) {
         try {
-            // Redirect to download endpoint
-            window.location.href = `${getApiBasePath()}/dataset-file-serve.php?dataset_id=${encodeURIComponent(datasetId)}&action=download`;
+            const resolved = dataset || this.currentDatasetDetails;
+            const isS3Dataset = resolved && (
+                resolved.has_s3_browser === true
+                || this.isS3DirectoryOnlyDataset(resolved)
+            );
+
+            if (isS3Dataset) {
+                const url = `${getApiBasePath()}/public-s3-download-folder.php?rel=&dataset=${encodeURIComponent(datasetId)}`;
+                window.open(url, '_blank', 'noopener');
+                return;
+            }
+
+            alert(
+                'This dataset is stored remotely. Use the S3 Browser to download individual files or folders, '
+                + 'or contact the dataset owner for bulk export.'
+            );
         } catch (error) {
             console.error('Error downloading dataset:', error);
             alert('Failed to download dataset. Please try again.');
