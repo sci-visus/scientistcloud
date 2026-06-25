@@ -124,6 +124,7 @@ class UploadManager {
         if (uploadData.team_uuid) body.team_uuid = uploadData.team_uuid;
         if (uploadData.tags) body.tags = uploadData.tags;
         if (relativePath) body.relative_path = relativePath;
+        if (uploadData.add_to_existing) body.add_to_existing = true;
         if (expectedFilesJson) {
             try {
                 body.expected_files = JSON.parse(expectedFilesJson);
@@ -4149,6 +4150,149 @@ class UploadManager {
         const div = document.createElement('div');
         div.textContent = text;
         return div.innerHTML;
+    }
+
+    /**
+     * Upload one or more files into an existing dataset upload directory.
+     */
+    async uploadFilesToExistingDataset(dataset, files) {
+        const fileArray = Array.from(files || []);
+        if (fileArray.length === 0) {
+            return;
+        }
+
+        const userEmail = await this.getUserEmail();
+        if (!userEmail) {
+            alert('Could not determine your user email. Please refresh and try again.');
+            return;
+        }
+
+        const datasetUuid = dataset?.uuid || dataset?.id;
+        if (!datasetUuid) {
+            alert('Dataset UUID is missing.');
+            return;
+        }
+
+        const uploadData = {
+            dataset_name: dataset.name || 'Dataset',
+            sensor: dataset.sensor || 'OTHER',
+            convert: false,
+            is_public: !!dataset.is_public,
+            is_downloadable: dataset.is_downloadable || 'only owner',
+            folder: dataset.folder_uuid || null,
+            team_uuid: dataset.team_uuid || null,
+            tags: Array.isArray(dataset.tags) ? dataset.tags.join(', ') : (dataset.tags || ''),
+            add_to_existing: true,
+        };
+
+        this.showUploadModal(uploadData.dataset_name, fileArray.length);
+        this.currentUploadSession.datasetUuid = datasetUuid;
+        this.currentUploadSession.addToExisting = true;
+        this.currentUploadSession.willConvert = false;
+
+        const uploadUrl = `${getUploadApiBasePath()}/upload-dataset.php`;
+        const uploadPromises = [];
+
+        for (let i = 0; i < fileArray.length; i++) {
+            const file = fileArray[i];
+            const fileIndex = i;
+            const fileName = file.name;
+            const relativePath = this.resolveAddFilesRelativePath(file);
+
+            uploadPromises.push((async () => {
+                try {
+                    const uploadFormData = new FormData();
+                    uploadFormData.append('file', file);
+                    uploadFormData.append('user_email', userEmail);
+                    uploadFormData.append('dataset_name', uploadData.dataset_name);
+                    uploadFormData.append('sensor', uploadData.sensor);
+                    uploadFormData.append('convert', 'false');
+                    uploadFormData.append('is_public', uploadData.is_public ? 'true' : 'false');
+                    uploadFormData.append('is_downloadable', uploadData.is_downloadable);
+                    uploadFormData.append('dataset_identifier', datasetUuid);
+                    uploadFormData.append('add_to_existing', 'true');
+                    if (uploadData.folder) uploadFormData.append('folder', uploadData.folder);
+                    if (uploadData.team_uuid) uploadFormData.append('team_uuid', uploadData.team_uuid);
+                    if (uploadData.tags) uploadFormData.append('tags', uploadData.tags);
+                    if (relativePath) uploadFormData.append('relative_path', relativePath);
+
+                    const useChunkedUpload = file.size >= SC_LARGE_UPLOAD_THRESHOLD;
+                    let result;
+                    if (useChunkedUpload) {
+                        result = await this.uploadFileLargeChunked({
+                            file,
+                            fileIndex,
+                            fileName,
+                            uploadData,
+                            userEmail,
+                            datasetUuid,
+                            relativePath,
+                            expectedFilesJson: null,
+                        });
+                    } else {
+                        this.updateUploadModalFile(fileIndex, fileName, 'uploading');
+                        result = await this.uploadFileViaPhpWithProgress(
+                            uploadUrl,
+                            uploadFormData,
+                            fileIndex,
+                            fileName,
+                            file.size
+                        );
+                        if (result.job_id) {
+                            this.updateUploadModalFile(fileIndex, fileName, 'completed', result.job_id);
+                            this.trackUpload(result.job_id, uploadData.dataset_name, fileName, false, datasetUuid);
+                        } else {
+                            const errorMsg = result.error || result.message || 'Upload failed';
+                            this.updateUploadModalFile(fileIndex, fileName, 'failed', null, errorMsg);
+                        }
+                    }
+
+                    if (!result?.job_id) {
+                        const errorMsg = result?.error || result?.message || 'Upload failed (no job_id)';
+                        if (useChunkedUpload) {
+                            throw new Error(errorMsg);
+                        }
+                    }
+                    return result;
+                } catch (error) {
+                    console.error('Add-files upload error:', error);
+                    this.updateUploadModalFile(fileIndex, fileName, 'failed', null, error.message || 'Upload failed');
+                    throw error;
+                }
+            })());
+        }
+
+        try {
+            await Promise.allSettled(uploadPromises);
+        } finally {
+            if (window.datasetManager) {
+                try {
+                    await window.datasetManager.loadDatasets();
+                } catch (error) {
+                    console.warn('Could not refresh dataset list after add-files upload', error);
+                }
+                const filesContainer = document.getElementById(`files-${datasetUuid}`);
+                if (filesContainer) {
+                    const content = filesContainer.querySelector('.dataset-files-content');
+                    if (content) {
+                        window.datasetManager.loadDatasetFilesIntoContainer(datasetUuid, content, dataset);
+                    }
+                }
+            }
+        }
+    }
+
+    resolveAddFilesRelativePath(file) {
+        const rel = (file.webkitRelativePath || '').trim().replace(/\\/g, '/');
+        if (!rel) {
+            return null;
+        }
+        const parts = rel.split('/');
+        if (parts.length <= 1) {
+            return null;
+        }
+        parts.pop();
+        return parts.join('/');
     }
 
     /**

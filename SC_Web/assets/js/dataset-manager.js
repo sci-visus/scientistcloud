@@ -185,6 +185,19 @@ class DatasetManager {
                     console.error('Could not find dataset ID for open dashboard link button');
                 }
             }
+
+            if (e.target.closest('[data-action="add-files"]')) {
+                e.preventDefault();
+                const button = e.target.closest('[data-action="add-files"]');
+                const datasetId = button.dataset.datasetId || button.getAttribute('data-dataset-id');
+                const dataset = this.currentDatasetDetails
+                    || (this.currentDataset?.id === datasetId || this.currentDataset?.uuid === datasetId ? this.currentDataset : null);
+                if (dataset) {
+                    this.startAddFilesToDataset(dataset);
+                } else if (datasetId) {
+                    this.startAddFilesToDataset({ uuid: datasetId, id: datasetId });
+                }
+            }
         });
 
         // Search functionality
@@ -2063,6 +2076,11 @@ class DatasetManager {
                         <button type="button" class="btn btn-sm btn-outline-primary" id="editDatasetBtn" data-dataset-id="${dataset.id || dataset.uuid}">
                             <i class="fas fa-edit"></i> Edit
                         </button>
+                        <button type="button" class="btn btn-sm btn-outline-primary" data-action="add-files"
+                                data-dataset-id="${dataset.id || dataset.uuid}"
+                                title="Upload additional files to this dataset">
+                            <i class="fas fa-plus"></i> Add Files
+                        </button>
                         <button type="button" class="btn btn-sm btn-outline-primary retry-conversion-details-btn" 
                                 data-dataset-uuid="${dataset.uuid || dataset.id}"
                                 data-dataset-name="${this.escapeHtml(dataset.name || 'Dataset')}">
@@ -2382,6 +2400,154 @@ class DatasetManager {
         }
     }
     
+    /**
+     * Collect relative paths of files in the dataset upload directory.
+     */
+    collectUploadFilePaths(items) {
+        const paths = new Set();
+        const walk = (nodes) => {
+            for (const item of nodes || []) {
+                if (item.type === 'file') {
+                    const path = (item.path || item.name || '').replace(/\\/g, '/');
+                    if (path) {
+                        paths.add(path);
+                    }
+                } else if (item.type === 'directory' && item.children) {
+                    walk(item.children);
+                }
+            }
+        };
+        walk(items);
+        return paths;
+    }
+
+    targetPathForAddFile(file) {
+        const rel = (file.webkitRelativePath || '').trim().replace(/\\/g, '/');
+        return rel || file.name;
+    }
+
+    async fetchDatasetUploadFilePaths(datasetUuid) {
+        try {
+            const response = await fetch(
+                `${getApiBasePath()}/dataset-files.php?dataset_uuid=${encodeURIComponent(datasetUuid)}`
+            );
+            const data = await response.json();
+            if (!data.success) {
+                return new Set();
+            }
+            return this.collectUploadFilePaths(data.directories?.upload?.files || []);
+        } catch (error) {
+            console.warn('Could not load existing dataset files for conflict check:', error);
+            return new Set();
+        }
+    }
+
+    async confirmDatasetFileReplacements(files, existingPaths) {
+        const conflicts = [];
+        const noConflict = [];
+
+        for (const file of files) {
+            const target = this.targetPathForAddFile(file);
+            if (existingPaths.has(target)) {
+                conflicts.push({ file, target });
+            } else {
+                noConflict.push(file);
+            }
+        }
+
+        if (conflicts.length === 0) {
+            return { filesToUpload: files, cancelled: false };
+        }
+
+        const preview = conflicts.map((entry) => entry.target).slice(0, 12);
+        const remaining = conflicts.length - preview.length;
+        const message = conflicts.length === 1
+            ? `"${conflicts[0].target}" already exists in this dataset.\n\nReplace it?`
+            : `These ${conflicts.length} file(s) already exist in this dataset:\n\n${
+                preview.map((path) => `• ${path}`).join('\n')
+            }${remaining > 0 ? `\n• …and ${remaining} more` : ''}\n\nReplace them?`;
+
+        if (!window.confirm(message)) {
+            if (noConflict.length === 0) {
+                return { filesToUpload: [], cancelled: true };
+            }
+            const uploadRest = window.confirm(
+                `Skip ${conflicts.length} existing file(s) and upload the other ${noConflict.length}?`
+            );
+            if (!uploadRest) {
+                return { filesToUpload: [], cancelled: true };
+            }
+            return { filesToUpload: noConflict, cancelled: false };
+        }
+
+        return { filesToUpload: files, cancelled: false };
+    }
+
+    async startAddFilesToDataset(dataset) {
+        await this.ensureUserContext();
+
+        let resolvedDataset = dataset || {};
+        const datasetUuid = resolvedDataset.uuid || resolvedDataset.id;
+        if (!datasetUuid) {
+            alert('Dataset UUID is missing.');
+            return;
+        }
+
+        if (!resolvedDataset.name || !resolvedDataset.sensor) {
+            try {
+                const response = await fetch(
+                    `${getApiBasePath()}/dataset-details.php?dataset_id=${encodeURIComponent(datasetUuid)}`
+                );
+                if (response.ok) {
+                    const data = await response.json();
+                    if (data.success && data.dataset) {
+                        resolvedDataset = { ...data.dataset, ...resolvedDataset };
+                    }
+                }
+            } catch (error) {
+                console.warn('Could not load dataset details for add-files upload:', error);
+            }
+        }
+
+        if (!this.isDatasetOwner(resolvedDataset)) {
+            alert('Only the dataset owner can add files.');
+            return;
+        }
+
+        let picker = document.getElementById('datasetAddFilesInput');
+        if (!picker) {
+            picker = document.createElement('input');
+            picker.type = 'file';
+            picker.id = 'datasetAddFilesInput';
+            picker.multiple = true;
+            picker.style.display = 'none';
+            document.body.appendChild(picker);
+        }
+
+        picker.value = '';
+        picker.onchange = async () => {
+            const selected = Array.from(picker.files || []);
+            if (selected.length === 0) {
+                return;
+            }
+
+            const existingPaths = await this.fetchDatasetUploadFilePaths(datasetUuid);
+            const { filesToUpload, cancelled } = await this.confirmDatasetFileReplacements(selected, existingPaths);
+            if (cancelled || filesToUpload.length === 0) {
+                return;
+            }
+
+            if (!window.uploadManager) {
+                alert('Upload system is not available. Please refresh the page.');
+                return;
+            }
+
+            await window.uploadManager.uploadFilesToExistingDataset(resolvedDataset, filesToUpload);
+        };
+
+        picker.click();
+    }
+
     /**
      * Save dataset changes
      */
