@@ -79,10 +79,7 @@ try {
     // Download can take a long time for GB-scale files.
     @set_time_limit(0);
     @ini_set('max_execution_time', '0');
-    @ini_set('zlib.output_compression', '0');
-    while (ob_get_level() > 0) {
-        @ob_end_clean();
-    }
+    s3_inspector_prepare_download_response();
 
     // Override default short timeout used by listing calls.
     $client = s3_inspector_create_client($session, [

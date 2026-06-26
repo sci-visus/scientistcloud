@@ -94,3 +94,10 @@ slope_array = gt.generate_img(
     ztype="Slope",
     crop_shp=True,
 )
+
+
+
+# Replace endpoint/creds for your gateway
+aws s3api head-object --bucket scientistcloud --key utk/conus/10m/CA/aspect.tif --endpoint-url https://us-east-1.gw.future-tech-holdings.com
+
+aws s3 cp s3://scientistcloud/utk/conus/10m/CA/aspect.tif /tmp/test.tif --endpoint-url https://us-east-1.gw.future-tech-holdings.com

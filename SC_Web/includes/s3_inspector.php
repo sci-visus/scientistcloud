@@ -193,6 +193,39 @@ function s3_inspector_key_allowed(string $key, string $rootPrefix): bool
 }
 
 /**
+ * Clear output buffers and suppress display_errors before streaming binary downloads.
+ */
+function s3_inspector_prepare_download_response(): void
+{
+    @ini_set('display_errors', '0');
+    @ini_set('zlib.output_compression', '0');
+    while (ob_get_level() > 0) {
+        @ob_end_clean();
+    }
+}
+
+/**
+ * @return array<string, mixed>
+ */
+function s3_inspector_head_object_meta(S3Client $client, string $bucket, string $key): array
+{
+    try {
+        $head = $client->headObject([
+            'Bucket' => $bucket,
+            'Key' => $key,
+        ]);
+    } catch (Throwable $e) {
+        return [];
+    }
+
+    return [
+        'ContentType' => $head['ContentType'] ?? null,
+        'ContentLength' => $head['ContentLength'] ?? null,
+        'ETag' => $head['ETag'] ?? null,
+    ];
+}
+
+/**
  * Stream an S3 object to the browser (proxy download).
  * Tries authenticated SDK streaming first, then presigned+curl for picky gateways.
  *
@@ -200,6 +233,8 @@ function s3_inspector_key_allowed(string $key, string $rootPrefix): bool
  */
 function s3_inspector_stream_object_to_browser(array $session, string $key, ?string $rangeHeader = null): void
 {
+    s3_inspector_prepare_download_response();
+
     $client = s3_inspector_create_client($session, [
         'timeout' => 0,
         'read_timeout' => 0,
@@ -208,10 +243,17 @@ function s3_inspector_stream_object_to_browser(array $session, string $key, ?str
     $filename = basename($key);
 
     $emitHeaders = static function (array $meta) use ($filename): void {
+        if (headers_sent($file, $line)) {
+            throw new RuntimeException(
+                'Download headers could not be sent (output already started in ' . $file . ':' . $line . ').',
+                500
+            );
+        }
         $contentType = $meta['ContentType'] ?? 'application/octet-stream';
         header('Content-Type: ' . $contentType);
         header('Content-Disposition: attachment; filename="' . str_replace('"', '', $filename) . '"');
         header('Accept-Ranges: bytes');
+        header('Cache-Control: no-store');
         header('X-Accel-Buffering: no');
         if (isset($meta['ContentLength'])) {
             header('Content-Length: ' . (int) $meta['ContentLength']);
@@ -237,6 +279,9 @@ function s3_inspector_stream_object_to_browser(array $session, string $key, ?str
     if (isset($getParams['Range'])) {
         $emitHeaders(['ContentType' => 'application/octet-stream']);
         $out = fopen('php://output', 'wb');
+        if ($out === false) {
+            throw new RuntimeException('Could not open response stream for download.', 500);
+        }
         try {
             $meta = s3_inspector_stream_get_object($client, $getParams, $out);
             if (isset($meta['ContentRange'])) {
@@ -258,26 +303,26 @@ function s3_inspector_stream_object_to_browser(array $session, string $key, ?str
         );
     }
 
-    $tmpPath = tempnam(sys_get_temp_dir(), 'sc_s3dl_');
-    if ($tmpPath === false) {
-        throw new RuntimeException('Could not create temp file for download.', 500);
+    $headMeta = s3_inspector_head_object_meta($client, $bucket, $key);
+    $emitHeaders($headMeta !== [] ? $headMeta : ['ContentType' => 'application/octet-stream']);
+
+    $out = fopen('php://output', 'wb');
+    if ($out === false) {
+        throw new RuntimeException('Could not open response stream for download.', 500);
     }
 
     try {
-        s3_inspector_download_object_to_file($client, $bucket, $key, $tmpPath);
-        $mime = function_exists('mime_content_type') ? (mime_content_type($tmpPath) ?: null) : null;
-        $emitHeaders([
-            'ContentType' => $mime ?: 'application/octet-stream',
-            'ContentLength' => filesize($tmpPath),
-        ]);
-        readfile($tmpPath);
+        s3_inspector_stream_get_object($client, $getParams, $out);
         return;
     } catch (Throwable $e) {
         $errors[] = $e->getMessage();
-    } finally {
-        if (is_string($tmpPath) && is_file($tmpPath)) {
-            @unlink($tmpPath);
-        }
+    }
+
+    try {
+        s3_inspector_stream_presigned_get_object($client, $getParams, $out);
+        return;
+    } catch (Throwable $e) {
+        $errors[] = $e->getMessage();
     }
 
     $listed = s3_inspector_object_exists_in_listing($client, $bucket, $key);
