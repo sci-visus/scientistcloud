@@ -232,6 +232,8 @@ if ($defaultShareSeconds > $shareMaxSeconds) {
   <title><?php echo htmlspecialchars($pageTitle); ?> — ScientistCloud</title>
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
   <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/marked@12.0.2/marked.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/dompurify@3.1.6/dist/purify.min.js"></script>
   <style>
     :root {
       --sc-primary: #1f3c88;
@@ -342,6 +344,25 @@ if ($defaultShareSeconds > $shareMaxSeconds) {
       border-radius: 6px;
       padding: 10px;
     }
+    .s3-markdown-body {
+      max-height: 480px;
+      overflow: auto;
+      background: #fff;
+      color: #1b2b52;
+      border-radius: 6px;
+      padding: 14px 18px;
+      font-size: 14px;
+      line-height: 1.6;
+    }
+    .s3-markdown-body h1, .s3-markdown-body h2 { border-bottom: 1px solid #e2e8f0; padding-bottom: 0.3em; margin-top: 1em; }
+    .s3-markdown-body h1:first-child, .s3-markdown-body h2:first-child, .s3-markdown-body h3:first-child { margin-top: 0; }
+    .s3-markdown-body code { background: #eef2ff; padding: 0.15em 0.35em; border-radius: 4px; font-size: 0.9em; }
+    .s3-markdown-body pre { background: #0f172a; color: #e2e8f0; padding: 12px; border-radius: 6px; overflow: auto; }
+    .s3-markdown-body pre code { background: transparent; padding: 0; color: inherit; }
+    .s3-markdown-body table { border-collapse: collapse; margin: 0.5em 0; }
+    .s3-markdown-body th, .s3-markdown-body td { border: 1px solid #d0d7e2; padding: 6px 10px; }
+    .s3-markdown-body img { max-width: 100%; }
+    .s3-markdown-body blockquote { border-left: 4px solid #c9daf8; margin: 0.5em 0; padding: 0.2em 1em; color: #47597e; }
     .s3-connect-panel {
       border: 1px solid var(--sc-border);
       border-radius: 8px;
@@ -534,7 +555,10 @@ if ($defaultShareSeconds > $shareMaxSeconds) {
               $publicUrl = $showPublicUrlButton ? s3_public_object_url($session, (string) $file['key']) : '';
               $sz = $file['size'];
               $lowerName = strtolower((string) $file['name']);
-              $isTextPreviewable = str_ends_with($lowerName, '.idx')
+              $isMarkdown = str_ends_with($lowerName, '.md')
+                || str_ends_with($lowerName, '.markdown');
+              $isTextPreviewable = $isMarkdown
+                || str_ends_with($lowerName, '.idx')
                 || str_ends_with($lowerName, '.txt')
                 || str_ends_with($lowerName, '.csv')
                 || str_ends_with($lowerName, '.json');
@@ -552,7 +576,8 @@ if ($defaultShareSeconds > $shareMaxSeconds) {
                     class="btn btn-sm btn-outline-info js-preview-idx"
                     data-preview-url="<?php echo htmlspecialchars($preview); ?>"
                     data-file-name="<?php echo htmlspecialchars((string) $file['name']); ?>"
-                    title="View text inline">
+                    data-is-markdown="<?php echo $isMarkdown ? '1' : '0'; ?>"
+                    title="View inline">
                     <i class="fas fa-eye"></i> Preview
                   </button>
                 <?php endif; ?>
@@ -610,7 +635,8 @@ if ($defaultShareSeconds > $shareMaxSeconds) {
             <strong id="idxPreviewTitle">Text Preview</strong>
             <button type="button" id="idxPreviewClose" class="btn btn-sm btn-outline-secondary">Close</button>
           </div>
-          <pre id="idxPreviewContent">Select a text file (.idx, .txt, .csv, .json) and click Preview.</pre>
+          <pre id="idxPreviewContent">Select a text file (.idx, .txt, .csv, .json, .md) and click Preview.</pre>
+          <div id="idxPreviewMarkdown" class="s3-markdown-body" style="display:none;"></div>
         </div>
         <div id="s3ConnectPanel" class="s3-connect-panel mt-3">
           <div class="d-flex justify-content-between align-items-center mb-2">
@@ -804,6 +830,7 @@ if ($defaultShareSeconds > $shareMaxSeconds) {
       const previewPanel = document.getElementById('idxPreviewPanel');
       const previewTitle = document.getElementById('idxPreviewTitle');
       const previewContent = document.getElementById('idxPreviewContent');
+      const previewMarkdown = document.getElementById('idxPreviewMarkdown');
       const previewClose = document.getElementById('idxPreviewClose');
       const previewButtons = document.querySelectorAll('.js-preview-idx');
 
@@ -813,11 +840,21 @@ if ($defaultShareSeconds > $shareMaxSeconds) {
         });
       }
 
+      function renderMarkdown(target, text) {
+        if (typeof marked === 'undefined' || typeof DOMPurify === 'undefined') {
+          return false;
+        }
+        const rawHtml = marked.parse(text, { gfm: true, breaks: false });
+        target.innerHTML = DOMPurify.sanitize(rawHtml);
+        return true;
+      }
+
       previewButtons.forEach(function (btn) {
         btn.addEventListener('click', async function () {
           if (!previewPanel || !previewContent || !previewTitle) return;
           const endpoint = btn.getAttribute('data-preview-url');
           const fileName = btn.getAttribute('data-file-name') || '.idx';
+          const isMarkdown = btn.getAttribute('data-is-markdown') === '1';
           if (!endpoint) return;
 
           const original = btn.innerHTML;
@@ -826,6 +863,11 @@ if ($defaultShareSeconds > $shareMaxSeconds) {
           previewPanel.style.display = 'block';
           previewTitle.textContent = 'Preview — ' + fileName;
           previewContent.textContent = 'Loading...';
+          previewContent.style.display = '';
+          if (previewMarkdown) {
+            previewMarkdown.style.display = 'none';
+            previewMarkdown.innerHTML = '';
+          }
           requestAnimationFrame(function () {
             previewPanel.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
           });
@@ -836,12 +878,26 @@ if ($defaultShareSeconds > $shareMaxSeconds) {
             if (!res.ok || !json.ok) {
               throw new Error((json && json.error) ? json.error : 'Could not load preview');
             }
-            let text = json.content || '';
-            if (json.truncated) {
-              text += '\n\n[Preview truncated to first 256KB]';
+            const content = json.content || '';
+            if (isMarkdown && previewMarkdown && content && renderMarkdown(previewMarkdown, content)) {
+              previewContent.style.display = 'none';
+              previewMarkdown.style.display = 'block';
+              if (json.truncated) {
+                const note = document.createElement('p');
+                note.className = 'text-muted small mb-0 mt-2';
+                note.textContent = 'Preview truncated to first 256KB.';
+                previewMarkdown.appendChild(note);
+              }
+            } else {
+              let text = content;
+              if (json.truncated) {
+                text += '\n\n[Preview truncated to first 256KB]';
+              }
+              previewContent.textContent = text;
             }
-            previewContent.textContent = text;
           } catch (err) {
+            previewContent.style.display = '';
+            if (previewMarkdown) { previewMarkdown.style.display = 'none'; }
             previewContent.textContent = 'Failed to load preview: ' + (err && err.message ? err.message : 'Unknown error');
           } finally {
             btn.innerHTML = original;
