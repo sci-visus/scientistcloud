@@ -64,6 +64,8 @@ $logoPath = $embedMode ? 'assets/images/scientistcloud-logo.png' : '../assets/im
   <title><?php echo htmlspecialchars($pageTitle); ?> — ScientistCloud</title>
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
   <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/marked@12.0.2/marked.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/dompurify@3.1.6/dist/purify.min.js"></script>
   <?php if (!$embedMode && str_contains($selfPath, '/public/')): ?>
   <link href="../assets/css/public.css" rel="stylesheet">
   <?php endif; ?>
@@ -75,6 +77,16 @@ $logoPath = $embedMode ? 'assets/images/scientistcloud-logo.png' : '../assets/im
     .s3-file-list-scroll { max-height: min(55vh, 520px); overflow-y: auto; }
     .s3-preview pre { margin: 0; max-height: 360px; overflow: auto; font-size: 12px; white-space: pre-wrap; word-break: break-word; background: #0f172a; color: #e2e8f0; border-radius: 6px; padding: 10px; }
     .s3-preview { border: 1px solid #c9daf8; border-radius: 6px; background: #f8fbff; padding: 0.75rem; display: none; }
+    .s3-markdown-body { max-height: 480px; overflow: auto; background: #fff; color: #1b2b52; border-radius: 6px; padding: 14px 18px; font-size: 14px; line-height: 1.6; }
+    .s3-markdown-body h1, .s3-markdown-body h2 { border-bottom: 1px solid #e2e8f0; padding-bottom: 0.3em; margin-top: 1em; }
+    .s3-markdown-body h1:first-child, .s3-markdown-body h2:first-child, .s3-markdown-body h3:first-child { margin-top: 0; }
+    .s3-markdown-body code { background: #eef2ff; padding: 0.15em 0.35em; border-radius: 4px; font-size: 0.9em; }
+    .s3-markdown-body pre { background: #0f172a; color: #e2e8f0; padding: 12px; border-radius: 6px; overflow: auto; }
+    .s3-markdown-body pre code { background: transparent; padding: 0; color: inherit; }
+    .s3-markdown-body table { border-collapse: collapse; margin: 0.5em 0; }
+    .s3-markdown-body th, .s3-markdown-body td { border: 1px solid #d0d7e2; padding: 6px 10px; }
+    .s3-markdown-body img { max-width: 100%; }
+    .s3-markdown-body blockquote { border-left: 4px solid #c9daf8; margin: 0.5em 0; padding: 0.2em 1em; color: #47597e; }
   </style>
 </head>
 <body>
@@ -222,7 +234,10 @@ $logoPath = $embedMode ? 'assets/images/scientistcloud-logo.png' : '../assets/im
                 $dl = $apiDl . '?' . $dlParams;
                 $preview = $apiDl . '?mode=preview_text&' . $dlParams;
                 $lowerName = strtolower((string) $file['name']);
-                $isTextPreviewable = str_ends_with($lowerName, '.idx')
+                $isMarkdown = str_ends_with($lowerName, '.md')
+                  || str_ends_with($lowerName, '.markdown');
+                $isTextPreviewable = $isMarkdown
+                  || str_ends_with($lowerName, '.idx')
                   || str_ends_with($lowerName, '.txt')
                   || str_ends_with($lowerName, '.csv')
                   || str_ends_with($lowerName, '.json');
@@ -236,7 +251,7 @@ $logoPath = $embedMode ? 'assets/images/scientistcloud-logo.png' : '../assets/im
                 <span class="small text-muted"><?php echo htmlspecialchars($szLabel); ?><?php if (!empty($file['mtime'])): ?> · <?php echo htmlspecialchars($file['mtime']); ?><?php endif; ?></span>
                 <span class="d-inline-flex gap-1 flex-wrap">
                   <?php if ($isTextPreviewable): ?>
-                    <button type="button" class="btn btn-sm btn-outline-info js-preview-idx" data-preview-url="<?php echo htmlspecialchars($preview); ?>" data-file-name="<?php echo htmlspecialchars((string) $file['name']); ?>">
+                    <button type="button" class="btn btn-sm btn-outline-info js-preview-idx" data-preview-url="<?php echo htmlspecialchars($preview); ?>" data-file-name="<?php echo htmlspecialchars((string) $file['name']); ?>" data-is-markdown="<?php echo $isMarkdown ? '1' : '0'; ?>">
                       <i class="fas fa-eye"></i> Preview
                     </button>
                   <?php endif; ?>
@@ -271,6 +286,7 @@ $logoPath = $embedMode ? 'assets/images/scientistcloud-logo.png' : '../assets/im
             <button type="button" id="idxPreviewClose" class="btn btn-sm btn-outline-secondary">Close</button>
           </div>
           <pre id="idxPreviewContent">Select a text file and click Preview.</pre>
+          <div id="idxPreviewMarkdown" class="s3-markdown-body" style="display:none;"></div>
         </div>
       <?php endif; ?>
     <?php endif; ?>
@@ -334,29 +350,61 @@ $logoPath = $embedMode ? 'assets/images/scientistcloud-logo.png' : '../assets/im
       const previewPanel = document.getElementById('idxPreviewPanel');
       const previewTitle = document.getElementById('idxPreviewTitle');
       const previewContent = document.getElementById('idxPreviewContent');
+      const previewMarkdown = document.getElementById('idxPreviewMarkdown');
       const previewClose = document.getElementById('idxPreviewClose');
       if (previewClose && previewPanel) {
         previewClose.addEventListener('click', function () { previewPanel.style.display = 'none'; });
+      }
+      function renderMarkdown(target, text) {
+        if (typeof marked === 'undefined' || typeof DOMPurify === 'undefined') {
+          return false;
+        }
+        const rawHtml = marked.parse(text, { gfm: true, breaks: false });
+        target.innerHTML = DOMPurify.sanitize(rawHtml);
+        return true;
       }
       document.querySelectorAll('.js-preview-idx').forEach(function (btn) {
         btn.addEventListener('click', async function () {
           if (!previewPanel || !previewContent || !previewTitle) return;
           const endpoint = btn.getAttribute('data-preview-url');
           const fileName = btn.getAttribute('data-file-name') || 'file';
+          const isMarkdown = btn.getAttribute('data-is-markdown') === '1';
           const original = btn.innerHTML;
           btn.disabled = true;
           btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Loading...';
           previewPanel.style.display = 'block';
           previewTitle.textContent = 'Preview — ' + fileName;
           previewContent.textContent = 'Loading...';
+          previewContent.style.display = '';
+          if (previewMarkdown) {
+            previewMarkdown.style.display = 'none';
+            previewMarkdown.innerHTML = '';
+          }
           try {
             const res = await fetch(endpoint, { credentials: 'same-origin' });
             const json = await res.json();
             if (!res.ok || !json.ok) {
               throw new Error((json && json.error) ? json.error : 'Preview failed');
             }
-            previewContent.textContent = json.content || '(empty file)';
+            const content = json.content || '';
+            if (isMarkdown && previewMarkdown && content && renderMarkdown(previewMarkdown, content)) {
+              previewContent.style.display = 'none';
+              previewMarkdown.style.display = 'block';
+              if (json.truncated) {
+                const note = document.createElement('p');
+                note.className = 'text-muted small mb-0 mt-2';
+                note.textContent = 'Preview truncated (large file).';
+                previewMarkdown.appendChild(note);
+              }
+            } else {
+              previewContent.textContent = content || '(empty file)';
+              if (json.truncated) {
+                previewContent.textContent += '\n\n… (preview truncated)';
+              }
+            }
           } catch (err) {
+            previewContent.style.display = '';
+            if (previewMarkdown) { previewMarkdown.style.display = 'none'; }
             previewContent.textContent = 'Preview failed: ' + (err && err.message ? err.message : 'Unknown error');
           } finally {
             btn.innerHTML = original;
