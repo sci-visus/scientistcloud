@@ -37,6 +37,7 @@ class PublicDatasetManager {
         this.datasets = [];
         this.folders = [];
         this.isSelectingDataset = false;
+        this.focusedFolder = this.getFolderFromUrl();
         this.initialize();
     }
 
@@ -83,6 +84,48 @@ class PublicDatasetManager {
                 const datasetLink = e.target.closest('.dataset-link');
                 this.handleDatasetSelection(datasetLink);
             }
+
+            const focusBack = e.target.closest('.folder-focus-back');
+            if (focusBack && focusBack.closest('#folderSidebar')) {
+                e.preventDefault();
+                this.clearFolderFocus();
+                return;
+            }
+            const focusCopy = e.target.closest('.folder-focus-copy');
+            if (focusCopy && focusCopy.closest('#folderSidebar')) {
+                e.preventDefault();
+                this.copyFolderFocusLink(focusCopy);
+            }
+        });
+
+        document.addEventListener('dblclick', (e) => {
+            const summary = e.target.closest('.folder-summary');
+            if (!summary || !summary.closest('#folderSidebar')) return;
+            e.preventDefault();
+            const group = summary.closest('.folder-group');
+            const folderId = (
+                group?.getAttribute('data-folder-id') ||
+                summary.querySelector('.folder-name')?.textContent ||
+                ''
+            ).trim();
+            if (folderId) {
+                this.focusFolder(folderId);
+            }
+        });
+
+        document.addEventListener('click', (e) => {
+            const summary = e.target.closest('.folder-summary');
+            if (summary && summary.closest('#folderSidebar') && e.detail > 1) {
+                e.preventDefault();
+            }
+        }, true);
+
+        window.addEventListener('popstate', () => {
+            const folder = this.getFolderFromUrl();
+            if ((folder || null) === (this.focusedFolder || null)) return;
+            this.focusedFolder = folder;
+            this.renderDatasetList();
+            this.selectInitialDatasetFromUrl();
         });
     }
 
@@ -166,10 +209,100 @@ class PublicDatasetManager {
         }
     }
 
+    getFolderFromUrl() {
+        try {
+            const folder = new URLSearchParams(window.location.search).get('folder');
+            return folder && folder.trim() ? folder.trim() : null;
+        } catch (e) {
+            return null;
+        }
+    }
+
+    getFolderFocusUrl(folderId) {
+        const url = new URL(window.location.href);
+        if (folderId) {
+            url.searchParams.set('folder', folderId);
+        } else {
+            url.searchParams.delete('folder');
+        }
+        return url.toString();
+    }
+
+    syncFolderUrl(folderId, { replace = false } = {}) {
+        const url = this.getFolderFocusUrl(folderId);
+        const state = { ...(history.state || {}), folder: folderId || null };
+        if (replace) {
+            history.replaceState(state, '', url);
+        } else {
+            history.pushState(state, '', url);
+        }
+    }
+
+    focusFolder(folderId, { updateHistory = true } = {}) {
+        const next = (folderId || '').trim();
+        if (!next) return;
+        if (this.focusedFolder === next) {
+            if (updateHistory) this.syncFolderUrl(next, { replace: true });
+            return;
+        }
+        this.focusedFolder = next;
+        if (updateHistory) this.syncFolderUrl(next);
+        this.renderDatasetList();
+    }
+
+    clearFolderFocus({ updateHistory = true } = {}) {
+        if (!this.focusedFolder) return;
+        this.focusedFolder = null;
+        if (updateHistory) this.syncFolderUrl(null);
+        this.renderDatasetList();
+    }
+
+    renderFolderFocusBar(folderId) {
+        return `
+            <div class="folder-focus-bar" role="navigation" aria-label="Focused folder">
+                <button type="button" class="folder-focus-back" title="Back to all folders" aria-label="Back to all folders">
+                    <i class="fas fa-arrow-left" aria-hidden="true"></i>
+                </button>
+                <span class="folder-focus-name" title="${this.escapeHtml(folderId)}">${this.escapeHtml(folderId)}</span>
+                <button type="button" class="folder-focus-copy" title="Copy link to this folder" aria-label="Copy folder link">
+                    <i class="fas fa-link" aria-hidden="true"></i>
+                </button>
+            </div>
+        `;
+    }
+
+    async copyFolderFocusLink(buttonEl) {
+        const text = this.getFolderFocusUrl(this.focusedFolder);
+        const original = buttonEl.innerHTML;
+        try {
+            if (navigator.clipboard && window.isSecureContext) {
+                await navigator.clipboard.writeText(text);
+            } else {
+                const input = document.createElement('textarea');
+                input.value = text;
+                document.body.appendChild(input);
+                input.select();
+                document.execCommand('copy');
+                input.remove();
+            }
+            buttonEl.innerHTML = '<i class="fas fa-check" aria-hidden="true"></i>';
+            setTimeout(() => {
+                buttonEl.innerHTML = original;
+            }, 1500);
+        } catch (error) {
+            console.error('Failed to copy folder link:', error);
+            alert('Failed to copy link. Please copy it from the address bar.');
+        }
+    }
+
     getPublicPortalShareUrl(datasetUuid) {
         const url = new URL(window.location.href);
         url.search = '';
         url.searchParams.set('dataset', datasetUuid);
+        // Keep folder focus when sharing a dataset from a focused view.
+        if (this.focusedFolder) {
+            url.searchParams.set('folder', this.focusedFolder);
+        }
         return url.toString();
     }
 
@@ -236,34 +369,49 @@ class PublicDatasetManager {
                 groupedDatasets[folderUuid].push(dataset);
             }
         });
+
+        const focused = this.focusedFolder;
+        const visibleRoot = focused ? [] : rootDatasets;
+        const visibleFolders = focused
+            ? (groupedDatasets[focused] ? { [focused]: groupedDatasets[focused] } : {})
+            : groupedDatasets;
         
-        let html = '<div class="dataset-section">';
+        let html = '';
+        if (focused) {
+            html += this.renderFolderFocusBar(focused);
+        }
+
+        html += '<div class="dataset-section">';
         html += '<a class="nav-link" data-bs-toggle="collapse" data-bs-target="#publicDatasets">';
         html += '<span class="arrow-icon" id="arrow-public">&#9656;</span>Public Datasets</a>';
         html += '<div class="collapse show ps-4 w-100" id="publicDatasets">';
         
         // Root level datasets
-        rootDatasets.forEach(dataset => {
+        visibleRoot.forEach(dataset => {
             html += this.renderDatasetItem(dataset);
         });
         
         // Folder grouped datasets
-        Object.keys(groupedDatasets).forEach(folderUuid => {
-            html += `<div class="folder-group">`;
+        Object.keys(visibleFolders).forEach(folderUuid => {
+            html += `<div class="folder-group" data-folder-id="${this.escapeHtml(folderUuid)}">`;
             html += `<details class="folder-details" open>`;
-            html += `<summary class="folder-summary">`;
+            html += `<summary class="folder-summary" title="Double-click to focus this folder">`;
             html += `<span class="arrow-icon">&#9656;</span>`;
             html += `<span class="folder-name">${this.escapeHtml(folderUuid)}</span>`;
-            html += `<span class="badge bg-secondary ms-2">${groupedDatasets[folderUuid].length}</span>`;
+            html += `<span class="badge bg-secondary ms-2">${visibleFolders[folderUuid].length}</span>`;
             html += `</summary>`;
             html += `<ul class="nested folder-datasets">`;
-            groupedDatasets[folderUuid].forEach(dataset => {
+            visibleFolders[folderUuid].forEach(dataset => {
                 html += `<li>${this.renderDatasetItem(dataset)}</li>`;
             });
             html += `</ul>`;
             html += `</details>`;
             html += `</div>`;
         });
+
+        if (focused && visibleRoot.length === 0 && Object.keys(visibleFolders).length === 0) {
+            html += `<p class="text-muted">No public datasets found in this folder.</p>`;
+        }
         
         html += '</div></div>';
         

@@ -43,6 +43,7 @@ class DatasetManager {
         this.pendingSelection = null; // Store pending selection if one is already in progress
         this.currentUserEmail = null;
         this.userTeams = null; // { uuids: string[], names: string[] }
+        this.focusedFolder = this.getFolderFromUrl(); // ?folder= deep-link / focus mode
         this.initialize();
     }
 
@@ -60,6 +61,9 @@ class DatasetManager {
             console.log(`Using PHP-rendered dataset list (${existingFolders} folders, ${existingDatasets} datasets)`);
             // Don't load/replace PHP content - just attach event listeners
             this.attachEventListenersToExisting();
+            if (this.focusedFolder) {
+                this.filterPhpSidebarToFolder(this.focusedFolder);
+            }
             // Auto-refresh datasets on page load to ensure team/shared datasets are up-to-date
             // Use a small delay to avoid race conditions with other initialization
             setTimeout(() => {
@@ -127,6 +131,39 @@ class DatasetManager {
             }
         });
 
+        // Double-click a folder to focus it (hide siblings); browser Back / focus bar restores all.
+        document.addEventListener('dblclick', (e) => {
+            const summary = e.target.closest('.folder-summary');
+            if (!summary || !summary.closest('#folderSidebar')) return;
+            e.preventDefault();
+            const group = summary.closest('.folder-group');
+            const folderId = (
+                group?.getAttribute('data-folder-id') ||
+                summary.querySelector('.folder-name')?.textContent ||
+                ''
+            ).trim();
+            if (folderId) {
+                this.focusFolder(folderId);
+            }
+        });
+
+        // Suppress native <details> toggle on the second click of a double-click.
+        document.addEventListener('click', (e) => {
+            const summary = e.target.closest('.folder-summary');
+            if (summary && summary.closest('#folderSidebar') && e.detail > 1) {
+                e.preventDefault();
+            }
+        }, true);
+
+        window.addEventListener('popstate', () => {
+            const folder = this.getFolderFromUrl();
+            if ((folder || null) === (this.focusedFolder || null)) return;
+            this.focusedFolder = folder;
+            if (this.datasets && (this.datasets.my || this.datasets.shared || this.datasets.team)) {
+                this.renderDatasets();
+            }
+        });
+
         // Dataset actions
         document.addEventListener('click', (e) => {
             if (e.target.closest('[data-action="view"]')) {
@@ -184,6 +221,20 @@ class DatasetManager {
                 } else {
                     console.error('Could not find dataset ID for open dashboard link button');
                 }
+            }
+
+            // Folder focus chrome (back / copy link)
+            const focusBack = e.target.closest('.folder-focus-back');
+            if (focusBack && focusBack.closest('#folderSidebar')) {
+                e.preventDefault();
+                this.clearFolderFocus();
+                return;
+            }
+            const focusCopy = e.target.closest('.folder-focus-copy');
+            if (focusCopy && focusCopy.closest('#folderSidebar')) {
+                e.preventDefault();
+                this.copyFolderFocusLink(focusCopy);
+                return;
             }
 
             if (e.target.closest('[data-action="add-files"]')) {
@@ -354,6 +405,10 @@ class DatasetManager {
         const groupedDatasets = this.groupDatasetsByFolder();
         
         let html = '';
+
+        if (this.focusedFolder) {
+            html += this.renderFolderFocusBar(this.focusedFolder);
+        }
         
         // My Datasets
         html += this.renderDatasetGroup('My Datasets', groupedDatasets['my'], 'myDatasets');
@@ -363,6 +418,10 @@ class DatasetManager {
         
         // Team Datasets - Always show, even if empty
         html += this.renderDatasetGroup('Team Datasets', groupedDatasets['team'], 'teamDatasets');
+
+        if (this.focusedFolder && !html.includes('dataset-section')) {
+            html += `<p class="text-muted px-2">No datasets found in this folder.</p>`;
+        }
         
         container.innerHTML = html;
         
@@ -613,9 +672,22 @@ class DatasetManager {
      */
     renderDatasetGroup(title, groupedData, id) {
         // groupedData is { folders: {}, root: [] }
-        const rootDatasets = groupedData.root || [];
-        const folders = groupedData.folders || {};
+        let rootDatasets = groupedData.root || [];
+        let folders = { ...(groupedData.folders || {}) };
+
+        // Focused folder mode: hide root siblings and other folders at this level.
+        if (this.focusedFolder) {
+            rootDatasets = [];
+            const focusedDatasets = folders[this.focusedFolder] || [];
+            folders = focusedDatasets.length ? { [this.focusedFolder]: focusedDatasets } : {};
+        }
+
         const totalCount = rootDatasets.length + Object.values(folders).reduce((sum, arr) => sum + arr.length, 0);
+
+        // In focus mode, skip empty sections entirely.
+        if (this.focusedFolder && totalCount === 0) {
+            return '';
+        }
 
         if (totalCount === 0) {
             console.log(`No datasets to render for ${title} (id: ${id})`);
@@ -657,9 +729,9 @@ class DatasetManager {
             if (!folderDatasets || folderDatasets.length === 0) return;
 
             html += `
-                <div class="folder-group">
+                <div class="folder-group" data-folder-id="${this.escapeHtml(folderUuid)}">
                     <details class="folder-details" open>
-                        <summary class="folder-summary">
+                        <summary class="folder-summary" title="Double-click to focus this folder">
                             <span class="arrow-icon">&#9656;</span>
                             <span class="folder-name">${this.escapeHtml(folderUuid)}</span>
                             <span class="badge bg-secondary ms-2">${folderDatasets.length}</span>
@@ -690,6 +762,141 @@ class DatasetManager {
         `;
 
         return html;
+    }
+
+    getFolderFromUrl() {
+        try {
+            const folder = new URLSearchParams(window.location.search).get('folder');
+            return folder && folder.trim() ? folder.trim() : null;
+        } catch (e) {
+            return null;
+        }
+    }
+
+    getFolderFocusUrl(folderId) {
+        const url = new URL(window.location.href);
+        if (folderId) {
+            url.searchParams.set('folder', folderId);
+        } else {
+            url.searchParams.delete('folder');
+        }
+        return url.toString();
+    }
+
+    syncFolderUrl(folderId, { replace = false } = {}) {
+        const url = this.getFolderFocusUrl(folderId);
+        const state = { ...(history.state || {}), folder: folderId || null };
+        if (replace) {
+            history.replaceState(state, '', url);
+        } else {
+            history.pushState(state, '', url);
+        }
+    }
+
+    focusFolder(folderId, { updateHistory = true } = {}) {
+        const next = (folderId || '').trim();
+        if (!next) return;
+        if (this.focusedFolder === next) {
+            // Already focused — still ensure URL is correct for sharing.
+            if (updateHistory) this.syncFolderUrl(next, { replace: true });
+            return;
+        }
+        this.focusedFolder = next;
+        if (updateHistory) this.syncFolderUrl(next);
+        if (this.hasLoadedDatasetGroups()) {
+            this.renderDatasets();
+        } else {
+            // PHP-rendered sidebar before API refresh — filter in place.
+            this.filterPhpSidebarToFolder(next);
+        }
+    }
+
+    clearFolderFocus({ updateHistory = true } = {}) {
+        if (!this.focusedFolder) return;
+        this.focusedFolder = null;
+        if (updateHistory) this.syncFolderUrl(null);
+        if (this.hasLoadedDatasetGroups()) {
+            this.renderDatasets();
+        } else {
+            this.clearPhpSidebarFolderFilter();
+        }
+    }
+
+    hasLoadedDatasetGroups() {
+        return this.datasets && typeof this.datasets === 'object' && !Array.isArray(this.datasets);
+    }
+
+    filterPhpSidebarToFolder(folderId) {
+        const container = document.querySelector('#folderSidebar .dataset-list') || document.querySelector('.dataset-list');
+        if (!container) return;
+
+        let bar = container.querySelector('.folder-focus-bar');
+        if (!bar) {
+            container.insertAdjacentHTML('afterbegin', this.renderFolderFocusBar(folderId));
+        } else {
+            const name = bar.querySelector('.folder-focus-name');
+            if (name) {
+                name.textContent = folderId;
+                name.setAttribute('title', folderId);
+            }
+        }
+
+        container.querySelectorAll(':scope > .dataset-section .dataset-item').forEach((item) => {
+            if (!item.closest('.folder-group')) {
+                item.style.display = 'none';
+            }
+        });
+        container.querySelectorAll('.folder-group').forEach((group) => {
+            const id = (group.getAttribute('data-folder-id') || '').trim();
+            group.style.display = id === folderId ? '' : 'none';
+        });
+    }
+
+    clearPhpSidebarFolderFilter() {
+        const container = document.querySelector('#folderSidebar .dataset-list') || document.querySelector('.dataset-list');
+        if (!container) return;
+        container.querySelector('.folder-focus-bar')?.remove();
+        container.querySelectorAll('.dataset-item, .folder-group').forEach((el) => {
+            el.style.display = '';
+        });
+    }
+
+    renderFolderFocusBar(folderId) {
+        return `
+            <div class="folder-focus-bar" role="navigation" aria-label="Focused folder">
+                <button type="button" class="folder-focus-back" title="Back to all folders" aria-label="Back to all folders">
+                    <i class="fas fa-arrow-left" aria-hidden="true"></i>
+                </button>
+                <span class="folder-focus-name" title="${this.escapeHtml(folderId)}">${this.escapeHtml(folderId)}</span>
+                <button type="button" class="folder-focus-copy" title="Copy link to this folder" aria-label="Copy folder link">
+                    <i class="fas fa-link" aria-hidden="true"></i>
+                </button>
+            </div>
+        `;
+    }
+
+    async copyFolderFocusLink(buttonEl) {
+        const text = this.getFolderFocusUrl(this.focusedFolder);
+        const original = buttonEl.innerHTML;
+        try {
+            if (navigator.clipboard && window.isSecureContext) {
+                await navigator.clipboard.writeText(text);
+            } else {
+                const input = document.createElement('textarea');
+                input.value = text;
+                document.body.appendChild(input);
+                input.select();
+                document.execCommand('copy');
+                input.remove();
+            }
+            buttonEl.innerHTML = '<i class="fas fa-check" aria-hidden="true"></i>';
+            setTimeout(() => {
+                buttonEl.innerHTML = original;
+            }, 1500);
+        } catch (error) {
+            console.error('Failed to copy folder link:', error);
+            alert('Failed to copy link. Please copy it from the address bar.');
+        }
     }
 
     /**
@@ -1556,15 +1763,6 @@ class DatasetManager {
         const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
         const i = Math.floor(Math.log(bytes) / Math.log(k));
         return Math.round(bytes / Math.pow(k, i) * 100) / 100 + ' ' + sizes[i];
-    }
-
-    /**
-     * Escape HTML
-     */
-    escapeHtml(text) {
-        const div = document.createElement('div');
-        div.textContent = text;
-        return div.innerHTML;
     }
 
     /**

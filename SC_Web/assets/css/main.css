@@ -721,6 +721,75 @@ body:not(.light-theme) .viewer-container #dashboardFrame {
   margin-bottom: 0.5rem;
 }
 
+.folder-group[data-folder-id] .folder-summary {
+  /* Hint that double-click focuses this folder */
+  cursor: pointer;
+}
+
+.folder-focus-bar {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.45rem 0.55rem;
+  margin: 0 0 0.75rem;
+  border-radius: 0.35rem;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+}
+
+.folder-focus-back {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.75rem;
+  height: 1.75rem;
+  padding: 0;
+  border: none;
+  border-radius: 0.3rem;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  flex-shrink: 0;
+  line-height: 1;
+  font-size: 1.05rem;
+}
+
+.folder-focus-back:hover,
+.folder-focus-copy:hover {
+  background: rgba(255, 255, 255, 0.12);
+}
+
+.folder-focus-name {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.folder-focus-copy {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.75rem;
+  height: 1.75rem;
+  padding: 0;
+  border: none;
+  border-radius: 0.3rem;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  flex-shrink: 0;
+  opacity: 0.85;
+}
+
+.folder-focus-copy:focus-visible,
+.folder-focus-back:focus-visible {
+  outline: 2px solid rgba(255, 255, 255, 0.35);
+  outline-offset: 1px;
+}
+
 .folder-details {
   margin-bottom: 0.5rem;
 }

@@ -210,9 +210,9 @@ function render_dataset_sidebar_row($dataset, $badgeHtml) {
             
             <!-- Folder datasets (grouped by folder_uuid) -->
             <?php foreach ($groupedDatasets as $folderUuid => $folderDatasets): ?>
-                <div class="folder-group">
+                <div class="folder-group" data-folder-id="<?php echo htmlspecialchars($folderUuid); ?>">
                     <details class="folder-details" open>
-                        <summary class="folder-summary">
+                        <summary class="folder-summary" title="Double-click to focus this folder">
                             <span class="arrow-icon">&#9656;</span>
                             <span class="folder-name"><?php echo htmlspecialchars($folderUuid); ?></span>
                             <span class="badge bg-secondary ms-2"><?php echo count($folderDatasets); ?></span>
@@ -324,9 +324,9 @@ function render_dataset_sidebar_row($dataset, $badgeHtml) {
             
             <!-- Folder grouped shared datasets -->
             <?php foreach ($sharedGroupedDatasets as $folderUuid => $folderDatasets): ?>
-                <div class="folder-group">
+                <div class="folder-group" data-folder-id="<?php echo htmlspecialchars($folderUuid); ?>">
                     <details class="folder-details" open>
-                        <summary class="folder-summary">
+                        <summary class="folder-summary" title="Double-click to focus this folder">
                             <span class="arrow-icon">&#9656;</span>
                             <span class="folder-name"><?php echo htmlspecialchars($folderUuid); ?></span>
                             <span class="badge bg-secondary ms-2"><?php echo count($folderDatasets); ?></span>
@@ -439,9 +439,9 @@ function render_dataset_sidebar_row($dataset, $badgeHtml) {
             
             <!-- Folder grouped team datasets -->
             <?php foreach ($teamGroupedDatasets as $folderUuid => $folderDatasets): ?>
-                <div class="folder-group">
+                <div class="folder-group" data-folder-id="<?php echo htmlspecialchars($folderUuid); ?>">
                     <details class="folder-details" open>
-                        <summary class="folder-summary">
+                        <summary class="folder-summary" title="Double-click to focus this folder">
                             <span class="arrow-icon">&#9656;</span>
                             <span class="folder-name"><?php echo htmlspecialchars($folderUuid); ?></span>
                             <span class="badge bg-secondary ms-2"><?php echo count($folderDatasets); ?></span>

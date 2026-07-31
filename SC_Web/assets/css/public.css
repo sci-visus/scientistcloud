@@ -90,6 +90,17 @@
   padding-left: 0.5rem;
 }
 
+.public-portal .sidebar .folder-focus-bar {
+  background: rgba(255, 255, 255, 0.12);
+  border-color: rgba(255, 255, 255, 0.2);
+}
+
+.public-portal .sidebar .folder-focus-back,
+.public-portal .sidebar .folder-focus-copy,
+.public-portal .sidebar .folder-focus-name {
+  color: var(--sidebar-text) !important;
+}
+
 /* Text Muted in Sidebar */
 .public-portal .sidebar .text-muted {
   color: rgba(255, 255, 255, 0.6) !important;
