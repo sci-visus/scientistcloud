@@ -677,7 +677,11 @@ if ($defaultShareSeconds > $shareMaxSeconds) {
                 <label class="form-label">Folder</label>
                 <select class="form-select" name="folder" id="s3ConnectFolder">
                   <option value="">-- No Folder --</option>
+                  <option value="__CREATE__">+ Create New Folder</option>
                 </select>
+                <div id="s3ConnectNewFolderInput" class="mt-2" style="display: none;">
+                  <input type="text" class="form-control" name="new_folder_name" id="s3ConnectNewFolderName" placeholder="Enter new folder name">
+                </div>
               </div>
               <div class="col-md-6">
                 <label class="form-label">Team</label>
@@ -915,10 +919,23 @@ if ($defaultShareSeconds > $shareMaxSeconds) {
       const connectStatus = document.getElementById('s3ConnectStatus');
       const connectSubmit = document.getElementById('s3ConnectSubmit');
       const connectFolder = document.getElementById('s3ConnectFolder');
+      const connectNewFolderInput = document.getElementById('s3ConnectNewFolderInput');
+      const connectNewFolderName = document.getElementById('s3ConnectNewFolderName');
       const connectTeam = document.getElementById('s3ConnectTeam');
       const connectDashboard = document.getElementById('s3ConnectDashboard');
       const connectButtons = document.querySelectorAll('.js-connect-portal');
       let connectMetadataLoaded = false;
+
+      function syncConnectFolderCreateUI() {
+        if (!connectFolder || !connectNewFolderInput) return;
+        const creating = connectFolder.value === '__CREATE__';
+        connectNewFolderInput.style.display = creating ? 'block' : 'none';
+        if (!creating && connectNewFolderName) connectNewFolderName.value = '';
+      }
+
+      if (connectFolder) {
+        connectFolder.addEventListener('change', syncConnectFolderCreateUI);
+      }
 
       function formatApiError(value) {
         if (!value) return 'Unknown error';
@@ -948,11 +965,16 @@ if ($defaultShareSeconds > $shareMaxSeconds) {
           const dashboardsJson = await dashboardsRes.json();
 
           if (connectFolder && foldersJson && foldersJson.success && Array.isArray(foldersJson.folders)) {
+            const createOpt = connectFolder.querySelector('option[value="__CREATE__"]');
             foldersJson.folders.forEach(function (f) {
               const opt = document.createElement('option');
               opt.value = String(f.uuid || '');
               opt.textContent = String(f.name || f.uuid || '');
-              connectFolder.appendChild(opt);
+              if (createOpt) {
+                connectFolder.insertBefore(opt, createOpt);
+              } else {
+                connectFolder.appendChild(opt);
+              }
             });
           }
           if (connectTeam && teamsJson && teamsJson.success && Array.isArray(teamsJson.teams)) {
@@ -1002,12 +1024,23 @@ if ($defaultShareSeconds > $shareMaxSeconds) {
       if (connectForm) {
         connectForm.addEventListener('submit', async function (e) {
           e.preventDefault();
+          let folderValue = (connectFolder || {}).value || '';
+          if (folderValue === '__CREATE__') {
+            folderValue = (connectNewFolderName && connectNewFolderName.value)
+              ? connectNewFolderName.value.trim()
+              : '';
+            if (!folderValue) {
+              if (connectStatus) connectStatus.textContent = 'Enter a name for the new folder.';
+              if (connectNewFolderName) connectNewFolderName.focus();
+              return;
+            }
+          }
           const payload = {
             key: (connectKey && connectKey.value) ? connectKey.value.trim() : '',
             dataset_name: (connectName && connectName.value) ? connectName.value.trim() : '',
             sensor: (document.getElementById('s3ConnectSensor') || {}).value || 'IDX',
             tags: (document.getElementById('s3ConnectTags') || {}).value || '',
-            folder: (connectFolder || {}).value || '',
+            folder: folderValue,
             team_uuid: (connectTeam || {}).value || '',
             dimensions: (document.getElementById('s3ConnectDimensions') || {}).value || '',
             preferred_dashboard: (connectDashboard || {}).value || '',
