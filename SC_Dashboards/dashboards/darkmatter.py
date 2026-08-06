@@ -356,6 +356,30 @@ def s3_uri_with_embedded_credentials(s3_uri: str, access_key: str, secret_key: s
     return f"s3://{userinfo}@{bucket}/{key}" if key else f"s3://{userinfo}@{bucket}"
 
 
+def gateway_endpoint_requires_path_style(endpoint_url: str) -> bool:
+    """
+    True for custom S3 gateways (FTH, MinIO, Wasabi-style) where virtual-host URLs like
+    ``https://bucket.endpoint/...`` break TLS (cert is issued for the gateway host only).
+
+    OpenVisus often turns ``s3://bucket/key`` into that virtual-host form when
+    ``AWS_ENDPOINT_URL`` points at a custom gateway — producing hostnames such as
+    ``scientistcloud.us-east-1.gw.future-tech-holdings.com``. Prefer path-style HTTPS.
+    """
+    host = (urlsplit(str(endpoint_url or "").strip()).netloc or str(endpoint_url or "")).lower()
+    if not host:
+        return True
+    if "amazonaws.com" in host:
+        return False
+    return True
+
+
+def _s3_addressing_styles_for_endpoint(endpoint_url: Optional[str] = None) -> tuple:
+    """Path-only on custom gateways; path+virtual on real AWS."""
+    if gateway_endpoint_requires_path_style(endpoint_url or ""):
+        return ("path",)
+    return ("path", "virtual")
+
+
 def _redact_url_secrets(url: str) -> str:
     """Mask credential-like query params and s3:// userinfo for logs (values become '...')."""
     out = str(url or "").strip()
@@ -1310,7 +1334,7 @@ def read_s3_text_lines(s3_uri: str, auth_override=None) -> List[str]:
 
     last_error = None
     for candidate_endpoint in endpoint_candidates:
-        for addr_style in ["path", "virtual"]:
+        for addr_style in _s3_addressing_styles_for_endpoint(candidate_endpoint or endpoint_url):
             try:
                 config = Config(
                     signature_version="s3v4",
@@ -1364,7 +1388,7 @@ def _s3_object_exists(s3_uri: str, auth_override=None) -> bool:
     if not aws_access_key_id or not aws_secret_access_key:
         return False
     for candidate_endpoint in [endpoint_url, os.getenv("S3_ENDPOINT_URL"), None]:
-        for addr_style in ("path", "virtual"):
+        for addr_style in _s3_addressing_styles_for_endpoint(candidate_endpoint or endpoint_url):
             try:
                 config = Config(
                     signature_version="s3v4",
@@ -1627,8 +1651,10 @@ def _s3_client_candidates(auth_override=None):
         region_name = auth_override.get("region_name") or region_name
     if not aws_access_key_id or not aws_secret_access_key:
         return
+    # Path-style only on custom gateways — virtual host is bucket.endpoint and breaks TLS.
+    styles = _s3_addressing_styles_for_endpoint(endpoint_url or "")
     for candidate_endpoint in [endpoint_url, os.getenv("S3_ENDPOINT_URL"), None]:
-        for addr_style in ("path", "virtual"):
+        for addr_style in styles:
             try:
                 config = Config(
                     signature_version="s3v4",
@@ -1937,7 +1963,7 @@ def _list_s3_idx_keys_at_prefix(
 
     last_error: Optional[Exception] = None
     for candidate_endpoint in endpoint_candidates:
-        for addr_style in ("path", "virtual"):
+        for addr_style in _s3_addressing_styles_for_endpoint(candidate_endpoint or endpoint_url):
             try:
                 config = Config(
                     signature_version="s3v4",
@@ -2573,7 +2599,23 @@ class AppState:
                         )
                         # Keep runtime_dataset auth in sync for materialize + sidecar reads.
                         self.runtime_dataset["auth_override"] = dict(self.s3_auth_override or {})
-                    kinds = ["https", "s3"]
+                    kinds = ["https"]
+                    ep_for_kinds = merged_ep or str((self.s3_auth_override or {}).get("endpoint_url") or "")
+                    # Custom gateways: never feed OpenVisus plain/credentialed s3:// — it builds
+                    # virtual-host HTTPS (bucket.endpoint) and TLS fails (cert is for endpoint only).
+                    if not gateway_endpoint_requires_path_style(ep_for_kinds):
+                        kinds.append("s3")
+                    elif str(os.getenv("DARKMATTER_ALLOW_S3_TEMPLATE_ON_PATH_STYLE_GW", "")).strip().lower() in (
+                        "1",
+                        "true",
+                        "yes",
+                        "on",
+                    ):
+                        kinds.append("s3")
+                        print(
+                            "[DarkMatter][WARN] DARKMATTER_ALLOW_S3_TEMPLATE_ON_PATH_STYLE_GW=1 — "
+                            "s3:// templates may hit virtual-host TLS errors on this gateway"
+                        )
                     if str(os.getenv("DARKMATTER_LINKED_MIRROR_BINS", "")).strip().lower() in (
                         "1",
                         "true",
@@ -2780,9 +2822,8 @@ class AppState:
                         except Exception as pex:
                             print(f"[DarkMatter][WARN] proxy resolved idx failed: {pex}")
 
-                # Docker OpenVisus often resolves HTTPS gateway bins as path-only (/bucket/key), producing all-zero
-                # reads while laptop `bokeh serve --args https://...` works. Native s3:// + AWS keys matches the
-                # upload registration path (s3://scientistcloud/...) and avoids broken gateway HTTP templates.
+                # Native s3:// OpenVisus loads on custom gateways become virtual-host HTTPS
+                # (bucket.endpoint) and fail TLS. Skip unless this is real AWS.
                 if (
                     not http_no_fb
                     and self.runtime_dataset["mode"] == "http_explicit"
@@ -2792,16 +2833,23 @@ class AppState:
                 ):
                     idx_http = str(self.runtime_dataset.get("idx_uri") or "").strip()
                     s3_idx = http_object_url_to_s3_uri(idx_http)
-                    if s3_idx:
+                    ov = self.s3_auth_override or {}
+                    idx_parts_fb = urlsplit(idx_http)
+                    gw_base = (
+                        f"{idx_parts_fb.scheme}://{idx_parts_fb.netloc}"
+                        if idx_parts_fb.scheme and idx_parts_fb.netloc
+                        else ""
+                    )
+                    merged_ep = (str(ov.get("endpoint_url") or "").strip() or gw_base)
+                    if s3_idx and gateway_endpoint_requires_path_style(merged_ep):
+                        print(
+                            "[DarkMatter][DEBUG] skipping native s3:// LoadDataset fallback on "
+                            f"path-style gateway ({_redact_url_secrets(merged_ep)}); "
+                            "use path-style HTTPS templates only "
+                            "(avoids scientistcloud.<gateway-host> TLS mismatch)"
+                        )
+                    elif s3_idx:
                         try:
-                            ov = self.s3_auth_override or {}
-                            idx_parts_fb = urlsplit(idx_http)
-                            gw_base = (
-                                f"{idx_parts_fb.scheme}://{idx_parts_fb.netloc}"
-                                if idx_parts_fb.scheme and idx_parts_fb.netloc
-                                else ""
-                            )
-                            merged_ep = (str(ov.get("endpoint_url") or "").strip() or gw_base)
                             if merged_ep:
                                 self.set_s3_auth_override(
                                     merged_ep,
