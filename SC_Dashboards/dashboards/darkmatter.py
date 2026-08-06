@@ -891,9 +891,50 @@ def derive_dataset_from_uuid(dataset_uuid: str):
         "region_name": str(doc.get("s3_region_name") or "us-east-1").strip() or "us-east-1",
     }
     converted_idx_path = str(doc.get("converted_idx_path") or "").strip()
+    has_remote_link = any(
+        str(doc.get(field) or "").strip().startswith(("http://", "https://", "s3://"))
+        for field in ("google_drive_link", "source_path")
+    )
 
-    # Linked remote datasets: use google_drive_link / source_path HTTPS (or s3://) only.
-    # Do not prefer converted/ or upload/ — those are for downloaded/converted copies.
+    def _local_dm_complete(ds: Optional[dict]) -> bool:
+        if not ds:
+            return False
+        return bool(
+            os.path.isfile(str(ds.get("idx_path") or ""))
+            and os.path.isfile(str(ds.get("txt_path") or ""))
+            and os.path.isfile(str(ds.get("csv_path") or ""))
+        )
+
+    # Downloaded / converted copies win when the DarkMatter package is complete on disk.
+    # Many S3 uploads keep google_drive_link even after Download — do not force remote then.
+    if converted_idx_path and os.path.isfile(converted_idx_path):
+        ds = derive_dataset_from_local_dir(converted_idx_path)
+        if _local_dm_complete(ds):
+            ds["converted_idx_path"] = converted_idx_path
+            print(
+                f"[DarkMatter][DEBUG] resolved runtime_dataset from converted_idx_path: "
+                f"mode={ds['mode']} mid={ds['mid_file']}"
+            )
+            return ds
+
+    local_idx = resolve_local_idx_file(dataset_uuid) if resolve_local_idx_file else None
+    if local_idx:
+        ds = derive_dataset_from_local_dir(local_idx)
+        if _local_dm_complete(ds):
+            if "/converted/" in local_idx:
+                ds["converted_idx_path"] = ds["idx_path"]
+            print(
+                f"[DarkMatter][DEBUG] resolved runtime_dataset from local resolver: "
+                f"mode={ds['mode']} mid={ds['mid_file']} idx={ds['idx_path']}"
+            )
+            return ds
+        if ds is not None and has_remote_link:
+            print(
+                f"[DarkMatter][DEBUG] local idx without complete sidecars; "
+                f"using remote link instead: idx={local_idx}"
+            )
+
+    # Link-only (or incomplete local): use google_drive_link / source_path.
     for field in ("google_drive_link", "source_path"):
         candidate = str(doc.get(field) or "").strip()
         if not candidate.startswith(("http://", "https://", "s3://")):
@@ -923,39 +964,12 @@ def derive_dataset_from_uuid(dataset_uuid: str):
                     "(https://host/bucket/key) — cannot convert to s3:// for listing."
                 )
 
-    has_remote_link = any(
-        str(doc.get(field) or "").strip().startswith(("http://", "https://", "s3://"))
-        for field in ("google_drive_link", "source_path")
-    )
     if has_remote_link:
         print(
             "[DarkMatter][WARN] derive_dataset_from_uuid: remote link present but could not resolve "
-            "http_explicit/s3_explicit dataset; not falling back to upload/converted for linked data"
+            "http_explicit/s3_explicit dataset"
         )
         return None
-
-    # Non-linked: prefer converted/<uuid>, then upload/<uuid>.
-    if converted_idx_path and os.path.isfile(converted_idx_path):
-        ds = derive_dataset_from_local_dir(converted_idx_path)
-        if ds is not None:
-            ds["converted_idx_path"] = converted_idx_path
-            print(
-                f"[DarkMatter][DEBUG] resolved runtime_dataset from converted_idx_path: "
-                f"mode={ds['mode']} mid={ds['mid_file']}"
-            )
-            return ds
-
-    local_idx = resolve_local_idx_file(dataset_uuid) if resolve_local_idx_file else None
-    if local_idx:
-        ds = derive_dataset_from_local_dir(local_idx)
-        if ds is not None:
-            if "/converted/" in local_idx:
-                ds["converted_idx_path"] = ds["idx_path"]
-            print(
-                f"[DarkMatter][DEBUG] resolved runtime_dataset from local resolver: "
-                f"mode={ds['mode']} mid={ds['mid_file']} idx={ds['idx_path']}"
-            )
-            return ds
 
     return None
 
@@ -2528,29 +2542,27 @@ class AppState:
                     )
 
                 def _read_resolved_materialized_idx(resolved_path: str, resolved_http_url: Optional[str]):
-                    """Prefer SCLib ``/resolved-idx/<token>/...`` so OpenVisus uses HTTP ``(filename_template)``.
+                    """Load proxy visus.idx from the local file (object-proxy in filename_template).
 
-                    ``LoadDataset`` on a *local* ``visus.idx`` path often resolves ARCO tiles under
-                    ``<cwd>/<stem>/0/data/...`` and ignores object-proxy URLs embedded in the idx.
+                    Do **not** LoadDataset the resolved-idx HTTP URL: OpenVisus then builds ARCO
+                    companion paths under ``/resolved-idx/.../visus/0/data/...`` and ignores the
+                    embedded object-proxy ``(filename_template)``.
                     """
-                    http_u = (resolved_http_url or "").strip()
-                    if http_u.startswith(("http://", "https://")):
+                    if resolved_path and os.path.isfile(resolved_path):
                         try:
                             print(
-                                "[DarkMatter][DEBUG] resolved idx LoadDataset via HTTP URL "
-                                f"(remote bins): {_redact_url_secrets(http_u)}"
+                                f"[DarkMatter][DEBUG] resolved idx LoadDataset via local path "
+                                f"(object-proxy bins): {resolved_path}"
                             )
-                            arr_http = read_openvisus_field(http_u)
-                            if not _scene_is_all_zero(arr_http):
-                                return arr_http
-                            print(
-                                "[DarkMatter][DEBUG] resolved idx HTTP URL read all-zero; "
-                                "falling back to local filesystem path"
-                            )
-                        except Exception as _http_res_ex:
-                            print(f"[DarkMatter][WARN] resolved idx HTTP LoadDataset failed: {_http_res_ex}")
-                    if resolved_path and os.path.isfile(resolved_path):
-                        return read_openvisus_field_with_dataset_cwd(resolved_path)
+                            return read_openvisus_field_with_dataset_cwd(resolved_path)
+                        except Exception as _loc_ex:
+                            print(f"[DarkMatter][WARN] resolved idx local LoadDataset failed: {_loc_ex}")
+                    http_u = (resolved_http_url or "").strip()
+                    if http_u.startswith(("http://", "https://")):
+                        print(
+                            "[DarkMatter][DEBUG] skipping resolved-idx HTTP LoadDataset "
+                            f"(ARCO companion paths); prefer local visus.idx: {_redact_url_secrets(http_u)}"
+                        )
                     return None
 
                 primary_read = str(idx_for_read or "").strip()
@@ -2595,24 +2607,35 @@ class AppState:
                             "[DarkMatter][DEBUG] linked LoadDataset via object-proxy resolved-idx "
                             "(SigV4 through SCLib; no bin download)"
                         )
-                        resolved_idx, resolved_http = resolve_openvisus_resolved_idx_via_api(
-                            dataset_identifier=dataset_identifier,
-                            user_email=user_email,
-                            auth_override=self.s3_auth_override or {},
-                            output_filename=RESOLVED_IDX_S3_OUTPUT_NAME,
-                            filename_template_mode="proxy",
-                            force_refresh=False,
-                        )
-                        trial = _read_resolved_materialized_idx(resolved_idx or "", resolved_http)
-                        if trial is not None and not _scene_is_all_zero(trial):
-                            self.scene_data = trial
-                            if resolved_idx:
-                                self.runtime_dataset["converted_idx_path"] = resolved_idx
-                            print(
-                                "[DarkMatter][DEBUG] linked object-proxy resolved-idx "
-                                "produced non-zero scene data"
+                        trial = None
+                        for force in (False, True):
+                            resolved_idx, resolved_http = resolve_openvisus_resolved_idx_via_api(
+                                dataset_identifier=dataset_identifier,
+                                user_email=user_email,
+                                auth_override=self.s3_auth_override or {},
+                                output_filename=RESOLVED_IDX_S3_OUTPUT_NAME,
+                                filename_template_mode="proxy",
+                                force_refresh=force,
                             )
-                        elif trial is not None:
+                            trial = _read_resolved_materialized_idx(resolved_idx or "", resolved_http)
+                            if trial is not None and not _scene_is_all_zero(trial):
+                                self.scene_data = trial
+                                if resolved_idx:
+                                    self.runtime_dataset["converted_idx_path"] = resolved_idx
+                                print(
+                                    "[DarkMatter][DEBUG] linked object-proxy resolved-idx "
+                                    f"produced non-zero scene data (force_refresh={force})"
+                                )
+                                break
+                            if force:
+                                break
+                            print(
+                                "[DarkMatter][DEBUG] linked object-proxy all-zero; "
+                                "force_refresh=1 to regenerate flat bin template"
+                            )
+                        if (
+                            self.scene_data is None or _scene_is_all_zero(self.scene_data)
+                        ) and trial is not None:
                             self.scene_data = trial
                             print(
                                 "[DarkMatter][WARN] linked object-proxy resolved-idx read all-zero; "
