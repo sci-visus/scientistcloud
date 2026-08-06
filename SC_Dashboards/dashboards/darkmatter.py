@@ -661,33 +661,32 @@ def _darkmatter_may_post_openvisus_resolved_idx_on_launch() -> bool:
 
 def _darkmatter_http_explicit_no_fallback() -> bool:
     """
-    When true, http_explicit loads use only the primary linked HTTPS idx URL for OpenVisus
-    (no resolved-idx API, no native s3:// LoadDataset, no materialized local .idx fallbacks).
-    Set DARKMATTER_HTTP_EXPLICIT_NO_FALLBACK=1 to reproduce or debug gateway HTTPS behavior alone.
+    Linked (http_explicit) datasets use only the HTTPS idx from the data link.
+
+    Default ON: no converted/, upload/, resolved-idx, s3://, or materialized idx fallbacks.
+    Set ``DARKMATTER_HTTP_EXPLICIT_NO_FALLBACK=0`` only to re-enable legacy fallbacks for debugging.
     """
-    return str(os.getenv("DARKMATTER_HTTP_EXPLICIT_NO_FALLBACK", "")).strip().lower() in (
-        "1",
-        "true",
-        "yes",
-        "on",
-    )
+    v = str(os.getenv("DARKMATTER_HTTP_EXPLICIT_NO_FALLBACK", "1")).strip().lower()
+    return v not in ("0", "false", "no", "off")
 
 
 def _darkmatter_may_use_cached_resolved_idx_http() -> bool:
     """
-    Whether DarkMatter may call openvisus-resolved-idx for object-proxy visus.idx.
+    Whether DarkMatter may POST openvisus-resolved-idx (legacy / non-linked fallbacks).
 
-    Linked remote loads need this when gateway ``?access_key=&secret_key=`` GETs return 403:
-    other working remote datasets already use converted/<uuid>/visus.idx with object-proxy
-    templates (OpenVisus streams bins; no bulk download).
-
-    Hard-off: ``DARKMATTER_DISABLE_RESOLVED_IDX=1``.
+    Linked http_explicit loads do not use this (see ``_darkmatter_http_explicit_no_fallback``).
+    Opt in with ``DARKMATTER_ALLOW_RESOLVED_IDX_API_ON_LAUNCH=1``.
     """
     if _darkmatter_disable_resolved_idx_api():
         return False
-    # Always allow calling the API for proxy idx: SCLib may still honor proxy-mode writes
-    # even when SCLIB_DISABLE_OPENVISUS_RESOLVED_IDX=1 (lightweight visus.idx only).
-    return True
+    if str(os.getenv("SCLIB_DISABLE_OPENVISUS_RESOLVED_IDX", "")).strip().lower() in (
+        "1",
+        "true",
+        "yes",
+        "on",
+    ):
+        return False
+    return _darkmatter_may_post_openvisus_resolved_idx_on_launch()
 
 
 def _materialized_resolved_visus_idx_path(
@@ -879,15 +878,53 @@ def derive_dataset_from_uuid(dataset_uuid: str):
         "region_name": str(doc.get("s3_region_name") or "us-east-1").strip() or "us-east-1",
     }
     converted_idx_path = str(doc.get("converted_idx_path") or "").strip()
+
+    # Linked remote datasets: use google_drive_link / source_path HTTPS (or s3://) only.
+    # Do not prefer converted/ or upload/ — those are for downloaded/converted copies.
+    for field in ("google_drive_link", "source_path"):
+        candidate = str(doc.get(field) or "").strip()
+        if not candidate.startswith(("http://", "https://", "s3://")):
+            continue
+        ds = derive_dataset_from_remote_uri(candidate, auth_override)
+        if ds is not None:
+            if auth_override.get("aws_access_key_id") and auth_override.get("aws_secret_access_key"):
+                ds["auth_override"] = auth_override
+            ensure_http_gateway_credentials_on_dataset(ds)
+            print(
+                f"[DarkMatter][DEBUG] resolved runtime_dataset from dataset doc field={field}: "
+                f"mode={ds['mode']} mid={ds['mid_file']}"
+            )
+            return ds
+        if not candidate.lower().endswith(".idx"):
+            has_creds = bool(
+                auth_override.get("aws_access_key_id") and auth_override.get("aws_secret_access_key")
+            )
+            if not has_creds:
+                print(
+                    f"[DarkMatter][WARN] dataset doc field {field} is a remote prefix/folder URL but "
+                    "s3_access_key_id / s3_secret_access_key are missing — cannot list bucket to find .idx."
+                )
+            elif candidate.startswith(("http://", "https://")) and not http_object_url_to_s3_uri(candidate):
+                print(
+                    f"[DarkMatter][WARN] dataset doc field {field} is HTTPS but not path-style "
+                    "(https://host/bucket/key) — cannot convert to s3:// for listing."
+                )
+
     has_remote_link = any(
         str(doc.get(field) or "").strip().startswith(("http://", "https://", "s3://"))
         for field in ("google_drive_link", "source_path")
     )
+    if has_remote_link:
+        print(
+            "[DarkMatter][WARN] derive_dataset_from_uuid: remote link present but could not resolve "
+            "http_explicit/s3_explicit dataset; not falling back to upload/converted for linked data"
+        )
+        return None
 
-    # Prefer explicit converted idx recorded by background conversion.
+    # Non-linked: prefer converted/<uuid>, then upload/<uuid>.
     if converted_idx_path and os.path.isfile(converted_idx_path):
         ds = derive_dataset_from_local_dir(converted_idx_path)
-        if ds is not None and (not has_remote_link or (os.path.isfile(ds["txt_path"]) and os.path.isfile(ds["csv_path"]))):
+        if ds is not None:
             ds["converted_idx_path"] = converted_idx_path
             print(
                 f"[DarkMatter][DEBUG] resolved runtime_dataset from converted_idx_path: "
@@ -895,11 +932,10 @@ def derive_dataset_from_uuid(dataset_uuid: str):
             )
             return ds
 
-    # Local dashboard contract: converted/<uuid> first, then upload/<uuid>.
     local_idx = resolve_local_idx_file(dataset_uuid) if resolve_local_idx_file else None
     if local_idx:
         ds = derive_dataset_from_local_dir(local_idx)
-        if ds is not None and (not has_remote_link or (os.path.isfile(ds["txt_path"]) and os.path.isfile(ds["csv_path"]))):
+        if ds is not None:
             if "/converted/" in local_idx:
                 ds["converted_idx_path"] = ds["idx_path"]
             print(
@@ -907,52 +943,6 @@ def derive_dataset_from_uuid(dataset_uuid: str):
                 f"mode={ds['mode']} mid={ds['mid_file']} idx={ds['idx_path']}"
             )
             return ds
-        if ds is not None and has_remote_link:
-            print(
-                f"[DarkMatter][DEBUG] local idx exists without DarkMatter sidecars; "
-                f"using remote dataset metadata instead: idx={local_idx}"
-            )
-
-    # Prefer stored HTTPS object-gateway URL (google_drive_link for S3 uploads) over raw s3://.
-    for field in ("google_drive_link", "source_path"):
-        candidate = str(doc.get(field) or "").strip()
-        if not candidate:
-            continue
-        ds = derive_dataset_from_local_dir(candidate)
-        if ds is None:
-            ds = derive_dataset_from_remote_uri(candidate, auth_override)
-        if ds is not None:
-            if auth_override.get("aws_access_key_id") and auth_override.get("aws_secret_access_key"):
-                ds["auth_override"] = auth_override
-            if converted_idx_path:
-                ds["converted_idx_path"] = converted_idx_path
-            ensure_http_gateway_credentials_on_dataset(ds)
-            print(
-                f"[DarkMatter][DEBUG] resolved runtime_dataset from dataset doc field={field}: "
-                f"mode={ds['mode']} mid={ds['mid_file']}"
-            )
-            return ds
-        # Candidate present but not resolved — log why (helps remote-link debugging).
-        if candidate.startswith(("http://", "https://", "s3://")):
-            if not candidate.lower().endswith(".idx"):
-                has_creds = bool(
-                    auth_override.get("aws_access_key_id") and auth_override.get("aws_secret_access_key")
-                )
-                if not has_creds:
-                    print(
-                        f"[DarkMatter][WARN] dataset doc field {field} is a remote prefix/folder URL but "
-                        "s3_access_key_id / s3_secret_access_key are missing — cannot list bucket to find .idx."
-                    )
-                elif candidate.startswith(("http://", "https://")) and not http_object_url_to_s3_uri(candidate):
-                    print(
-                        f"[DarkMatter][WARN] dataset doc field {field} is HTTPS but not path-style "
-                        "(https://host/bucket/key) — cannot convert to s3:// for listing."
-                    )
-            else:
-                print(
-                    f"[DarkMatter][WARN] dataset doc field {field} looks like a direct .idx URL but "
-                    "derive_dataset_from_remote_uri returned None (check URL, credentials, or sidecar paths)."
-                )
 
     return None
 
@@ -2507,9 +2497,9 @@ class AppState:
                             "LoadDataset may fail on raw s3:// idx_uri"
                         )
 
-                # Linked datasets: prefer converted/<uuid>/ when present (no conversion from the
-                # dashboard). Otherwise use the user's HTTPS idx URL. Never auto-POST
-                # openvisus-resolved-idx unless DARKMATTER_ALLOW_RESOLVED_IDX_API_ON_LAUNCH=1.
+                # Linked datasets: use only the HTTPS idx from the data link (default).
+                # No converted/, upload/, resolved-idx, or materialized idx unless
+                # DARKMATTER_HTTP_EXPLICIT_NO_FALLBACK=0.
                 dataset_identifier = str(uuid or "").strip()
                 last_load_err = None
                 self.scene_data = None
@@ -2557,8 +2547,8 @@ class AppState:
                 )
                 if http_no_fb:
                     print(
-                        "[DarkMatter][DEBUG] DARKMATTER_HTTP_EXPLICIT_NO_FALLBACK=1 — "
-                        "OpenVisus uses linked HTTPS idx only (no resolved idx / s3:// / materialized .idx)"
+                        "[DarkMatter][DEBUG] linked http_explicit: OpenVisus uses data-link HTTPS idx only "
+                        "(no converted/, upload/, resolved-idx, or materialized fallbacks)"
                     )
 
                 # Prefer converted/<uuid>/visus.idx when already on disk (no convert / no API).
