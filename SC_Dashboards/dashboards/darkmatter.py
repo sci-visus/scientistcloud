@@ -661,20 +661,32 @@ def _darkmatter_may_post_openvisus_resolved_idx_on_launch() -> bool:
 
 def _darkmatter_http_explicit_no_fallback() -> bool:
     """
-    Linked (http_explicit) datasets use only the HTTPS idx from the data link.
+    Linked (http_explicit): do not use upload/converted mirrors or FTH query-cred materialize.
 
-    Default ON: no converted/, upload/, resolved-idx, s3://, or materialized idx fallbacks.
-    Set ``DARKMATTER_HTTP_EXPLICIT_NO_FALLBACK=0`` only to re-enable legacy fallbacks for debugging.
+    Default ON. Does **not** block object-proxy resolved-idx (SigV4 path that matches Strain).
+    Set ``DARKMATTER_HTTP_EXPLICIT_NO_FALLBACK=0`` to re-enable legacy local/s3 materialize fallbacks.
     """
     v = str(os.getenv("DARKMATTER_HTTP_EXPLICIT_NO_FALLBACK", "1")).strip().lower()
     return v not in ("0", "false", "no", "off")
 
 
+def _darkmatter_may_use_object_proxy_for_linked() -> bool:
+    """
+    Linked DarkMatter may POST openvisus-resolved-idx in proxy mode so OpenVisus fetches
+    bins via object-proxy (SCLib SigV4), like ORNL Strain's boto3 GetObject.
+
+    Hard-off: ``DARKMATTER_DISABLE_RESOLVED_IDX=1``.
+    """
+    if _darkmatter_disable_resolved_idx_api():
+        return False
+    return True
+
+
 def _darkmatter_may_use_cached_resolved_idx_http() -> bool:
     """
-    Whether DarkMatter may POST openvisus-resolved-idx (legacy / non-linked fallbacks).
+    Whether DarkMatter may POST openvisus-resolved-idx for non-linked / force-refresh paths.
 
-    Linked http_explicit loads do not use this (see ``_darkmatter_http_explicit_no_fallback``).
+    Linked loads use ``_darkmatter_may_use_object_proxy_for_linked`` instead.
     Opt in with ``DARKMATTER_ALLOW_RESOLVED_IDX_API_ON_LAUNCH=1``.
     """
     if _darkmatter_disable_resolved_idx_api():
@@ -685,6 +697,7 @@ def _darkmatter_may_use_cached_resolved_idx_http() -> bool:
         "yes",
         "on",
     ):
+        # Proxy-only writes still allowed on SCLib; linked uses _darkmatter_may_use_object_proxy_for_linked.
         return False
     return _darkmatter_may_post_openvisus_resolved_idx_on_launch()
 
@@ -2547,16 +2560,77 @@ class AppState:
                 )
                 if http_no_fb:
                     print(
-                        "[DarkMatter][DEBUG] linked http_explicit: OpenVisus uses data-link HTTPS idx only "
-                        "(no converted/, upload/, resolved-idx, or materialized fallbacks)"
+                        "[DarkMatter][DEBUG] linked http_explicit: no upload/converted mirrors "
+                        "(object-proxy SigV4 for bins, like ORNL Strain)"
                     )
 
-                # Prefer converted/<uuid>/visus.idx when already on disk (no convert / no API).
+                # Linked http_explicit: OpenVisus cannot SigV4 FTH with ?access_key= (403).
+                # Same Mongo keys work via boto3 (sidecars / Strain). Use SCLib object-proxy.
+                if (
+                    self.runtime_dataset["mode"] == "http_explicit"
+                    and _looks_like_dataset_uuid(dataset_identifier)
+                    and not dataset_identifier.startswith(("http://", "https://", "s3://"))
+                    and (self.s3_auth_override or {}).get("aws_access_key_id")
+                    and (self.s3_auth_override or {}).get("aws_secret_access_key")
+                    and _darkmatter_may_use_object_proxy_for_linked()
+                ):
+                    ov = self.s3_auth_override or {}
+                    idx_http = str(self.runtime_dataset.get("idx_uri") or "").strip()
+                    idx_parts = urlsplit(idx_http) if idx_http.startswith(("http://", "https://")) else None
+                    gw_base = (
+                        f"{idx_parts.scheme}://{idx_parts.netloc}"
+                        if idx_parts and idx_parts.scheme and idx_parts.netloc
+                        else ""
+                    )
+                    merged_ep = (str(ov.get("endpoint_url") or "").strip() or gw_base)
+                    if merged_ep:
+                        self.set_s3_auth_override(
+                            merged_ep,
+                            str(ov.get("aws_access_key_id") or ""),
+                            str(ov.get("aws_secret_access_key") or ""),
+                        )
+                        self.runtime_dataset["auth_override"] = dict(self.s3_auth_override or {})
+                    try:
+                        print(
+                            "[DarkMatter][DEBUG] linked LoadDataset via object-proxy resolved-idx "
+                            "(SigV4 through SCLib; no bin download)"
+                        )
+                        resolved_idx, resolved_http = resolve_openvisus_resolved_idx_via_api(
+                            dataset_identifier=dataset_identifier,
+                            user_email=user_email,
+                            auth_override=self.s3_auth_override or {},
+                            output_filename=RESOLVED_IDX_S3_OUTPUT_NAME,
+                            filename_template_mode="proxy",
+                            force_refresh=False,
+                        )
+                        trial = _read_resolved_materialized_idx(resolved_idx or "", resolved_http)
+                        if trial is not None and not _scene_is_all_zero(trial):
+                            self.scene_data = trial
+                            if resolved_idx:
+                                self.runtime_dataset["converted_idx_path"] = resolved_idx
+                            print(
+                                "[DarkMatter][DEBUG] linked object-proxy resolved-idx "
+                                "produced non-zero scene data"
+                            )
+                        elif trial is not None:
+                            self.scene_data = trial
+                            print(
+                                "[DarkMatter][WARN] linked object-proxy resolved-idx read all-zero; "
+                                "will try direct HTTPS idx"
+                            )
+                    except Exception as ex:
+                        last_load_err = ex
+                        print(
+                            f"[DarkMatter][WARN] linked object-proxy resolved-idx failed: {ex}"
+                        )
+
+                # Prefer converted/<uuid>/visus.idx when already on disk (non-linked / debug fallbacks).
                 converted_on_disk = ""
                 if (
                     not http_no_fb
                     and self.runtime_dataset["mode"] in ("http_explicit", "s3_explicit", "local_explicit")
                     and _looks_like_dataset_uuid(dataset_identifier)
+                    and (self.scene_data is None or _scene_is_all_zero(self.scene_data))
                 ):
                     converted_on_disk = _materialized_resolved_visus_idx_path(
                         self.runtime_dataset,
@@ -2582,9 +2656,7 @@ class AppState:
                             last_load_err = ex
                             print(f"[DarkMatter][WARN] converted dir LoadDataset failed: {ex}")
 
-                # Linked remote IDX: OpenVisus HTTPS LoadDataset often resolves ARCO bin paths
-                # that do not exist on object storage (all-zero). Materialize a local idx with
-                # absolute s3:// (then HTTPS) %04x.bin template after probing where 0000.bin lives.
+                # Legacy materialize (FTH query-cred / s3 / local mirror) — off for linked default.
                 materialized_linked_idx = ""
                 if (
                     not http_no_fb
@@ -2608,12 +2680,9 @@ class AppState:
                             str(ov.get("aws_access_key_id") or ""),
                             str(ov.get("aws_secret_access_key") or ""),
                         )
-                        # Keep runtime_dataset auth in sync for materialize + sidecar reads.
                         self.runtime_dataset["auth_override"] = dict(self.s3_auth_override or {})
                     kinds = ["https"]
                     ep_for_kinds = merged_ep or str((self.s3_auth_override or {}).get("endpoint_url") or "")
-                    # Custom gateways: never feed OpenVisus plain/credentialed s3:// — it builds
-                    # virtual-host HTTPS (bucket.endpoint) and TLS fails (cert is for endpoint only).
                     if not gateway_endpoint_requires_path_style(ep_for_kinds):
                         kinds.append("s3")
                     elif str(os.getenv("DARKMATTER_ALLOW_S3_TEMPLATE_ON_PATH_STYLE_GW", "")).strip().lower() in (
@@ -2623,12 +2692,6 @@ class AppState:
                         "on",
                     ):
                         kinds.append("s3")
-                        print(
-                            "[DarkMatter][WARN] DARKMATTER_ALLOW_S3_TEMPLATE_ON_PATH_STYLE_GW=1 — "
-                            "s3:// templates may hit virtual-host TLS errors on this gateway"
-                        )
-                    # Do NOT mirror/download bins by default. Working remote datasets use
-                    # object-proxy (converted/visus.idx). Opt-in only: DARKMATTER_LINKED_MIRROR_BINS=1.
                     if str(os.getenv("DARKMATTER_LINKED_MIRROR_BINS", "")).strip().lower() in (
                         "1",
                         "true",
@@ -2680,7 +2743,7 @@ class AppState:
                             )
 
                 if (
-                    self.scene_data is None
+                    (self.scene_data is None or _scene_is_all_zero(self.scene_data))
                     and self.runtime_dataset["mode"] == "http_explicit"
                     and primary_read.startswith(("http://", "https://"))
                 ):
@@ -2689,11 +2752,18 @@ class AppState:
                             f"[DarkMatter][DEBUG] primary LoadDataset (linked HTTPS idx): "
                             f"{_redact_url_secrets(primary_read)}"
                         )
-                        self.scene_data = read_openvisus_field(primary_read)
+                        trial = read_openvisus_field(primary_read)
+                        if trial is not None and (
+                            self.scene_data is None or not _scene_is_all_zero(trial)
+                        ):
+                            self.scene_data = trial
+                        elif trial is not None and self.scene_data is None:
+                            self.scene_data = trial
                     except Exception as ex:
                         last_load_err = ex
                         print(f"[DarkMatter][WARN] linked HTTPS LoadDataset failed: {ex}")
-                        self.scene_data = None
+                        if self.scene_data is None:
+                            self.scene_data = None
 
                 need_resolved_or_local = self.scene_data is None
                 if (
@@ -3065,12 +3135,11 @@ class AppState:
                         base_err = last_load_err or RuntimeError("linked HTTPS idx did not load")
                         if http_no_fb:
                             raise RuntimeError(
-                                "OpenVisus LoadDataset failed on the linked HTTPS idx only "
-                                "(DARKMATTER_HTTP_EXPLICIT_NO_FALLBACK=1: resolved idx, native s3://, and materialized "
-                                "local .idx are disabled). Visus often reports empty content when the idx URL is "
-                                "wrong, truncated, or when the gateway binding cannot fetch that object. "
-                                "Unset DARKMATTER_HTTP_EXPLICIT_NO_FALLBACK to allow fallbacks again, or fix the "
-                                "HTTPS idx URL and gateway credentials."
+                                "OpenVisus could not load linked DarkMatter scene data. "
+                                "Tried object-proxy resolved-idx (SigV4 via SCLib) and the data-link HTTPS idx. "
+                                "Check sclib_fastapi / object-proxy, Mongo s3_* credentials, and that "
+                                "DARKMATTER_DISABLE_RESOLVED_IDX is not set. "
+                                "FTH gateway ?access_key= plain GETs often return 403 (unlike Strain boto3)."
                             ) from base_err
                         raise RuntimeError(
                             "OpenVisus could not load scene data from the linked HTTPS idx (empty content is typical "
