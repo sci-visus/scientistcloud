@@ -709,9 +709,17 @@ if ($defaultShareSeconds > $shareMaxSeconds) {
               <label class="form-check-label" for="s3ConnectPublic">Public Data Access Granted</label>
             </div>
             <div class="form-check mt-1">
-              <input class="form-check-input" type="checkbox" name="convert" id="s3ConnectConvert" checked>
-              <label class="form-check-label" for="s3ConnectConvert">Download from S3 to server &amp; queue conversion (uncheck for link-only registration)</label>
+              <input class="form-check-input" type="checkbox" name="download" id="s3ConnectDownload" checked>
+              <label class="form-check-label" for="s3ConnectDownload">Download from S3 to server (copy files under upload/)</label>
             </div>
+            <div class="form-check mt-1">
+              <input class="form-check-input" type="checkbox" name="convert" id="s3ConnectConvert">
+              <label class="form-check-label" for="s3ConnectConvert">Queue conversion (uncheck if data is already IDX / ready to view)</label>
+            </div>
+            <small class="text-muted d-block mt-1">
+              For existing <code>.idx</code> datasets: leave Download on and Convert off.
+              Link-only registration: uncheck both.
+            </small>
             <div class="mt-3 d-flex align-items-center gap-2">
               <button type="submit" class="btn btn-success" id="s3ConnectSubmit">
                 <i class="fas fa-external-link-alt"></i> Show in Data Portal
@@ -1011,15 +1019,30 @@ if ($defaultShareSeconds > $shareMaxSeconds) {
           const key = btn.getAttribute('data-key') || '';
           const filename = btn.getAttribute('data-filename') || 'dataset.idx';
           const suggested = filename.replace(/\.idx$/i, '');
+          const isIdx = /\.idx$/i.test(filename) || /\.idx$/i.test(key);
           connectKey.value = key;
           connectName.value = suggested || filename;
           connectTitle.textContent = 'Create Remote Dataset — ' + filename;
           if (connectStatus) connectStatus.textContent = '';
+          const downloadCb = document.getElementById('s3ConnectDownload');
+          const convertCb = document.getElementById('s3ConnectConvert');
+          // Already-IDX: download local copy by default, skip conversion.
+          if (downloadCb) downloadCb.checked = true;
+          if (convertCb) convertCb.checked = !isIdx;
           connectPanel.style.display = 'block';
           await loadConnectMetadata();
           connectPanel.scrollIntoView({ behavior: 'smooth', block: 'start' });
         });
       });
+
+      const connectDownloadCb = document.getElementById('s3ConnectDownload');
+      const connectConvertCb = document.getElementById('s3ConnectConvert');
+      if (connectConvertCb && connectDownloadCb) {
+        connectConvertCb.addEventListener('change', function () {
+          // Full conversion needs a local mirror first.
+          if (connectConvertCb.checked) connectDownloadCb.checked = true;
+        });
+      }
 
       if (connectForm) {
         connectForm.addEventListener('submit', async function (e) {
@@ -1035,6 +1058,9 @@ if ($defaultShareSeconds > $shareMaxSeconds) {
               return;
             }
           }
+          const wantsConvert = !!((document.getElementById('s3ConnectConvert') || {}).checked);
+          let wantsDownload = !!((document.getElementById('s3ConnectDownload') || {}).checked);
+          if (wantsConvert) wantsDownload = true;
           const payload = {
             key: (connectKey && connectKey.value) ? connectKey.value.trim() : '',
             dataset_name: (connectName && connectName.value) ? connectName.value.trim() : '',
@@ -1046,7 +1072,8 @@ if ($defaultShareSeconds > $shareMaxSeconds) {
             preferred_dashboard: (connectDashboard || {}).value || '',
             is_public: !!((document.getElementById('s3ConnectPublic') || {}).checked),
             is_downloadable: (document.getElementById('s3ConnectDownloadable') || {}).value || 'only owner',
-            convert: !!((document.getElementById('s3ConnectConvert') || {}).checked),
+            download: wantsDownload,
+            convert: wantsConvert,
           };
           if (!payload.key || !payload.dataset_name) {
             if (connectStatus) connectStatus.textContent = 'Dataset key and name are required.';
@@ -1078,6 +1105,7 @@ if ($defaultShareSeconds > $shareMaxSeconds) {
             if (payload.dataset_name) portalParams.set('dataset_name', String(payload.dataset_name));
             if (payload.preferred_dashboard) portalParams.set('dashboard', String(payload.preferred_dashboard));
             if (payload.convert) portalParams.set('convert', '1');
+            if (payload.download) portalParams.set('download', '1');
             const portalQuery = portalParams.toString();
             const portalUrl = portalQuery ? `${PORTAL_INDEX_PATH}?${portalQuery}` : PORTAL_INDEX_PATH;
             window.open(portalUrl, '_blank', 'noopener,noreferrer');

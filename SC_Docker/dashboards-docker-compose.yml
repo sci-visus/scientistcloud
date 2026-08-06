@@ -193,6 +193,8 @@ services:
     volumes:
       - ${VISUS_DB}:/mnt/visus_db
       - ${VISUS_DATASETS}:/mnt/visus_datasets
+    group_add:
+      - "33"
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8058/darkmatter/"]
       interval: 30s

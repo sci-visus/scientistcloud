@@ -1159,15 +1159,37 @@ def resolve_local_idx_path(idx_path: str, mid_file: str) -> str:
     # Writing foo.sc_pathfix.idx makes it look in foo.sc_pathfix/ (wrong). Keep the original .idx basename
     # inside a small cache dir and symlink <segment> -> ../<segment> so block paths match the real tree.
     stem = os.path.splitext(os.path.basename(idx_path))[0]
-    cache_dir = os.path.join(dataset_dir, ".dm_openvisus_cache")
-    os.makedirs(cache_dir, exist_ok=True)
+    preferred_cache = os.path.join(dataset_dir, ".dm_openvisus_cache")
+    cache_dir = preferred_cache
+    try:
+        os.makedirs(cache_dir, exist_ok=True)
+    except OSError as ex:
+        # Upload dirs are often owned by www-data; if this process cannot write there, fall back to /tmp.
+        cache_dir = os.path.join(
+            "/tmp",
+            "dm_openvisus_cache",
+            os.path.basename(dataset_dir.rstrip(os.sep)) or "dataset",
+        )
+        print(
+            f"[DarkMatter][WARN] resolve_local_idx_path: cannot create {preferred_cache} ({ex}); "
+            f"using {cache_dir}"
+        )
+        os.makedirs(cache_dir, exist_ok=True)
     cached_idx = os.path.join(cache_dir, f"{stem}.idx")
     seg_link = os.path.join(cache_dir, segment)
     try:
         if os.path.lexists(seg_link) or os.path.islink(seg_link):
             os.unlink(seg_link)
-        rel_target = os.path.relpath(os.path.join(dataset_dir, segment), cache_dir)
-        os.symlink(rel_target, seg_link)
+        # Prefer a relative link when cache is beside the dataset; use absolute when cache is elsewhere.
+        link_target = os.path.join(dataset_dir, segment)
+        try:
+            cache_abs = os.path.abspath(cache_dir)
+            dataset_abs = os.path.abspath(dataset_dir)
+            if cache_abs == dataset_abs or cache_abs.startswith(dataset_abs + os.sep):
+                link_target = os.path.relpath(link_target, cache_dir)
+        except ValueError:
+            pass
+        os.symlink(link_target, seg_link)
     except OSError as ex:
         print(f"[DarkMatter][WARN] resolve_local_idx_path: segment symlink failed ({ex}); OpenVisus may still mis-resolve tiles")
 

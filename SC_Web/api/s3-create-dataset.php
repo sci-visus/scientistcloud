@@ -60,8 +60,10 @@ $dimensions = trim((string)($input['dimensions'] ?? ''));
 $preferredDashboard = trim((string)($input['preferred_dashboard'] ?? ''));
 $isPublic = !empty($input['is_public']);
 $isDownloadable = trim((string)($input['is_downloadable'] ?? 'only owner'));
-// Conversion is user-directed. Register/link remote datasets without converting unless requested.
+// Download (materialize to upload/) and convert are independent.
+// Legacy: if only convert is sent, convert still implies download (handled by upload API when download omitted).
 $convert = array_key_exists('convert', $input) ? !empty($input['convert']) : false;
+$download = array_key_exists('download', $input) ? !empty($input['download']) : null;
 
 if ($key === '' || $datasetName === '') {
     http_response_code(400);
@@ -112,6 +114,9 @@ $requestData = [
     'is_downloadable' => $isDownloadable,
 ];
 
+if ($download !== null) {
+    $requestData['download'] = $download;
+}
 if ($tags !== '') {
     // UploadRequest accepts comma-separated tags; keep this as a string for API compatibility.
     $requestData['tags'] = $tags;

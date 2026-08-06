@@ -1120,13 +1120,21 @@ class UploadManager {
 
                 <div class="mb-3">
                     <div class="form-check mb-2">
+                        <input class="form-check-input" type="checkbox" name="download" id="s3DownloadToServer" checked>
+                        <label class="form-check-label" for="s3DownloadToServer">
+                            Download dataset from S3 to the server (mirror under upload/)
+                        </label>
+                    </div>
+                    <div class="form-check mb-2">
                         <input class="form-check-input" type="checkbox" name="convert" id="s3ConvertIdx">
                         <label class="form-check-label" for="s3ConvertIdx">
-                            Download dataset from S3 to the server and run full conversion (mirror + IDX → ARCO when applicable)
+                            Queue conversion (IDX → ARCO / full convert when applicable)
                         </label>
                     </div>
                     <small class="form-text text-muted d-block">
-                        Unchecked: keep data in S3 only; for <strong>sensor IDX</strong> paths ending in <code>.idx</code>, the server still queues background work to write a resolved <code>visus.idx</code> under converted/ (no tile mirror). Check this box when you want a full local copy under upload/ as well.
+                        For existing <strong>.idx</strong> data: keep Download on and Convert off.
+                        Both unchecked: link-only (for sensor IDX, server may still write a resolved <code>visus.idx</code> under converted/ with no tile mirror).
+                        Convert on forces Download on.
                     </small>
                 </div>
 
@@ -1995,6 +2003,13 @@ class UploadManager {
                 this.handleS3Upload(s3Form);
             });
             this.setupS3SourceMode(s3Form);
+            const s3Convert = s3Form.querySelector('#s3ConvertIdx');
+            const s3Download = s3Form.querySelector('#s3DownloadToServer');
+            if (s3Convert && s3Download) {
+                s3Convert.addEventListener('change', () => {
+                    if (s3Convert.checked) s3Download.checked = true;
+                });
+            }
         }
         const s3TestBtn = document.getElementById('s3TestConnectionBtn');
         if (s3TestBtn && s3Form) {
@@ -2559,6 +2574,9 @@ class UploadManager {
             const preferredPick =
                 (formData.get('preferred_dashboard') || '').toString().trim() ||
                 (sensorUpper === 'IDX' ? 'DarkMatter' : 'OpenVisusSlice');
+            const wantsConvert = formData.get('convert') === 'on';
+            let wantsDownload = formData.get('download') === 'on';
+            if (wantsConvert) wantsDownload = true;
 
             // Use SCLib Upload API initiate endpoint for S3
             const requestData = {
@@ -2576,7 +2594,8 @@ class UploadManager {
                 user_email: userEmail,
                 dataset_name: formData.get('name'),
                 sensor: formData.get('sensor'),
-                convert: formData.get('convert') === 'on',
+                download: wantsDownload,
+                convert: wantsConvert,
                 is_public: formData.get('is_public') === 'on',
                 is_downloadable: formData.get('is_downloadable') || 'only owner',
                 folder: this.getFolderValue(form),
