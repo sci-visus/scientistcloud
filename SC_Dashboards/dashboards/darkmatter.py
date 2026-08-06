@@ -675,24 +675,19 @@ def _darkmatter_http_explicit_no_fallback() -> bool:
 
 def _darkmatter_may_use_cached_resolved_idx_http() -> bool:
     """
-    Whether DarkMatter may call openvisus-resolved-idx at all.
+    Whether DarkMatter may call openvisus-resolved-idx for object-proxy visus.idx.
 
-    Default is off: linked Dark Matter datasets must not trigger conversion. Use
-    files already under ``converted/<uuid>/`` when present, otherwise the remote
-    data link. Opt in with ``DARKMATTER_ALLOW_RESOLVED_IDX_API_ON_LAUNCH=1`` (or
-    unset ``DARKMATTER_DISABLE_RESOLVED_IDX`` and enable the allow flag).
+    Linked remote loads need this when gateway ``?access_key=&secret_key=`` GETs return 403:
+    other working remote datasets already use converted/<uuid>/visus.idx with object-proxy
+    templates (OpenVisus streams bins; no bulk download).
+
+    Hard-off: ``DARKMATTER_DISABLE_RESOLVED_IDX=1``.
     """
     if _darkmatter_disable_resolved_idx_api():
         return False
-    # Also respect SCLib global kill-switch used on scientistcloud.com.
-    if str(os.getenv("SCLIB_DISABLE_OPENVISUS_RESOLVED_IDX", "")).strip().lower() in (
-        "1",
-        "true",
-        "yes",
-        "on",
-    ):
-        return False
-    return _darkmatter_may_post_openvisus_resolved_idx_on_launch()
+    # Always allow calling the API for proxy idx: SCLib may still honor proxy-mode writes
+    # even when SCLIB_DISABLE_OPENVISUS_RESOLVED_IDX=1 (lightweight visus.idx only).
+    return True
 
 
 def _materialized_resolved_visus_idx_path(
@@ -1447,16 +1442,17 @@ def materialize_remote_idx_for_openvisus(
     template_kind: str = "https",
 ) -> Optional[str]:
     """
-    Build a local idx for linked datasets so OpenVisus fetches bins via credentialed URLs.
+    Build a local idx for linked datasets so OpenVisus can fetch bins.
 
-    OpenVisus honors credentials in object URLs:
-      - HTTPS: ``?access_key=...&secret_key=...``
-      - S3: ``s3://access_key:secret_key@bucket/key``
+    Preferred OpenVisus auth forms:
+      - HTTPS: ``?access_key=...&secret_key=...`` (works only if the gateway honors query creds)
+      - S3: ``s3://access_key:secret_key@bucket/key`` (AWS / virtual-host friendly endpoints)
 
-    Direct ``LoadDataset(https://...idx)`` often still fails because the remote idx keeps a
-    relative / ARCO ``(filename_template)`` that does not match gateway object keys (all-zero
-    reads). This helper keeps that OpenVisus credential model: it only rewrites the template
-    to absolute HTTPS or ``s3://user:pass@...`` bin URLs (and zeros ``(arco)``).
+    On path-style custom gateways (e.g. FTH), plain HTTPS GETs with query credentials often
+    return ``403 AccessDenied`` even when the same keys work via boto3 SigV4. In that case
+    ``template_kind='local'`` mirrors bins with SigV4 and uses a relative ``./bins/%04x.bin``.
+
+    Also rewrites relative/ARCO ``(filename_template)`` to the probed bin layout and zeros ``(arco)``.
     """
     if not isinstance(runtime_dataset, dict):
         return None
@@ -1563,8 +1559,33 @@ def materialize_remote_idx_for_openvisus(
     cache_root = os.path.join("/tmp", "dm_openvisus_cache", stem)
     os.makedirs(cache_root, exist_ok=True)
 
+    if kind == "https" and http_bin_template:
+        # FTH / Ceph RGW: query access_key/secret_key are NOT SigV4. Plain GET returns
+        # 403 AccessDenied even when the same keys work via boto3. Probe before LoadDataset.
+        probe_url = http_bin_template.replace("%04x", "0000")
+        try:
+            probe = requests.get(probe_url, timeout=20)
+            if probe.status_code != 200:
+                body_head = (probe.content or b"")[:180].decode("utf-8", "replace")
+                print(
+                    "[DarkMatter][WARN] materialize_remote_idx_for_openvisus(https): "
+                    f"GET 0000.bin returned HTTP {probe.status_code} "
+                    f"(gateway rejects query-string credentials; use SigV4 mirror or object-proxy). "
+                    f"body={body_head!r}"
+                )
+                return None
+            print(
+                f"[DarkMatter][DEBUG] HTTPS bin0 probe ok status=200 bytes={len(probe.content)}"
+            )
+        except Exception as pex:
+            print(
+                f"[DarkMatter][WARN] materialize_remote_idx_for_openvisus(https): "
+                f"bin0 probe failed: {pex}"
+            )
+            return None
+
     if kind == "local":
-        # Opt-in only (DARKMATTER_LINKED_MIRROR_BINS=1). Prefer credentialed HTTPS/S3 URLs.
+        # SigV4 mirror via boto3 — required when gateway HTTPS query-cred GETs return 403.
         max_bins = int(os.getenv("DARKMATTER_LINKED_MIRROR_MAX_BINS", "4096") or "4096")
         bin_prefix = chosen_bin_key[: -len("0000.bin")] if chosen_bin_key.endswith("0000.bin") else (
             (chosen_bin_key.rsplit("/", 1)[0] + "/") if "/" in chosen_bin_key else ""
@@ -2616,6 +2637,8 @@ class AppState:
                             "[DarkMatter][WARN] DARKMATTER_ALLOW_S3_TEMPLATE_ON_PATH_STYLE_GW=1 — "
                             "s3:// templates may hit virtual-host TLS errors on this gateway"
                         )
+                    # Do NOT mirror/download bins by default. Working remote datasets use
+                    # object-proxy (converted/visus.idx). Opt-in only: DARKMATTER_LINKED_MIRROR_BINS=1.
                     if str(os.getenv("DARKMATTER_LINKED_MIRROR_BINS", "")).strip().lower() in (
                         "1",
                         "true",
@@ -2693,9 +2716,8 @@ class AppState:
                 ):
                     print(
                         "[DarkMatter][WARN] linked HTTPS idx read succeeded but scene is all-zero "
-                        "(bins may not load with this template); will try other local/remote fallbacks. "
-                        "Dashboard does not re-POST openvisus-resolved-idx "
-                        "unless DARKMATTER_ALLOW_RESOLVED_IDX_API_ON_LAUNCH=1."
+                        "(gateway query credentials often 403; will try object-proxy visus.idx like "
+                        "other remote datasets)."
                     )
                     need_resolved_or_local = True
                 elif (
@@ -2723,8 +2745,9 @@ class AppState:
                     may_force = _darkmatter_may_post_openvisus_resolved_idx_on_launch()
                     if missing_materialized and may_generate:
                         print(
-                            "[DarkMatter][DEBUG] No converted/<uuid>/visus.idx on disk — "
-                            "POSTing openvisus-resolved-idx (DARKMATTER_ALLOW_RESOLVED_IDX_API_ON_LAUNCH=1)."
+                            "[DarkMatter][DEBUG] No converted/<uuid>/visus.idx — "
+                            "POSTing openvisus-resolved-idx proxy mode "
+                            "(same remote path as other working datasets; no bin download)."
                         )
                         try:
                             trial = _try_resolve_and_load_openvisus_idx(
@@ -2732,7 +2755,7 @@ class AppState:
                                 user_email=user_email,
                                 auth_override=self.s3_auth_override,
                                 force_refresh=False,
-                                log_label="generate-missing",
+                                log_label="generate-missing-proxy",
                             )
                             if trial is not None and (
                                 self.scene_data is None or not _scene_is_all_zero(trial)
@@ -2740,7 +2763,8 @@ class AppState:
                                 self.scene_data = trial
                                 need_resolved_or_local = False
                                 print(
-                                    "[DarkMatter][DEBUG] scene loaded after openvisus-resolved-idx generation"
+                                    "[DarkMatter][DEBUG] scene loaded after object-proxy "
+                                    "openvisus-resolved-idx generation"
                                 )
                         except Exception as ex:
                             last_load_err = ex
@@ -2785,9 +2809,9 @@ class AppState:
                     elif missing_materialized and not may_generate:
                         print(
                             "[DarkMatter][DEBUG] No visus.idx under converted/<uuid>/ — "
-                            "not generating (linked DarkMatter uses remote link / upload dir; "
-                            "conversion is opt-in via Convert checkbox or "
-                            "DARKMATTER_ALLOW_RESOLVED_IDX_API_ON_LAUNCH=1)."
+                            "resolved-idx API disabled (DARKMATTER_DISABLE_RESOLVED_IDX=1). "
+                            "Other remote datasets load via object-proxy visus.idx; without it, "
+                            "direct gateway ?access_key= URLs often 403."
                         )
 
                     enable_proxy = str(
