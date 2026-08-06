@@ -634,17 +634,56 @@ def _darkmatter_http_explicit_no_fallback() -> bool:
 
 def _darkmatter_may_use_cached_resolved_idx_http() -> bool:
     """
-    Whether to POST openvisus-resolved-idx with force_refresh=False to obtain
-    ``resolved_idx_http_url`` for LoadDataset.
+    Whether DarkMatter may call openvisus-resolved-idx at all.
 
-    Background conversion writes a materialized ``visus.idx`` whose ``(filename_template)``
-    points at SCLib object-proxy URLs. OpenVisus ``LoadDataset`` on a *local filesystem* path
-    often ignores those templates and reads empty tiles (all-zero scene). The HTTP URL served
-    by ``/api/v1/datasets/resolved-idx/<token>/visus.idx`` is the supported read path (same as
-    OpenVisusSlice ``setDataset`` after resolved-idx). This is not on-launch regeneration:
-    ``force_refresh=False`` returns the cached idx when present.
+    Default is off: linked Dark Matter datasets must not trigger conversion. Use
+    files already under ``converted/<uuid>/`` when present, otherwise the remote
+    data link. Opt in with ``DARKMATTER_ALLOW_RESOLVED_IDX_API_ON_LAUNCH=1`` (or
+    unset ``DARKMATTER_DISABLE_RESOLVED_IDX`` and enable the allow flag).
     """
-    return not _darkmatter_disable_resolved_idx_api()
+    if _darkmatter_disable_resolved_idx_api():
+        return False
+    # Also respect SCLib global kill-switch used on scientistcloud.com.
+    if str(os.getenv("SCLIB_DISABLE_OPENVISUS_RESOLVED_IDX", "")).strip().lower() in (
+        "1",
+        "true",
+        "yes",
+        "on",
+    ):
+        return False
+    return _darkmatter_may_post_openvisus_resolved_idx_on_launch()
+
+
+def _materialized_resolved_visus_idx_path(
+    runtime_dataset: Optional[dict],
+    dataset_uuid: str,
+    save_dir_hint: str = "",
+) -> str:
+    """Return path to converted/<uuid>/visus.idx (or visus_proxy.idx) when present on disk."""
+    cip = str((runtime_dataset or {}).get("converted_idx_path") or "").strip()
+    if cip and os.path.isfile(cip):
+        return cip
+    candidates: List[str] = []
+    sd = str(save_dir_hint or "").strip()
+    if sd:
+        candidates.append(sd)
+    if dataset_uuid:
+        for root in (
+            "/mnt/visus_datasets/converted",
+            str(globals().get("save_dir") or "").strip(),
+        ):
+            if root:
+                candidates.append(os.path.join(root, str(dataset_uuid)))
+    seen = set()
+    for base in candidates:
+        if not base or base in seen:
+            continue
+        seen.add(base)
+        for fname in ("visus.idx", "visus_proxy.idx"):
+            p = os.path.join(base, fname)
+            if os.path.isfile(p):
+                return p
+    return ""
 
 
 def _materialized_resolved_visus_idx_missing(
@@ -653,24 +692,9 @@ def _materialized_resolved_visus_idx_missing(
     save_dir_hint: str = "",
 ) -> bool:
     """True when converted/<uuid>/visus.idx is not on disk (background conversion not finished)."""
-    cip = str((runtime_dataset or {}).get("converted_idx_path") or "").strip()
-    if cip and os.path.isfile(cip):
-        return False
-    sd = str(save_dir_hint or "").strip()
-    if sd:
-        for fname in ("visus.idx", "visus_proxy.idx"):
-            if os.path.isfile(os.path.join(sd, fname)):
-                return False
-    if dataset_uuid and has_args:
-        try:
-            base = str(globals().get("save_dir") or sd or "").strip()
-            if base:
-                for fname in ("visus.idx", "visus_proxy.idx"):
-                    if os.path.isfile(os.path.join(base, fname)):
-                        return False
-        except Exception:
-            pass
-    return True
+    return not bool(
+        _materialized_resolved_visus_idx_path(runtime_dataset, dataset_uuid, save_dir_hint)
+    )
 
 
 def _try_resolve_and_load_openvisus_idx(
@@ -2061,9 +2085,9 @@ class AppState:
                             "LoadDataset may fail on raw s3:// idx_uri"
                         )
 
-                # Linked datasets (http_explicit): use the user's HTTPS idx URL first — one logical
-                # descriptor with inline keys. Only if that fails or reads all zeros do we try
-                # server-resolved idx, then materialized local copies (avoids competing visus.idx vs link).
+                # Linked datasets: prefer converted/<uuid>/ when present (no conversion from the
+                # dashboard). Otherwise use the user's HTTPS idx URL. Never auto-POST
+                # openvisus-resolved-idx unless DARKMATTER_ALLOW_RESOLVED_IDX_API_ON_LAUNCH=1.
                 dataset_identifier = str(uuid or "").strip()
                 last_load_err = None
                 self.scene_data = None
@@ -2114,8 +2138,42 @@ class AppState:
                         "[DarkMatter][DEBUG] DARKMATTER_HTTP_EXPLICIT_NO_FALLBACK=1 — "
                         "OpenVisus uses linked HTTPS idx only (no resolved idx / s3:// / materialized .idx)"
                     )
-                if self.runtime_dataset["mode"] == "http_explicit" and primary_read.startswith(
-                    ("http://", "https://")
+
+                # Prefer converted/<uuid>/visus.idx when already on disk (no convert / no API).
+                converted_on_disk = ""
+                if (
+                    not http_no_fb
+                    and self.runtime_dataset["mode"] in ("http_explicit", "s3_explicit", "local_explicit")
+                    and _looks_like_dataset_uuid(dataset_identifier)
+                ):
+                    converted_on_disk = _materialized_resolved_visus_idx_path(
+                        self.runtime_dataset,
+                        dataset_identifier,
+                        str(save_dir) if has_args else "",
+                    )
+                    if converted_on_disk:
+                        try:
+                            print(
+                                f"[DarkMatter][DEBUG] using converted dir idx (no conversion): {converted_on_disk}"
+                            )
+                            trial = read_openvisus_field_with_dataset_cwd(converted_on_disk)
+                            if trial is not None and not _scene_is_all_zero(trial):
+                                self.scene_data = trial
+                                self.runtime_dataset["converted_idx_path"] = converted_on_disk
+                            elif trial is not None:
+                                self.scene_data = trial
+                                print(
+                                    "[DarkMatter][WARN] converted/<uuid> idx read all-zero; "
+                                    "will try remote link fallbacks"
+                                )
+                        except Exception as ex:
+                            last_load_err = ex
+                            print(f"[DarkMatter][WARN] converted dir LoadDataset failed: {ex}")
+
+                if (
+                    self.scene_data is None
+                    and self.runtime_dataset["mode"] == "http_explicit"
+                    and primary_read.startswith(("http://", "https://"))
                 ):
                     try:
                         print(
@@ -2134,11 +2192,12 @@ class AppState:
                     and self.runtime_dataset["mode"] == "http_explicit"
                     and _scene_is_all_zero(self.scene_data)
                     and not http_no_fb
+                    and not converted_on_disk
                 ):
                     print(
                         "[DarkMatter][WARN] linked HTTPS idx read succeeded but scene is all-zero "
-                        "(bins may not load with this template); will try local materialized idx under "
-                        "converted/<uuid>/ when present. Dashboard does not re-POST openvisus-resolved-idx "
+                        "(bins may not load with this template); will try other local/remote fallbacks. "
+                        "Dashboard does not re-POST openvisus-resolved-idx "
                         "unless DARKMATTER_ALLOW_RESOLVED_IDX_API_ON_LAUNCH=1."
                     )
                     need_resolved_or_local = True
@@ -2161,8 +2220,7 @@ class AppState:
                     if missing_materialized and may_generate:
                         print(
                             "[DarkMatter][DEBUG] No converted/<uuid>/visus.idx on disk — "
-                            "POSTing openvisus-resolved-idx to generate proxy descriptor "
-                            "(background conversion may not have run yet)."
+                            "POSTing openvisus-resolved-idx (DARKMATTER_ALLOW_RESOLVED_IDX_API_ON_LAUNCH=1)."
                         )
                         try:
                             trial = _try_resolve_and_load_openvisus_idx(
@@ -2222,9 +2280,10 @@ class AppState:
                             print(f"[DarkMatter][WARN] resolved idx API / load failed: {ex}")
                     elif missing_materialized and not may_generate:
                         print(
-                            "[DarkMatter][WARN] No visus.idx under converted/<uuid>/ and "
-                            "DARKMATTER_DISABLE_RESOLVED_IDX=1 — cannot generate proxy idx. "
-                            "Start sclib_background_service or unset that env var."
+                            "[DarkMatter][DEBUG] No visus.idx under converted/<uuid>/ — "
+                            "not generating (linked DarkMatter uses remote link / upload dir; "
+                            "conversion is opt-in via Convert checkbox or "
+                            "DARKMATTER_ALLOW_RESOLVED_IDX_API_ON_LAUNCH=1)."
                         )
 
                     enable_proxy = str(

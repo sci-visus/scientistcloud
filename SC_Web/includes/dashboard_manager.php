@@ -735,7 +735,30 @@ function getDashboardStatus($datasetId, $dashboardType) {
         }
 
         if (strpos($status, 'failed') !== false || strpos($status, 'error') !== false) {
-            return 'error';
+            // Linked Dark Matter IDX can still open from the remote data link (or converted/)
+            // without a successful background conversion / resolved-idx write.
+            $dashNorm = strtolower(trim((string)($dashboardType ?? '')));
+            $isDarkMatter = (
+                $dashNorm === 'darkmatter'
+                || strpos($dashNorm, 'darkmatter') !== false
+                || strpos($dashNorm, 'dark matter') !== false
+            );
+            $link = strtolower(trim((string)(
+                $dataset['google_drive_link']
+                ?? $dataset['download_url']
+                ?? $dataset['source_path']
+                ?? ''
+            )));
+            $hasRemoteLink = (
+                strpos($link, 's3://') === 0
+                || strpos($link, 'http://') === 0
+                || strpos($link, 'https://') === 0
+            );
+            $sensor = strtoupper(trim((string)($dataset['sensor'] ?? '')));
+            if (!($isDarkMatter && $hasRemoteLink && $sensor === 'IDX')) {
+                return 'error';
+            }
+            // Fall through — treat as potentially viewable for DarkMatter linked IDX.
         }
 
         if (in_array($status, ['processing', 'pending', 'converting', 'uploading', 'queued'])) {
