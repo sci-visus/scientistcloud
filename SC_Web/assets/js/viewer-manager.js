@@ -504,6 +504,10 @@ class ViewerManager {
         // Set loading flag
         this.isLoading = true;
         this.currentLoadingKey = loadKey;
+        // New dashboard load should cancel any leftover processing poll.
+        if (typeof this.stopProcessingPoll === 'function') {
+            this.stopProcessingPoll();
+        }
 
         // Virtual S3 browser — skip dataset status / Bokeh dashboard checks
         if (dashboardType === 'S3Browser') {
@@ -545,8 +549,8 @@ class ViewerManager {
                     this.currentLoadingKey = null;
                 }
             } else if (status === 'processing') {
-                this.showProcessingDashboard(datasetId, datasetName);
-                // Clear loading flag
+                this.showProcessingDashboard(datasetId, datasetName, dashboardType);
+                // Clear loading flag — polling will resume load when ready
                 this.isLoading = false;
                 this.currentLoadingKey = null;
             } else if (status === 'interrupted') {
@@ -736,7 +740,7 @@ class ViewerManager {
             if (!response.ok || result.success === false) {
                 throw new Error(result.message || result.error || 'Failed to queue conversion');
             }
-            this.showProcessingDashboard(datasetUuid, 'Dataset');
+            this.showProcessingDashboard(datasetUuid, 'Dataset', this.currentDashboard || null);
             if (window.datasetManager) {
                 window.datasetManager.loadDatasets();
             }
@@ -1003,6 +1007,11 @@ class ViewerManager {
         });
 
         await this.ensureDashboardAuthCookie();
+
+        const isDarkMatter = (() => {
+            const key = String(resolvedDashboardType || dashboardType || '').toLowerCase();
+            return key === 'darkmatter' || key.includes('darkmatter') || key.includes('dark matter');
+        })();
         
         // Create iframe
         const iframe = document.createElement('iframe');
@@ -1011,15 +1020,71 @@ class ViewerManager {
         iframe.width = '100%';
         iframe.height = '100%';
         iframe.frameBorder = '0';
-        iframe.onload = () => this.onDashboardLoad();
-        iframe.onerror = () => this.onDashboardError();
+        iframe.style.border = '0';
+        iframe.style.background = '#fff';
 
         // Create dashboard container
         const dashboardContainer = document.createElement('div');
         dashboardContainer.className = 'dashboard-container';
+        dashboardContainer.style.position = 'relative';
+        dashboardContainer.style.width = '100%';
+        dashboardContainer.style.height = '100%';
         
         const dashboardContent = document.createElement('div');
         dashboardContent.className = 'dashboard-content';
+        dashboardContent.style.position = 'relative';
+        dashboardContent.style.width = '100%';
+        dashboardContent.style.height = '100%';
+
+        let loadingOverlay = null;
+        if (isDarkMatter) {
+            loadingOverlay = document.createElement('div');
+            loadingOverlay.id = 'darkMatterLoadingOverlay';
+            loadingOverlay.setAttribute('role', 'status');
+            loadingOverlay.style.cssText = [
+                'position:absolute',
+                'inset:0',
+                'z-index:5',
+                'display:flex',
+                'align-items:center',
+                'justify-content:center',
+                'background:rgba(248,250,252,0.92)',
+                'padding:24px',
+            ].join(';');
+            loadingOverlay.innerHTML = `
+                <div class="text-center" style="max-width:420px;">
+                    <div class="spinner-border text-primary mb-3" role="status">
+                        <span class="visually-hidden">Loading...</span>
+                    </div>
+                    <h5 class="mb-2">Loading Dark Matter Dashboard</h5>
+                    <p class="text-muted mb-1">Resolving dataset metadata and OpenVisus tiles…</p>
+                    <p class="small text-muted mb-0">First load can take a minute for linked S3 data.</p>
+                </div>
+            `;
+            dashboardContent.appendChild(loadingOverlay);
+        }
+
+        const clearOverlay = () => {
+            if (loadingOverlay && loadingOverlay.parentNode) {
+                loadingOverlay.parentNode.removeChild(loadingOverlay);
+                loadingOverlay = null;
+            }
+        };
+
+        iframe.onload = () => {
+            // Keep DarkMatter overlay briefly — Bokeh/OpenVisus still initializes after iframe load.
+            if (isDarkMatter) {
+                setTimeout(clearOverlay, 1200);
+            } else {
+                clearOverlay();
+            }
+            this.onDashboardLoad();
+        };
+        iframe.onerror = () => {
+            clearOverlay();
+            this.onDashboardError();
+        };
+
         dashboardContent.appendChild(iframe);
         
         dashboardContainer.appendChild(dashboardContent);
@@ -1114,12 +1179,13 @@ class ViewerManager {
 
 
     /**
-     * Show processing dashboard
+     * Show processing dashboard and auto-poll until ready (or failed).
      */
-    showProcessingDashboard(datasetId, datasetName) {
+    showProcessingDashboard(datasetId, datasetName, dashboardType = null) {
         const viewerContainer = document.getElementById('viewerContainer');
         if (!viewerContainer) return;
 
+        const dash = dashboardType || this.currentDashboard || '';
         viewerContainer.innerHTML = `
             <div class="dashboard-container">
                 <div class="dashboard-content processing-content">
@@ -1128,18 +1194,121 @@ class ViewerManager {
                             <span class="visually-hidden">Loading...</span>
                         </div>
                         <h5 class="mt-3">Dataset is being processed</h5>
-                        <p class="text-muted">Please wait while we prepare your data for visualization.</p>
+                        <p class="text-muted mb-1">Please wait while we prepare your data for visualization.</p>
+                        <p class="small text-muted" id="processingStatusHint">Checking status…</p>
                         <div class="progress mt-3" style="width: 300px; margin: 0 auto;">
                             <div class="progress-bar progress-bar-striped progress-bar-animated" 
                                  role="progressbar" style="width: 100%"></div>
                         </div>
-                        <button class="btn btn-primary mt-3" onclick="checkProcessingStatus('${datasetId}')">
+                        <button class="btn btn-primary mt-3" type="button" id="processingCheckStatusBtn">
                             Check Status
                         </button>
                     </div>
                 </div>
             </div>
         `;
+
+        const checkBtn = document.getElementById('processingCheckStatusBtn');
+        if (checkBtn) {
+            checkBtn.addEventListener('click', () => {
+                this.pollProcessingStatusOnce(true);
+            });
+        }
+
+        this.startProcessingPoll(datasetId, datasetName, dash);
+    }
+
+    startProcessingPoll(datasetId, datasetName, dashboardType) {
+        this.stopProcessingPoll();
+        this._processingPoll = {
+            datasetId,
+            datasetName,
+            dashboardType: dashboardType || this.currentDashboard || '',
+            startedAt: Date.now(),
+        };
+        // Immediate check, then poll until ready/failed.
+        this.pollProcessingStatusOnce(false);
+        this._processingPollTimer = setInterval(() => {
+            this.pollProcessingStatusOnce(false);
+        }, 2500);
+    }
+
+    stopProcessingPoll() {
+        if (this._processingPollTimer) {
+            clearInterval(this._processingPollTimer);
+            this._processingPollTimer = null;
+        }
+        this._processingPoll = null;
+    }
+
+    async pollProcessingStatusOnce(fromButton = false) {
+        const poll = this._processingPoll;
+        if (!poll || !poll.datasetId) return;
+
+        const hint = document.getElementById('processingStatusHint');
+        try {
+            const status = await this.checkDatasetStatus(poll.datasetId, poll.dashboardType || null);
+            const details = this.lastDatasetStatusDetails?.dataset || {};
+            const rawStatus = (details.status || details.canonical_state || status || '').toString();
+            if (hint) {
+                hint.textContent = `Status: ${rawStatus || status}${fromButton ? '' : ' (auto-refreshing)'}`;
+            }
+
+            if (status === 'ready') {
+                this.stopProcessingPoll();
+                const dm = window.datasetManager?.currentDataset || {};
+                const name = poll.datasetName || dm.name || 'Dataset';
+                const uuid = dm.uuid || dm.id || poll.datasetId;
+                const server = dm.server || dm.details?.server || 'false';
+                await this.loadDashboard(
+                    poll.datasetId,
+                    name,
+                    uuid,
+                    server,
+                    poll.dashboardType || this.currentDashboard || null
+                );
+                return;
+            }
+
+            if (status === 'interrupted') {
+                this.stopProcessingPoll();
+                this.showInterruptedUploadDashboard(poll.datasetId, poll.datasetName || 'Dataset');
+                return;
+            }
+
+            if (status === 'error') {
+                this.stopProcessingPoll();
+                const message =
+                    details.error_message ||
+                    details.status_message ||
+                    'Dataset processing failed.';
+                this.showErrorDashboard(message);
+                return;
+            }
+
+            if (status === 'convert_required') {
+                this.stopProcessingPoll();
+                const dm = window.datasetManager?.currentDataset || {};
+                this.showConvertRequiredDashboard(
+                    poll.datasetId,
+                    poll.datasetName || dm.name || 'Dataset',
+                    dm.uuid || poll.datasetId,
+                    poll.dashboardType || this.currentDashboard,
+                    this.lastDatasetStatusDetails?.dashboard || {}
+                );
+                return;
+            }
+
+            if (fromButton) {
+                alert('Dataset is still processing. Please wait.');
+            }
+        } catch (error) {
+            console.error('Error polling processing status:', error);
+            if (hint) hint.textContent = 'Status check failed; retrying…';
+            if (fromButton) {
+                alert('Error checking status. Please try again.');
+            }
+        }
     }
 
     /**
@@ -1273,35 +1442,19 @@ class ViewerManager {
     }
 
     /**
-     * Check processing status
+     * Check processing status (manual button / legacy callers).
      */
     async checkProcessingStatus(datasetId) {
-        try {
-            // Helper function to get API base path
-            const getApiBasePath = () => {
-                const isLocal = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
-                return isLocal ? '/api' : '/portal/api';
-            };
-            const response = await fetch(`${getApiBasePath()}/dataset-status.php?dataset_id=${datasetId}`, {
-                credentials: 'include'  // Include cookies for authentication
-            });
-            
-            if (!response.ok) {
-                console.error(`Error checking dataset status: ${response.status} ${response.statusText}`);
-                return;
-            }
-            
-            const data = await response.json();
-            
-            if (data.status === 'ready') {
-                location.reload();
-            } else {
-                alert('Dataset is still processing. Please wait.');
-            }
-        } catch (error) {
-            console.error('Error checking status:', error);
-            alert('Error checking status. Please try again.');
+        if (!this._processingPoll || this._processingPoll.datasetId !== datasetId) {
+            const dm = window.datasetManager?.currentDataset || {};
+            this.startProcessingPoll(
+                datasetId,
+                dm.name || 'Dataset',
+                this.currentDashboard || null
+            );
+            return;
         }
+        await this.pollProcessingStatusOnce(true);
     }
 }
 

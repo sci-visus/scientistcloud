@@ -17,7 +17,7 @@ from bisect import bisect_left
 from datetime import datetime, timezone
 
 import OpenVisus as ov
-from urllib.parse import parse_qs, parse_qsl, urlencode, urlsplit, urlunsplit
+from urllib.parse import parse_qs, parse_qsl, quote, urlencode, urlsplit, urlunsplit
 from bokeh.io import curdoc
 from bokeh.models.widgets import Div
 from bokeh.plotting import figure
@@ -333,10 +333,27 @@ def parse_s3_uri(uri: str):
     if not candidate.startswith("s3://"):
         return None, None
     no_scheme = candidate[len("s3://"):]
+    # Support OpenVisus-style credentials: s3://access_key:secret_key@bucket/key
+    if "@" in no_scheme.split("/", 1)[0]:
+        _userinfo, _, no_scheme = no_scheme.partition("@")
     if "/" not in no_scheme:
         return no_scheme, ""
     bucket, key = no_scheme.split("/", 1)
     return bucket, key
+
+
+def s3_uri_with_embedded_credentials(s3_uri: str, access_key: str, secret_key: str) -> str:
+    """
+    Embed credentials in an s3:// URL the way OpenVisus expects:
+    ``s3://access_key:secret_key@bucket/key`` (keys URL-encoded for special characters).
+    """
+    bucket, key = parse_s3_uri(s3_uri)
+    ak = str(access_key or "").strip()
+    sk = str(secret_key or "").strip()
+    if not bucket or not ak or not sk:
+        return str(s3_uri or "").strip()
+    userinfo = f"{quote(ak, safe='')}:{quote(sk, safe='')}"
+    return f"s3://{userinfo}@{bucket}/{key}" if key else f"s3://{userinfo}@{bucket}"
 
 
 def _redact_url_secrets(url: str) -> str:
@@ -1329,6 +1346,359 @@ def read_s3_text_lines(s3_uri: str, auth_override=None) -> List[str]:
     raise RuntimeError("Failed to read S3 sidecar text lines")
 
 
+def _s3_object_exists(s3_uri: str, auth_override=None) -> bool:
+    """True if the S3 object exists (HeadObject), using the same endpoint/style probing as reads."""
+    bucket_name, key = parse_s3_uri(s3_uri)
+    if not bucket_name or not key:
+        return False
+    load_dotenv()
+    endpoint_url = os.getenv("ENDPOINT_URL")
+    aws_access_key_id = os.getenv("AWS_ACCESS_KEY_ID")
+    aws_secret_access_key = os.getenv("AWS_SECRET_ACCESS_KEY")
+    region_name = os.getenv("AWS_S3_REGION", "us-east-1")
+    if auth_override:
+        endpoint_url = auth_override.get("endpoint_url") or endpoint_url
+        aws_access_key_id = auth_override.get("aws_access_key_id") or aws_access_key_id
+        aws_secret_access_key = auth_override.get("aws_secret_access_key") or aws_secret_access_key
+        region_name = auth_override.get("region_name") or region_name
+    if not aws_access_key_id or not aws_secret_access_key:
+        return False
+    for candidate_endpoint in [endpoint_url, os.getenv("S3_ENDPOINT_URL"), None]:
+        for addr_style in ("path", "virtual"):
+            try:
+                config = Config(
+                    signature_version="s3v4",
+                    s3={"addressing_style": addr_style},
+                )
+                s3_client = Session().client(
+                    "s3",
+                    endpoint_url=candidate_endpoint,
+                    region_name=region_name,
+                    config=config,
+                    aws_access_key_id=aws_access_key_id,
+                    aws_secret_access_key=aws_secret_access_key,
+                )
+                s3_client.head_object(Bucket=bucket_name, Key=key)
+                return True
+            except Exception:
+                continue
+    return False
+
+
+def _zero_arco_block_in_idx_lines(lines: List[str]) -> List[str]:
+    """Force (arco) to 0 so OpenVisus uses (filename_template) instead of ARCO disk layout."""
+    out: List[str] = []
+    i = 0
+    while i < len(lines):
+        raw = lines[i]
+        s = (raw or "").strip()
+        if s.lower().startswith("(arco)"):
+            # Keep header line; normalize value to 0 on same line or following value line.
+            same = s[len("(arco)") :].strip()
+            nl = "\n" if raw.endswith("\n") else ""
+            if same:
+                out.append(f"(arco) 0{nl}" if not raw.endswith("\n") else "(arco) 0\n")
+                i += 1
+                continue
+            out.append(raw if raw.endswith("\n") else raw + "\n")
+            i += 1
+            while i < len(lines):
+                nxt = lines[i]
+                if (nxt or "").strip() == "":
+                    out.append(nxt if nxt.endswith("\n") else nxt + "\n")
+                    i += 1
+                    continue
+                out.append("0\n")
+                i += 1
+                break
+            continue
+        out.append(raw if raw.endswith("\n") else raw + "\n")
+        i += 1
+    return out
+
+
+def materialize_remote_idx_for_openvisus(
+    runtime_dataset: dict,
+    *,
+    template_kind: str = "https",
+) -> Optional[str]:
+    """
+    Build a local idx for linked datasets so OpenVisus fetches bins via credentialed URLs.
+
+    OpenVisus honors credentials in object URLs:
+      - HTTPS: ``?access_key=...&secret_key=...``
+      - S3: ``s3://access_key:secret_key@bucket/key``
+
+    Direct ``LoadDataset(https://...idx)`` often still fails because the remote idx keeps a
+    relative / ARCO ``(filename_template)`` that does not match gateway object keys (all-zero
+    reads). This helper keeps that OpenVisus credential model: it only rewrites the template
+    to absolute HTTPS or ``s3://user:pass@...`` bin URLs (and zeros ``(arco)``).
+    """
+    if not isinstance(runtime_dataset, dict):
+        return None
+    auth = runtime_dataset.get("auth_override") or {}
+    ak = str(auth.get("aws_access_key_id") or "").strip()
+    sk = str(auth.get("aws_secret_access_key") or "").strip()
+    if not ak or not sk:
+        return None
+
+    idx_uri = str(runtime_dataset.get("idx_uri") or "").strip()
+    if not idx_uri:
+        return None
+
+    s3_idx = idx_uri if idx_uri.startswith("s3://") else http_object_url_to_s3_uri(idx_uri)
+    if not s3_idx:
+        print(
+            "[DarkMatter][WARN] materialize_remote_idx_for_openvisus: cannot map idx URL to s3://"
+        )
+        return None
+
+    try:
+        lines = read_s3_text_lines(s3_idx, auth_override=auth)
+    except Exception as ex:
+        print(f"[DarkMatter][WARN] materialize_remote_idx_for_openvisus: failed reading idx: {ex}")
+        return None
+
+    # Ensure trailing newlines for writers.
+    lines = [ln if ln.endswith("\n") else (ln + "\n") for ln in lines]
+
+    template_i = _idx_line_index_after_section(lines, "(filename_template)")
+    template = lines[template_i].strip() if template_i is not None else ""
+    seg_m = re.match(r"^\./([^/]+)/%04x\.bin\s*$", template)
+    segment = seg_m.group(1).strip() if seg_m else ""
+
+    bucket, idx_key = parse_s3_uri(s3_idx)
+    if not bucket or not idx_key:
+        return None
+    idx_dir = idx_key.rsplit("/", 1)[0] if "/" in idx_key else ""
+    stem = os.path.splitext(os.path.basename(idx_key))[0]
+    key_stem = idx_key[:-4] if idx_key.lower().endswith(".idx") else idx_key
+
+    # Candidate keys for 0000.bin (CDMS: flat / ./segment/; Nexus: ARCO layout).
+    bin_key_candidates: List[str] = []
+    if idx_dir:
+        if segment:
+            bin_key_candidates.append(f"{idx_dir}/{segment}/0000.bin")
+        bin_key_candidates.extend(
+            [
+                f"{idx_dir}/0000.bin",
+                f"{idx_dir}/{stem}/0000.bin",
+                f"{key_stem}/0000.bin",
+                f"{key_stem}/0/data/0000/0000/0000/0000.bin",
+                f"{key_stem}/0000/0000/0000/0000.bin",
+            ]
+        )
+    else:
+        bin_key_candidates.append("0000.bin")
+
+    chosen_bin_key = ""
+    for cand in bin_key_candidates:
+        if _s3_object_exists(f"s3://{bucket}/{cand}", auth_override=auth):
+            chosen_bin_key = cand
+            break
+    if not chosen_bin_key:
+        print(
+            "[DarkMatter][WARN] materialize_remote_idx_for_openvisus: no 0000.bin under "
+            f"{_redact_url_secrets(s3_idx)} candidates={bin_key_candidates[:5]}"
+        )
+        return None
+
+    # Map chosen 0000.bin → printf template (%04x.bin replaces trailing 0000.bin).
+    if chosen_bin_key.endswith("0000.bin"):
+        filename_template_key = chosen_bin_key[: -len("0000.bin")] + "%04x.bin"
+    else:
+        bin_dir_key = chosen_bin_key.rsplit("/", 1)[0] if "/" in chosen_bin_key else ""
+        filename_template_key = (
+            f"{bin_dir_key}/%04x.bin" if bin_dir_key else "%04x.bin"
+        )
+
+    # Credentialed templates for OpenVisus block GETs (not env-var-only auth).
+    s3_bin_template = s3_uri_with_embedded_credentials(
+        f"s3://{bucket}/{filename_template_key}", ak, sk
+    )
+    endpoint = str(auth.get("endpoint_url") or get_s3_http_gateway_base() or "").strip().rstrip("/")
+    if not endpoint and idx_uri.startswith(("http://", "https://")):
+        ip = urlsplit(idx_uri)
+        if ip.scheme and ip.netloc:
+            endpoint = f"{ip.scheme}://{ip.netloc}"
+
+    http_bin_template = ""
+    if endpoint:
+        # Path-style gateway URL + query credentials (same contract as linked google_drive_link).
+        http_base = f"{endpoint}/{bucket}/{filename_template_key}"
+        http_bin_template = with_query_params(
+            http_base,
+            {
+                "access_key": ak,
+                "secret_key": sk,
+                "region_name": auth.get("region_name", "us-east-1"),
+            },
+        )
+
+    kind = str(template_kind or "https").strip().lower()
+    cache_root = os.path.join("/tmp", "dm_openvisus_cache", stem)
+    os.makedirs(cache_root, exist_ok=True)
+
+    if kind == "local":
+        # Opt-in only (DARKMATTER_LINKED_MIRROR_BINS=1). Prefer credentialed HTTPS/S3 URLs.
+        max_bins = int(os.getenv("DARKMATTER_LINKED_MIRROR_MAX_BINS", "4096") or "4096")
+        bin_prefix = chosen_bin_key[: -len("0000.bin")] if chosen_bin_key.endswith("0000.bin") else (
+            (chosen_bin_key.rsplit("/", 1)[0] + "/") if "/" in chosen_bin_key else ""
+        )
+        bin_keys = _list_s3_hex_bin_keys(
+            bucket, bin_prefix, auth_override=auth, max_items=max_bins + 1
+        )
+        if not bin_keys:
+            print(
+                "[DarkMatter][WARN] materialize_remote_idx_for_openvisus(local): "
+                f"no hex .bin objects under s3://{bucket}/{bin_prefix}"
+            )
+            return None
+        if len(bin_keys) > max_bins:
+            print(
+                f"[DarkMatter][WARN] materialize_remote_idx_for_openvisus(local): "
+                f"{len(bin_keys)} bins exceed DARKMATTER_LINKED_MIRROR_MAX_BINS={max_bins}; skipping mirror"
+            )
+            return None
+        bins_dir = os.path.join(cache_root, "bins")
+        os.makedirs(bins_dir, exist_ok=True)
+        downloaded = 0
+        for bkey in bin_keys:
+            fname = os.path.basename(bkey)
+            dest = os.path.join(bins_dir, fname)
+            if os.path.isfile(dest) and os.path.getsize(dest) > 0:
+                downloaded += 1
+                continue
+            try:
+                _download_s3_object_to_file(
+                    f"s3://{bucket}/{bkey}", dest, auth_override=auth
+                )
+                downloaded += 1
+            except Exception as dex:
+                print(
+                    f"[DarkMatter][WARN] local bin mirror failed for {fname}: {dex}"
+                )
+                return None
+        final_template = f"./bins/%04x.bin"
+        suffix = "linked.local.idx"
+        print(
+            f"[DarkMatter][DEBUG] materialize_remote_idx_for_openvisus(local): "
+            f"mirrored {downloaded} bins under {bins_dir}"
+        )
+    elif kind == "s3":
+        final_template = s3_bin_template
+        suffix = "linked.s3.idx"
+    elif http_bin_template:
+        final_template = http_bin_template
+        suffix = "linked.https.idx"
+    else:
+        final_template = s3_bin_template
+        suffix = "linked.s3.idx"
+
+    fixed = _zero_arco_block_in_idx_lines(lines)
+    fixed = _fix_idx_field_compression_zip_to_raw(fixed)
+    if template_i is not None:
+        fixed[template_i] = f"{final_template}\n"
+    else:
+        fixed.extend(["(filename_template)\n", f"{final_template}\n"])
+
+    local_idx = os.path.join(cache_root, f"{stem}.{suffix}")
+    with open(local_idx, "w", encoding="utf-8") as f:
+        f.writelines(fixed)
+    print(
+        "[DarkMatter][DEBUG] materialize_remote_idx_for_openvisus: wrote "
+        f"{local_idx} kind={kind} template={_redact_url_secrets(final_template)} "
+        f"bin0=s3://{bucket}/{chosen_bin_key}"
+    )
+    return local_idx
+
+
+def _s3_client_candidates(auth_override=None):
+    """Yield (endpoint, addressing_style, s3_client) combinations for custom gateways."""
+    load_dotenv()
+    endpoint_url = os.getenv("ENDPOINT_URL")
+    aws_access_key_id = os.getenv("AWS_ACCESS_KEY_ID")
+    aws_secret_access_key = os.getenv("AWS_SECRET_ACCESS_KEY")
+    region_name = os.getenv("AWS_S3_REGION", "us-east-1")
+    if auth_override:
+        endpoint_url = auth_override.get("endpoint_url") or endpoint_url
+        aws_access_key_id = auth_override.get("aws_access_key_id") or aws_access_key_id
+        aws_secret_access_key = auth_override.get("aws_secret_access_key") or aws_secret_access_key
+        region_name = auth_override.get("region_name") or region_name
+    if not aws_access_key_id or not aws_secret_access_key:
+        return
+    for candidate_endpoint in [endpoint_url, os.getenv("S3_ENDPOINT_URL"), None]:
+        for addr_style in ("path", "virtual"):
+            try:
+                config = Config(
+                    signature_version="s3v4",
+                    s3={"addressing_style": addr_style},
+                )
+                s3_client = Session().client(
+                    "s3",
+                    endpoint_url=candidate_endpoint,
+                    region_name=region_name,
+                    config=config,
+                    aws_access_key_id=aws_access_key_id,
+                    aws_secret_access_key=aws_secret_access_key,
+                )
+                yield candidate_endpoint, addr_style, s3_client
+            except Exception:
+                continue
+
+
+def _list_s3_hex_bin_keys(
+    bucket: str,
+    key_prefix: str,
+    auth_override=None,
+    max_items: int = 4096,
+) -> List[str]:
+    """List ``NNN.bin`` / ``%04x.bin``-style object keys under prefix (basename is 4 hex digits)."""
+    prefix = str(key_prefix or "")
+    hex_bin = re.compile(r"^[0-9a-fA-F]{4}\.bin$")
+    last_error = None
+    for _ep, _style, s3_client in _s3_client_candidates(auth_override):
+        try:
+            keys: List[str] = []
+            token = None
+            while True:
+                kwargs: dict = {"Bucket": bucket, "Prefix": prefix, "MaxKeys": 1000}
+                if token:
+                    kwargs["ContinuationToken"] = token
+                resp = s3_client.list_objects_v2(**kwargs)
+                for obj in resp.get("Contents") or []:
+                    k = str(obj.get("Key") or "")
+                    if hex_bin.match(os.path.basename(k)):
+                        keys.append(k)
+                        if len(keys) > max_items:
+                            return keys
+                if not resp.get("IsTruncated"):
+                    break
+                token = resp.get("NextContinuationToken")
+            return keys
+        except Exception as ex:
+            last_error = ex
+            continue
+    if last_error:
+        print(f"[DarkMatter][WARN] _list_s3_hex_bin_keys failed: {last_error}")
+    return []
+
+
+def _download_s3_object_to_file(s3_uri: str, dest_path: str, auth_override=None) -> None:
+    bucket_name, key = parse_s3_uri(s3_uri)
+    if not bucket_name or not key:
+        raise ValueError(f"Invalid s3 uri: {s3_uri}")
+    last_error = None
+    for _ep, _style, s3_client in _s3_client_candidates(auth_override):
+        try:
+            os.makedirs(os.path.dirname(os.path.abspath(dest_path)) or ".", exist_ok=True)
+            s3_client.download_file(bucket_name, key, dest_path)
+            return
+        except Exception as ex:
+            last_error = ex
+            continue
+    raise RuntimeError(f"Failed to download {s3_uri}: {last_error}")
+
 def read_text_lines_from_url(url: str) -> List[str]:
     resp = requests.get(url, timeout=20)
     resp.raise_for_status()
@@ -1907,9 +2277,14 @@ class AppState:
         self.first_event_button = Button(label="<<", button_type="success", width=56)
         self.last_event_button = Button(label=">>", button_type="success", width=56)
         self.event_metadata_widget = Div(text="<b>Event Information</b>")
-        self.loading_dataset_spinner = Div(text="", visible=False, width=200)
-        self.app_info_text = Div(text="")
-        self.notification_div = Div(text="", visible=False, width=420)
+        self.loading_dataset_spinner = Div(
+            text="",
+            visible=False,
+            width=400,
+            sizing_mode="stretch_width",
+        )
+        self.app_info_text = Div(text="", sizing_mode="stretch_width")
+        self.notification_div = Div(text="", visible=False, width=420, sizing_mode="stretch_width")
 
     def has_scene_data(self) -> bool:
         return isinstance(self.scene_data, np.ndarray) and self.scene_data.size > 0
@@ -2170,6 +2545,85 @@ class AppState:
                             last_load_err = ex
                             print(f"[DarkMatter][WARN] converted dir LoadDataset failed: {ex}")
 
+                # Linked remote IDX: OpenVisus HTTPS LoadDataset often resolves ARCO bin paths
+                # that do not exist on object storage (all-zero). Materialize a local idx with
+                # absolute s3:// (then HTTPS) %04x.bin template after probing where 0000.bin lives.
+                materialized_linked_idx = ""
+                if (
+                    not http_no_fb
+                    and self.runtime_dataset["mode"] in ("http_explicit", "s3_explicit")
+                    and (self.scene_data is None or _scene_is_all_zero(self.scene_data))
+                    and (self.s3_auth_override or {}).get("aws_access_key_id")
+                    and (self.s3_auth_override or {}).get("aws_secret_access_key")
+                ):
+                    ov = self.s3_auth_override or {}
+                    idx_http = str(self.runtime_dataset.get("idx_uri") or "").strip()
+                    idx_parts = urlsplit(idx_http) if idx_http.startswith(("http://", "https://")) else None
+                    gw_base = (
+                        f"{idx_parts.scheme}://{idx_parts.netloc}"
+                        if idx_parts and idx_parts.scheme and idx_parts.netloc
+                        else ""
+                    )
+                    merged_ep = (str(ov.get("endpoint_url") or "").strip() or gw_base)
+                    if merged_ep:
+                        self.set_s3_auth_override(
+                            merged_ep,
+                            str(ov.get("aws_access_key_id") or ""),
+                            str(ov.get("aws_secret_access_key") or ""),
+                        )
+                        # Keep runtime_dataset auth in sync for materialize + sidecar reads.
+                        self.runtime_dataset["auth_override"] = dict(self.s3_auth_override or {})
+                    kinds = ["https", "s3"]
+                    if str(os.getenv("DARKMATTER_LINKED_MIRROR_BINS", "")).strip().lower() in (
+                        "1",
+                        "true",
+                        "yes",
+                        "on",
+                    ):
+                        kinds.append("local")
+                    for kind in kinds:
+                        if self.scene_data is not None and not _scene_is_all_zero(self.scene_data):
+                            break
+                        try:
+                            mat_path = (
+                                materialize_remote_idx_for_openvisus(
+                                    self.runtime_dataset, template_kind=kind
+                                )
+                                or ""
+                            )
+                            if not mat_path or not os.path.isfile(mat_path):
+                                continue
+                            materialized_linked_idx = mat_path
+                            print(
+                                "[DarkMatter][DEBUG] LoadDataset "
+                                f"(materialized linked idx kind={kind}): {mat_path}"
+                            )
+                            if kind == "local":
+                                trial = read_openvisus_field_with_dataset_cwd(mat_path)
+                            else:
+                                trial = read_openvisus_field(mat_path)
+                            if trial is not None and not _scene_is_all_zero(trial):
+                                self.scene_data = trial
+                                self.runtime_dataset["converted_idx_path"] = mat_path
+                                print(
+                                    f"[DarkMatter][DEBUG] materialized linked idx ({kind}) "
+                                    "produced non-zero scene data"
+                                )
+                                break
+                            if trial is not None:
+                                if self.scene_data is None:
+                                    self.scene_data = trial
+                                print(
+                                    f"[DarkMatter][WARN] materialized linked idx ({kind}) "
+                                    "read all-zero; will try other fallbacks"
+                                )
+                        except Exception as ex:
+                            last_load_err = ex
+                            print(
+                                f"[DarkMatter][WARN] materialized linked idx ({kind}) "
+                                f"LoadDataset failed: {ex}"
+                            )
+
                 if (
                     self.scene_data is None
                     and self.runtime_dataset["mode"] == "http_explicit"
@@ -2193,6 +2647,7 @@ class AppState:
                     and _scene_is_all_zero(self.scene_data)
                     and not http_no_fb
                     and not converted_on_disk
+                    and not materialized_linked_idx
                 ):
                     print(
                         "[DarkMatter][WARN] linked HTTPS idx read succeeded but scene is all-zero "
@@ -2200,6 +2655,13 @@ class AppState:
                         "Dashboard does not re-POST openvisus-resolved-idx "
                         "unless DARKMATTER_ALLOW_RESOLVED_IDX_API_ON_LAUNCH=1."
                     )
+                    need_resolved_or_local = True
+                elif (
+                    not need_resolved_or_local
+                    and self.runtime_dataset["mode"] in ("http_explicit", "s3_explicit")
+                    and _scene_is_all_zero(self.scene_data)
+                    and not http_no_fb
+                ):
                     need_resolved_or_local = True
 
                 if (
@@ -2346,11 +2808,18 @@ class AppState:
                                     str(ov.get("aws_access_key_id") or ""),
                                     str(ov.get("aws_secret_access_key") or ""),
                                 )
-                            print(
-                                f"[DarkMatter][DEBUG] OpenVisus LoadDataset fallback (native s3:// idx): "
-                                f"{s3_idx}"
+                            # OpenVisus expects credentials in the s3:// URL itself.
+                            s3_idx_cred = s3_uri_with_embedded_credentials(
+                                s3_idx,
+                                str(ov.get("aws_access_key_id") or ""),
+                                str(ov.get("aws_secret_access_key") or ""),
                             )
-                            trial = read_openvisus_field(s3_idx)
+                            print(
+                                f"[DarkMatter][DEBUG] OpenVisus LoadDataset fallback "
+                                f"(native s3:// idx with URL credentials): "
+                                f"{_redact_url_secrets(s3_idx_cred)}"
+                            )
+                            trial = read_openvisus_field(s3_idx_cred)
                             if not _scene_is_all_zero(trial):
                                 self.scene_data = trial
                                 print(
@@ -2360,7 +2829,7 @@ class AppState:
                             else:
                                 print(
                                     "[DarkMatter][WARN] native s3:// idx read also all-zero "
-                                    "(verify ENDPOINT_URL/credentials vs bucket)"
+                                    "(verify credentialed URL / filename_template vs bin layout)"
                                 )
                         except Exception as s3_ld_exc:
                             print(f"[DarkMatter][WARN] native s3:// LoadDataset fallback failed: {s3_ld_exc}")
@@ -2718,7 +3187,10 @@ class AppState:
             INFO: "#1565c0",
         }
         color = colors.get(ntype, "#333333")
-        self.notification_div.text = f"<div style='color:{color}; font-weight:600;'>{text}</div>"
+        self.notification_div.text = (
+            f"<div style='color:{color}; font-weight:600; padding:8px 10px; "
+            f"border:1px solid {color}33; background:{color}14; border-radius:6px;'>{escape(str(text))}</div>"
+        )
         self.notification_div.visible = True
 
     def handle_channel_selection(self, channel_name, state):
@@ -2748,8 +3220,20 @@ class AppState:
         self.last_event_button.disabled = state
 
     def toggle_loading_spinner(self, state):
-        self.loading_dataset_spinner.visible = state
-        self.loading_dataset_spinner.text = "Loading dataset..." if state else ""
+        self.loading_dataset_spinner.visible = bool(state)
+        if state:
+            self.loading_dataset_spinner.text = (
+                "<div style='display:flex; align-items:center; gap:10px; padding:10px 12px; "
+                "border:1px solid #b6d0fe; background:#eef5ff; border-radius:8px;'>"
+                "<span style='display:inline-block; width:16px; height:16px; border:2px solid #2f6fed; "
+                "border-top-color:transparent; border-radius:50%; "
+                "animation:dmspin 0.8s linear infinite;'></span>"
+                "<span style='font-weight:600; color:#1d4ed8;'>Loading Dark Matter dataset…</span>"
+                "</div>"
+                "<style>@keyframes dmspin { to { transform: rotate(360deg); } }</style>"
+            )
+        else:
+            self.loading_dataset_spinner.text = ""
 
     def add_line_glyph(self, data, label):
         d_num = label.split("_")[1]
@@ -3000,7 +3484,6 @@ def main():
         """),
     )
 
-    runtime_info_section = row(app_state.loading_dataset_spinner, app_state.app_info_text)
     s3_auth_status = Div(text="", visible=False, width=420)
     s3_endpoint_input = TextInput(
         title="S3 Endpoint URL",
@@ -3201,14 +3684,15 @@ def main():
     sidebar = column(
         cite_button,
         select_scene,
+        app_state.loading_dataset_spinner,
+        app_state.notification_div,
+        app_state.app_info_text,
         input_event,
         event_controls,
         multichoice_detectors,
         checkbox_toggle_detectors,
         channels_grid,
         app_state.event_metadata_widget,
-        app_state.notification_div,
-        runtime_info_section,
         width=430,
     )
     header_banner = create_header_banner(
@@ -3218,7 +3702,12 @@ def main():
     main_layout = row(sidebar, app_state.fig, sizing_mode="stretch_both")
     curdoc().add_root(column(header_banner, s3_auth_panel, main_layout, sizing_mode="stretch_both"))
     if select_scene.value:
-        update_events(select_scene.value)
+        # Defer heavy OpenVisus load so the loading notification paints first.
+        initial_mid = select_scene.value
+        app_state.toggle_loading_spinner(True)
+        app_state.render_app_info_text(f"Loading {initial_mid}…")
+        app_state.send_notification(INFO, "Loading Dark Matter data — this can take a minute for linked S3 datasets.")
+        curdoc().add_next_tick_callback(lambda: update_events(initial_mid))
 
 
 main()

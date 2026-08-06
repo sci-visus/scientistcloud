@@ -761,7 +761,10 @@ function getDashboardStatus($datasetId, $dashboardType) {
             // Fall through — treat as potentially viewable for DarkMatter linked IDX.
         }
 
-        if (in_array($status, ['processing', 'pending', 'converting', 'uploading', 'queued'])) {
+        if (in_array($status, ['processing', 'pending', 'converting', 'uploading', 'queued'], true)
+            || strpos($status, 'queued') !== false
+            || strpos($status, 'converting') !== false
+            || strpos($status, 'uploading') !== false) {
             return 'processing';
         }
         
