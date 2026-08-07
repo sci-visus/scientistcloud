@@ -1037,6 +1037,29 @@ class ViewerManager {
         dashboardContent.style.height = '100%';
 
         let loadingOverlay = null;
+        let overlayTimer = null;
+        let overlaySafetyTimer = null;
+        let onDmMessage = null;
+
+        const clearOverlay = () => {
+            if (overlayTimer) {
+                clearInterval(overlayTimer);
+                overlayTimer = null;
+            }
+            if (overlaySafetyTimer) {
+                clearTimeout(overlaySafetyTimer);
+                overlaySafetyTimer = null;
+            }
+            if (onDmMessage) {
+                window.removeEventListener('message', onDmMessage);
+                onDmMessage = null;
+            }
+            if (loadingOverlay && loadingOverlay.parentNode) {
+                loadingOverlay.parentNode.removeChild(loadingOverlay);
+            }
+            loadingOverlay = null;
+        };
+
         if (isDarkMatter) {
             loadingOverlay = document.createElement('div');
             loadingOverlay.id = 'darkMatterLoadingOverlay';
@@ -1057,8 +1080,8 @@ class ViewerManager {
                         <span class="visually-hidden">Loading...</span>
                     </div>
                     <h5 class="mb-2">Loading Dark Matter Dashboard</h5>
-                    <p class="text-muted mb-1">Resolving dataset metadata and OpenVisus tiles…</p>
-                    <p class="small text-muted mb-2">First load can take a minute or more.</p>
+                    <p class="text-muted mb-1">Starting dashboard shell…</p>
+                    <p class="small text-muted mb-2">Tile fetch progress continues inside the dashboard.</p>
                     <div class="progress" style="height:10px;">
                         <div class="progress-bar progress-bar-striped progress-bar-animated"
                              role="progressbar" style="width:100%"></div>
@@ -1070,45 +1093,37 @@ class ViewerManager {
 
             const overlayStarted = Date.now();
             const elapsedEl = () => document.getElementById('darkMatterLoadingElapsed');
-            const overlayTimer = setInterval(() => {
+            overlayTimer = setInterval(() => {
                 const el = elapsedEl();
                 if (!el || !loadingOverlay) {
                     clearInterval(overlayTimer);
+                    overlayTimer = null;
                     return;
                 }
                 const sec = Math.floor((Date.now() - overlayStarted) / 1000);
-                el.textContent = `Still loading… ${sec}s (OpenVisus tile fetch)`;
+                el.textContent = `Starting… ${sec}s`;
             }, 1000);
 
-            const onDmMessage = (event) => {
+            // Handoff: once the dashboard is up (loading true/false), drop the portal
+            // overlay so the in-dashboard progress banner is visible.
+            onDmMessage = (event) => {
                 const data = event && event.data;
                 if (!data || data.source !== 'scientistcloud-darkmatter') return;
-                if (data.type === 'darkmatter-loading' && data.loading === false) {
-                    clearInterval(overlayTimer);
-                    window.removeEventListener('message', onDmMessage);
+                if (data.type === 'darkmatter-loading') {
                     clearOverlay();
                 }
             };
             window.addEventListener('message', onDmMessage);
-            // Safety: never leave overlay forever if postMessage never arrives.
-            setTimeout(() => {
-                clearInterval(overlayTimer);
-                window.removeEventListener('message', onDmMessage);
-                clearOverlay();
-            }, 180000);
+            // Safety if postMessage never arrives (older image / blocked).
+            overlaySafetyTimer = setTimeout(clearOverlay, 45000);
         }
 
-        const clearOverlay = () => {
-            if (loadingOverlay && loadingOverlay.parentNode) {
-                loadingOverlay.parentNode.removeChild(loadingOverlay);
-                loadingOverlay = null;
-            }
-        };
-
         iframe.onload = () => {
-            // DarkMatter: keep portal overlay until dashboard signals load finished
-            // (or 3 min safety timeout). iframe.onload only means Bokeh shell is up.
-            if (!isDarkMatter) {
+            // Portal overlay is only for iframe boot. DarkMatter keeps its own banner
+            // for the long OpenVisus fetch — clear portal overlay shortly after shell load.
+            if (isDarkMatter) {
+                setTimeout(clearOverlay, 2500);
+            } else {
                 clearOverlay();
             }
             this.onDashboardLoad();

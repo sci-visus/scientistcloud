@@ -419,6 +419,30 @@ def _redact_url_secrets(url: str) -> str:
     return out
 
 
+def _patch_access_stub_idx_for_openvisus(idx_path: str) -> str:
+    """No-op: never rewrite idx content (arco / compression / filename_template)."""
+    return idx_path
+
+
+def _probe_openvisus_block0_http(block_url: str) -> None:
+    """Log whether OpenVisus's block0 HTTPS URL is reachable (auth / hairpin diagnosis)."""
+    u = str(block_url or "").strip()
+    if not u.startswith(("http://", "https://")):
+        return
+    try:
+        resp = requests.get(u, timeout=30)
+        body = resp.content or b""
+        sample = body[:16].hex() if body else ""
+        nonzero = sum(1 for b in body[:4096] if b != 0)
+        print(
+            f"[DarkMatter][DEBUG] block0 HTTP probe status={resp.status_code} "
+            f"bytes={len(body)} nonzero_in_first_4k={nonzero} sample16={sample} "
+            f"url={_redact_url_secrets(u)[:400]}"
+        )
+    except Exception as ex:
+        print(f"[DarkMatter][WARN] block0 HTTP probe failed: {ex}")
+
+
 def _log_openvisus_block0_url_for_diagnostics(db_outer, field_name: str) -> None:
     """When reads are all-zero, log where OpenVisus expects block 0 (helps HTTPS vs local idx issues in Dozzle)."""
     try:
@@ -430,6 +454,7 @@ def _log_openvisus_block0_url_for_diagnostics(db_outer, field_name: str) -> None
         fn = str(access.getFilename(fobj, t0, 0))
         safe = _redact_url_secrets(fn)
         print(f"[DarkMatter][DEBUG] OpenVisus block0 target: {safe[:1200]}")
+        _probe_openvisus_block0_http(fn)
     except Exception as ex:
         print(f"[DarkMatter][DEBUG] OpenVisus block0 path diagnostic failed: {ex}")
 
@@ -624,6 +649,7 @@ def read_openvisus_field_with_dataset_cwd(idx_url_or_path: str, field: str = "da
     if p.startswith(("http://", "https://", "s3://")):
         return read_openvisus_field(p, field=field)
     abs_p = os.path.abspath(p)
+    abs_p = _patch_access_stub_idx_for_openvisus(abs_p)
     root = os.path.dirname(abs_p)
     prev = os.getcwd()
     try:
@@ -643,67 +669,28 @@ def _darkmatter_disable_resolved_idx_api() -> bool:
 
 
 def _darkmatter_may_post_openvisus_resolved_idx_on_launch() -> bool:
-    """
-    Whether the dashboard may POST to SCLib ``/api/v1/datasets/s3/openvisus-resolved-idx``.
-
-    Production policy: resolved ``visus.idx`` is produced **once** during ScientistCloud background
-    conversion under ``/mnt/visus_datasets/converted/<uuid>/`` (see ``SCLib_BackgroundService``), not on
-    every dashboard session. Set ``DARKMATTER_ALLOW_RESOLVED_IDX_API_ON_LAUNCH=1`` only for debugging
-    legacy on-launch regeneration (and ``force_refresh`` behavior).
-    """
-    if _darkmatter_disable_resolved_idx_api():
-        return False
-    return str(os.getenv("DARKMATTER_ALLOW_RESOLVED_IDX_API_ON_LAUNCH", "")).strip().lower() in (
-        "1",
-        "true",
-        "yes",
-        "on",
-    )
+    """Never POST openvisus-resolved-idx from the dashboard (rewrites filename_template)."""
+    return False
 
 
 def _darkmatter_http_explicit_no_fallback() -> bool:
     """
-    Linked (http_explicit): do not mirror bins into upload/ or run FTH query-cred materialize.
+    Linked (http_explicit): LoadDataset(HTTPS idx) only — no local mirrors, no idx rewrite.
 
-    Default ON. OpenVisus still loads tiles over HTTPS; for FTH we point
-    ``(filename_template)`` at object-proxy HTTPS URLs (SigV4), not local copies.
+    Default ON.
     """
     v = str(os.getenv("DARKMATTER_HTTP_EXPLICIT_NO_FALLBACK", "1")).strip().lower()
     return v not in ("0", "false", "no", "off")
 
 
 def _darkmatter_may_use_object_proxy_for_linked() -> bool:
-    """
-    Linked IDX: build a tiny access ``visus.idx`` whose ``(filename_template)`` is HTTPS
-    object-proxy URLs so OpenVisus fetches bins itself (FTH rejects ?access_key= GETs).
-
-    Default ON. Disable with ``DARKMATTER_LINKED_USE_OBJECT_PROXY=0``.
-    Hard-off: ``DARKMATTER_DISABLE_RESOLVED_IDX=1``.
-    """
-    if _darkmatter_disable_resolved_idx_api():
-        return False
-    v = str(os.getenv("DARKMATTER_LINKED_USE_OBJECT_PROXY", "1")).strip().lower()
-    return v not in ("0", "false", "no", "off")
+    """Never rewrite idx via object-proxy access stubs. Linked loads use LoadDataset(HTTPS) only."""
+    return False
 
 
 def _darkmatter_may_use_cached_resolved_idx_http() -> bool:
-    """
-    Whether DarkMatter may POST openvisus-resolved-idx for non-linked / force-refresh paths.
-
-    Linked loads use ``_darkmatter_may_use_object_proxy_for_linked`` instead.
-    Opt in with ``DARKMATTER_ALLOW_RESOLVED_IDX_API_ON_LAUNCH=1``.
-    """
-    if _darkmatter_disable_resolved_idx_api():
-        return False
-    if str(os.getenv("SCLIB_DISABLE_OPENVISUS_RESOLVED_IDX", "")).strip().lower() in (
-        "1",
-        "true",
-        "yes",
-        "on",
-    ):
-        # Proxy-only writes still allowed on SCLib; linked uses _darkmatter_may_use_object_proxy_for_linked.
-        return False
-    return _darkmatter_may_post_openvisus_resolved_idx_on_launch()
+    """Never POST openvisus-resolved-idx (that rewrites filename_template)."""
+    return False
 
 
 def _materialized_resolved_visus_idx_path(
@@ -1299,142 +1286,9 @@ def _expected_time_subdir_for_first_timestep(time_content_line: str, t0: int = 0
 
 
 def resolve_local_idx_path(idx_path: str, mid_file: str) -> str:
-    """
-    Fix local idx so OpenVisus can load ARCO tiles from disk.
-
-    - filename_template vs real bin layout (flat, nested, or wrong timestep subdir).
-    - (time) pattern expects e.g. .../00000/0000.bin but tiles are elsewhere -> neutralize to 0 0 ./
-    - idx declares default_compression(zip) while tiles are uncompressed -> default_compression(raw).
-
-    The segment name for template fixes is taken from the idx template line, not mid_file.
-
-    Patched idx is written as *.sc_pathfix.idx (never *.resolved.idx — that suffix triggers OpenVisus
-    ARCO internal filename layout and ignores a plain %04x.bin template).
-    """
-    try:
-        with open(idx_path, "r") as f:
-            lines = f.readlines()
-    except Exception:
-        return idx_path
-
-    template_idx = -1
-    for i, line in enumerate(lines):
-        if line.strip() == "(filename_template)" and i + 1 < len(lines):
-            template_idx = i + 1
-            break
-
-    if template_idx == -1:
-        return idx_path
-
-    template = lines[template_idx].strip()
-    seg_m = re.match(r"^\./([^/]+)/%04x\.bin\s*$", template)
-    if not seg_m:
-        return idx_path
-    segment = seg_m.group(1).strip()
-    if not segment:
-        return idx_path
-
-    dataset_dir = os.path.dirname(os.path.abspath(idx_path))
-    expected_root = os.path.join(dataset_dir, segment)
-    flat_bin = os.path.join(dataset_dir, "0000.bin")
-
-    tile_root: Optional[str] = None
-    if os.path.isdir(expected_root):
-        tile_root = _find_arco_bin_directory_under(expected_root)
-    if tile_root is None and os.path.isfile(flat_bin):
-        tile_root = dataset_dir
-
-    compression_fix = _local_idx_bins_need_raw_compression(idx_path)
-
-    if tile_root is None and not compression_fix:
-        return idx_path
-
-    bin_probe_root = tile_root
-    if bin_probe_root is None and os.path.isdir(expected_root) and os.path.isfile(
-        os.path.join(expected_root, "0000.bin")
-    ):
-        bin_probe_root = expected_root
-
-    time_line_i = _idx_line_index_after_section(lines, "(time)")
-    time_neutralize = False
-    if time_line_i is not None and bin_probe_root:
-        tname = _expected_time_subdir_for_first_timestep(lines[time_line_i], 0)
-        if tname:
-            with_time = os.path.join(expected_root, tname, "0000.bin")
-            if not os.path.isfile(with_time) and os.path.isfile(os.path.join(bin_probe_root, "0000.bin")):
-                time_neutralize = True
-
-    retarget_template = (
-        bool(tile_root) and os.path.normpath(tile_root) != os.path.normpath(expected_root)
-    )
-
-    if not retarget_template and not time_neutralize and not compression_fix:
-        return idx_path
-
-    fixed_lines = list(lines)
-    if retarget_template and tile_root:
-        # Tiles flat next to the .idx need an absolute template; tiles under ./segment/... are reached
-        # via the cache-dir symlink to ../<segment> and a relative ./<segment>/%04x.bin template.
-        if os.path.normpath(tile_root) == os.path.normpath(dataset_dir):
-            fixed_lines[template_idx] = f"{dataset_dir}/%04x.bin\n"
-        else:
-            fixed_lines[template_idx] = f"./{segment}/%04x.bin\n"
-    if time_neutralize and time_line_i is not None:
-        # Tiles live beside ./segment/ without the timestep subdirectory implied by %00000d/ etc.
-        fixed_lines[time_line_i] = "0 0 ./\n"
-    if compression_fix:
-        fixed_lines = _fix_idx_field_compression_zip_to_raw(fixed_lines)
-
-    # OpenVisus ARCO resolves companion tiles under <parent>/<idx_stem>/..., not only filename_template.
-    # Writing foo.sc_pathfix.idx makes it look in foo.sc_pathfix/ (wrong). Keep the original .idx basename
-    # inside a small cache dir and symlink <segment> -> ../<segment> so block paths match the real tree.
-    stem = os.path.splitext(os.path.basename(idx_path))[0]
-    preferred_cache = os.path.join(dataset_dir, ".dm_openvisus_cache")
-    cache_dir = preferred_cache
-    try:
-        os.makedirs(cache_dir, exist_ok=True)
-    except OSError as ex:
-        # Upload dirs are often owned by www-data; if this process cannot write there, fall back to /tmp.
-        cache_dir = os.path.join(
-            "/tmp",
-            "dm_openvisus_cache",
-            os.path.basename(dataset_dir.rstrip(os.sep)) or "dataset",
-        )
-        print(
-            f"[DarkMatter][WARN] resolve_local_idx_path: cannot create {preferred_cache} ({ex}); "
-            f"using {cache_dir}"
-        )
-        os.makedirs(cache_dir, exist_ok=True)
-    cached_idx = os.path.join(cache_dir, f"{stem}.idx")
-    seg_link = os.path.join(cache_dir, segment)
-    try:
-        if os.path.lexists(seg_link) or os.path.islink(seg_link):
-            os.unlink(seg_link)
-        # Prefer a relative link when cache is beside the dataset; use absolute when cache is elsewhere.
-        link_target = os.path.join(dataset_dir, segment)
-        try:
-            cache_abs = os.path.abspath(cache_dir)
-            dataset_abs = os.path.abspath(dataset_dir)
-            if cache_abs == dataset_abs or cache_abs.startswith(dataset_abs + os.sep):
-                link_target = os.path.relpath(link_target, cache_dir)
-        except ValueError:
-            pass
-        os.symlink(link_target, seg_link)
-    except OSError as ex:
-        print(f"[DarkMatter][WARN] resolve_local_idx_path: segment symlink failed ({ex}); OpenVisus may still mis-resolve tiles")
-
-    with open(cached_idx, "w") as f:
-        f.writelines(fixed_lines)
-    msg = [f"idx had filename_template {template!r}"]
-    if retarget_template and tile_root:
-        msg.append(f"bins at {tile_root}")
-    if time_neutralize:
-        msg.append("(time) neutralized to 0 0 ./ — tiles were not under timestep subdir")
-    if compression_fix:
-        msg.append("default_compression(zip) -> raw (tiles are uncompressed)")
-    msg.append(f"loader idx -> {cached_idx}")
-    print(f"[DarkMatter][DEBUG] resolve_local_idx_path: wrote {cached_idx} ({'; '.join(msg)})")
-    return cached_idx
+    """Return idx_path unchanged — never rewrite (filename_template) or other idx fields."""
+    _ = mid_file
+    return idx_path
 
 
 # def download_s3_uri_to_file(s3_uri: str, dst: str):
@@ -1611,221 +1465,10 @@ def materialize_remote_idx_for_openvisus(
     *,
     template_kind: str = "https",
 ) -> Optional[str]:
-    """
-    Build a local idx for linked datasets so OpenVisus can fetch bins.
+    """Disabled: never rewrite (filename_template) or materialize a local idx stub."""
+    _ = (runtime_dataset, template_kind)
+    return None
 
-    Preferred OpenVisus auth forms:
-      - HTTPS: ``?access_key=...&secret_key=...`` (works only if the gateway honors query creds)
-      - S3: ``s3://access_key:secret_key@bucket/key`` (AWS / virtual-host friendly endpoints)
-
-    On path-style custom gateways (e.g. FTH), plain HTTPS GETs with query credentials often
-    return ``403 AccessDenied`` even when the same keys work via boto3 SigV4. In that case
-    ``template_kind='local'`` mirrors bins with SigV4 and uses a relative ``./bins/%04x.bin``.
-
-    Also rewrites relative/ARCO ``(filename_template)`` to the probed bin layout and zeros ``(arco)``.
-    """
-    if not isinstance(runtime_dataset, dict):
-        return None
-    auth = runtime_dataset.get("auth_override") or {}
-    ak = str(auth.get("aws_access_key_id") or "").strip()
-    sk = str(auth.get("aws_secret_access_key") or "").strip()
-    if not ak or not sk:
-        return None
-
-    idx_uri = str(runtime_dataset.get("idx_uri") or "").strip()
-    if not idx_uri:
-        return None
-
-    s3_idx = idx_uri if idx_uri.startswith("s3://") else http_object_url_to_s3_uri(idx_uri)
-    if not s3_idx:
-        print(
-            "[DarkMatter][WARN] materialize_remote_idx_for_openvisus: cannot map idx URL to s3://"
-        )
-        return None
-
-    try:
-        lines = read_s3_text_lines(s3_idx, auth_override=auth)
-    except Exception as ex:
-        print(f"[DarkMatter][WARN] materialize_remote_idx_for_openvisus: failed reading idx: {ex}")
-        return None
-
-    # Ensure trailing newlines for writers.
-    lines = [ln if ln.endswith("\n") else (ln + "\n") for ln in lines]
-
-    template_i = _idx_line_index_after_section(lines, "(filename_template)")
-    template = lines[template_i].strip() if template_i is not None else ""
-    seg_m = re.match(r"^\./([^/]+)/%04x\.bin\s*$", template)
-    segment = seg_m.group(1).strip() if seg_m else ""
-
-    bucket, idx_key = parse_s3_uri(s3_idx)
-    if not bucket or not idx_key:
-        return None
-    idx_dir = idx_key.rsplit("/", 1)[0] if "/" in idx_key else ""
-    stem = os.path.splitext(os.path.basename(idx_key))[0]
-    key_stem = idx_key[:-4] if idx_key.lower().endswith(".idx") else idx_key
-
-    # Candidate keys for 0000.bin (CDMS: flat / ./segment/; Nexus: ARCO layout).
-    bin_key_candidates: List[str] = []
-    if idx_dir:
-        if segment:
-            bin_key_candidates.append(f"{idx_dir}/{segment}/0000.bin")
-        bin_key_candidates.extend(
-            [
-                f"{idx_dir}/0000.bin",
-                f"{idx_dir}/{stem}/0000.bin",
-                f"{key_stem}/0000.bin",
-                f"{key_stem}/0/data/0000/0000/0000/0000.bin",
-                f"{key_stem}/0000/0000/0000/0000.bin",
-            ]
-        )
-    else:
-        bin_key_candidates.append("0000.bin")
-
-    chosen_bin_key = ""
-    for cand in bin_key_candidates:
-        if _s3_object_exists(f"s3://{bucket}/{cand}", auth_override=auth):
-            chosen_bin_key = cand
-            break
-    if not chosen_bin_key:
-        print(
-            "[DarkMatter][WARN] materialize_remote_idx_for_openvisus: no 0000.bin under "
-            f"{_redact_url_secrets(s3_idx)} candidates={bin_key_candidates[:5]}"
-        )
-        return None
-
-    # Map chosen 0000.bin → printf template (%04x.bin replaces trailing 0000.bin).
-    if chosen_bin_key.endswith("0000.bin"):
-        filename_template_key = chosen_bin_key[: -len("0000.bin")] + "%04x.bin"
-    else:
-        bin_dir_key = chosen_bin_key.rsplit("/", 1)[0] if "/" in chosen_bin_key else ""
-        filename_template_key = (
-            f"{bin_dir_key}/%04x.bin" if bin_dir_key else "%04x.bin"
-        )
-
-    # Credentialed templates for OpenVisus block GETs (not env-var-only auth).
-    s3_bin_template = s3_uri_with_embedded_credentials(
-        f"s3://{bucket}/{filename_template_key}", ak, sk
-    )
-    endpoint = str(auth.get("endpoint_url") or get_s3_http_gateway_base() or "").strip().rstrip("/")
-    if not endpoint and idx_uri.startswith(("http://", "https://")):
-        ip = urlsplit(idx_uri)
-        if ip.scheme and ip.netloc:
-            endpoint = f"{ip.scheme}://{ip.netloc}"
-
-    http_bin_template = ""
-    if endpoint:
-        # Path-style gateway URL + query credentials (same contract as linked google_drive_link).
-        http_base = f"{endpoint}/{bucket}/{filename_template_key}"
-        http_bin_template = with_query_params(
-            http_base,
-            {
-                "access_key": ak,
-                "secret_key": sk,
-                "region_name": auth.get("region_name", "us-east-1"),
-            },
-        )
-
-    kind = str(template_kind or "https").strip().lower()
-    cache_root = os.path.join("/tmp", "dm_openvisus_cache", stem)
-    os.makedirs(cache_root, exist_ok=True)
-
-    if kind == "https" and http_bin_template:
-        # FTH / Ceph RGW: query access_key/secret_key are NOT SigV4. Plain GET returns
-        # 403 AccessDenied even when the same keys work via boto3. Probe before LoadDataset.
-        probe_url = http_bin_template.replace("%04x", "0000")
-        try:
-            probe = requests.get(probe_url, timeout=20)
-            if probe.status_code != 200:
-                body_head = (probe.content or b"")[:180].decode("utf-8", "replace")
-                print(
-                    "[DarkMatter][WARN] materialize_remote_idx_for_openvisus(https): "
-                    f"GET 0000.bin returned HTTP {probe.status_code} "
-                    f"(gateway rejects query-string credentials; use SigV4 mirror or object-proxy). "
-                    f"body={body_head!r}"
-                )
-                return None
-            print(
-                f"[DarkMatter][DEBUG] HTTPS bin0 probe ok status=200 bytes={len(probe.content)}"
-            )
-        except Exception as pex:
-            print(
-                f"[DarkMatter][WARN] materialize_remote_idx_for_openvisus(https): "
-                f"bin0 probe failed: {pex}"
-            )
-            return None
-
-    if kind == "local":
-        # SigV4 mirror via boto3 — required when gateway HTTPS query-cred GETs return 403.
-        max_bins = int(os.getenv("DARKMATTER_LINKED_MIRROR_MAX_BINS", "4096") or "4096")
-        bin_prefix = chosen_bin_key[: -len("0000.bin")] if chosen_bin_key.endswith("0000.bin") else (
-            (chosen_bin_key.rsplit("/", 1)[0] + "/") if "/" in chosen_bin_key else ""
-        )
-        bin_keys = _list_s3_hex_bin_keys(
-            bucket, bin_prefix, auth_override=auth, max_items=max_bins + 1
-        )
-        if not bin_keys:
-            print(
-                "[DarkMatter][WARN] materialize_remote_idx_for_openvisus(local): "
-                f"no hex .bin objects under s3://{bucket}/{bin_prefix}"
-            )
-            return None
-        if len(bin_keys) > max_bins:
-            print(
-                f"[DarkMatter][WARN] materialize_remote_idx_for_openvisus(local): "
-                f"{len(bin_keys)} bins exceed DARKMATTER_LINKED_MIRROR_MAX_BINS={max_bins}; skipping mirror"
-            )
-            return None
-        bins_dir = os.path.join(cache_root, "bins")
-        os.makedirs(bins_dir, exist_ok=True)
-        downloaded = 0
-        for bkey in bin_keys:
-            fname = os.path.basename(bkey)
-            dest = os.path.join(bins_dir, fname)
-            if os.path.isfile(dest) and os.path.getsize(dest) > 0:
-                downloaded += 1
-                continue
-            try:
-                _download_s3_object_to_file(
-                    f"s3://{bucket}/{bkey}", dest, auth_override=auth
-                )
-                downloaded += 1
-            except Exception as dex:
-                print(
-                    f"[DarkMatter][WARN] local bin mirror failed for {fname}: {dex}"
-                )
-                return None
-        final_template = f"./bins/%04x.bin"
-        suffix = "linked.local.idx"
-        print(
-            f"[DarkMatter][DEBUG] materialize_remote_idx_for_openvisus(local): "
-            f"mirrored {downloaded} bins under {bins_dir}"
-        )
-    elif kind == "s3":
-        final_template = s3_bin_template
-        suffix = "linked.s3.idx"
-    elif http_bin_template:
-        final_template = http_bin_template
-        suffix = "linked.https.idx"
-    else:
-        final_template = s3_bin_template
-        suffix = "linked.s3.idx"
-
-    fixed = _zero_arco_block_in_idx_lines(lines)
-    fixed = _fix_idx_field_compression_zip_to_raw(fixed)
-    if template_i is not None:
-        fixed[template_i] = f"{final_template}\n"
-    else:
-        fixed.extend(["(filename_template)\n", f"{final_template}\n"])
-
-    local_idx = os.path.join(cache_root, f"{stem}.{suffix}")
-    with open(local_idx, "w", encoding="utf-8") as f:
-        f.writelines(fixed)
-    print(
-        "[DarkMatter][DEBUG] materialize_remote_idx_for_openvisus: wrote "
-        f"{local_idx} kind={kind} template={_redact_url_secrets(final_template)} "
-        f"bin0=s3://{bucket}/{chosen_bin_key}"
-    )
-    return local_idx
 
 
 def _s3_client_candidates(auth_override=None):
@@ -2711,673 +2354,32 @@ class AppState:
                             "LoadDataset may fail on raw s3:// idx_uri"
                         )
 
-                # Linked datasets: use only the HTTPS idx from the data link (default).
-                # No converted/, upload/, resolved-idx, or materialized idx unless
-                # DARKMATTER_HTTP_EXPLICIT_NO_FALLBACK=0.
+                # Linked / remote: notebook-style only — LoadDataset(HTTPS idx with keys) + read.
+                # Never rewrite (filename_template), never object-proxy stubs, never materialize.
                 dataset_identifier = str(uuid or "").strip()
                 last_load_err = None
                 self.scene_data = None
-
-                def _scene_is_all_zero(sample) -> bool:
-                    arr = np.asarray(sample)
-                    if not arr.size:
-                        return False
-                    return (
-                        int(np.count_nonzero(arr)) == 0
-                        and float(np.nanmin(arr)) == 0.0
-                        and float(np.nanmax(arr)) == 0.0
-                    )
-
-                def _read_resolved_materialized_idx(resolved_path: str, resolved_http_url: Optional[str]):
-                    """Load proxy visus.idx from the local file (object-proxy in filename_template).
-
-                    Do **not** LoadDataset the resolved-idx HTTP URL: OpenVisus then builds ARCO
-                    companion paths under ``/resolved-idx/.../visus/0/data/...`` and ignores the
-                    embedded object-proxy ``(filename_template)``.
-                    """
-                    if resolved_path and os.path.isfile(resolved_path):
-                        try:
-                            print(
-                                f"[DarkMatter][DEBUG] resolved idx LoadDataset via local path "
-                                f"(object-proxy bins): {resolved_path}"
-                            )
-                            return read_openvisus_field_with_dataset_cwd(resolved_path)
-                        except Exception as _loc_ex:
-                            print(f"[DarkMatter][WARN] resolved idx local LoadDataset failed: {_loc_ex}")
-                    http_u = (resolved_http_url or "").strip()
-                    if http_u.startswith(("http://", "https://")):
-                        print(
-                            "[DarkMatter][DEBUG] skipping resolved-idx HTTP LoadDataset "
-                            f"(ARCO companion paths); prefer local visus.idx: {_redact_url_secrets(http_u)}"
-                        )
-                    return None
-
                 primary_read = str(idx_for_read or "").strip()
-                http_no_fb = (
-                    self.runtime_dataset["mode"] == "http_explicit"
-                    and _darkmatter_http_explicit_no_fallback()
+                print(
+                    "[DarkMatter][DEBUG] remote LoadDataset (OpenVisus fetches bins; no idx rewrite): "
+                    f"{_redact_url_secrets(primary_read)}"
                 )
-                if http_no_fb:
-                    print(
-                        "[DarkMatter][DEBUG] linked http_explicit: no local bin mirrors; "
-                        "OpenVisus loads tiles over HTTPS (object-proxy SigV4 for FTH)"
-                    )
-
-                # Linked: OpenVisus must fetch .bins over HTTPS. FTH rejects ?access_key= GETs,
-                # so we give OpenVisus a tiny access idx whose filename_template is object-proxy
-                # HTTPS (SCLib signs with SigV4). Uploaded packages keep local idx only.
-                skip_converted_resolved = bool(
-                    self.runtime_dataset.get("skip_converted_resolved_idx")
-                    or (
-                        _looks_like_dataset_uuid(dataset_identifier)
-                        and _upload_has_native_darkmatter_idx(dataset_identifier)
-                    )
-                )
-                if skip_converted_resolved and self.runtime_dataset["mode"] == "http_explicit":
-                    print(
-                        "[DarkMatter][DEBUG] skipping access-stub visus.idx: "
-                        "upload/<uuid> already has a native .idx"
-                    )
-                if (
-                    self.runtime_dataset["mode"] == "http_explicit"
-                    and not skip_converted_resolved
-                    and _looks_like_dataset_uuid(dataset_identifier)
-                    and not dataset_identifier.startswith(("http://", "https://", "s3://"))
-                    and (self.s3_auth_override or {}).get("aws_access_key_id")
-                    and (self.s3_auth_override or {}).get("aws_secret_access_key")
-                    and _darkmatter_may_use_object_proxy_for_linked()
-                ):
-                    ov = self.s3_auth_override or {}
-                    idx_http = str(self.runtime_dataset.get("idx_uri") or "").strip()
-                    idx_parts = urlsplit(idx_http) if idx_http.startswith(("http://", "https://")) else None
-                    gw_base = (
-                        f"{idx_parts.scheme}://{idx_parts.netloc}"
-                        if idx_parts and idx_parts.scheme and idx_parts.netloc
-                        else ""
-                    )
-                    merged_ep = (str(ov.get("endpoint_url") or "").strip() or gw_base)
-                    if merged_ep:
-                        self.set_s3_auth_override(
-                            merged_ep,
-                            str(ov.get("aws_access_key_id") or ""),
-                            str(ov.get("aws_secret_access_key") or ""),
-                        )
-                        self.runtime_dataset["auth_override"] = dict(self.s3_auth_override or {})
-                    try:
-                        print(
-                            "[DarkMatter][DEBUG] linked: access-stub visus.idx with object-proxy "
-                            "HTTPS filename_template (OpenVisus fetches bins; flat layout)"
-                        )
-                        trial = None
-                        for force in (False, True):
-                            resolved_idx, resolved_http = resolve_openvisus_resolved_idx_via_api(
-                                dataset_identifier=dataset_identifier,
-                                user_email=user_email,
-                                auth_override=self.s3_auth_override or {},
-                                output_filename=RESOLVED_IDX_S3_OUTPUT_NAME,
-                                filename_template_mode="proxy",
-                                force_refresh=force,
-                            )
-                            trial = _read_resolved_materialized_idx(resolved_idx or "", resolved_http)
-                            if trial is not None and not _scene_is_all_zero(trial):
-                                self.scene_data = trial
-                                if resolved_idx:
-                                    self.runtime_dataset["converted_idx_path"] = resolved_idx
-                                print(
-                                    "[DarkMatter][DEBUG] linked object-proxy OpenVisus read "
-                                    f"non-zero (force_refresh={force})"
-                                )
-                                break
-                            if force:
-                                break
-                            print(
-                                "[DarkMatter][DEBUG] linked object-proxy all-zero; "
-                                "force_refresh=1 to regenerate flat bin template"
-                            )
-                        if (
-                            self.scene_data is None or _scene_is_all_zero(self.scene_data)
-                        ) and trial is not None:
-                            self.scene_data = trial
-                            print(
-                                "[DarkMatter][WARN] linked object-proxy read all-zero; "
-                                "will try direct HTTPS idx"
-                            )
-                    except Exception as ex:
-                        last_load_err = ex
-                        print(
-                            f"[DarkMatter][WARN] linked object-proxy access-stub failed: {ex}"
-                        )
-
-                # Prefer converted/<uuid>/visus.idx when already on disk (non-linked / debug fallbacks).
-                converted_on_disk = ""
-                if (
-                    not http_no_fb
-                    and self.runtime_dataset["mode"] in ("http_explicit", "s3_explicit", "local_explicit")
-                    and _looks_like_dataset_uuid(dataset_identifier)
-                    and (self.scene_data is None or _scene_is_all_zero(self.scene_data))
-                ):
-                    converted_on_disk = _materialized_resolved_visus_idx_path(
-                        self.runtime_dataset,
-                        dataset_identifier,
-                        str(save_dir) if has_args else "",
-                    )
-                    if converted_on_disk:
-                        try:
-                            print(
-                                f"[DarkMatter][DEBUG] using converted dir idx (no conversion): {converted_on_disk}"
-                            )
-                            trial = read_openvisus_field_with_dataset_cwd(converted_on_disk)
-                            if trial is not None and not _scene_is_all_zero(trial):
-                                self.scene_data = trial
-                                self.runtime_dataset["converted_idx_path"] = converted_on_disk
-                            elif trial is not None:
-                                self.scene_data = trial
-                                print(
-                                    "[DarkMatter][WARN] converted/<uuid> idx read all-zero; "
-                                    "will try remote link fallbacks"
-                                )
-                        except Exception as ex:
-                            last_load_err = ex
-                            print(f"[DarkMatter][WARN] converted dir LoadDataset failed: {ex}")
-
-                # Legacy materialize (FTH query-cred / s3 / local mirror) — off for linked default.
-                materialized_linked_idx = ""
-                if (
-                    not http_no_fb
-                    and self.runtime_dataset["mode"] in ("http_explicit", "s3_explicit")
-                    and (self.scene_data is None or _scene_is_all_zero(self.scene_data))
-                    and (self.s3_auth_override or {}).get("aws_access_key_id")
-                    and (self.s3_auth_override or {}).get("aws_secret_access_key")
-                ):
-                    ov = self.s3_auth_override or {}
-                    idx_http = str(self.runtime_dataset.get("idx_uri") or "").strip()
-                    idx_parts = urlsplit(idx_http) if idx_http.startswith(("http://", "https://")) else None
-                    gw_base = (
-                        f"{idx_parts.scheme}://{idx_parts.netloc}"
-                        if idx_parts and idx_parts.scheme and idx_parts.netloc
-                        else ""
-                    )
-                    merged_ep = (str(ov.get("endpoint_url") or "").strip() or gw_base)
-                    if merged_ep:
-                        self.set_s3_auth_override(
-                            merged_ep,
-                            str(ov.get("aws_access_key_id") or ""),
-                            str(ov.get("aws_secret_access_key") or ""),
-                        )
-                        self.runtime_dataset["auth_override"] = dict(self.s3_auth_override or {})
-                    kinds = ["https"]
-                    ep_for_kinds = merged_ep or str((self.s3_auth_override or {}).get("endpoint_url") or "")
-                    if not gateway_endpoint_requires_path_style(ep_for_kinds):
-                        kinds.append("s3")
-                    elif str(os.getenv("DARKMATTER_ALLOW_S3_TEMPLATE_ON_PATH_STYLE_GW", "")).strip().lower() in (
-                        "1",
-                        "true",
-                        "yes",
-                        "on",
-                    ):
-                        kinds.append("s3")
-                    if str(os.getenv("DARKMATTER_LINKED_MIRROR_BINS", "")).strip().lower() in (
-                        "1",
-                        "true",
-                        "yes",
-                        "on",
-                    ):
-                        kinds.append("local")
-                    for kind in kinds:
-                        if self.scene_data is not None and not _scene_is_all_zero(self.scene_data):
-                            break
-                        try:
-                            mat_path = (
-                                materialize_remote_idx_for_openvisus(
-                                    self.runtime_dataset, template_kind=kind
-                                )
-                                or ""
-                            )
-                            if not mat_path or not os.path.isfile(mat_path):
-                                continue
-                            materialized_linked_idx = mat_path
-                            print(
-                                "[DarkMatter][DEBUG] LoadDataset "
-                                f"(materialized linked idx kind={kind}): {mat_path}"
-                            )
-                            if kind == "local":
-                                trial = read_openvisus_field_with_dataset_cwd(mat_path)
-                            else:
-                                trial = read_openvisus_field(mat_path)
-                            if trial is not None and not _scene_is_all_zero(trial):
-                                self.scene_data = trial
-                                self.runtime_dataset["converted_idx_path"] = mat_path
-                                print(
-                                    f"[DarkMatter][DEBUG] materialized linked idx ({kind}) "
-                                    "produced non-zero scene data"
-                                )
-                                break
-                            if trial is not None:
-                                if self.scene_data is None:
-                                    self.scene_data = trial
-                                print(
-                                    f"[DarkMatter][WARN] materialized linked idx ({kind}) "
-                                    "read all-zero; will try other fallbacks"
-                                )
-                        except Exception as ex:
-                            last_load_err = ex
-                            print(
-                                f"[DarkMatter][WARN] materialized linked idx ({kind}) "
-                                f"LoadDataset failed: {ex}"
-                            )
-
-                if (
-                    (self.scene_data is None or _scene_is_all_zero(self.scene_data))
-                    and self.runtime_dataset["mode"] == "http_explicit"
-                    and primary_read.startswith(("http://", "https://"))
-                ):
-                    try:
-                        print(
-                            f"[DarkMatter][DEBUG] primary LoadDataset (linked HTTPS idx): "
-                            f"{_redact_url_secrets(primary_read)}"
-                        )
-                        trial = read_openvisus_field(primary_read)
-                        if trial is not None and (
-                            self.scene_data is None or not _scene_is_all_zero(trial)
-                        ):
-                            self.scene_data = trial
-                        elif trial is not None and self.scene_data is None:
-                            self.scene_data = trial
-                    except Exception as ex:
-                        last_load_err = ex
-                        print(f"[DarkMatter][WARN] linked HTTPS LoadDataset failed: {ex}")
-                        if self.scene_data is None:
-                            self.scene_data = None
-
-                need_resolved_or_local = self.scene_data is None
-                if (
-                    not need_resolved_or_local
-                    and self.runtime_dataset["mode"] == "http_explicit"
-                    and _scene_is_all_zero(self.scene_data)
-                    and not http_no_fb
-                    and not converted_on_disk
-                    and not materialized_linked_idx
-                ):
-                    print(
-                        "[DarkMatter][WARN] linked HTTPS idx read succeeded but scene is all-zero "
-                        "(gateway query credentials often 403; will try object-proxy visus.idx like "
-                        "other remote datasets)."
-                    )
-                    need_resolved_or_local = True
-                elif (
-                    not need_resolved_or_local
-                    and self.runtime_dataset["mode"] in ("http_explicit", "s3_explicit")
-                    and _scene_is_all_zero(self.scene_data)
-                    and not http_no_fb
-                ):
-                    need_resolved_or_local = True
-
-                if (
-                    not http_no_fb
-                    and need_resolved_or_local
-                    and self.runtime_dataset["mode"] == "http_explicit"
-                    and _looks_like_dataset_uuid(dataset_identifier)
-                    and not dataset_identifier.startswith(("http://", "https://", "s3://"))
-                    and (self.s3_auth_override or {}).get("aws_access_key_id")
-                ):
-                    missing_materialized = _materialized_resolved_visus_idx_missing(
-                        self.runtime_dataset,
-                        dataset_identifier,
-                        str(save_dir) if has_args else "",
-                    )
-                    may_generate = _darkmatter_may_use_cached_resolved_idx_http()
-                    may_force = _darkmatter_may_post_openvisus_resolved_idx_on_launch()
-                    if missing_materialized and may_generate:
-                        print(
-                            "[DarkMatter][DEBUG] No converted/<uuid>/visus.idx — "
-                            "POSTing openvisus-resolved-idx proxy mode "
-                            "(same remote path as other working datasets; no bin download)."
-                        )
-                        try:
-                            trial = _try_resolve_and_load_openvisus_idx(
-                                dataset_identifier=dataset_identifier,
-                                user_email=user_email,
-                                auth_override=self.s3_auth_override,
-                                force_refresh=False,
-                                log_label="generate-missing-proxy",
-                            )
-                            if trial is not None and (
-                                self.scene_data is None or not _scene_is_all_zero(trial)
-                            ):
-                                self.scene_data = trial
-                                need_resolved_or_local = False
-                                print(
-                                    "[DarkMatter][DEBUG] scene loaded after object-proxy "
-                                    "openvisus-resolved-idx generation"
-                                )
-                        except Exception as ex:
-                            last_load_err = ex
-                            print(
-                                f"[DarkMatter][WARN] openvisus-resolved-idx generation on load failed: {ex}"
-                            )
-                    elif not missing_materialized and not may_force:
-                        print(
-                            "[DarkMatter][DEBUG] converted/<uuid>/visus.idx exists; skipping on-launch "
-                            "openvisus-resolved-idx POST (set DARKMATTER_ALLOW_RESOLVED_IDX_API_ON_LAUNCH=1 "
-                            "to force regeneration)."
-                        )
-                    elif may_force:
-                        try:
-                            resolved_idx, resolved_http = resolve_openvisus_resolved_idx_via_api(
-                                dataset_identifier=dataset_identifier,
-                                user_email=user_email,
-                                auth_override=self.s3_auth_override or {},
-                                output_filename=RESOLVED_IDX_S3_OUTPUT_NAME,
-                                filename_template_mode=_darkmatter_resolved_idx_filename_template_mode(),
-                                force_refresh=True,
-                            )
-                            if resolved_idx:
-                                trial = _read_resolved_materialized_idx(resolved_idx, resolved_http)
-                                if trial is not None and (
-                                    self.scene_data is None or not _scene_is_all_zero(trial)
-                                ):
-                                    self.scene_data = trial
-                                    need_resolved_or_local = False
-                                    print(
-                                        "[DarkMatter][DEBUG] LoadDataset using resolved idx "
-                                        f"(HTTP-first): path={resolved_idx}"
-                                    )
-                                elif trial is not None:
-                                    print(
-                                        "[DarkMatter][WARN] resolved materialized idx also all-zero; "
-                                        "keeping prior scene_data if any"
-                                    )
-                        except Exception as ex:
-                            last_load_err = ex
-                            print(f"[DarkMatter][WARN] resolved idx API / load failed: {ex}")
-                    elif missing_materialized and not may_generate:
-                        print(
-                            "[DarkMatter][DEBUG] No visus.idx under converted/<uuid>/ — "
-                            "resolved-idx API disabled (DARKMATTER_DISABLE_RESOLVED_IDX=1). "
-                            "Other remote datasets load via object-proxy visus.idx; without it, "
-                            "direct gateway ?access_key= URLs often 403."
-                        )
-
-                    enable_proxy = str(
-                        os.getenv("DARKMATTER_ENABLE_PROXY_RESOLVED_IDX", "false")
-                    ).strip().lower() in ("1", "true", "yes", "on")
-                    if (
-                        enable_proxy
-                        and _darkmatter_may_post_openvisus_resolved_idx_on_launch()
-                        and self.scene_data is not None
-                        and _scene_is_all_zero(self.scene_data)
-                    ):
-                        try:
-                            resolved_proxy, resolved_proxy_http = resolve_openvisus_resolved_idx_via_api(
-                                dataset_identifier=dataset_identifier,
-                                user_email=user_email,
-                                auth_override=self.s3_auth_override or {},
-                                output_filename=RESOLVED_IDX_PROXY_OUTPUT_NAME,
-                                filename_template_mode="proxy",
-                                force_refresh=True,
-                            )
-                            if resolved_proxy:
-                                print(
-                                    f"[DarkMatter][DEBUG] optional proxy resolved idx "
-                                    f"(DARKMATTER_ENABLE_PROXY_RESOLVED_IDX): {resolved_proxy}"
-                                )
-                                proxy_scene = _read_resolved_materialized_idx(
-                                    resolved_proxy, resolved_proxy_http
-                                )
-                                if proxy_scene is not None and not _scene_is_all_zero(proxy_scene):
-                                    self.scene_data = proxy_scene
-                                    print("[DarkMatter][DEBUG] proxy resolved idx produced non-zero scene data")
-                        except Exception as pex:
-                            print(f"[DarkMatter][WARN] proxy resolved idx failed: {pex}")
-
-                # Native s3:// OpenVisus loads on custom gateways become virtual-host HTTPS
-                # (bucket.endpoint) and fail TLS. Skip unless this is real AWS.
-                if (
-                    not http_no_fb
-                    and self.runtime_dataset["mode"] == "http_explicit"
-                    and (self.scene_data is None or _scene_is_all_zero(self.scene_data))
-                    and (self.s3_auth_override or {}).get("aws_access_key_id")
-                    and (self.s3_auth_override or {}).get("aws_secret_access_key")
-                ):
-                    idx_http = str(self.runtime_dataset.get("idx_uri") or "").strip()
-                    s3_idx = http_object_url_to_s3_uri(idx_http)
-                    ov = self.s3_auth_override or {}
-                    idx_parts_fb = urlsplit(idx_http)
-                    gw_base = (
-                        f"{idx_parts_fb.scheme}://{idx_parts_fb.netloc}"
-                        if idx_parts_fb.scheme and idx_parts_fb.netloc
-                        else ""
-                    )
-                    merged_ep = (str(ov.get("endpoint_url") or "").strip() or gw_base)
-                    if s3_idx and gateway_endpoint_requires_path_style(merged_ep):
-                        print(
-                            "[DarkMatter][DEBUG] skipping native s3:// LoadDataset fallback on "
-                            f"path-style gateway ({_redact_url_secrets(merged_ep)}); "
-                            "use path-style HTTPS templates only "
-                            "(avoids scientistcloud.<gateway-host> TLS mismatch)"
-                        )
-                    elif s3_idx:
-                        try:
-                            if merged_ep:
-                                self.set_s3_auth_override(
-                                    merged_ep,
-                                    str(ov.get("aws_access_key_id") or ""),
-                                    str(ov.get("aws_secret_access_key") or ""),
-                                )
-                            # OpenVisus expects credentials in the s3:// URL itself.
-                            s3_idx_cred = s3_uri_with_embedded_credentials(
-                                s3_idx,
-                                str(ov.get("aws_access_key_id") or ""),
-                                str(ov.get("aws_secret_access_key") or ""),
-                            )
-                            print(
-                                f"[DarkMatter][DEBUG] OpenVisus LoadDataset fallback "
-                                f"(native s3:// idx with URL credentials): "
-                                f"{_redact_url_secrets(s3_idx_cred)}"
-                            )
-                            trial = read_openvisus_field(s3_idx_cred)
-                            if not _scene_is_all_zero(trial):
-                                self.scene_data = trial
-                                print(
-                                    "[DarkMatter][DEBUG] native s3:// idx produced non-zero scene data "
-                                    "(HTTPS gateway path was likely mis-resolved in this container)"
-                                )
-                            else:
-                                print(
-                                    "[DarkMatter][WARN] native s3:// idx read also all-zero "
-                                    "(verify credentialed URL / filename_template vs bin layout)"
-                                )
-                        except Exception as s3_ld_exc:
-                            print(f"[DarkMatter][WARN] native s3:// LoadDataset fallback failed: {s3_ld_exc}")
-
-                if (
-                    self.scene_data is None
-                    and self.runtime_dataset["mode"] == "s3_explicit"
-                    and _looks_like_dataset_uuid(dataset_identifier)
-                    and not dataset_identifier.startswith(("http://", "https://", "s3://"))
-                    and (self.s3_auth_override or {}).get("aws_access_key_id")
-                ):
-                    if not _darkmatter_may_post_openvisus_resolved_idx_on_launch():
-                        print(
-                            "[DarkMatter][DEBUG] Skipping openvisus-resolved-idx for s3_explicit on launch "
-                            "(use background conversion under /mnt/visus_datasets/converted/<uuid>/). "
-                            "Set DARKMATTER_ALLOW_RESOLVED_IDX_API_ON_LAUNCH=1 to opt in."
-                        )
-                    else:
-                        try:
-                            resolved_idx, resolved_http = resolve_openvisus_resolved_idx_via_api(
-                                dataset_identifier=dataset_identifier,
-                                user_email=user_email,
-                                auth_override=self.s3_auth_override or {},
-                                output_filename=RESOLVED_IDX_S3_OUTPUT_NAME,
-                                filename_template_mode=_darkmatter_resolved_idx_filename_template_mode(),
-                                force_refresh=False,
-                            )
-                            if resolved_idx:
-                                trial_s3e = _read_resolved_materialized_idx(resolved_idx, resolved_http)
-                                if trial_s3e is not None:
-                                    self.scene_data = trial_s3e
-                                    print(
-                                        "[DarkMatter][DEBUG] LoadDataset s3_explicit resolved idx: "
-                                        f"{resolved_idx}"
-                                    )
-                        except Exception as ex:
-                            last_load_err = ex
-                            print(f"[DarkMatter][WARN] s3_explicit resolved idx failed: {ex}")
-
-                still_need_materialized = (
-                    (need_resolved_or_local and self.scene_data is None) and not http_no_fb
-                )
-                if (
-                    not still_need_materialized
-                    and self.runtime_dataset["mode"] == "http_explicit"
-                    and self.scene_data is not None
-                    and _scene_is_all_zero(self.scene_data)
-                    and not http_no_fb
-                ):
-                    still_need_materialized = True
-
-                if still_need_materialized:
-                    idx_candidates = []
-                    cip = str(self.runtime_dataset.get("converted_idx_path") or "").strip()
-                    # Materialized proxy-template idx: prefer SCLib resolved-idx HTTP URL before
-                    # local filesystem LoadDataset (OpenVisusSlice always uses resolved-idx for remote).
-                    if (
-                        cip
-                        and os.path.isfile(cip)
-                        and _darkmatter_may_use_cached_resolved_idx_http()
-                        and _looks_like_dataset_uuid(dataset_identifier)
-                        and not dataset_identifier.startswith(("http://", "https://", "s3://"))
-                        and (self.s3_auth_override or {}).get("aws_access_key_id")
-                    ):
-                        try:
-                            resolved_idx, resolved_http = resolve_openvisus_resolved_idx_via_api(
-                                dataset_identifier=dataset_identifier,
-                                user_email=user_email,
-                                auth_override=self.s3_auth_override or {},
-                                output_filename=os.path.basename(cip) or "visus.idx",
-                                filename_template_mode=_darkmatter_resolved_idx_filename_template_mode(),
-                                force_refresh=False,
-                            )
-                            trial_cached = _read_resolved_materialized_idx(
-                                resolved_idx or cip, resolved_http
-                            )
-                            if trial_cached is not None and not _scene_is_all_zero(trial_cached):
-                                self.scene_data = trial_cached
-                                still_need_materialized = False
-                                print(
-                                    "[DarkMatter][DEBUG] non-zero scene via cached resolved-idx HTTP URL "
-                                    f"(materialized path={resolved_idx or cip})"
-                                )
-                            elif trial_cached is not None:
-                                print(
-                                    "[DarkMatter][WARN] cached resolved-idx HTTP read was all-zero; "
-                                    "will try other materialized idx candidates"
-                                )
-                        except Exception as cached_res_ex:
-                            print(
-                                f"[DarkMatter][WARN] cached resolved-idx HTTP load failed: {cached_res_ex}"
-                            )
-                    if still_need_materialized and cip and os.path.isfile(cip):
-                        idx_candidates.append(cip)
-                    if has_args and save_dir:
-                        sd = str(save_dir or "").strip()
-                        for fname in ("visus.idx", f"{mid_file}.idx"):
-                            lp = os.path.join(sd, fname)
-                            if os.path.isfile(lp):
-                                idx_candidates.append(lp)
-                                break
-                    # Local `bokeh serve --args https://...idx` (no portal paths): look in cwd for materialized idx.
-                    if not has_args:
-                        cwd = os.path.abspath(os.getcwd())
-                        idx_uri_hint = str(self.runtime_dataset.get("idx_uri") or "").strip()
-                        for fname in (f"{mid_file}.idx", "visus.idx"):
-                            lp = os.path.join(cwd, fname)
-                            if os.path.isfile(lp):
-                                idx_candidates.append(lp)
-                        for hint in sidecar_stem_hints_from_idx_uri(idx_uri_hint):
-                            lp = os.path.join(cwd, f"{hint}.idx")
-                            if os.path.isfile(lp):
-                                idx_candidates.append(lp)
-                        try:
-                            ds_cwd = derive_dataset_from_local_dir(cwd)
-                            if ds_cwd and ds_cwd.get("idx_path"):
-                                idx_candidates.append(ds_cwd["idx_path"])
-                        except Exception:
-                            pass
-                    if resolve_local_idx_file:
-                        try:
-                            rl = resolve_local_idx_file(str(uuid or "").strip())
-                            rl = str(rl or "").strip()
-                            if rl and os.path.isfile(rl):
-                                idx_candidates.append(rl)
-                        except Exception:
-                            pass
-                    deduped = []
-                    for p in idx_candidates:
-                        if p and p not in deduped:
-                            deduped.append(p)
-                    idx_candidates = deduped
-                    last_zero_trial = None
-                    for cand in idx_candidates:
-                        try:
-                            idx_stem = os.path.splitext(os.path.basename(cand))[0]
-                            cand_fixed = resolve_local_idx_path(cand, idx_stem)
-                            if cand_fixed != cand:
-                                print(f"[DarkMatter][DEBUG] filename_template adjusted idx: {cand} -> {cand_fixed}")
-                            trial = read_openvisus_field_with_dataset_cwd(cand_fixed)
-                            if _scene_is_all_zero(trial):
-                                last_zero_trial = trial
-                                print(
-                                    f"[DarkMatter][WARN] materialized idx read was all-zero for {cand_fixed!r} "
-                                    f"(offline bins often missing under (filename_template) vs {cand_fixed}); "
-                                    "sync ARCO blocks next to this .idx or use SCLib resolved-idx when online."
-                                )
-                                if has_args:
-                                    continue
-                                continue
-                            self.scene_data = trial
-                            print(f"[DarkMatter][DEBUG] LoadDataset fallback materialized idx: {cand_fixed}")
-                            break
-                        except Exception as ex:
-                            last_load_err = ex
-                            print(f"[DarkMatter][WARN] OpenVisus load failed for materialized idx {cand!r}: {ex}")
-
-                    if self.scene_data is None and not has_args and last_zero_trial is not None:
-                        self.scene_data = last_zero_trial
-                        print(
-                            "[DarkMatter][WARN] local bokeh: using last materialized idx read (all-zero) so "
-                            "HTTPS sidecars can still load; plot will be flat until bins exist locally."
-                        )
+                try:
+                    self.scene_data = read_openvisus_field(primary_read)
+                except Exception as ex:
+                    last_load_err = ex
+                    print(f"[DarkMatter][WARN] remote HTTPS/s3 LoadDataset failed: {ex}")
+                    self.scene_data = None
 
                 if self.scene_data is None:
-                    last_url = str(idx_for_read or "").strip()
-                    if (
-                        self.runtime_dataset["mode"] == "http_explicit"
-                        and last_url.startswith(("http://", "https://"))
-                    ):
-                        base_err = last_load_err or RuntimeError("linked HTTPS idx did not load")
-                        if http_no_fb:
-                            raise RuntimeError(
-                                "OpenVisus could not load linked DarkMatter scene data. "
-                                "Tried object-proxy resolved-idx (SigV4 via SCLib) and the data-link HTTPS idx. "
-                                "Check sclib_fastapi / object-proxy, Mongo s3_* credentials, and that "
-                                "DARKMATTER_DISABLE_RESOLVED_IDX is not set. "
-                                "FTH gateway ?access_key= plain GETs often return 403 (unlike Strain boto3)."
-                            ) from base_err
-                        raise RuntimeError(
-                            "OpenVisus could not load scene data from the linked HTTPS idx (empty content is typical "
-                            "for gateway query-string URLs). For local `bokeh serve`, cd to the folder with your "
-                            "materialized .idx and ensure ARCO bin files exist where (filename_template) points "
-                            f"(often ./{mid_file}/ or a subdirectory named for the acquisition next to the idx). "
-                            "Or start SCLib FastAPI and set SCLIB_DATASET_URL=http://127.0.0.1:5001 "
-                            "(openvisus-resolved-idx)."
-                        ) from base_err
-                    print(
-                        f"[DarkMatter][DEBUG] LoadDataset input (non-HTTPS or last resort)="
-                        f"{_redact_url_secrets(str(idx_for_read))}"
-                    )
-                    self.scene_data = read_openvisus_field(idx_for_read)
+                    base_err = last_load_err or RuntimeError("OpenVisus LoadDataset returned no scene data")
+                    raise RuntimeError(
+                        "OpenVisus could not load linked/remote DarkMatter scene data via "
+                        f"LoadDataset({_redact_url_secrets(primary_read)!r}). "
+                        "No idx template rewrite or object-proxy fallback is used; "
+                        "fix the remote .idx / gateway so OpenVisus can fetch bins itself "
+                        "(same as LoadDataset(https://…idx?access_key&secret_key) + read())."
+                    ) from base_err
 
                 direct_arr = np.asarray(self.scene_data)
                 if self.runtime_dataset["mode"] == "http_explicit":
