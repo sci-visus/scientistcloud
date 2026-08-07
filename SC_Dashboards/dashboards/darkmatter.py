@@ -7,6 +7,8 @@ import os
 import atexit
 from collections import defaultdict
 import csv
+import json
+import time
 import traceback
 import re
 import requests
@@ -661,9 +663,10 @@ def _darkmatter_may_post_openvisus_resolved_idx_on_launch() -> bool:
 
 def _darkmatter_http_explicit_no_fallback() -> bool:
     """
-    Linked (http_explicit): do not use upload/converted mirrors or materialize bins locally.
+    Linked (http_explicit): do not mirror bins into upload/ or run FTH query-cred materialize.
 
-    Default ON. Linked loads use the HTTPS idx URL with gateway keys only.
+    Default ON. OpenVisus still loads tiles over HTTPS; for FTH we point
+    ``(filename_template)`` at object-proxy HTTPS URLs (SigV4), not local copies.
     """
     v = str(os.getenv("DARKMATTER_HTTP_EXPLICIT_NO_FALLBACK", "1")).strip().lower()
     return v not in ("0", "false", "no", "off")
@@ -671,20 +674,16 @@ def _darkmatter_http_explicit_no_fallback() -> bool:
 
 def _darkmatter_may_use_object_proxy_for_linked() -> bool:
     """
-    Opt-in only: POST openvisus-resolved-idx (writes converted/<uuid>/visus.idx).
+    Linked IDX: build a tiny access ``visus.idx`` whose ``(filename_template)`` is HTTPS
+    object-proxy URLs so OpenVisus fetches bins itself (FTH rejects ?access_key= GETs).
 
-    Product policy: linked datasets stay remote HTTPS+keys with nothing under
-    upload/ or converted/. Default OFF.
-    Set ``DARKMATTER_LINKED_USE_OBJECT_PROXY=1`` only for experiments.
+    Default ON. Disable with ``DARKMATTER_LINKED_USE_OBJECT_PROXY=0``.
+    Hard-off: ``DARKMATTER_DISABLE_RESOLVED_IDX=1``.
     """
     if _darkmatter_disable_resolved_idx_api():
         return False
-    return str(os.getenv("DARKMATTER_LINKED_USE_OBJECT_PROXY", "")).strip().lower() in (
-        "1",
-        "true",
-        "yes",
-        "on",
-    )
+    v = str(os.getenv("DARKMATTER_LINKED_USE_OBJECT_PROXY", "1")).strip().lower()
+    return v not in ("0", "false", "no", "off")
 
 
 def _darkmatter_may_use_cached_resolved_idx_http() -> bool:
@@ -2501,6 +2500,40 @@ class AppState:
             width=400,
             sizing_mode="stretch_width",
         )
+        # Full-width banner above the plot — stays visible for the whole OpenVisus load (often 1+ min).
+        self.loading_progress_banner = Div(
+            text="",
+            visible=False,
+            sizing_mode="stretch_width",
+            height=88,
+            styles={"margin": "0 0 8px 0"},
+        )
+        self._loading_started_at = None
+        self._loading_tick_cb = None
+        self._loading_label = "Dark Matter dataset"
+        # Hidden signal for portal postMessage (Bokeh Div HTML does not reliably run <script>).
+        self._loading_portal_signal = TextInput(value="0", visible=False, width=1, height=1)
+        self._loading_portal_signal.js_on_change(
+            "value",
+            CustomJS(
+                code="""
+                try {
+                  const raw = (cb_obj.value || "");
+                  const parts = raw.split("\\x1e");
+                  const loading = parts[0] === "1";
+                  const label = parts[1] || "Dark Matter dataset";
+                  if (window.parent && window.parent !== window) {
+                    window.parent.postMessage({
+                      source: "scientistcloud-darkmatter",
+                      type: "darkmatter-loading",
+                      loading: loading,
+                      label: label
+                    }, "*");
+                  }
+                } catch (e) {}
+                """
+            ),
+        )
         self.app_info_text = Div(text="", sizing_mode="stretch_width")
         self.notification_div = Div(text="", visible=False, width=420, sizing_mode="stretch_width")
 
@@ -2726,32 +2759,23 @@ class AppState:
                 )
                 if http_no_fb:
                     print(
-                        "[DarkMatter][DEBUG] linked http_explicit: HTTPS idx+keys only "
-                        "(no upload/converted mirrors, no proxy visus.idx)"
+                        "[DarkMatter][DEBUG] linked http_explicit: no local bin mirrors; "
+                        "OpenVisus loads tiles over HTTPS (object-proxy SigV4 for FTH)"
                     )
 
-                # Product policy: linked = remote HTTPS with keys; nothing under converted/.
-                # Object-proxy resolved-idx is opt-in (DARKMATTER_LINKED_USE_OBJECT_PROXY=1).
+                # Linked: OpenVisus must fetch .bins over HTTPS. FTH rejects ?access_key= GETs,
+                # so we give OpenVisus a tiny access idx whose filename_template is object-proxy
+                # HTTPS (SCLib signs with SigV4). Uploaded packages keep local idx only.
                 skip_converted_resolved = bool(
                     self.runtime_dataset.get("skip_converted_resolved_idx")
                     or (
                         _looks_like_dataset_uuid(dataset_identifier)
                         and _upload_has_native_darkmatter_idx(dataset_identifier)
                     )
-                    or not _darkmatter_may_use_object_proxy_for_linked()
                 )
-                if (
-                    skip_converted_resolved
-                    and self.runtime_dataset["mode"] == "http_explicit"
-                    and not _darkmatter_may_use_object_proxy_for_linked()
-                ):
+                if skip_converted_resolved and self.runtime_dataset["mode"] == "http_explicit":
                     print(
-                        "[DarkMatter][DEBUG] linked: skip converted/visus.idx "
-                        "(use HTTPS idx URL with access_key/secret_key)"
-                    )
-                elif skip_converted_resolved and self.runtime_dataset["mode"] == "http_explicit":
-                    print(
-                        "[DarkMatter][DEBUG] skipping object-proxy resolved-idx write: "
+                        "[DarkMatter][DEBUG] skipping access-stub visus.idx: "
                         "upload/<uuid> already has a native .idx"
                     )
                 if (
@@ -2781,8 +2805,8 @@ class AppState:
                         self.runtime_dataset["auth_override"] = dict(self.s3_auth_override or {})
                     try:
                         print(
-                            "[DarkMatter][DEBUG] linked LoadDataset via object-proxy resolved-idx "
-                            "(SigV4 through SCLib; no bin download)"
+                            "[DarkMatter][DEBUG] linked: access-stub visus.idx with object-proxy "
+                            "HTTPS filename_template (OpenVisus fetches bins; flat layout)"
                         )
                         trial = None
                         for force in (False, True):
@@ -2800,8 +2824,8 @@ class AppState:
                                 if resolved_idx:
                                     self.runtime_dataset["converted_idx_path"] = resolved_idx
                                 print(
-                                    "[DarkMatter][DEBUG] linked object-proxy resolved-idx "
-                                    f"produced non-zero scene data (force_refresh={force})"
+                                    "[DarkMatter][DEBUG] linked object-proxy OpenVisus read "
+                                    f"non-zero (force_refresh={force})"
                                 )
                                 break
                             if force:
@@ -2815,13 +2839,13 @@ class AppState:
                         ) and trial is not None:
                             self.scene_data = trial
                             print(
-                                "[DarkMatter][WARN] linked object-proxy resolved-idx read all-zero; "
+                                "[DarkMatter][WARN] linked object-proxy read all-zero; "
                                 "will try direct HTTPS idx"
                             )
                     except Exception as ex:
                         last_load_err = ex
                         print(
-                            f"[DarkMatter][WARN] linked object-proxy resolved-idx failed: {ex}"
+                            f"[DarkMatter][WARN] linked object-proxy access-stub failed: {ex}"
                         )
 
                 # Prefer converted/<uuid>/visus.idx when already on disk (non-linked / debug fallbacks).
@@ -3550,21 +3574,96 @@ class AppState:
         self.next_event_button.disabled = state
         self.last_event_button.disabled = state
 
-    def toggle_loading_spinner(self, state):
+    def toggle_loading_spinner(self, state, label: Optional[str] = None):
+        """Show/hide loading UI for the long OpenVisus + sidecar fetch."""
         self.loading_dataset_spinner.visible = bool(state)
+        self.loading_progress_banner.visible = bool(state)
+        if label:
+            self._loading_label = str(label)
+
         if state:
+            self._loading_started_at = datetime.now(timezone.utc)
+            self._ensure_loading_tick()
             self.loading_dataset_spinner.text = (
                 "<div style='display:flex; align-items:center; gap:10px; padding:10px 12px; "
                 "border:1px solid #b6d0fe; background:#eef5ff; border-radius:8px;'>"
                 "<span style='display:inline-block; width:16px; height:16px; border:2px solid #2f6fed; "
                 "border-top-color:transparent; border-radius:50%; "
                 "animation:dmspin 0.8s linear infinite;'></span>"
-                "<span style='font-weight:600; color:#1d4ed8;'>Loading Dark Matter dataset…</span>"
+                f"<span style='font-weight:600; color:#1d4ed8;'>Loading {escape(self._loading_label)}…</span>"
                 "</div>"
-                "<style>@keyframes dmspin { to { transform: rotate(360deg); } }</style>"
+                "<style>@keyframes dmspin {{ to {{ transform: rotate(360deg); }} }}</style>"
             )
+            self.loading_progress_banner.text = self._loading_banner_html(0)
+            self._loading_portal_signal.value = f"1\x1e{self._loading_label}\x1e{time.time()}"
         else:
+            self._stop_loading_tick()
+            self._loading_started_at = None
             self.loading_dataset_spinner.text = ""
+            self.loading_progress_banner.text = ""
+            self.loading_progress_banner.visible = False
+            self._loading_portal_signal.value = f"0\x1e\x1e{time.time()}"
+
+    def _loading_banner_html(self, elapsed_s: int) -> str:
+        label = escape(self._loading_label or "dataset")
+        mins, secs = divmod(max(0, int(elapsed_s)), 60)
+        elapsed = f"{mins}m {secs:02d}s" if mins else f"{secs}s"
+        hint = (
+            "Fetching OpenVisus tiles and channel metadata. "
+            "Linked remote data often takes one minute or more."
+        )
+        return (
+            "<div style='padding:12px 14px; border:1px solid #93c5fd; background:linear-gradient(180deg,#eff6ff,#dbeafe);"
+            "border-radius:10px; box-shadow:0 1px 2px rgba(15,23,42,0.06);'>"
+            f"<div style='font-weight:700; color:#1e3a8a; margin-bottom:4px;'>Loading {label}</div>"
+            f"<div style='font-size:13px; color:#1e40af; margin-bottom:10px;'>{hint}</div>"
+            "<div style='height:10px; background:#bfdbfe; border-radius:999px; overflow:hidden; margin-bottom:8px;'>"
+            "<div style='height:100%; width:40%; background:#2563eb; border-radius:999px; "
+            "animation:dmbar 1.4s ease-in-out infinite;'></div></div>"
+            f"<div style='font-size:12px; color:#334155;'>Elapsed: <b>{elapsed}</b> — please keep this tab open.</div>"
+            "</div>"
+            "<style>"
+            "@keyframes dmbar { 0% { transform: translateX(-100%); } 50% { transform: translateX(160%); } "
+            "100% { transform: translateX(400%); } }"
+            "@keyframes dmspin { to { transform: rotate(360deg); } }"
+            "</style>"
+        )
+
+    def _refresh_loading_progress_ui(self, force_elapsed: Optional[int] = None):
+        if not self.loading_progress_banner.visible:
+            return
+        if force_elapsed is not None:
+            elapsed = force_elapsed
+        elif self._loading_started_at is not None:
+            elapsed = int((datetime.now(timezone.utc) - self._loading_started_at).total_seconds())
+        else:
+            elapsed = 0
+        self.loading_progress_banner.text = self._loading_banner_html(elapsed)
+
+    def _ensure_loading_tick(self):
+        if self._loading_tick_cb is not None:
+            return
+        try:
+            self._loading_tick_cb = curdoc().add_periodic_callback(self._on_loading_tick, 1000)
+        except Exception as ex:
+            print(f"[DarkMatter][WARN] could not start loading progress tick: {ex}")
+            self._loading_tick_cb = None
+
+    def _stop_loading_tick(self):
+        cb = self._loading_tick_cb
+        self._loading_tick_cb = None
+        if cb is None:
+            return
+        try:
+            curdoc().remove_periodic_callback(cb)
+        except Exception:
+            pass
+
+    def _on_loading_tick(self):
+        if not self.loading_progress_banner.visible:
+            self._stop_loading_tick()
+            return
+        self._refresh_loading_progress_ui()
 
     def add_line_glyph(self, data, label):
         d_num = label.split("_")[1]
@@ -3882,7 +3981,7 @@ def main():
         )
 
     def update_events(mid_file):
-        app_state.toggle_loading_spinner(True)
+        app_state.toggle_loading_spinner(True, label=str(mid_file))
         app_state.render_app_info_text(f"Loading {mid_file}...")
         toggle_all_component_interactivity(True)
         load_ok = False
@@ -4038,20 +4137,29 @@ def main():
         checkbox_toggle_detectors,
         channels_grid,
         app_state.event_metadata_widget,
+        app_state._loading_portal_signal,
         width=430,
     )
     header_banner = create_header_banner(
         dataset_name=name if name else "",
         dashboard_type="Nexus DM Dashboard",
     )
-    main_layout = row(sidebar, app_state.fig, sizing_mode="stretch_both")
+    plot_column = column(
+        app_state.loading_progress_banner,
+        app_state.fig,
+        sizing_mode="stretch_both",
+    )
+    main_layout = row(sidebar, plot_column, sizing_mode="stretch_both")
     curdoc().add_root(column(header_banner, s3_auth_panel, main_layout, sizing_mode="stretch_both"))
     if select_scene.value:
         # Defer heavy OpenVisus load so the loading notification paints first.
         initial_mid = select_scene.value
-        app_state.toggle_loading_spinner(True)
+        app_state.toggle_loading_spinner(True, label=str(initial_mid))
         app_state.render_app_info_text(f"Loading {initial_mid}…")
-        app_state.send_notification(INFO, "Loading Dark Matter data — this can take a minute for linked S3 datasets.")
+        app_state.send_notification(
+            INFO,
+            "Loading Dark Matter data — OpenVisus tile fetch can take a minute or more.",
+        )
         curdoc().add_next_tick_callback(lambda: update_events(initial_mid))
 
 

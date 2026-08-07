@@ -1058,10 +1058,44 @@ class ViewerManager {
                     </div>
                     <h5 class="mb-2">Loading Dark Matter Dashboard</h5>
                     <p class="text-muted mb-1">Resolving dataset metadata and OpenVisus tiles…</p>
-                    <p class="small text-muted mb-0">First load can take a minute for linked S3 data.</p>
+                    <p class="small text-muted mb-2">First load can take a minute or more.</p>
+                    <div class="progress" style="height:10px;">
+                        <div class="progress-bar progress-bar-striped progress-bar-animated"
+                             role="progressbar" style="width:100%"></div>
+                    </div>
+                    <p class="small text-muted mt-2 mb-0" id="darkMatterLoadingElapsed">Waiting for dashboard…</p>
                 </div>
             `;
             dashboardContent.appendChild(loadingOverlay);
+
+            const overlayStarted = Date.now();
+            const elapsedEl = () => document.getElementById('darkMatterLoadingElapsed');
+            const overlayTimer = setInterval(() => {
+                const el = elapsedEl();
+                if (!el || !loadingOverlay) {
+                    clearInterval(overlayTimer);
+                    return;
+                }
+                const sec = Math.floor((Date.now() - overlayStarted) / 1000);
+                el.textContent = `Still loading… ${sec}s (OpenVisus tile fetch)`;
+            }, 1000);
+
+            const onDmMessage = (event) => {
+                const data = event && event.data;
+                if (!data || data.source !== 'scientistcloud-darkmatter') return;
+                if (data.type === 'darkmatter-loading' && data.loading === false) {
+                    clearInterval(overlayTimer);
+                    window.removeEventListener('message', onDmMessage);
+                    clearOverlay();
+                }
+            };
+            window.addEventListener('message', onDmMessage);
+            // Safety: never leave overlay forever if postMessage never arrives.
+            setTimeout(() => {
+                clearInterval(overlayTimer);
+                window.removeEventListener('message', onDmMessage);
+                clearOverlay();
+            }, 180000);
         }
 
         const clearOverlay = () => {
@@ -1072,10 +1106,9 @@ class ViewerManager {
         };
 
         iframe.onload = () => {
-            // Keep DarkMatter overlay briefly — Bokeh/OpenVisus still initializes after iframe load.
-            if (isDarkMatter) {
-                setTimeout(clearOverlay, 1200);
-            } else {
+            // DarkMatter: keep portal overlay until dashboard signals load finished
+            // (or 3 min safety timeout). iframe.onload only means Bokeh shell is up.
+            if (!isDarkMatter) {
                 clearOverlay();
             }
             this.onDashboardLoad();
