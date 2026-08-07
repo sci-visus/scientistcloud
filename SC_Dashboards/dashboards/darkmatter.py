@@ -2,7 +2,7 @@ import matplotlib.colors as mcolors
 import numpy as np
 import sys
 from html import escape
-from typing import Any, DefaultDict, List, Optional
+from typing import Any, DefaultDict, List, Optional, Tuple
 import os
 import atexit
 from collections import defaultdict
@@ -661,10 +661,9 @@ def _darkmatter_may_post_openvisus_resolved_idx_on_launch() -> bool:
 
 def _darkmatter_http_explicit_no_fallback() -> bool:
     """
-    Linked (http_explicit): do not use upload/converted mirrors or FTH query-cred materialize.
+    Linked (http_explicit): do not use upload/converted mirrors or materialize bins locally.
 
-    Default ON. Does **not** block object-proxy resolved-idx (SigV4 path that matches Strain).
-    Set ``DARKMATTER_HTTP_EXPLICIT_NO_FALLBACK=0`` to re-enable legacy local/s3 materialize fallbacks.
+    Default ON. Linked loads use the HTTPS idx URL with gateway keys only.
     """
     v = str(os.getenv("DARKMATTER_HTTP_EXPLICIT_NO_FALLBACK", "1")).strip().lower()
     return v not in ("0", "false", "no", "off")
@@ -672,14 +671,20 @@ def _darkmatter_http_explicit_no_fallback() -> bool:
 
 def _darkmatter_may_use_object_proxy_for_linked() -> bool:
     """
-    Linked DarkMatter may POST openvisus-resolved-idx in proxy mode so OpenVisus fetches
-    bins via object-proxy (SCLib SigV4), like ORNL Strain's boto3 GetObject.
+    Opt-in only: POST openvisus-resolved-idx (writes converted/<uuid>/visus.idx).
 
-    Hard-off: ``DARKMATTER_DISABLE_RESOLVED_IDX=1``.
+    Product policy: linked datasets stay remote HTTPS+keys with nothing under
+    upload/ or converted/. Default OFF.
+    Set ``DARKMATTER_LINKED_USE_OBJECT_PROXY=1`` only for experiments.
     """
     if _darkmatter_disable_resolved_idx_api():
         return False
-    return True
+    return str(os.getenv("DARKMATTER_LINKED_USE_OBJECT_PROXY", "")).strip().lower() in (
+        "1",
+        "true",
+        "yes",
+        "on",
+    )
 
 
 def _darkmatter_may_use_cached_resolved_idx_http() -> bool:
@@ -865,6 +870,147 @@ def derive_dataset_from_remote_uri(remote_uri: str, auth_override: Optional[dict
         return None
 
 
+def _darkmatter_sidecar_paths(idx_path: str, mid_file: str) -> Tuple[str, str]:
+    """
+    Locate ``{mid}.txt`` / ``{mid}.csv`` near an idx.
+
+    Download/cache layouts often put the idx under ``.dm_openvisus_cache/`` (or a nested
+    folder) while sidecars stay in ``upload/<uuid>/``. Proxy ``visus.idx`` under converted/
+    also has no ``visus.txt`` — look for a real stem's sidecars in the uuid root.
+    """
+    idx_path = os.path.abspath(str(idx_path or "").strip())
+    mid_file = str(mid_file or "").strip()
+    idx_dir = os.path.dirname(idx_path)
+    search_roots: List[str] = []
+    for root in (idx_dir, os.path.dirname(idx_dir), os.path.dirname(os.path.dirname(idx_dir))):
+        root = os.path.abspath(root) if root else ""
+        if root and root not in search_roots and os.path.isdir(root):
+            search_roots.append(root)
+
+    if mid_file and mid_file.lower() != "visus":
+        for root in search_roots:
+            txt = os.path.join(root, f"{mid_file}.txt")
+            csv = os.path.join(root, f"{mid_file}.csv")
+            if os.path.isfile(txt) and os.path.isfile(csv):
+                return txt, csv
+
+    # visus.idx / mismatched stem: any matching *.txt+*.csv pair under search roots.
+    for root in search_roots:
+        try:
+            names = os.listdir(root)
+        except OSError:
+            continue
+        stems = {
+            os.path.splitext(n)[0]
+            for n in names
+            if n.lower().endswith(".txt") and os.path.isfile(os.path.join(root, n))
+        }
+        for stem in sorted(stems):
+            if not stem or stem.lower() == "visus":
+                continue
+            txt = os.path.join(root, f"{stem}.txt")
+            csv = os.path.join(root, f"{stem}.csv")
+            if os.path.isfile(txt) and os.path.isfile(csv):
+                return txt, csv
+
+    txt_fallback = os.path.join(idx_dir, f"{mid_file}.txt") if mid_file else ""
+    csv_fallback = os.path.join(idx_dir, f"{mid_file}.csv") if mid_file else ""
+    return txt_fallback, csv_fallback
+
+
+def _darkmatter_idx_is_proxy_stub(idx_path: str) -> bool:
+    """True for converted/<uuid>/visus.idx object-proxy stubs (not a downloaded native package)."""
+    p = os.path.abspath(str(idx_path or "")).replace("\\", "/")
+    base = os.path.basename(p).lower()
+    return base == "visus.idx" and "/converted/" in p
+
+
+def _upload_has_native_darkmatter_idx(dataset_uuid: str) -> bool:
+    """True when upload/<uuid> already has a real .idx — do not write converted/visus.idx."""
+    uuid_str = str(dataset_uuid or "").strip()
+    if not uuid_str:
+        return False
+    upload_root = os.path.join(
+        str(os.getenv("JOB_IN_DATA_DIR") or "/mnt/visus_datasets/upload").rstrip("/"),
+        uuid_str,
+    )
+    if not os.path.isdir(upload_root):
+        return False
+    for current_root, _dirs, files in os.walk(upload_root):
+        if os.path.basename(current_root) == ".dm_openvisus_cache":
+            continue
+        for filename in files:
+            if not filename.lower().endswith(".idx"):
+                continue
+            if filename.lower() == "visus.idx":
+                continue
+            return True
+    return False
+
+
+def _find_local_darkmatter_package(dataset_uuid: str) -> Optional[dict]:
+    """
+    Prefer a complete DarkMatter package under upload/<uuid>, then converted/<uuid>.
+
+    Never treat converted/.../visus.idx (object-proxy stub) as the package when upload
+    already has a native idx+txt+csv — that stub caused remote fallback + re-write loops.
+    """
+    uuid_str = str(dataset_uuid or "").strip()
+    if not uuid_str:
+        return None
+    upload_root = os.path.join(
+        str(os.getenv("JOB_IN_DATA_DIR") or "/mnt/visus_datasets/upload").rstrip("/"),
+        uuid_str,
+    )
+    converted_root = os.path.join(
+        str(os.getenv("JOB_OUT_DATA_DIR") or "/mnt/visus_datasets/converted").rstrip("/"),
+        uuid_str,
+    )
+
+    def _complete(ds: Optional[dict]) -> bool:
+        if not ds:
+            return False
+        return bool(
+            os.path.isfile(str(ds.get("idx_path") or ""))
+            and os.path.isfile(str(ds.get("txt_path") or ""))
+            and os.path.isfile(str(ds.get("csv_path") or ""))
+        )
+
+    def _score_idx(path: str) -> Tuple[int, str]:
+        """Prefer native stems in upload over cache/proxy stubs."""
+        p = path.replace("\\", "/")
+        score = 0
+        if "/.dm_openvisus_cache/" in p:
+            score += 100
+        if os.path.basename(p).lower() == "visus.idx":
+            score += 50
+        if "/converted/" in p:
+            score += 10
+        return (score, p)
+
+    for root in (upload_root, converted_root):
+        if not os.path.isdir(root):
+            continue
+        idx_matches: List[str] = []
+        for current_root, _dirs, files in os.walk(root):
+            for filename in files:
+                if filename.lower().endswith(".idx"):
+                    idx_matches.append(os.path.join(current_root, filename))
+        for idx_path in sorted(idx_matches, key=_score_idx):
+            if _darkmatter_idx_is_proxy_stub(idx_path) and _upload_has_native_darkmatter_idx(uuid_str):
+                continue
+            ds = derive_dataset_from_local_dir(idx_path)
+            if _complete(ds):
+                if "/converted/" in idx_path.replace("\\", "/"):
+                    ds["converted_idx_path"] = ds["idx_path"]
+                print(
+                    f"[DarkMatter][DEBUG] local DarkMatter package: "
+                    f"mode={ds['mode']} mid={ds['mid_file']} idx={ds['idx_path']}"
+                )
+                return ds
+    return None
+
+
 def derive_dataset_from_uuid(dataset_uuid: str):
     """
     Resolve runtime dataset from Mongo metadata when dashboard receives a UUID.
@@ -896,43 +1042,33 @@ def derive_dataset_from_uuid(dataset_uuid: str):
         for field in ("google_drive_link", "source_path")
     )
 
-    def _local_dm_complete(ds: Optional[dict]) -> bool:
-        if not ds:
-            return False
-        return bool(
-            os.path.isfile(str(ds.get("idx_path") or ""))
+    # Downloaded packages live under upload/<uuid>/ (idx+txt+csv). Prefer those over
+    # converted/<uuid>/visus.idx proxy stubs and over google_drive_link.
+    local_pkg = _find_local_darkmatter_package(dataset_uuid)
+    if local_pkg is not None:
+        return local_pkg
+
+    # Mongo converted_idx_path only if it is a complete package (not a lone proxy visus.idx).
+    if (
+        converted_idx_path
+        and os.path.isfile(converted_idx_path)
+        and not (
+            _darkmatter_idx_is_proxy_stub(converted_idx_path)
+            and _upload_has_native_darkmatter_idx(dataset_uuid)
+        )
+    ):
+        ds = derive_dataset_from_local_dir(converted_idx_path)
+        if (
+            ds
             and os.path.isfile(str(ds.get("txt_path") or ""))
             and os.path.isfile(str(ds.get("csv_path") or ""))
-        )
-
-    # Downloaded / converted copies win when the DarkMatter package is complete on disk.
-    # Many S3 uploads keep google_drive_link even after Download — do not force remote then.
-    if converted_idx_path and os.path.isfile(converted_idx_path):
-        ds = derive_dataset_from_local_dir(converted_idx_path)
-        if _local_dm_complete(ds):
+        ):
             ds["converted_idx_path"] = converted_idx_path
             print(
                 f"[DarkMatter][DEBUG] resolved runtime_dataset from converted_idx_path: "
                 f"mode={ds['mode']} mid={ds['mid_file']}"
             )
             return ds
-
-    local_idx = resolve_local_idx_file(dataset_uuid) if resolve_local_idx_file else None
-    if local_idx:
-        ds = derive_dataset_from_local_dir(local_idx)
-        if _local_dm_complete(ds):
-            if "/converted/" in local_idx:
-                ds["converted_idx_path"] = ds["idx_path"]
-            print(
-                f"[DarkMatter][DEBUG] resolved runtime_dataset from local resolver: "
-                f"mode={ds['mode']} mid={ds['mid_file']} idx={ds['idx_path']}"
-            )
-            return ds
-        if ds is not None and has_remote_link:
-            print(
-                f"[DarkMatter][DEBUG] local idx without complete sidecars; "
-                f"using remote link instead: idx={local_idx}"
-            )
 
     # Link-only (or incomplete local): use google_drive_link / source_path.
     for field in ("google_drive_link", "source_path"):
@@ -944,6 +1080,13 @@ def derive_dataset_from_uuid(dataset_uuid: str):
             if auth_override.get("aws_access_key_id") and auth_override.get("aws_secret_access_key"):
                 ds["auth_override"] = auth_override
             ensure_http_gateway_credentials_on_dataset(ds)
+            # Mark so load path skips writing converted/visus.idx when upload already has idx.
+            if _upload_has_native_darkmatter_idx(dataset_uuid):
+                ds["skip_converted_resolved_idx"] = True
+                print(
+                    "[DarkMatter][DEBUG] upload already has native .idx; "
+                    "will not POST openvisus-resolved-idx into converted/"
+                )
             print(
                 f"[DarkMatter][DEBUG] resolved runtime_dataset from dataset doc field={field}: "
                 f"mode={ds['mode']} mid={ds['mid_file']}"
@@ -990,25 +1133,36 @@ def derive_dataset_from_local_dir(dataset_dir: str):
         mid_file = os.path.basename(path.rstrip("/"))
         idx_path = os.path.join(dataset_root, f"{mid_file}.idx")
         if not os.path.exists(idx_path):
-            preferred = os.path.join(dataset_root, "visus.idx")
-            if os.path.isfile(preferred):
-                idx_path = preferred
-            else:
-                idx_matches = []
-                for current_root, _dirs, files in os.walk(dataset_root):
-                    for filename in files:
-                        if filename.lower().endswith(".idx"):
-                            idx_matches.append(os.path.join(current_root, filename))
-                if not idx_matches:
-                    return None
-                idx_path = sorted(idx_matches)[0]
+            # Prefer a native stem .idx over proxy visus.idx (converted stub).
+            idx_matches: List[str] = []
+            for current_root, _dirs, files in os.walk(dataset_root):
+                for filename in files:
+                    if filename.lower().endswith(".idx"):
+                        idx_matches.append(os.path.join(current_root, filename))
+            if not idx_matches:
+                return None
+
+            def _pick_key(p: str) -> Tuple[int, str]:
+                pl = p.replace("\\", "/")
+                score = 0
+                if "/.dm_openvisus_cache/" in pl:
+                    score += 100
+                if os.path.basename(pl).lower() == "visus.idx":
+                    score += 50
+                return (score, pl)
+
+            idx_path = sorted(idx_matches, key=_pick_key)[0]
             mid_file = os.path.splitext(os.path.basename(idx_path))[0]
             dataset_root = os.path.dirname(idx_path)
+        else:
+            mid_file = os.path.splitext(os.path.basename(idx_path))[0]
     else:
         return None
 
-    txt_path = os.path.join(dataset_root, f"{mid_file}.txt")
-    csv_path = os.path.join(dataset_root, f"{mid_file}.csv")
+    txt_path, csv_path = _darkmatter_sidecar_paths(idx_path, mid_file)
+    # If sidecars used a different stem than visus.idx, adopt that mid for channels/events.
+    if mid_file.lower() == "visus" and txt_path and os.path.isfile(txt_path):
+        mid_file = os.path.splitext(os.path.basename(txt_path))[0]
 
     return {
         "mode": "local_explicit",
@@ -2572,14 +2726,37 @@ class AppState:
                 )
                 if http_no_fb:
                     print(
-                        "[DarkMatter][DEBUG] linked http_explicit: no upload/converted mirrors "
-                        "(object-proxy SigV4 for bins, like ORNL Strain)"
+                        "[DarkMatter][DEBUG] linked http_explicit: HTTPS idx+keys only "
+                        "(no upload/converted mirrors, no proxy visus.idx)"
                     )
 
-                # Linked http_explicit: OpenVisus cannot SigV4 FTH with ?access_key= (403).
-                # Same Mongo keys work via boto3 (sidecars / Strain). Use SCLib object-proxy.
+                # Product policy: linked = remote HTTPS with keys; nothing under converted/.
+                # Object-proxy resolved-idx is opt-in (DARKMATTER_LINKED_USE_OBJECT_PROXY=1).
+                skip_converted_resolved = bool(
+                    self.runtime_dataset.get("skip_converted_resolved_idx")
+                    or (
+                        _looks_like_dataset_uuid(dataset_identifier)
+                        and _upload_has_native_darkmatter_idx(dataset_identifier)
+                    )
+                    or not _darkmatter_may_use_object_proxy_for_linked()
+                )
+                if (
+                    skip_converted_resolved
+                    and self.runtime_dataset["mode"] == "http_explicit"
+                    and not _darkmatter_may_use_object_proxy_for_linked()
+                ):
+                    print(
+                        "[DarkMatter][DEBUG] linked: skip converted/visus.idx "
+                        "(use HTTPS idx URL with access_key/secret_key)"
+                    )
+                elif skip_converted_resolved and self.runtime_dataset["mode"] == "http_explicit":
+                    print(
+                        "[DarkMatter][DEBUG] skipping object-proxy resolved-idx write: "
+                        "upload/<uuid> already has a native .idx"
+                    )
                 if (
                     self.runtime_dataset["mode"] == "http_explicit"
+                    and not skip_converted_resolved
                     and _looks_like_dataset_uuid(dataset_identifier)
                     and not dataset_identifier.startswith(("http://", "https://", "s3://"))
                     and (self.s3_auth_override or {}).get("aws_access_key_id")
@@ -3511,6 +3688,11 @@ def main():
 
     # ScientistCloud-served mode: auto-resolve dataset from init params
     # (save_dir/base_dir/uuid) so renderer data is loaded on first paint.
+    if runtime_dataset is None and has_args and uuid:
+        runtime_dataset = _find_local_darkmatter_package(str(uuid).strip())
+        if runtime_dataset is not None:
+            runtime_remote_url = str(uuid).strip()
+
     if runtime_dataset is None and has_args:
         for candidate in [save_dir, base_dir, uuid]:
             candidate = str(candidate or "").strip()
@@ -3521,6 +3703,15 @@ def main():
                 # Linked S3 IDX often materializes only visus.idx under converted/<uuid> while
                 # visus.txt / visus.csv remain on object storage. Do not lock in local_explicit here
                 # or we skip derive_dataset_from_uuid(), which falls back to google_drive_link.
+                # Also ignore converted proxy stubs when upload already has a native package.
+                if _darkmatter_idx_is_proxy_stub(str(ds.get("idx_path") or "")) and _upload_has_native_darkmatter_idx(
+                    str(uuid or "").strip()
+                ):
+                    print(
+                        f"[DarkMatter][DEBUG] ignoring converted proxy stub {ds['idx_path']!r}; "
+                        "prefer upload package"
+                    )
+                    continue
                 if os.path.isfile(ds["txt_path"]) and os.path.isfile(ds["csv_path"]):
                     runtime_dataset = ds
                     runtime_remote_url = candidate
