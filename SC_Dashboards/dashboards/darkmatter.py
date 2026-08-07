@@ -606,11 +606,8 @@ def read_openvisus_field(idx_url_or_path: str, field: str = "data"):
         if u.startswith(("http://", "https://")):
             print(
                 "[DarkMatter][WARN] HTTPS idx: OpenVisus fetches tiles over HTTP inside the Visus "
-                "library; all-zero here usually means those GETs failed or paths do not match the gateway "
-                "(not something this Python read loop can repair). Ensure background conversion wrote "
-                "``visus.idx`` under /mnt/visus_datasets/converted/<uuid>/ (openvisus-resolved-idx). "
-                "The dashboard does not re-run that API unless DARKMATTER_ALLOW_RESOLVED_IDX_API_ON_LAUNCH=1. "
-                "Fix OpenVisus + gateway / filename_template, or set SCLIB_DISABLE_OPENVISUS_RESOLVED_IDX=0 on SCLib."
+                "library; all-zero here usually means those GETs failed or the remote .idx bin layout "
+                "does not match objects on the gateway (not something this Python read loop can repair)."
             )
     if last_sample is not None:
         return last_sample
