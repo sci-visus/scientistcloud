@@ -933,7 +933,7 @@ def _upload_has_native_darkmatter_idx(dataset_uuid: str) -> bool:
 
 def _find_local_darkmatter_package(dataset_uuid: str) -> Optional[dict]:
     """
-    Prefer a complete DarkMatter package under upload/<uuid>, then converted/<uuid>.
+    On-disk DarkMatter package: upload/<uuid> first, then converted/<uuid>.
 
     Never treat converted/.../visus.idx (object-proxy stub) as the package when upload
     already has a native idx+txt+csv — that stub caused remote fallback + re-write loops.
@@ -960,18 +960,16 @@ def _find_local_darkmatter_package(dataset_uuid: str) -> Optional[dict]:
         )
 
     def _score_idx(path: str) -> Tuple[int, str]:
-        """Prefer native stems in upload over cache/proxy stubs."""
+        """Within one root: prefer native stems over cache/proxy stubs."""
         p = path.replace("\\", "/")
         score = 0
         if "/.dm_openvisus_cache/" in p:
             score += 100
         if os.path.basename(p).lower() == "visus.idx":
             score += 50
-        if "/converted/" in p:
-            score += 10
         return (score, p)
 
-    for root in (upload_root, converted_root):
+    for root, root_label in ((upload_root, "upload"), (converted_root, "converted")):
         if not os.path.isdir(root):
             continue
         idx_matches: List[str] = []
@@ -984,10 +982,10 @@ def _find_local_darkmatter_package(dataset_uuid: str) -> Optional[dict]:
                 continue
             ds = derive_dataset_from_local_dir(idx_path)
             if _complete(ds):
-                if "/converted/" in idx_path.replace("\\", "/"):
+                if root_label == "converted":
                     ds["converted_idx_path"] = ds["idx_path"]
                 print(
-                    f"[DarkMatter][DEBUG] local DarkMatter package: "
+                    f"[DarkMatter][DEBUG] local DarkMatter package from {root_label}/: "
                     f"mode={ds['mode']} mid={ds['mid_file']} idx={ds['idx_path']}"
                 )
                 return ds
@@ -1283,9 +1281,160 @@ def _expected_time_subdir_for_first_timestep(time_content_line: str, t0: int = 0
 
 
 def resolve_local_idx_path(idx_path: str, mid_file: str) -> str:
-    """Return idx_path unchanged — never rewrite (filename_template) or other idx fields."""
+    """
+    Local upload packages only: if bins on disk do not match what OpenVisus would resolve
+    from the .idx (flat CDMS vs ARCO paths), write a small cache copy under
+    ``.dm_openvisus_cache/`` so LoadDataset can read local tiles.
+
+    Does **not** create converted/visus.idx proxy stubs and is not used for linked HTTPS loads.
+    """
     _ = mid_file
-    return idx_path
+    try:
+        with open(idx_path, "r") as f:
+            lines = f.readlines()
+    except Exception:
+        return idx_path
+
+    dataset_dir = os.path.dirname(os.path.abspath(idx_path))
+    flat_bin = os.path.join(dataset_dir, "0000.bin")
+    has_flat_bin = os.path.isfile(flat_bin)
+
+    template_idx = -1
+    for i, line in enumerate(lines):
+        if line.strip() == "(filename_template)" and i + 1 < len(lines):
+            template_idx = i + 1
+            break
+
+    template = lines[template_idx].strip() if template_idx >= 0 else ""
+    seg_m = re.match(r"^\./([^/]+)/%04x\.bin\s*$", template) if template else None
+    segment = seg_m.group(1).strip() if seg_m else ""
+
+    expected_root = os.path.join(dataset_dir, segment) if segment else ""
+    tile_root: Optional[str] = None
+    if expected_root and os.path.isdir(expected_root):
+        tile_root = _find_arco_bin_directory_under(expected_root)
+    if tile_root is None and has_flat_bin:
+        tile_root = dataset_dir
+
+    compression_fix = _local_idx_bins_need_raw_compression(idx_path)
+
+    # Detect (arco) non-zero while only flat bins exist — OpenVisus will seek ARCO paths and read zeros.
+    arco_i = _idx_line_index_after_section(lines, "(arco)")
+    arco_nonzero = False
+    if arco_i is not None:
+        try:
+            arco_nonzero = int(re.search(r"-?\d+", (lines[arco_i] or "").strip()).group(0)) != 0  # type: ignore[union-attr]
+        except Exception:
+            arco_nonzero = bool(re.search(r"[1-9]", (lines[arco_i] or "")))
+
+    bin_probe_root = tile_root
+    if bin_probe_root is None and expected_root and os.path.isdir(expected_root) and os.path.isfile(
+        os.path.join(expected_root, "0000.bin")
+    ):
+        bin_probe_root = expected_root
+
+    time_line_i = _idx_line_index_after_section(lines, "(time)")
+    time_neutralize = False
+    if time_line_i is not None and bin_probe_root and expected_root:
+        tname = _expected_time_subdir_for_first_timestep(lines[time_line_i], 0)
+        if tname:
+            with_time = os.path.join(expected_root, tname, "0000.bin")
+            if not os.path.isfile(with_time) and os.path.isfile(os.path.join(bin_probe_root, "0000.bin")):
+                time_neutralize = True
+
+    retarget_template = bool(tile_root) and (
+        (segment and os.path.normpath(tile_root) != os.path.normpath(expected_root))
+        or (has_flat_bin and arco_nonzero)
+        or (has_flat_bin and template_idx < 0)
+        or (has_flat_bin and template and not seg_m and "http" not in template.lower())
+    )
+
+    if not retarget_template and not time_neutralize and not compression_fix and not (has_flat_bin and arco_nonzero):
+        return idx_path
+
+    fixed_lines = list(lines)
+    if has_flat_bin and arco_nonzero:
+        fixed_lines = _zero_arco_block_in_idx_lines(fixed_lines)
+        # refresh template index after possible line-structure change
+        template_idx = -1
+        for i, line in enumerate(fixed_lines):
+            if line.strip() == "(filename_template)" and i + 1 < len(fixed_lines):
+                template_idx = i + 1
+                break
+
+    if retarget_template and tile_root:
+        flat_tpl = f"{dataset_dir}/%04x.bin\n"
+        if os.path.normpath(tile_root) == os.path.normpath(dataset_dir) or has_flat_bin:
+            new_tpl = flat_tpl
+        else:
+            new_tpl = f"./{segment}/%04x.bin\n"
+        if template_idx >= 0:
+            fixed_lines[template_idx] = new_tpl
+        else:
+            fixed_lines.extend(["(filename_template)\n", new_tpl])
+    if time_neutralize and time_line_i is not None:
+        # time_line_i may be stale after arco rewrite; re-find
+        ti = _idx_line_index_after_section(fixed_lines, "(time)")
+        if ti is not None:
+            fixed_lines[ti] = "0 0 ./\n"
+    if compression_fix:
+        fixed_lines = _fix_idx_field_compression_zip_to_raw(fixed_lines)
+
+    stem = os.path.splitext(os.path.basename(idx_path))[0]
+    preferred_cache = os.path.join(dataset_dir, ".dm_openvisus_cache")
+    cache_dir = preferred_cache
+    try:
+        os.makedirs(cache_dir, exist_ok=True)
+    except OSError as ex:
+        cache_dir = os.path.join(
+            "/tmp",
+            "dm_openvisus_cache",
+            os.path.basename(dataset_dir.rstrip(os.sep)) or "dataset",
+        )
+        print(
+            f"[DarkMatter][WARN] resolve_local_idx_path: cannot create {preferred_cache} ({ex}); "
+            f"using {cache_dir}"
+        )
+        os.makedirs(cache_dir, exist_ok=True)
+    cached_idx = os.path.join(cache_dir, f"{stem}.idx")
+    if segment:
+        seg_link = os.path.join(cache_dir, segment)
+        try:
+            if os.path.lexists(seg_link) or os.path.islink(seg_link):
+                os.unlink(seg_link)
+            link_target = os.path.join(dataset_dir, segment)
+            try:
+                cache_abs = os.path.abspath(cache_dir)
+                dataset_abs = os.path.abspath(dataset_dir)
+                if cache_abs == dataset_abs or cache_abs.startswith(dataset_abs + os.sep):
+                    link_target = os.path.relpath(link_target, cache_dir)
+            except ValueError:
+                pass
+            if os.path.isdir(os.path.join(dataset_dir, segment)) or os.path.islink(
+                os.path.join(dataset_dir, segment)
+            ):
+                os.symlink(link_target, seg_link)
+        except OSError as ex:
+            print(
+                f"[DarkMatter][WARN] resolve_local_idx_path: segment symlink failed ({ex}); "
+                "OpenVisus may still mis-resolve tiles"
+            )
+
+    with open(cached_idx, "w") as f:
+        f.writelines(fixed_lines)
+    msg = [f"idx had filename_template {template!r}"]
+    if has_flat_bin:
+        msg.append(f"flat bins at {dataset_dir}")
+    if arco_nonzero:
+        msg.append("(arco)->0 so OpenVisus uses filename_template")
+    if time_neutralize:
+        msg.append("(time) neutralized to 0 0 ./")
+    if compression_fix:
+        msg.append("default_compression(zip) -> raw")
+    msg.append(f"loader idx -> {cached_idx}")
+    print(f"[DarkMatter][DEBUG] resolve_local_idx_path: wrote {cached_idx} ({'; '.join(msg)})")
+    return cached_idx
+
 
 
 # def download_s3_uri_to_file(s3_uri: str, dst: str):
@@ -2257,9 +2406,36 @@ class AppState:
                 print(f"[DarkMatter][DEBUG] idx={self.runtime_dataset['idx_path']}")
                 print(f"[DarkMatter][DEBUG] txt={self.runtime_dataset['txt_path']}")
                 print(f"[DarkMatter][DEBUG] csv={self.runtime_dataset['csv_path']}")
+                _idx_dir_probe = os.path.dirname(os.path.abspath(self.runtime_dataset["idx_path"]))
+                _has_any_bin = False
+                if os.path.isdir(_idx_dir_probe):
+                    try:
+                        for _name in os.listdir(_idx_dir_probe):
+                            if _name.lower().endswith(".bin"):
+                                _has_any_bin = True
+                                break
+                        if not _has_any_bin:
+                            # Flat layout may keep tiles in a sibling folder; quick shallow check.
+                            for _sub in os.listdir(_idx_dir_probe):
+                                _sub_path = os.path.join(_idx_dir_probe, _sub)
+                                if not os.path.isdir(_sub_path) or _sub.startswith("."):
+                                    continue
+                                try:
+                                    if any(n.lower().endswith(".bin") for n in os.listdir(_sub_path)):
+                                        _has_any_bin = True
+                                        break
+                                except OSError:
+                                    continue
+                    except OSError:
+                        pass
+                if not _has_any_bin:
+                    print(
+                        f"[DarkMatter][WARN] no .bin tiles found under {_idx_dir_probe} "
+                        "(portal file list hides bins by design; this check is on-disk only)."
+                    )
                 idx_for_read = resolve_local_idx_path(self.runtime_dataset["idx_path"], str(mid_file))
                 if idx_for_read != self.runtime_dataset["idx_path"]:
-                    print(f"[DarkMatter][DEBUG] local_explicit using template-resolved idx: {idx_for_read}")
+                    print(f"[DarkMatter][DEBUG] local_explicit using layout-adjusted cache idx: {idx_for_read}")
                 _dataset_root = os.path.dirname(os.path.abspath(idx_for_read))
                 disk_sidecars = try_read_darkmatter_sidecars_from_disk(
                     mid_file,
@@ -2784,15 +2960,16 @@ def main():
         # Keep slac.py legacy behavior when arg is not an explicit local/remote dataset.
         runtime_remote_url = arg
 
-    # ScientistCloud-served mode: auto-resolve dataset from init params
-    # (save_dir/base_dir/uuid) so renderer data is loaded on first paint.
+    # ScientistCloud-served mode: on-disk data wins — upload/<uuid> then converted/<uuid>.
+    # Remote google_drive_link is only used when neither has a usable local package.
     if runtime_dataset is None and has_args and uuid:
         runtime_dataset = _find_local_darkmatter_package(str(uuid).strip())
         if runtime_dataset is not None:
             runtime_remote_url = str(uuid).strip()
 
     if runtime_dataset is None and has_args:
-        for candidate in [save_dir, base_dir, uuid]:
+        # base_dir = upload; save_dir = converted (utils_bokeh_param).
+        for candidate in [base_dir, save_dir, uuid]:
             candidate = str(candidate or "").strip()
             if not candidate:
                 continue
@@ -2815,7 +2992,8 @@ def main():
                     runtime_remote_url = candidate
                     print(
                         f"[DarkMatter][DEBUG] resolved runtime_dataset from init params: "
-                        f"mode={ds['mode']} mid={ds['mid_file']}"
+                        f"mode={ds['mode']} mid={ds['mid_file']} "
+                        f"(search order upload→converted)"
                     )
                     break
                 print(
