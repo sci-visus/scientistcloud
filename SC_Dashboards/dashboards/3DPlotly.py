@@ -542,15 +542,8 @@ def initialize_dataset(n_intervals,search):
         document = collection.find_one({'uuid': uuid})
         if document and 'google_drive_link' in document:
             uuid = document['google_drive_link']
-        print(f"Server is true, UUID modified to link: {uuid}")
-        s3_uri = uuid if str(uuid).startswith("s3://") else _http_object_url_to_s3_uri(uuid)
-        if s3_uri:
-            try:
-                resolved_idx = resolve_openvisus_resolved_idx_via_api(orig_identifier, s3_uri=s3_uri)
-                uuid = resolved_idx
-                print(f"[3DPlotly][DEBUG] using resolved idx: {uuid}")
-            except Exception as ex:
-                print(f"[3DPlotly][WARN] resolved idx unavailable, using direct remote URL: {ex}")
+        print(f"Server is true, using remote link directly (no proxy idx): {uuid}")
+        # Do not POST openvisus-resolved-idx / create converted/visus.idx.
     else:
         print(f"Server is not true, UUID remains: {uuid}")
     dataset_url=uuid
@@ -597,9 +590,8 @@ def initialize_dataset(n_intervals,search):
                 dataset_url = find_visus_idx_file(uuid)
                 dataset_path = dataset_url
             except ImportError:
-                # If function doesn't exist, use the converted path as fallback
-                dataset_url = f"/mnt/visus_datasets/converted/{uuid}/visus.idx"
-                dataset_path = dataset_url
+                # Do not invent converted/visus.idx proxy path — keep mod_visus / prior url.
+                print(f"[3DPlotly][WARN] no local idx for {uuid}; keeping {dataset_path}")
         
         try:
             # Check if file exists before trying to load

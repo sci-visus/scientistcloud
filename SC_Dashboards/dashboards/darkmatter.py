@@ -741,27 +741,9 @@ def _try_resolve_and_load_openvisus_idx(
     force_refresh: bool,
     log_label: str,
 ) -> Optional[Any]:
-    """POST openvisus-resolved-idx (generate if missing) and LoadDataset via resolved HTTP URL."""
-    resolved_idx, resolved_http = resolve_openvisus_resolved_idx_via_api(
-        dataset_identifier=dataset_identifier,
-        user_email=user_email,
-        auth_override=auth_override or {},
-        output_filename=RESOLVED_IDX_S3_OUTPUT_NAME,
-        filename_template_mode=_darkmatter_resolved_idx_filename_template_mode(),
-        force_refresh=bool(force_refresh),
-    )
-    if not resolved_idx and not resolved_http:
-        return None
-    http_u = (resolved_http or "").strip()
-    if http_u.startswith(("http://", "https://")):
-        print(
-            f"[DarkMatter][DEBUG] {log_label} LoadDataset via resolved-idx HTTP: "
-            f"{_redact_url_secrets(http_u)}"
-        )
-        return read_openvisus_field(http_u)
-    if resolved_idx and os.path.isfile(resolved_idx):
-        print(f"[DarkMatter][DEBUG] {log_label} LoadDataset local resolved idx: {resolved_idx}")
-        return read_openvisus_field_with_dataset_cwd(resolved_idx)
+    """Disabled: never create proxy visus.idx from the dashboard."""
+    _ = (dataset_identifier, user_email, auth_override, force_refresh, log_label)
+    print(f"[DarkMatter][DEBUG] {log_label}: skipping openvisus-resolved-idx (proxy idx disabled)")
     return None
 
 
@@ -775,67 +757,20 @@ def resolve_openvisus_resolved_idx_via_api(
     force_refresh: bool = False,
     region_name: str = "us-east-1",
 ):
-    """
-    Ask SCLib fastapi to generate (and cache) a local resolved idx under
-    /mnt/visus_datasets/converted/<dataset_uuid>/ for OpenVisus.
-
-    The API will also convert to ARCO when the source idx has (arco) == 0.
-
-    **Dashboard policy:** background ``SCLib_BackgroundService`` should run this once after upload.
-    If ``converted/<uuid>/visus.idx`` is missing, Dark Matter POSTs here with ``force_refresh=False`` to
-    generate it (unless ``DARKMATTER_DISABLE_RESOLVED_IDX=1``). Set
-    ``DARKMATTER_ALLOW_RESOLVED_IDX_API_ON_LAUNCH=1`` only to force regeneration when a file already exists.
-    """
-    # Docker Compose uses sclib_fastapi; local `bokeh serve` has no that DNS name — default to loopback.
-    _default_api = (
-        "http://sclib_fastapi:5001"
-        if globals().get("has_args")
-        else "http://127.0.0.1:5001"
+    """Disabled: never POST openvisus-resolved-idx / write converted/visus.idx proxy stubs."""
+    _ = (
+        dataset_identifier,
+        user_email,
+        auth_override,
+        output_filename,
+        filename_template_mode,
+        force_refresh,
+        region_name,
     )
-    dataset_api_base = (
-        os.getenv("SCLIB_DATASET_URL")
-        or os.getenv("SCLIB_API_URL")
-        or os.getenv("SCLIB_FASTAPI_URL")
-        or _default_api
-    ).rstrip("/")
-    endpoint = f"{dataset_api_base}/api/v1/datasets/s3/openvisus-resolved-idx"
+    raise RuntimeError(
+        "Proxy visus.idx creation is disabled. Linked datasets use LoadDataset on the remote HTTPS .idx."
+    )
 
-    override = auth_override or {}
-    payload = {
-        "dataset_identifier": dataset_identifier,
-        "s3_uri": None,
-        "user_email": _valid_email_or_none(user_email),
-        "access_key_id": override.get("aws_access_key_id") or None,
-        "secret_access_key": override.get("aws_secret_access_key") or None,
-        "endpoint_url": override.get("endpoint_url") or None,
-        "region_name": override.get("region_name") or region_name,
-        "path_style": True,
-        "cache_credentials": True,
-        "use_cached_credentials": True,
-        "output_filename": output_filename,
-        "filename_template_mode": filename_template_mode,
-        "force_refresh": bool(force_refresh),
-        "background": False,
-    }
-
-    try:
-        timeout_s = max(60, int(os.getenv("DARKMATTER_RESOLVED_IDX_HTTP_TIMEOUT", "600")))
-    except ValueError:
-        timeout_s = 600
-    resp = requests.post(endpoint, json=payload, timeout=timeout_s)
-    if resp.status_code >= 400:
-        try:
-            detail = resp.json().get("detail")
-        except Exception:
-            detail = resp.text
-        raise RuntimeError(detail or f"HTTP {resp.status_code}")
-
-    data = resp.json() or {}
-    resolved_idx_path = str(data.get("resolved_idx_path") or "").strip()
-    if not data.get("success") or not resolved_idx_path:
-        raise RuntimeError(data.get("detail") or "Resolved idx endpoint returned no path")
-
-    return resolved_idx_path, data.get("resolved_idx_http_url")
 
 
 def derive_dataset_from_remote_uri(remote_uri: str, auth_override: Optional[dict] = None):
@@ -903,6 +838,12 @@ def _darkmatter_sidecar_paths(idx_path: str, mid_file: str) -> Tuple[str, str]:
 
 def _darkmatter_idx_is_proxy_stub(idx_path: str) -> bool:
     """True for converted/<uuid>/visus.idx object-proxy stubs (not a downloaded native package)."""
+    try:
+        from SCLib_Dashboards.SCDash_dataset_resolver import is_proxy_visus_idx_stub
+
+        return bool(is_proxy_visus_idx_stub(idx_path))
+    except Exception:
+        pass
     p = os.path.abspath(str(idx_path or "")).replace("\\", "/")
     base = os.path.basename(p).lower()
     return base == "visus.idx" and "/converted/" in p

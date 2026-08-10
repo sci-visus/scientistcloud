@@ -370,13 +370,7 @@ if __name__.startswith('bokeh'):
                 else:
                     print(f"🔍 DEBUG: No document found with google_drive_link: {uuid}")
             dataset_url = uuid
-            s3_uri = dataset_url if str(dataset_url).startswith("s3://") else _http_object_url_to_s3_uri(dataset_url)
-            if s3_uri:
-                try:
-                    dataset_url = resolve_openvisus_resolved_idx_via_api(original_identifier, s3_uri=s3_uri, user_email=user_email)
-                    print(f"[magicscan][DEBUG] using resolved idx path: {dataset_url}")
-                except Exception as ex:
-                    print(f"[magicscan][WARN] resolved idx unavailable, using direct remote URL: {ex}")
+            print(f"[magicscan][DEBUG] using direct remote URL (no proxy idx): {dataset_url}")
         else:
             dataset_url = uuid
         print(f'🔍 DEBUG: Final dataset_url: {dataset_url}')

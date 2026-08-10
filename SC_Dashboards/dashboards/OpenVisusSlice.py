@@ -16,19 +16,13 @@ from utils_bokeh_mongodb import cleanup_mongodb
 try:
     from SCLib_Dashboards import (
         create_header_banner,
-        is_remote_dataset_identifier,
-        is_s3_uri,
         openvisus_set_dataset,
-        prefer_direct_remote_openvisus,
         resolve_openvisus_load_target,
-        resolve_openvisus_resolved_idx_via_api,
     )
 except ImportError:
     from SCDash_openvisus_load import (
         openvisus_set_dataset,
-        prefer_direct_remote_openvisus,
         resolve_openvisus_load_target,
-        resolve_openvisus_resolved_idx_via_api,
     )
 
     def create_header_banner(dataset_name="", dashboard_type="Dashboard"):
@@ -338,64 +332,9 @@ if __name__.startswith('bokeh'):
         )
         curdoc().add_root(placeholder)
         s3_auth_panel = None
-    elif (
-        openvisus_load_target
-        and openvisus_load_target.is_s3
-        and not openvisus_load_target.prefer_direct_remote
-    ):
-        s3_auto_loaded = False
-        try:
-            resolved_idx_path, _response_meta = resolve_openvisus_resolved_idx_via_api(
-                dataset_identifier=openvisus_load_target.portal_uuid
-                if not is_remote_dataset_identifier(openvisus_load_target.portal_uuid)
-                else None,
-                s3_uri=openvisus_load_target.load_url,
-                user_email=user_email,
-                endpoint_url=os.getenv("S3_ENDPOINT_URL", ""),
-                region_name="us-east-1",
-                cache_credentials=False,
-                use_cached_credentials=True,
-            )
-            view.setDataset(resolved_idx_path)
-            s3_auto_loaded = True
-            s3_status_message = "<span style='color: green;'><b>S3 dataset loaded.</b> Using resolved converted idx.</span>"
-        except Exception:
-            s3_status_message = "<b>Private S3 dataset detected.</b> Provide runtime credentials to load this dashboard dataset."
-
-        if s3_auto_loaded:
-            s3_status = Div(text=s3_status_message, styles={"margin-bottom": "6px"})
-            s3_auth_panel = column(s3_status, sizing_mode="stretch_width")
-        else:
-            s3_status = Div(text=s3_status_message, styles={"margin-bottom": "6px"})
-            s3_endpoint = TextInput(title="S3 Endpoint URL (optional)", value=os.getenv("S3_ENDPOINT_URL", ""))
-            s3_region = TextInput(title="Region", value="us-east-1")
-            s3_access = TextInput(title="Access Key", value="")
-            s3_secret = PasswordInput(title="Secret Key", value="")
-            s3_connect = Button(label="Load S3 Dataset", button_type="primary")
-
-            def _connect_s3_dataset():
-                try:
-                    resolved_idx_path, _response_meta = resolve_openvisus_resolved_idx_via_api(
-                        dataset_identifier=openvisus_load_target.portal_uuid
-                        if not is_remote_dataset_identifier(openvisus_load_target.portal_uuid)
-                        else None,
-                        s3_uri=openvisus_load_target.load_url,
-                        user_email=user_email,
-                        access_key=s3_access.value.strip(),
-                        secret_key=s3_secret.value,
-                        endpoint_url=s3_endpoint.value.strip(),
-                        region_name=s3_region.value.strip() or "us-east-1",
-                        cache_credentials=True,
-                        use_cached_credentials=True,
-                    )
-                    view.setDataset(resolved_idx_path)
-                    s3_status.text = "<span style='color: green;'><b>S3 connection ready.</b> Dataset loaded.</span>"
-                except Exception as ex:
-                    s3_status.text = f"<span style='color: red;'>Failed to load S3 dataset: {ex}</span>"
-
-            s3_connect.on_click(_connect_s3_dataset)
-            s3_auth_panel = column(s3_status, s3_endpoint, s3_region, s3_access, s3_secret, s3_connect, sizing_mode="stretch_width")
     else:
+        # Always LoadDataset the resolved URL (local upload/converted, or remote HTTPS idx).
+        # Never POST openvisus-resolved-idx / create converted/visus.idx proxy stubs.
         s3_auth_panel = None
         openvisus_set_dataset(view, openvisus_load_target, user_email=user_email, log=print)
 

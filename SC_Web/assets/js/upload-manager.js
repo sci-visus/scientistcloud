@@ -1133,7 +1133,8 @@ class UploadManager {
                     </div>
                     <small class="form-text text-muted d-block">
                         For existing <strong>.idx</strong> data: keep Download on and Convert off.
-                        Both unchecked: link-only (for sensor IDX, server may still write a resolved <code>visus.idx</code> under converted/ with no tile mirror).
+                        Both unchecked: link-only — dashboards LoadDataset the remote HTTPS .idx
+                        (no <code>converted/visus.idx</code> proxy stub is written).
                         Convert on forces Download on.
                     </small>
                 </div>

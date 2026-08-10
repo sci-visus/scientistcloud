@@ -205,6 +205,10 @@ def _resolve_local_idx_for_uuid(dataset_identifier):
 
 
 def resolve_dataset_path_for_openvisus(dataset_identifier: str, server_flag: str) -> str:
+    """
+    Local: upload then converted (skip proxy stubs).
+    Linked/remote: return HTTPS google_drive_link (or identifier) — never create proxy visus.idx.
+    """
     identifier = str(dataset_identifier or "").strip()
     if DATA_IS_LOCAL:
         return f"{local_base_dir}/visus.idx"
@@ -213,17 +217,35 @@ def resolve_dataset_path_for_openvisus(dataset_identifier: str, server_flag: str
         if local_idx:
             print(f"[3DVTK][DEBUG] using local IDX: {local_idx}")
             return local_idx
+        # Linked UUID with empty upload: use Mongo HTTPS link, not converted/visus.idx proxy.
+        if collection is not None:
+            try:
+                doc = collection.find_one({"uuid": identifier})
+                link = str((doc or {}).get("google_drive_link") or "").strip()
+                if link.startswith(("http://", "https://", "s3://")):
+                    print(f"[3DVTK][DEBUG] using remote google_drive_link (no proxy idx)")
+                    return link
+            except Exception as ex:
+                print(f"[3DVTK][WARN] Mongo lookup failed: {ex}")
     if server_flag in ("false", "%20false", " false"):
-        return f"/mnt/visus_datasets/converted/{identifier}/visus.idx"
+        local_idx = _resolve_local_idx_for_uuid(identifier)
+        if local_idx:
+            return local_idx
+        return identifier
 
-    s3_uri = identifier if identifier.startswith("s3://") else _http_object_url_to_s3_uri(identifier)
-    if s3_uri:
+    # Remote: LoadDataset the URL directly (notebook style). Do not POST openvisus-resolved-idx.
+    if _is_remote_identifier(identifier):
+        print(f"[3DVTK][DEBUG] using direct remote URL (no proxy idx)")
+        return identifier
+    if collection is not None:
         try:
-            resolved_idx = resolve_openvisus_resolved_idx_via_api(identifier, s3_uri=s3_uri, user_email=user_email)
-            print(f"[3DVTK][DEBUG] using resolved idx: {resolved_idx}")
-            return resolved_idx
+            doc = collection.find_one({"uuid": identifier})
+            link = str((doc or {}).get("google_drive_link") or "").strip()
+            if link.startswith(("http://", "https://", "s3://")):
+                print(f"[3DVTK][DEBUG] using remote google_drive_link (no proxy idx)")
+                return link
         except Exception as ex:
-            print(f"[3DVTK][WARN] resolved idx unavailable, using direct remote URL: {ex}")
+            print(f"[3DVTK][WARN] Mongo lookup failed: {ex}")
     return identifier
 
 def button_redirect():
