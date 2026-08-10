@@ -233,9 +233,15 @@ else:
         log=print,
     )
     dataset_url = openvisus_load_target.load_url
-    print(f'🔍 DEBUG: Final dataset_url (SCLib): {dataset_url}')
-
-print(f'Data Explorer: UUID: {uuid}, server: {server}, name: {name}')
+    try:
+        from SCLib_Dashboards import redact_url_secrets as _redact_url
+    except ImportError:
+        try:
+            from SCDash_openvisus_load import redact_url_secrets as _redact_url
+        except ImportError:
+            _redact_url = lambda u: u
+    print(f'🔍 DEBUG: Final dataset_url (SCLib): {_redact_url(dataset_url)}')
+    print(f'Data Explorer: UUID: {uuid}, server: {server}, name: {name}')
 
 # Redirect to home if not authorized
 def button_redirect():
