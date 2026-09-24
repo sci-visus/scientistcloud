@@ -83,7 +83,8 @@ $hasOAuthCode = isset($_GET['code']) && $_GET['code'] !== '' && $_GET['code'] !=
 
 // Do not auto-redirect to Auth0 while email verification is still pending (prevents login loop).
 if (!$hasOAuthCode && scHasPendingEmailVerification() && !$chooseAccount && !$googleConnection && empty($_GET['verification_retry'])) {
-    scRedirectToEmailVerificationPage((string) $_SESSION['pending_verification_email']);
+    // pending flag can be set without an email key — avoid Undefined array key warnings (which break redirects)
+    scRedirectToEmailVerificationPage((string) ($_SESSION['pending_verification_email'] ?? ''));
 }
 
 if (!empty($_GET['verification_retry']) && $_GET['verification_retry'] === '1') {
