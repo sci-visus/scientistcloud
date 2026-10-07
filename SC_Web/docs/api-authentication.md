@@ -1,12 +1,15 @@
 # Authentication API
 
-The ScientistCloud API uses JWT (JSON Web Token) authentication. This guide explains how to authenticate and use tokens.
+ScientistCloud has two login paths:
+
+- **Website (public and account portals):** Sign in with Auth0 at `https://scientistcloud.com/portal/index.php` (Google, email/password, or another configured method).
+- **API / curl / Python:** `POST /api/auth/login` with your ScientistCloud account email to receive a JWT. Send that token as `Authorization: Bearer`.
+
+This page documents the API token flow.
 
 ## Overview
 
-Authentication is a two-step process:
-
-1. **Login**: Exchange your email for an access token
+1. **Login**: Exchange your account email for an access token
 2. **Use Token**: Include the token in API requests
 
 ## Login Endpoint
@@ -240,7 +243,7 @@ curl -s -H "Authorization: Bearer $TOKEN" \
 # 4. Use token for API calls
 echo "Listing datasets..."
 curl -s -H "Authorization: Bearer $TOKEN" \
-     "https://scientistcloud.com/portal/api/datasets" | jq
+     "https://scientistcloud.com/api/v1/datasets/by-user?user_email=user@example.com" | jq
 
 # 5. Logout
 echo "Logging out..."
@@ -274,14 +277,14 @@ TOKEN=$(curl -s -X POST "https://scientistcloud.com/api/auth/login" \
 ### Authentication Service Down
 
 ```bash
-# Check service health
-curl https://scientistcloud.com/health
+# Trailing slash required
+curl https://scientistcloud.com/api/health/
 
-# Should return: {"status": "healthy"}
+# Typical response: {"status":"healthy","service":"SCLib_Auth_Standalone"}
 ```
 
 ## Next Steps
 
 - See [Upload API](?page=api-upload) for authenticated uploads
-- Check [Curl Scripts](?page=curl-scripts) for complete examples
+- Check [Curl Scripts](?page=curl-scripts) and [Python Examples](?page=python-examples)
 

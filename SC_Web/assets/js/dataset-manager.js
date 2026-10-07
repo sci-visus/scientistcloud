@@ -2312,9 +2312,9 @@ class DatasetManager {
                 
                 <!-- Action Buttons (owner: Share/Delete/Edit/Retry; all: dashboard links) -->
                 <div class="dataset-actions mb-3 pb-2 border-bottom">
-                    ${ownerActionButtons ? `<div class="btn-group btn-group-sm w-100" role="group">${ownerActionButtons}</div>` : ''}
-                    <div class="mt-2 d-flex gap-2">
-                        <button type="button" class="btn btn-sm btn-outline-primary flex-grow-1" data-action="copy-dashboard-link" 
+                    ${ownerActionButtons ? `<div class="dataset-action-grid">${ownerActionButtons}</div>` : ''}
+                    <div class="dataset-action-grid mt-2">
+                        <button type="button" class="btn btn-sm btn-outline-primary dataset-action-wide" data-action="copy-dashboard-link" 
                                 data-dataset-id="${dataset.id || dataset.uuid}"
                                 data-dataset-uuid="${dataset.uuid || dataset.id}"
                                 data-dataset-name="${this.escapeHtml(dataset.name || '')}"

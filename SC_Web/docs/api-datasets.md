@@ -1,6 +1,8 @@
 # Datasets API
 
-Current dataset APIs are under `/api/v1/datasets`.
+Current dataset APIs are under `/api/v1/datasets`. Prefer these over `/portal/api/datasets`, which is not a valid route.
+
+For your own / shared / team lists, use `GET /api/v1/datasets/by-user?user_email=...` with `Authorization: Bearer`. Public catalogs use `GET /api/v1/datasets/public`.
 
 ## Identifier Rules
 

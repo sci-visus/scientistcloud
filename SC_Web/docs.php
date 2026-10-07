@@ -12,6 +12,19 @@ if (session_status() == PHP_SESSION_NONE) {
 // Include configuration
 require_once(__DIR__ . '/config.php');
 
+$isLocal = (defined('SC_SERVER_URL') && (
+    strpos(SC_SERVER_URL, 'localhost') !== false || strpos(SC_SERVER_URL, '127.0.0.1') !== false
+));
+$portalPrefix = $isLocal ? '' : '/portal';
+$publicPortalHref = $portalPrefix . '/public/';
+$accountPortalHref = $portalPrefix . '/index.php';
+
+$fromPublic = (isset($_GET['from']) && $_GET['from'] === 'public')
+    || (isset($_SERVER['HTTP_REFERER']) && strpos((string) $_SERVER['HTTP_REFERER'], '/public/') !== false);
+$fromQs = $fromPublic ? '&from=public' : '';
+$backHref = $fromPublic ? $publicPortalHref : $accountPortalHref;
+$backLabel = $fromPublic ? 'Back to Public Portal' : 'Back to Portal';
+
 // Get the requested documentation page
 $page = $_GET['page'] ?? 'index';
 $page = preg_replace('/[^a-z0-9_-]/i', '', $page); // Sanitize page name
@@ -19,12 +32,17 @@ $page = preg_replace('/[^a-z0-9_-]/i', '', $page); // Sanitize page name
 // List of available documentation pages
 $availablePages = [
     'index' => 'index.md',
+    'getting-started' => 'getting-started.md',
+    'dashboards' => 'dashboards.md',
+    'inspect-s3' => 'inspect-s3.md',
+    'sharing' => 'sharing.md',
+    'folders' => 'folders.md',
     'api' => 'api.md',
     'api-authentication' => 'api-authentication.md',
     'api-upload' => 'api-upload.md',
     'api-datasets' => 'api-datasets.md',
     'curl-scripts' => 'curl-scripts.md',
-    'getting-started' => 'getting-started.md'
+    'python-examples' => 'python-examples.md',
 ];
 
 // Check if page exists
@@ -206,6 +224,9 @@ function markdownToHtml($markdown) {
 }
 
 $htmlContent = markdownToHtml($markdown);
+if ($fromPublic) {
+    $htmlContent = preg_replace('/href="(\?page=[a-z0-9_-]+)"/i', 'href="$1&from=public"', $htmlContent);
+}
 
 ?>
 <!DOCTYPE html>
@@ -346,24 +367,31 @@ $htmlContent = markdownToHtml($markdown);
 <body>
   <div class="docs-container">
     <div class="back-link">
-      <a href="index.php"><i class="fas fa-arrow-left"></i> Back to Portal</a>
+      <a href="<?php echo htmlspecialchars($backHref); ?>"><i class="fas fa-arrow-left"></i> <?php echo htmlspecialchars($backLabel); ?></a>
     </div>
     
     <div class="docs-row">
       <div class="docs-sidebar">
         <h5><i class="fas fa-book"></i> Documentation</h5>
         <nav class="nav flex-column">
-          <a class="nav-link <?php echo $page === 'index' ? 'active' : ''; ?>" href="?page=index">Overview</a>
-          <a class="nav-link <?php echo $page === 'getting-started' ? 'active' : ''; ?>" href="?page=getting-started">Getting Started</a>
-          <a class="nav-link <?php echo $page === 'api' ? 'active' : ''; ?>" href="?page=api">API Overview</a>
-          <a class="nav-link <?php echo $page === 'api-authentication' ? 'active' : ''; ?>" href="?page=api-authentication">Authentication API</a>
-          <a class="nav-link <?php echo $page === 'api-upload' ? 'active' : ''; ?>" href="?page=api-upload">Upload API</a>
-          <a class="nav-link <?php echo $page === 'api-datasets' ? 'active' : ''; ?>" href="?page=api-datasets">Datasets API</a>
-          <a class="nav-link <?php echo $page === 'curl-scripts' ? 'active' : ''; ?>" href="?page=curl-scripts">Curl Scripts</a>
+          <a class="nav-link <?php echo $page === 'index' ? 'active' : ''; ?>" href="?page=index<?php echo $fromQs; ?>">Overview</a>
+          <a class="nav-link <?php echo $page === 'getting-started' ? 'active' : ''; ?>" href="?page=getting-started<?php echo $fromQs; ?>">Getting Started</a>
+          <a class="nav-link <?php echo $page === 'dashboards' ? 'active' : ''; ?>" href="?page=dashboards<?php echo $fromQs; ?>">Dashboards</a>
+          <a class="nav-link <?php echo $page === 'inspect-s3' ? 'active' : ''; ?>" href="?page=inspect-s3<?php echo $fromQs; ?>">Inspect S3</a>
+          <a class="nav-link <?php echo $page === 'sharing' ? 'active' : ''; ?>" href="?page=sharing<?php echo $fromQs; ?>">Sharing and Teams</a>
+          <a class="nav-link <?php echo $page === 'folders' ? 'active' : ''; ?>" href="?page=folders<?php echo $fromQs; ?>">Folders</a>
+          <hr>
+          <h6 class="mt-3 mb-2">API</h6>
+          <a class="nav-link <?php echo $page === 'api' ? 'active' : ''; ?>" href="?page=api<?php echo $fromQs; ?>">API Overview</a>
+          <a class="nav-link <?php echo $page === 'api-authentication' ? 'active' : ''; ?>" href="?page=api-authentication<?php echo $fromQs; ?>">Authentication API</a>
+          <a class="nav-link <?php echo $page === 'api-upload' ? 'active' : ''; ?>" href="?page=api-upload<?php echo $fromQs; ?>">Upload API</a>
+          <a class="nav-link <?php echo $page === 'api-datasets' ? 'active' : ''; ?>" href="?page=api-datasets<?php echo $fromQs; ?>">Datasets API</a>
+          <a class="nav-link <?php echo $page === 'curl-scripts' ? 'active' : ''; ?>" href="?page=curl-scripts<?php echo $fromQs; ?>">Curl Scripts</a>
+          <a class="nav-link <?php echo $page === 'python-examples' ? 'active' : ''; ?>" href="?page=python-examples<?php echo $fromQs; ?>">Python Examples</a>
           <hr>
           <h6 class="mt-3 mb-2"><i class="fas fa-info-circle"></i> Portal Access</h6>
-          <a class="nav-link" href="../public/"><i class="fas fa-globe"></i> Public Portal</a>
-          <a class="nav-link" href="login.php"><i class="fas fa-user"></i> Account Portal</a>
+          <a class="nav-link" href="<?php echo htmlspecialchars($publicPortalHref); ?>"><i class="fas fa-globe"></i> Public Portal</a>
+          <a class="nav-link" href="<?php echo htmlspecialchars($accountPortalHref); ?>"><i class="fas fa-user"></i> Account Portal</a>
         </nav>
       </div>
       

@@ -4,7 +4,7 @@ This guide provides Python examples for interacting with the ScientistCloud Data
 
 ## Overview
 
-Python provides a powerful way to programmatically interact with ScientistCloud. You can use the `requests` library or the provided SDK.
+These examples use the Python `requests` library. There is no separate published ScientistCloud pip SDK.
 
 ## Prerequisites
 
@@ -72,6 +72,7 @@ def upload_file(token, file_path, dataset_name, **kwargs):
         
         # Prepare form data
         data = {
+            'user_email': kwargs.get('user_email', ''),
             'dataset_name': dataset_name,
             'sensor': kwargs.get('sensor', '4D_NEXUS'),
             'convert': str(kwargs.get('convert', True)).lower(),
@@ -103,6 +104,7 @@ result = upload_file(
     token,
     "/path/to/file.nxs",
     "My Dataset",
+    user_email="user@example.com",
     sensor="4D_NEXUS",
     folder="CHESS_4D",
     tags="nexus,4d,chess"
@@ -128,6 +130,7 @@ def upload_file_with_progress(token, file_path, dataset_name, **kwargs):
     with open(file_path, 'rb') as f:
         files = {'file': f}
         data = {
+            'user_email': kwargs.get('user_email', ''),
             'dataset_name': dataset_name,
             'sensor': kwargs.get('sensor', '4D_NEXUS'),
             'convert': str(kwargs.get('convert', True)).lower(),
@@ -213,51 +216,48 @@ final_status = wait_for_completion(token, job_id)
 ## List Datasets
 
 ```python
-def list_datasets(token, folder=None, team_uuid=None):
-    """List user's datasets"""
-    url = "https://scientistcloud.com/portal/api/datasets"
+def list_datasets(token, user_email, folder=None, team_uuid=None):
+    """List user's datasets grouped as my / shared / team"""
+    url = "https://scientistcloud.com/api/v1/datasets/by-user"
     headers = {"Authorization": f"Bearer {token}"}
-    
-    params = {}
+    params = {"user_email": user_email}
     if folder:
         params['folder'] = folder
     if team_uuid:
         params['team_uuid'] = team_uuid
-    
+
     response = requests.get(url, headers=headers, params=params)
-    
+
     if response.status_code == 200:
         return response.json()
-    else:
-        print(f"Failed to list datasets: {response.text}")
-        return None
+    print(f"Failed to list datasets: {response.text}")
+    return None
 
 # Usage
-datasets = list_datasets(token, folder="CHESS_4D")
-if datasets:
-    for dataset in datasets['datasets']:
-        print(f"{dataset['name']} - {dataset['status']}")
+payload = list_datasets(token, "user@example.com", folder="CHESS_4D")
+if payload and payload.get("datasets"):
+    for dataset in payload["datasets"].get("my", []):
+        print(f"{dataset.get('name')} - {dataset.get('status')}")
 ```
 
 ## Get Dataset Details
 
 ```python
-def get_dataset_details(token, dataset_uuid):
+def get_dataset_details(token, dataset_uuid, user_email):
     """Get dataset details"""
-    url = "https://scientistcloud.com/portal/api/dataset-details"
+    url = f"https://scientistcloud.com/api/v1/datasets/{dataset_uuid}"
     headers = {"Authorization": f"Bearer {token}"}
-    params = {"dataset_uuid": dataset_uuid}
-    
+    params = {"user_email": user_email}
+
     response = requests.get(url, headers=headers, params=params)
-    
+
     if response.status_code == 200:
         return response.json()
-    else:
-        print(f"Failed to get dataset details: {response.text}")
-        return None
+    print(f"Failed to get dataset details: {response.text}")
+    return None
 
 # Usage
-details = get_dataset_details(token, "550e8400-e29b-41d4-a716-446655440000")
+details = get_dataset_details(token, "550e8400-e29b-41d4-a716-446655440000", "user@example.com")
 if details:
     print(f"Dataset: {details['dataset']['name']}")
     print(f"Status: {details['dataset']['status']}")
@@ -266,15 +266,16 @@ if details:
 ## Update Dataset
 
 ```python
-def update_dataset(token, dataset_uuid, **kwargs):
+def update_dataset(token, dataset_uuid, user_email, **kwargs):
     """Update dataset metadata"""
-    url = "https://scientistcloud.com/portal/api/update-dataset"
+    url = f"https://scientistcloud.com/api/v1/datasets/{dataset_uuid}"
     headers = {
         "Authorization": f"Bearer {token}",
         "Content-Type": "application/json"
     }
-    
-    data = {"dataset_uuid": dataset_uuid}
+    params = {"user_email": user_email}
+
+    data = {}
     
     # Add update fields
     if 'name' in kwargs:
@@ -290,18 +291,18 @@ def update_dataset(token, dataset_uuid, **kwargs):
     if 'preferred_dashboard' in kwargs:
         data['preferred_dashboard'] = kwargs['preferred_dashboard']
     
-    response = requests.post(url, headers=headers, json=data)
-    
+    response = requests.put(url, headers=headers, params=params, json=data)
+
     if response.status_code == 200:
         return response.json()
-    else:
-        print(f"Update failed: {response.text}")
-        return None
+    print(f"Update failed: {response.text}")
+    return None
 
 # Usage
 result = update_dataset(
     token,
     "550e8400-e29b-41d4-a716-446655440000",
+    "user@example.com",
     name="Updated Name",
     tags="updated, tags"
 )
@@ -342,6 +343,7 @@ print(f"\nUploading {FILE_PATH}...")
 with open(FILE_PATH, 'rb') as f:
     files = {'file': f}
     data = {
+        'user_email': EMAIL,
         'dataset_name': DATASET_NAME,
         'sensor': '4D_NEXUS',
         'convert': 'true',
@@ -396,49 +398,19 @@ while True:
 # 4. Get dataset details
 print("\n📋 Getting dataset details...")
 details_response = requests.get(
-    "https://scientistcloud.com/portal/api/dataset-details",
+    f"https://scientistcloud.com/api/v1/datasets/{dataset_uuid}",
     headers={"Authorization": f"Bearer {token}"},
-    params={"dataset_uuid": dataset_uuid}
+    params={"user_email": EMAIL}
 )
 
 if details_response.status_code == 200:
     details = details_response.json()
-    print(f"Dataset: {details['dataset']['name']}")
-    print(f"Status: {details['dataset']['status']}")
-    print(f"Created: {details['dataset']['created_at']}")
+    dataset = details.get("dataset") or details
+    print(f"Dataset: {dataset.get('name')}")
+    print(f"Status: {dataset.get('status')}")
+    print(f"Created: {dataset.get('created_at')}")
 
 print("\n✅ Done!")
-```
-
-## Using the SDK
-
-If you have access to the ScientistCloud SDK:
-
-```python
-from scientistcloud import ScientistCloudClient
-
-# Initialize client
-client = ScientistCloudClient(
-    auth_url="https://scientistcloud.com",
-    api_url="https://scientistcloud.com"
-)
-
-# Login
-client.login("user@example.com")
-
-# Upload file
-result = client.upload_file(
-    file_path="/path/to/file.nxs",
-    dataset_name="My Dataset",
-    sensor="4D_NEXUS",
-    folder="CHESS_4D"
-)
-
-# Check status
-status = client.get_upload_status(result['job_id'])
-
-# List datasets
-datasets = client.list_datasets(folder="CHESS_4D")
 ```
 
 ## Error Handling

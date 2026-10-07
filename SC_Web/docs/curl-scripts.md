@@ -332,6 +332,7 @@ for FILE in "${FILES[@]}"; do
     curl -X POST "https://scientistcloud.com/api/upload/upload" \
          -H "Authorization: Bearer $TOKEN" \
          -F "file=@$FILE" \
+         -F "user_email=$USER_EMAIL" \
          -F "dataset_name=$DATASET_NAME" \
          -F "folder=$FOLDER" \
          -F "sensor=4D_NEXUS"
@@ -346,8 +347,8 @@ Add a function to list datasets:
 
 ```bash
 list_datasets() {
-    curl -s "https://scientistcloud.com/portal/api/datasets" \
-         -H "Authorization: Bearer $TOKEN" | jq '.datasets[] | {uuid, name, status}'
+    curl -s "https://scientistcloud.com/api/v1/datasets/by-user?user_email=$USER_EMAIL" \
+         -H "Authorization: Bearer $TOKEN" | jq '.datasets.my[] | {uuid, name, status}'
 }
 ```
 
@@ -434,7 +435,9 @@ TOKEN=$(curl -s -X POST "https://scientistcloud.com/api/auth/login" \
 curl -X POST "https://scientistcloud.com/api/upload/upload" \
      -H "Authorization: Bearer $TOKEN" \
      -F "file=@$2" \
-     -F "dataset_name=$3"
+     -F "user_email=$1" \
+     -F "dataset_name=$3" \
+     -F "sensor=4D_NEXUS"
 ```
 
 Usage: `./minimal.sh email@example.com /path/to/file.nxs "Dataset Name"`
@@ -443,4 +446,5 @@ Usage: `./minimal.sh email@example.com /path/to/file.nxs "Dataset Name"`
 
 - See [Upload API](?page=api-upload) for detailed API documentation
 - Review [Getting Started](?page=getting-started) for setup instructions
+- See [Python Examples](?page=python-examples) for the same workflow in Python
 

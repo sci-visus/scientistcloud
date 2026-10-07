@@ -69,7 +69,7 @@ $initialDatasetId = trim((string) ($_GET['dataset'] ?? ''));
           </a>
         </div>
         <div class="btn-group ms-auto" role="group" aria-label="User actions">
-          <a href="../docs.php" class="btn btn-outline-light" title="Documentation" target="_blank">
+          <a href="../docs.php?from=public" class="btn btn-outline-light" title="Documentation" target="_blank">
             <i class="fas fa-book"></i> Docs
           </a>
           <a href="https://scientistcloud.com/portal/index.php" class="btn btn-outline-light" title="Sign In to Access Full Portal">

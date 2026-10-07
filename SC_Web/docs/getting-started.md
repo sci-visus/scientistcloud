@@ -1,28 +1,40 @@
 # Getting Started with ScientistCloud Data Portal
 
-This guide will help you get started with the ScientistCloud Data Portal, from authentication to uploading your first dataset.
+This guide covers the website first, then the API for automated uploads.
 
 ## Prerequisites
 
-- A ScientistCloud account (email address)
-- `curl` command-line tool (for API examples)
-- `jq` for JSON parsing (optional but recommended)
-- Python 3.7+ (for Python examples)
+- A ScientistCloud account (for upload, sharing, and private data)
+- Optional, for API examples: `curl`, `jq`, and Python 3.7+ with `requests`
 
-## Step 1: Authentication
+## Using the Website
 
-The first step is to authenticate and obtain an access token.
+### Public Portal
 
-### Using curl
+Open [https://scientistcloud.com/portal/public/](https://scientistcloud.com/portal/public/) to browse public datasets. Select a dataset in the sidebar and pick a dashboard from the toolbar. No account is required.
+
+### Account Portal
+
+1. Open [https://scientistcloud.com/portal/index.php](https://scientistcloud.com/portal/index.php)
+2. Sign in with Auth0 (Google, email/password, or another configured method)
+3. Use **Upload** to add local files, a folder, a zip, Google Drive, S3, or a remote URL
+4. Watch progress under **Jobs**
+5. Click the dataset in the sidebar to open it in a dashboard
+
+See [Dashboards](?page=dashboards), [Inspect S3](?page=inspect-s3), [Sharing and Teams](?page=sharing), and [Folders](?page=folders).
+
+## Using the API
+
+Website login (Auth0) is separate from API tokens. Scripts use `/api/auth/login` with your ScientistCloud account email.
+
+### Step 1: Get a Token
 
 ```bash
-# Login and get token
 TOKEN=$(curl -s -X POST "https://scientistcloud.com/api/auth/login" \
      -H "Content-Type: application/json" \
      -d '{"email": "your@email.com"}' | \
      jq -r '.data.access_token')
 
-# Verify token
 echo "Token: ${TOKEN:0:20}..."
 ```
 
@@ -53,14 +65,13 @@ curl -H "Authorization: Bearer $TOKEN" \
 
 ## Step 2: Upload Your First Dataset
 
-Once authenticated, you can upload files to the portal.
-
-### Basic Upload
+Required form fields: `file`, `user_email`, `dataset_name`, and `sensor`.
 
 ```bash
 curl -X POST "https://scientistcloud.com/api/upload/upload" \
      -H "Authorization: Bearer $TOKEN" \
      -F "file=@/path/to/your/file.nxs" \
+     -F "user_email=your@email.com" \
      -F "dataset_name=My First Dataset" \
      -F "sensor=4D_NEXUS" \
      -F "convert=true" \
@@ -72,8 +83,9 @@ curl -X POST "https://scientistcloud.com/api/upload/upload" \
 | Parameter | Required | Description | Example |
 |-----------|----------|-------------|---------|
 | `file` | Yes | File to upload | `@/path/to/file.nxs` |
+| `user_email` | Yes | Owner email | `"your@email.com"` |
 | `dataset_name` | Yes | Name for the dataset | `"My Dataset"` |
-| `sensor` | No | Sensor type | `IDX`, `4D_NEXUS`, `TIFF`, `TIFF RGB`, `NETCDF`, `HDF5`, `RGB`, `MAPIR`, `OTHER`. [Contact Us if your sensor is not in the list](mailto:support@visus.net) |
+| `sensor` | Yes | Sensor type | `IDX`, `4D_NEXUS`, `TIFF`, `TIFF RGB`, `NETCDF`, `HDF5`, `RGB`, `MAPIR`, `ORNL_CHESS_STRAIN`, `OTHER`. [Contact us](mailto:support@visus.net) if your sensor is not in the list |
 | `convert` | No | Convert to IDX format | `true` or `false` |
 | `is_public` | No | Make dataset public | `true` or `false` |
 | `folder` | No | Folder name for organization | `"CHESS_4D"` |
@@ -84,8 +96,8 @@ curl -X POST "https://scientistcloud.com/api/upload/upload" \
 
 ```json
 {
-  "success": true,
   "job_id": "550e8400-e29b-41d4-a716-446655440000",
+  "status": "queued",
   "message": "Upload initiated",
   "dataset_uuid": "550e8400-e29b-41d4-a716-446655440000"
 }
@@ -93,10 +105,7 @@ curl -X POST "https://scientistcloud.com/api/upload/upload" \
 
 ## Step 3: Check Upload Status
 
-After uploading, you can monitor the upload and conversion progress.
-
 ```bash
-# Replace JOB_ID with the job_id from the upload response
 curl -H "Authorization: Bearer $TOKEN" \
      "https://scientistcloud.com/api/upload/status/JOB_ID" | jq
 ```
@@ -114,87 +123,68 @@ curl -H "Authorization: Bearer $TOKEN" \
 
 ## Step 4: List Your Datasets
 
-View all your datasets:
-
 ```bash
-curl -X GET "https://scientistcloud.com/portal/api/datasets" \
+curl -s "https://scientistcloud.com/api/v1/datasets/by-user?user_email=your@email.com" \
      -H "Authorization: Bearer $TOKEN" | jq
 ```
 
-### Response
-
-```json
-{
-  "success": true,
-  "datasets": [
-    {
-      "uuid": "550e8400-e29b-41d4-a716-446655440000",
-      "name": "My First Dataset",
-      "sensor": "4D_NEXUS",
-      "created_at": "2024-01-15T10:30:00Z",
-      "status": "completed"
-    }
-  ]
-}
-```
+Response includes `datasets.my`, `datasets.shared`, `datasets.team`, and `counts`.
 
 ## Step 5: Access Your Dataset
 
 Once uploaded and processed, you can:
 
-1. **View in Portal**: Navigate to `https://scientistcloud.com/portal/` and select your dataset
-2. **Access via API**: Use the dataset UUID to get details and files
-3. **Share with Team**: Use the team UUID to share with collaborators
+1. **View in Portal**: Open `https://scientistcloud.com/portal/` and select your dataset
+2. **Access via API**: Use the dataset UUID with the [Datasets API](?page=api-datasets)
+3. **Share**: Use the portal **Share** button or the sharing API (see [Sharing and Teams](?page=sharing))
 
 ## Using Ready-Made Scripts
 
-For convenience, you can use the provided curl scripts. See the [Curl Scripts documentation](?page=curl-scripts) for details.
-
-### Example: Quick Upload Script
+See [Curl Scripts](?page=curl-scripts) and [Python Examples](?page=python-examples).
 
 ```bash
-# Download and customize the script
 ./curl_for_chess.sh -u your@email.com -f /path/to/file.nxs -n "Dataset Name"
-
-# Or use defaults (edit script to set your defaults)
-./curl_for_chess.sh
 ```
 
 ## Next Steps
 
-- Read the [API Overview](?page=api) for complete API documentation
-- Check out [Curl Scripts](?page=curl-scripts) for automation examples
-- Review [Upload API](?page=api-upload) for advanced upload options
+- [Dashboards](?page=dashboards)
+- [Inspect S3](?page=inspect-s3)
+- [API Overview](?page=api)
+- [Upload API](?page=api-upload)
 
 ## Troubleshooting
 
 ### Authentication Failed
 
 ```bash
-# Check if auth service is running
-curl https://scientistcloud.com/api/auth/health
+# Check if the auth service is running (trailing slash required)
+curl https://scientistcloud.com/api/health/
 
-# Verify your email is correct
+# Confirm login for your account email
 curl -X POST "https://scientistcloud.com/api/auth/login" \
      -H "Content-Type: application/json" \
      -d '{"email": "your@email.com"}'
 ```
 
+The website uses Auth0. If the portal login page fails, use **Sign In** on `https://scientistcloud.com/portal/index.php` rather than the API token flow.
+
 ### Upload Failed
 
 ```bash
-# Check upload service health
-curl https://scientistcloud.com/api/upload/health
+# Check upload service health (trailing slash required)
+curl https://scientistcloud.com/api/upload-health/
 
-# Verify file exists and is readable
+# Check file exists and is readable
 ls -lh /path/to/your/file.nxs
 
-# Check file size limits (contact admin if file is very large)
+# Check size limits
+curl https://scientistcloud.com/api/upload/limits
 ```
 
 ### Token Expired
 
-Tokens expire after 24 hours. Simply login again to get a new token:
+Access tokens expire after 24 hours. Log in again:
 
 ```bash
 TOKEN=$(curl -s -X POST "https://scientistcloud.com/api/auth/login" \
@@ -205,8 +195,6 @@ TOKEN=$(curl -s -X POST "https://scientistcloud.com/api/auth/login" \
 
 ## Support
 
-For additional help:
-- Check the [API documentation](?page=api)
-- Review example scripts in the [Curl Scripts](?page=curl-scripts) section
-- Contact your system administrator
-
+- [API Overview](?page=api)
+- [Curl Scripts](?page=curl-scripts)
+- Contact [support@visus.net](mailto:support@visus.net)

@@ -657,7 +657,7 @@ function dashboardJwtBase64UrlEncode($data) {
 /**
  * Create HS256 JWT for Bokeh dashboards (matches SCLib_JWTManager payload shape).
  */
-function createDashboardAuthToken($email, $userId = null, $expiresHours = null) {
+function createDashboardAuthToken($email, $userId = null, $expiresHours = null, array $extraClaims = []) {
     $email = trim((string) $email);
     if ($email === '') {
         return null;
@@ -679,6 +679,11 @@ function createDashboardAuthToken($email, $userId = null, $expiresHours = null) 
     if ($userId) {
         $payload['user_id'] = $userId;
     }
+    foreach ($extraClaims as $key => $value) {
+        if (is_string($key) && $key !== '') {
+            $payload[$key] = $value;
+        }
+    }
     $header = dashboardJwtBase64UrlEncode(json_encode(['typ' => 'JWT', 'alg' => 'HS256']));
     $body = dashboardJwtBase64UrlEncode(json_encode($payload));
     $signature = dashboardJwtBase64UrlEncode(hash_hmac('sha256', $header . '.' . $body, SECRET_KEY, true));
@@ -688,12 +693,12 @@ function createDashboardAuthToken($email, $userId = null, $expiresHours = null) 
 /**
  * Set auth_token cookie so /dashboard/* Bokeh apps can authenticate the user.
  */
-function setDashboardAuthCookie($email, $userId = null) {
-    $token = createDashboardAuthToken($email, $userId);
+function setDashboardAuthCookie($email, $userId = null, $expiresHours = null, array $extraClaims = []) {
+    $hours = $expiresHours ?? (int) (getenv('JWT_EXPIRY_HOURS') ?: 24);
+    $token = createDashboardAuthToken($email, $userId, $hours, $extraClaims);
     if (!$token) {
         return false;
     }
-    $hours = (int) (getenv('JWT_EXPIRY_HOURS') ?: 24);
     $secure = isHttpsRequest();
     setcookie('auth_token', $token, [
         'expires' => time() + ($hours * 3600),
@@ -703,6 +708,60 @@ function setDashboardAuthCookie($email, $userId = null) {
         'samesite' => 'Lax',
     ]);
     return true;
+}
+
+function dashboardJwtBase64UrlDecode($data) {
+    $remainder = strlen((string) $data) % 4;
+    if ($remainder) {
+        $data .= str_repeat('=', 4 - $remainder);
+    }
+    $decoded = base64_decode(strtr((string) $data, '-_', '+/'), true);
+    return $decoded === false ? null : $decoded;
+}
+
+/**
+ * Verify a portal-issued dashboard JWT locally (HS256 / SECRET_KEY).
+ */
+function decodeDashboardAuthToken($token) {
+    $parts = explode('.', (string) $token);
+    if (count($parts) !== 3 || !defined('SECRET_KEY') || SECRET_KEY === '') {
+        return null;
+    }
+    [$header, $body, $sig] = $parts;
+    $expected = dashboardJwtBase64UrlEncode(hash_hmac('sha256', $header . '.' . $body, SECRET_KEY, true));
+    if (!hash_equals($expected, $sig)) {
+        return null;
+    }
+    $json = dashboardJwtBase64UrlDecode($body);
+    $payload = $json ? json_decode($json, true) : null;
+    if (!is_array($payload)) {
+        return null;
+    }
+    if (!empty($payload['exp']) && time() >= (int) $payload['exp']) {
+        return null;
+    }
+    return $payload;
+}
+
+function isPublicDashboardToken($token = null) {
+    $token = $token ?? ($_COOKIE['auth_token'] ?? '');
+    $payload = decodeDashboardAuthToken($token);
+    return !empty($payload['public_viewer']);
+}
+
+/**
+ * Short-lived cookie so nginx will proxy /dashboard/* for public-portal viewers.
+ */
+function setPublicDashboardAuthCookie($datasetUuid = '') {
+    return setDashboardAuthCookie(
+        'public-viewer@scientistcloud.invalid',
+        'public-viewer',
+        4,
+        [
+            'public_viewer' => true,
+            'dataset_uuid' => (string) $datasetUuid,
+        ]
+    );
 }
 
 /**
@@ -759,6 +818,9 @@ function hasDashboardAccess() {
     }
     if (empty($_COOKIE['auth_token'])) {
         return false;
+    }
+    if (isPublicDashboardToken($_COOKIE['auth_token'])) {
+        return true;
     }
     try {
         $sclib = getSCLibAuthClient();

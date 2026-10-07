@@ -784,11 +784,24 @@ class ViewerManager {
      * Set auth_token cookie for /dashboard/* before loading the iframe (Bokeh does not read PHPSESSID).
      */
     async ensureDashboardAuthCookie() {
-        if (window.IS_PUBLIC_PORTAL === true) {
-            return true;
-        }
         const isLocal = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
-        const url = `${isLocal ? '/api' : '/portal/api'}/dashboard-auth-token.php`;
+        const apiBase = isLocal ? '/api' : '/portal/api';
+        const isPublicPortal = window.IS_PUBLIC_PORTAL === true;
+        let url = `${apiBase}/dashboard-auth-token.php`;
+        if (isPublicPortal) {
+            const datasetId = window.viewerManager?.currentDataset?.uuid
+                || window.viewerManager?.currentDataset?.id
+                || window.datasetManager?.currentDataset?.uuid
+                || window.datasetManager?.currentDataset?.id
+                || window.publicDatasetManager?.currentDataset?.uuid
+                || window.publicDatasetManager?.currentDataset?.id
+                || '';
+            if (!datasetId) {
+                console.warn('public dashboard auth skipped: no dataset id');
+                return false;
+            }
+            url = `${apiBase}/public-dashboard-auth-token.php?dataset_id=${encodeURIComponent(datasetId)}`;
+        }
         try {
             const response = await fetch(url, { credentials: 'include' });
             if (!response.ok) {

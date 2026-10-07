@@ -30,8 +30,6 @@ This page summarizes the current ScientistCloud API surface used by the portal.
 | `/portal/api/jobs.php` | GET | Portal job list (user or admin); query `scope=active\|all`, `admin=1` for admins |
 | `/portal/api/upload-status.php?job_id=` | GET | Portal proxy to upload status (live % and bytes) |
 | `/portal/api/conversion-logs.php?dataset_uuid=` | GET | Conversion log tail for a dataset |
-
-Portal UI: **Jobs** toolbar button or `index.php?jobs=1`. Admins: set `SC_PORTAL_ADMIN_EMAILS=you@example.com,other@example.com` in server env.
 | `/api/upload/supported-sources` | GET | Supported upload source/sensor types |
 | `/api/upload/limits` | GET | Upload limits and thresholds |
 | `/portal/api/upload-large-initiate.php` | POST | Session-auth; starts resumable large upload (JSON body) |
@@ -40,6 +38,8 @@ Portal UI: **Jobs** toolbar button or `index.php?jobs=1`. Admins: set `SC_PORTAL
 | `/api/upload/large/resume/{upload_id}` | GET | Missing chunk indices for resume |
 | `/api/upload/large/complete/{upload_id}` | POST | Finalize sparse staging file → dataset path |
 | `/api/upload/large/limits` | GET | Chunk size and `MAX_FILE_SIZE` (default 10 TB) |
+
+Portal UI: **Jobs** toolbar button or `index.php?jobs=1`. Admins: set `SC_PORTAL_ADMIN_EMAILS=you@example.com,other@example.com` in server env.
 
 **Scale:** Portal sends files ≥ 100 MB via chunked upload (4 parallel chunks). Single-shot PHP upload is for smaller files only. Datasets larger than `MAX_FILE_SIZE` (or multi‑PB): copy to `JOB_IN_DATA_DIR/upload/{uuid}/` and use `/api/upload/upload-path`, or rsync from HPC.
 
@@ -108,10 +108,20 @@ curl -s -X POST "https://scientistcloud.com/api/upload/upload" \
 curl -s "https://scientistcloud.com/api/v1/datasets/by-user?user_email=user@example.com" | jq
 ```
 
+## Health
+
+Trailing slashes are required:
+
+```bash
+curl https://scientistcloud.com/api/health/
+curl https://scientistcloud.com/api/upload-health/
+```
+
 ## Related Pages
 
 - [Authentication API](?page=api-authentication)
 - [Upload API](?page=api-upload)
 - [Datasets API](?page=api-datasets)
 - [Curl Scripts](?page=curl-scripts)
+- [Python Examples](?page=python-examples)
 

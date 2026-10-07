@@ -115,4 +115,5 @@ curl -s "https://scientistcloud.com/api/upload/limits" | jq
 - Files larger than the configured threshold are handled with chunked logic automatically by the unified upload API.
 - Use `relative_path` + shared `dataset_identifier` when uploading a directory tree file-by-file.
 - `folder` is UI metadata, not on-disk path structure.
+- Supported `sensor` values from `GET /api/upload/supported-sources` include `IDX`, `TIFF`, `TIFF RGB`, `NETCDF`, `HDF5`, `4D_NEXUS`, `ORNL_CHESS_STRAIN`, `RGB`, `MAPIR`, and `OTHER`.
 

@@ -860,6 +860,36 @@ body:not(.light-theme) .viewer-container #dashboardFrame {
   word-break: break-all;
 }
 
+/* Keep action labels on one line; wrap whole buttons instead of letters */
+.dataset-actions .btn,
+.dataset-action-grid .btn {
+  overflow-wrap: normal;
+  word-break: keep-all;
+  white-space: nowrap;
+}
+
+.dataset-action-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+
+.dataset-action-grid > .btn,
+.dataset-action-grid > a.btn {
+  flex: 1 1 calc(50% - 0.4rem);
+  min-width: 6.75rem;
+}
+
+.dataset-action-grid > .dataset-action-wide {
+  flex: 1 1 calc(100% - 2.5rem);
+  min-width: 0;
+}
+
+.dataset-action-grid > .btn[data-action="open-dashboard-link"] {
+  flex: 0 0 auto;
+  min-width: 2.25rem;
+}
+
 /* Dashboard styles */
 .dashboard-container {
   height: 100%;
