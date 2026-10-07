@@ -746,14 +746,14 @@ class PublicDatasetManager {
                                 data-action="copy-portal-link"
                                 data-share-url="${this.escapeHtml(portalShareUrl)}"
                                 title="Copy link to this dataset on the public portal">
-                            <i class="fas fa-link"></i> Share Portal Link
+                            <i class="fas fa-link"></i> <span class="btn-label">Share Portal Link</span>
                         </button>
                         ${isRemoteS3 ? `
                         <button type="button" class="btn btn-sm btn-outline-info flex-grow-1"
                                 data-action="copy-s3-link"
                                 data-share-url="${this.escapeHtml(s3BrowserUrl)}"
                                 title="Copy link to browse this dataset's files on S3">
-                            <i class="fas fa-share-alt"></i> Share S3 Link
+                            <i class="fas fa-share-alt"></i> <span class="btn-label">Share S3 Link</span>
                         </button>
                         ` : ''}
                     </div>
@@ -765,20 +765,20 @@ class PublicDatasetManager {
                                 data-dataset-name="${this.escapeHtml(dataset.name || '')}"
                                 data-dataset-server="${this.escapeHtml(dataset.server || 'false')}"
                                 title="Open this dataset's dashboard in a new tab">
-                            <i class="fas fa-external-link-alt"></i> Open Dashboard
+                            <i class="fas fa-external-link-alt"></i> <span class="btn-label">Open Dashboard</span>
                         </button>
                         
                         ${isRemoteS3 ? `
                         <a href="${this.escapeHtml(s3BrowserUrl)}" target="_blank" rel="noopener"
                            class="btn btn-sm btn-info flex-grow-1 text-white"
                            title="Browse and download files from S3 (no credentials required)">
-                            <i class="fas fa-folder-open"></i> Browse on S3
+                            <i class="fas fa-folder-open"></i> <span class="btn-label">Browse on S3</span>
                         </a>
                         ` : ''}
                         
                         ${isDownloadable ? `
                         <button type="button" class="btn btn-sm btn-primary flex-grow-1" data-action="download" data-dataset-id="${dataset.id || dataset.uuid}">
-                            <i class="fas fa-download"></i> Download Dataset
+                            <i class="fas fa-download"></i> <span class="btn-label">Download Dataset</span>
                         </button>
                         ` : ''}
                     </div>

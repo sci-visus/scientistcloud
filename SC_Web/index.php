@@ -55,7 +55,7 @@ $loggedInEmail = trim((string) ($user['email'] ?? ($_SESSION['user_email'] ?? ''
   <!-- FontAwesome Icons -->
   <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
   <!-- Custom CSS -->
-  <link href="assets/css/main.css" rel="stylesheet">
+  <link href="assets/css/main.css?v=<?php echo @filemtime(__DIR__ . '/assets/css/main.css') ?: time(); ?>" rel="stylesheet">
 </head>
 <body>
   <!-- Left Sidebar -->

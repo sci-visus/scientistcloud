@@ -143,6 +143,8 @@ body {
   display: flex;
   flex-direction: column;
   height: 100vh;
+  container-type: inline-size;
+  container-name: details-pane;
 }
 
 .details h5 {
@@ -860,34 +862,83 @@ body:not(.light-theme) .viewer-container #dashboardFrame {
   word-break: break-all;
 }
 
-/* Keep action labels on one line; wrap whole buttons instead of letters */
-.dataset-actions .btn,
-.dataset-action-grid .btn {
+/* Action buttons in the narrow details pane: two columns, never clip off-screen */
+.dataset-details .dataset-actions,
+.dataset-details .dataset-action-grid,
+.dataset-details .dataset-link-row {
   overflow-wrap: normal;
-  word-break: keep-all;
+  word-wrap: normal;
+  word-break: normal;
+}
+
+.dataset-actions {
+  width: 100%;
+  min-width: 0;
+  overflow: visible;
+}
+
+.dataset-action-grid .btn,
+.dataset-link-row .btn {
+  overflow-wrap: normal;
+  word-break: normal;
   white-space: nowrap;
+  max-width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+}
+
+.dataset-action-grid .btn,
+.dataset-link-row > .dataset-action-wide {
+  width: 100%;
 }
 
 .dataset-action-grid {
-  display: flex;
-  flex-wrap: wrap;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
   gap: 0.4rem;
-}
-
-.dataset-action-grid > .btn,
-.dataset-action-grid > a.btn {
-  flex: 1 1 calc(50% - 0.4rem);
-  min-width: 6.75rem;
-}
-
-.dataset-action-grid > .dataset-action-wide {
-  flex: 1 1 calc(100% - 2.5rem);
+  width: 100%;
   min-width: 0;
 }
 
-.dataset-action-grid > .btn[data-action="open-dashboard-link"] {
-  flex: 0 0 auto;
-  min-width: 2.25rem;
+.dataset-link-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 0.4rem;
+  width: 100%;
+  min-width: 0;
+  margin-top: 0.4rem;
+}
+
+.dataset-link-row > .btn[data-action="open-dashboard-link"] {
+  width: auto;
+}
+
+/* Narrow details pane: icons only, labels on hover via title */
+@container details-pane (max-width: 300px) {
+  .dataset-actions .btn-label {
+    display: none;
+  }
+
+  .dataset-action-grid {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.35rem;
+  }
+
+  .dataset-action-grid .btn,
+  .dataset-link-row .btn,
+  .dataset-actions .btn {
+    width: auto;
+    flex: 0 0 auto;
+    min-width: 2.25rem;
+    padding-left: 0.45rem;
+    padding-right: 0.45rem;
+  }
+
+  .dataset-link-row {
+    display: flex;
+    flex-wrap: wrap;
+  }
 }
 
 /* Dashboard styles */
@@ -1244,6 +1295,31 @@ body:not(.light-theme) .viewer-container #dashboardFrame {
   .upload-progress-widget {
     right: 12px;
     width: min(320px, calc(100vw - 24px));
+  }
+
+  .dataset-actions .btn-label {
+    display: none;
+  }
+
+  .dataset-action-grid {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.35rem;
+  }
+
+  .dataset-action-grid .btn,
+  .dataset-link-row .btn,
+  .dataset-actions .btn {
+    width: auto;
+    flex: 0 0 auto;
+    min-width: 2.25rem;
+    padding-left: 0.45rem;
+    padding-right: 0.45rem;
+  }
+
+  .dataset-link-row {
+    display: flex;
+    flex-wrap: wrap;
   }
 }
 

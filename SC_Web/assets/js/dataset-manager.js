@@ -2265,24 +2265,25 @@ class DatasetManager {
         ` : '';
         const teamDisplay = dataset.team_name || dataset.team_uuid || 'None';
         const ownerActionButtons = isOwner ? `
-                        <button type="button" class="btn btn-sm btn-outline-primary" data-action="share" data-dataset-id="${dataset.id || dataset.uuid}">
-                            <i class="fas fa-share"></i> Share
+                        <button type="button" class="btn btn-sm btn-outline-primary" data-action="share" data-dataset-id="${dataset.id || dataset.uuid}" title="Share">
+                            <i class="fas fa-share"></i> <span class="btn-label">Share</span>
                         </button>
-                        <button type="button" class="btn btn-sm btn-outline-primary" data-action="delete" data-dataset-id="${dataset.id || dataset.uuid}">
-                            <i class="fas fa-trash"></i> Delete
+                        <button type="button" class="btn btn-sm btn-outline-primary" data-action="delete" data-dataset-id="${dataset.id || dataset.uuid}" title="Delete">
+                            <i class="fas fa-trash"></i> <span class="btn-label">Delete</span>
                         </button>
-                        <button type="button" class="btn btn-sm btn-outline-primary" id="editDatasetBtn" data-dataset-id="${dataset.id || dataset.uuid}">
-                            <i class="fas fa-edit"></i> Edit
+                        <button type="button" class="btn btn-sm btn-outline-primary" id="editDatasetBtn" data-dataset-id="${dataset.id || dataset.uuid}" title="Edit">
+                            <i class="fas fa-edit"></i> <span class="btn-label">Edit</span>
                         </button>
                         <button type="button" class="btn btn-sm btn-outline-primary" data-action="add-files"
                                 data-dataset-id="${dataset.id || dataset.uuid}"
                                 title="Upload additional files to this dataset">
-                            <i class="fas fa-plus"></i> Add Files
+                            <i class="fas fa-plus"></i> <span class="btn-label">Add Files</span>
                         </button>
                         <button type="button" class="btn btn-sm btn-outline-primary retry-conversion-details-btn" 
                                 data-dataset-uuid="${dataset.uuid || dataset.id}"
-                                data-dataset-name="${this.escapeHtml(dataset.name || 'Dataset')}">
-                            <i class="fas fa-redo"></i> Retry
+                                data-dataset-name="${this.escapeHtml(dataset.name || 'Dataset')}"
+                                title="Retry">
+                            <i class="fas fa-redo"></i> <span class="btn-label">Retry</span>
                         </button>
         ` : '';
 
@@ -2313,14 +2314,14 @@ class DatasetManager {
                 <!-- Action Buttons (owner: Share/Delete/Edit/Retry; all: dashboard links) -->
                 <div class="dataset-actions mb-3 pb-2 border-bottom">
                     ${ownerActionButtons ? `<div class="dataset-action-grid">${ownerActionButtons}</div>` : ''}
-                    <div class="dataset-action-grid mt-2">
+                    <div class="dataset-link-row">
                         <button type="button" class="btn btn-sm btn-outline-primary dataset-action-wide" data-action="copy-dashboard-link" 
                                 data-dataset-id="${dataset.id || dataset.uuid}"
                                 data-dataset-uuid="${dataset.uuid || dataset.id}"
                                 data-dataset-name="${this.escapeHtml(dataset.name || '')}"
                                 data-dataset-server="${this.escapeHtml(dataset.server || '')}"
                                 title="Copy direct link to open this dataset's dashboard in a new window">
-                            <i class="fas fa-link"></i> Copy Dashboard Link
+                            <i class="fas fa-link"></i> <span class="btn-label">Copy Dashboard Link</span>
                         </button>
                         <button type="button" class="btn btn-sm btn-outline-primary" data-action="open-dashboard-link" 
                                 data-dataset-id="${dataset.id || dataset.uuid}"
