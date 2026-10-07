@@ -1,6 +1,6 @@
 # Sharing and Teams
 
-Sharing is available on the **account portal**. Only the dataset owner can share or unshare. The public portal can view datasets that are already marked public.
+Sharing is available on the **account portal**. Anyone who can open a dataset can copy a dashboard link from **Share**. Only the dataset owner can add or remove users and teams. The public portal can view datasets that are already marked public.
 
 ## Share with a Person
 
@@ -22,7 +22,7 @@ All current team members see it under **Team Datasets**. You can also assign a t
 
 ## Dashboard Link
 
-**Copy Dashboard Link** copies a URL that opens the dataset in a dashboard. Use it to send someone straight to the view. Recipients still need permission (owner, share, team, or public) for private data.
+**Share** and **Copy Dashboard Link** copy a URL that opens the dataset in a dashboard. Use it to send someone straight to the view. Recipients still need permission (owner, share, team, or public) for private data. If you do not own the dataset, Share still copies that link; it does not let you add users or teams.
 
 ## Public Visibility
 

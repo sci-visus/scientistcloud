@@ -2264,10 +2264,13 @@ class DatasetManager {
                         </div>
         ` : '';
         const teamDisplay = dataset.team_name || dataset.team_uuid || 'None';
-        const ownerActionButtons = isOwner ? `
+        const shareButton = `
                         <button type="button" class="btn btn-sm btn-outline-primary" data-action="share" data-dataset-id="${dataset.id || dataset.uuid}" title="Share">
                             <i class="fas fa-share"></i> <span class="btn-label">Share</span>
                         </button>
+        `;
+        const ownerActionButtons = isOwner ? `
+                        ${shareButton}
                         <button type="button" class="btn btn-sm btn-outline-primary" data-action="delete" data-dataset-id="${dataset.id || dataset.uuid}" title="Delete">
                             <i class="fas fa-trash"></i> <span class="btn-label">Delete</span>
                         </button>
@@ -2285,7 +2288,7 @@ class DatasetManager {
                                 title="Retry">
                             <i class="fas fa-redo"></i> <span class="btn-label">Retry</span>
                         </button>
-        ` : '';
+        ` : shareButton;
 
         const statusNoticeHtml = datasetMessage ? `
             <div class="alert alert-${isInterruptedUpload ? 'warning' : 'danger'} py-2 small mb-3">
@@ -3640,15 +3643,10 @@ class DatasetManager {
     async shareDataset(datasetId) {
         await this.ensureUserContext();
         const details = this.currentDatasetDetails || this.currentDataset;
-        if (details && !this.isDatasetOwner(details)) {
-            alert('Only the dataset owner can share it.');
-            return;
-        }
-        const datasetUuid = this.currentDataset?.uuid || datasetId;
-        const datasetName = this.currentDataset?.name || 'Dataset';
-        
-        // Show share interface in viewerContainer
-        this.showShareInterface(datasetUuid, datasetName);
+        const datasetUuid = this.currentDataset?.uuid || details?.uuid || datasetId;
+        const datasetName = this.currentDataset?.name || details?.name || 'Dataset';
+        const canManageSharing = !details || this.isDatasetOwner(details);
+        this.showShareInterface(datasetUuid, datasetName, { canManageSharing });
     }
     
     /**
@@ -4205,9 +4203,12 @@ class DatasetManager {
     /**
      * Show share interface
      */
-    async showShareInterface(datasetUuid, datasetName) {
+    async showShareInterface(datasetUuid, datasetName, options = {}) {
         const viewerContainer = document.getElementById('viewerContainer');
         if (!viewerContainer) return;
+        const canManageSharing = options.canManageSharing !== false;
+        const details = this.currentDatasetDetails || this.currentDataset || {};
+        const datasetId = details.id || details.uuid || datasetUuid;
         
         // Show loading state
         viewerContainer.innerHTML = `
@@ -4230,19 +4231,30 @@ class DatasetManager {
         } catch (error) {
             console.warn('Could not load teams:', error);
         }
-        
-        // Build share interface HTML
-        const html = `
-            <div class="share-interface container mt-4">
-                <div class="card">
-                    <div class="card-header bg-primary text-white">
-                        <h5 class="mb-0">
-                            <i class="fas fa-share-alt"></i> Share Dataset: ${this.escapeHtml(datasetName)}
-                        </h5>
-                    </div>
-                    <div class="card-body">
-                        <input type="hidden" id="share-dataset-uuid" value="${this.escapeHtml(datasetUuid)}">
-                        
+
+        const copyLinkSection = `
+                        <div class="mb-4">
+                            <h6 class="text-primary">
+                                <i class="fas fa-link"></i> Dashboard Link
+                            </h6>
+                            <p class="text-muted small">Copy a link that opens this dataset in a dashboard. Recipients still need permission to view private data.</p>
+                            <button type="button" class="btn btn-sm btn-outline-primary" data-action="copy-dashboard-link"
+                                    data-dataset-id="${this.escapeHtml(datasetId)}"
+                                    data-dataset-uuid="${this.escapeHtml(datasetUuid)}"
+                                    data-dataset-name="${this.escapeHtml(datasetName)}"
+                                    data-dataset-server="${this.escapeHtml(details.server || '')}">
+                                <i class="fas fa-link"></i> Copy Dashboard Link
+                            </button>
+                        </div>
+        `;
+        const ownerNotice = canManageSharing ? '' : `
+                        <div class="alert alert-info small">
+                            <i class="fas fa-info-circle"></i>
+                            You can copy a dashboard link. Only the owner can add users or teams.
+                        </div>
+        `;
+        const manageSharingHtml = canManageSharing ? `
+                        <hr>
                         <!-- Share with Users Section -->
                         <div class="mb-4">
                             <h6 class="text-primary">
@@ -4310,10 +4322,21 @@ class DatasetManager {
                                 </div>
                             `}
                         </div>
-                        
-                        <hr>
-                        
-                        <!-- Actions -->
+        ` : '';
+
+        const html = `
+            <div class="share-interface container mt-4">
+                <div class="card">
+                    <div class="card-header bg-primary text-white">
+                        <h5 class="mb-0">
+                            <i class="fas fa-share-alt"></i> Share Dataset: ${this.escapeHtml(datasetName)}
+                        </h5>
+                    </div>
+                    <div class="card-body">
+                        <input type="hidden" id="share-dataset-uuid" value="${this.escapeHtml(datasetUuid)}">
+                        ${ownerNotice}
+                        ${copyLinkSection}
+                        ${manageSharingHtml}
                         <div class="d-flex justify-content-between">
                             <button type="button" class="btn btn-secondary" 
                                     onclick="datasetManager.closeShareInterface()">
@@ -4384,6 +4407,11 @@ class DatasetManager {
      * Share with users
      */
     async shareWithUsers() {
+        const details = this.currentDatasetDetails || this.currentDataset;
+        if (details && !this.isDatasetOwner(details)) {
+            alert('Only the dataset owner can add users.');
+            return;
+        }
         const datasetUuid = document.getElementById('share-dataset-uuid')?.value;
         if (!datasetUuid) {
             alert('Dataset UUID not found');
@@ -4449,6 +4477,11 @@ class DatasetManager {
      * Share with team
      */
     async shareWithTeam() {
+        const details = this.currentDatasetDetails || this.currentDataset;
+        if (details && !this.isDatasetOwner(details)) {
+            alert('Only the dataset owner can share with a team.');
+            return;
+        }
         const datasetUuid = document.getElementById('share-dataset-uuid')?.value;
         const teamSelect = document.getElementById('share-team-select');
         
