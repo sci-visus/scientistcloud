@@ -33,6 +33,7 @@ require_once(__DIR__ . '/../config.php');
 require_once(__DIR__ . '/../includes/auth.php');
 require_once(__DIR__ . '/../includes/sclib_client.php');
 require_once(__DIR__ . '/../includes/parse_emails.php');
+require_once(__DIR__ . '/../includes/portal_admin_store.php');
 
 try {
     // Check authentication
@@ -167,6 +168,21 @@ try {
         http_response_code(400);
         echo json_encode(['success' => false, 'error' => 'No fields to update']);
         exit;
+    }
+
+    if (isset($updateData['emails']) && is_array($updateData['emails'])) {
+        try {
+            $seatDenial = portal_seat_denial((string) $teamUuid, $updateData['emails']);
+        } catch (Exception $seatError) {
+            error_log('Seat allocation check failed: ' . $seatError->getMessage());
+            $seatDenial = null;
+        }
+        if ($seatDenial !== null) {
+            ob_end_clean();
+            http_response_code(403);
+            echo json_encode(['success' => false, 'error' => $seatDenial]);
+            exit;
+        }
     }
 
     // Update team using SCLib Sharing and Team API

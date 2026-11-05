@@ -99,6 +99,11 @@ $loggedInEmail = trim((string) ($user['email'] ?? ($_SESSION['user_email'] ?? ''
           <button type="button" class="btn btn-outline-light" id="viewJobsBtn" title="Upload and conversion job status">
             <i class="fas fa-tasks"></i> Jobs
           </button>
+          <?php if (isPortalAdmin($loggedInEmail)): ?>
+          <button type="button" class="btn btn-outline-light" id="viewAdminBtn" title="Usage, allocations, and access">
+            <i class="fas fa-user-shield"></i> Admin
+          </button>
+          <?php endif; ?>
           <button type="button" class="btn btn-outline-light" id="createTeamBtn" title="Team">
             <i class="fas fa-users"></i> Team
           </button>
@@ -150,9 +155,11 @@ $loggedInEmail = trim((string) ($user['email'] ?? ($_SESSION['user_email'] ?? ''
     window.S3_DEFAULT_PATH_STYLE = <?php echo json_encode((defined('S3_DEFAULT_PATH_STYLE') ? S3_DEFAULT_PATH_STYLE : true)); ?>;
   </script>
   <script src="assets/js/main.js?v=<?php echo @filemtime(__DIR__ . '/assets/js/main.js') ?: time(); ?>"></script>
+  <script src="assets/js/usage-tracker.js?v=<?php echo @filemtime(__DIR__ . '/assets/js/usage-tracker.js') ?: time(); ?>"></script>
   <script src="assets/js/dataset-manager.js?v=<?php echo @filemtime(__DIR__ . '/assets/js/dataset-manager.js') ?: time(); ?>"></script>
   <script src="assets/js/viewer-manager.js?v=<?php echo @filemtime(__DIR__ . '/assets/js/viewer-manager.js') ?: time(); ?>"></script>
   <script src="assets/js/upload-manager.js?v=<?php echo @filemtime(__DIR__ . '/assets/js/upload-manager.js') ?: time(); ?>"></script>
   <script src="assets/js/job-manager.js?v=<?php echo @filemtime(__DIR__ . '/assets/js/job-manager.js') ?: time(); ?>"></script>
+  <script src="assets/js/admin-dashboard.js?v=<?php echo @filemtime(__DIR__ . '/assets/js/admin-dashboard.js') ?: time(); ?>"></script>
 </body>
 </html>

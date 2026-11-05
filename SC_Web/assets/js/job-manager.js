@@ -44,6 +44,9 @@ class JobManager {
     }
 
     async showJobsInterface() {
+        if (window.usageTracker) {
+            window.usageTracker.endStay(false);
+        }
         const viewerContainer = document.getElementById('viewerContainer');
         if (!viewerContainer) {
             return;

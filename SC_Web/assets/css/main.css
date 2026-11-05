@@ -1380,6 +1380,19 @@ body:has(.details.collapsed) .upload-progress-widget {
   right: 20px;
 }
 
+/* Administrator dashboard (viewer panel) */
+.admin-dashboard {
+  height: 100%;
+  overflow: auto;
+  padding: 1.25rem 1.5rem 2rem;
+  background: var(--main-bg, #fff);
+  color: var(--text-color, #212529);
+}
+
+.admin-dashboard .table {
+  color: inherit;
+}
+
 /* Jobs status page (viewer panel) */
 .jobs-interface .job-status-card code {
   font-size: 0.75rem;

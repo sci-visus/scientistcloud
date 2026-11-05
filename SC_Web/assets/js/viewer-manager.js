@@ -847,6 +847,16 @@ class ViewerManager {
 
         this.currentDashboard = 'S3Browser';
 
+        const datasetTeam = (details && (details.team_uuid || details.team_id)) || '';
+        if (window.usageTracker) {
+            const gate = await window.usageTracker.dashboardAllowed('S3Browser', datasetTeam);
+            if (!gate.ok) {
+                this.showErrorDashboard(gate.reason || 'This dashboard is turned off for this team.');
+                return;
+            }
+            window.usageTracker.noteDashboard('S3Browser');
+        }
+
         const dashboardContainer = document.createElement('div');
         dashboardContainer.className = 'dashboard-container s3-browser-embed';
 
@@ -1018,6 +1028,25 @@ class ViewerManager {
             urlTemplate: viewer.url_template,
             generatedUrl: viewerUrl
         });
+
+        const datasetTeam = (details && (details.team_uuid || details.team_id)) || '';
+        if (window.usageTracker && window.usageTracker.dataset && details) {
+            const canonical = details.uuid || details.id;
+            if (canonical) {
+                window.usageTracker.dataset.dataset_uuid = canonical;
+            }
+            if (details.name) {
+                window.usageTracker.dataset.dataset_name = details.name;
+            }
+        }
+        if (window.usageTracker) {
+            const gate = await window.usageTracker.dashboardAllowed(resolvedDashboardType, datasetTeam);
+            if (!gate.ok) {
+                this.showErrorDashboard(gate.reason || 'This dashboard is turned off for this team.');
+                return;
+            }
+            window.usageTracker.noteDashboard(resolvedDashboardType);
+        }
 
         await this.ensureDashboardAuthCookie();
 

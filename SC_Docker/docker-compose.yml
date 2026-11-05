@@ -77,7 +77,7 @@ services:
       
       # File paths (use existing volumes)
       - VISUS_DATASETS=${VISUS_DATASETS}
-  
+      - SC_PORTAL_ADMIN_EMAILS=${SC_PORTAL_ADMIN_EMAILS}
       
     networks:
       - docker_visstore_web

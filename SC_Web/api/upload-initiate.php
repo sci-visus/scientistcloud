@@ -42,6 +42,13 @@ try {
         echo json_encode(['success' => false, 'error' => 'Authentication required']);
         exit;
     }
+    $user = getCurrentUser();
+    if (!$user || empty($user['email'])) {
+        ob_end_clean();
+        http_response_code(401);
+        echo json_encode(['success' => false, 'error' => 'User not authenticated']);
+        exit;
+    }
 
     // Get request body
     $input = file_get_contents('php://input');
@@ -53,6 +60,8 @@ try {
         echo json_encode(['success' => false, 'error' => 'Invalid JSON in request body']);
         exit;
     }
+
+    $requestData['user_email'] = $user['email'];
 
     // Get SCLib Upload API URL from config
     $uploadApiUrl = getenv('SCLIB_UPLOAD_URL') ?: getenv('SCLIB_API_URL') ?: getenv('SCLIB_DATASET_URL') ?: getenv('EXISTING_API_URL');

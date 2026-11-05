@@ -1954,6 +1954,14 @@ class DatasetManager {
             server: datasetServer
         };
 
+        if (window.usageTracker) {
+            window.usageTracker.beginDataset({
+                dataset_id: datasetId,
+                dataset_uuid: datasetUuid,
+                dataset_name: datasetName,
+            });
+        }
+
         // Fetch dataset details once and reuse for both details display and dashboard selection
         let datasetDetails = null;
         try {
