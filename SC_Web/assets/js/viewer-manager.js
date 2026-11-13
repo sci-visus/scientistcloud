@@ -210,6 +210,9 @@ class ViewerManager {
             '3d vtk': '3DVTK',
             'openvisus slice dashboard': 'OpenVisusSlice',
             'openvisus slice': 'OpenVisusSlice',
+            'openvisus': 'OpenVisusSlice',
+            'volume explorer': 'VolumeExplorer',
+            'volumeexplorer': 'VolumeExplorer',
             'magicscan dashboard': 'magicscan',
             'magicscan': 'magicscan',
             '4d dashboard (new)': '4d_dashboardLite',
@@ -893,6 +896,9 @@ class ViewerManager {
             'openvisus': 'OpenVisusSlice',  // Map lowercase alias to the API dashboard
             'OpenVisus': 'OpenVisusSlice',
             'openvisusslice': 'OpenVisusSlice',
+            'volume explorer': 'VolumeExplorer',
+            'Volume Explorer': 'VolumeExplorer',
+            'volumeexplorer': 'VolumeExplorer',
             // Map old dashboard names to new ones
             '4D_Dashboard': '4d_dashboardLite',  // Old 4D dashboard -> new one
             '4d_dashboard': '4d_dashboardLite',  // Alternative spelling

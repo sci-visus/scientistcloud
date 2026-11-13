@@ -604,6 +604,11 @@ class PublicDatasetManager {
                     'OpenVisus Slice': 'OpenVisusSlice',
                     'openvisus slice': 'OpenVisusSlice',
                     'OpenVisusSlice': 'OpenVisusSlice',
+                    'openvisus': 'OpenVisusSlice',
+                    'OpenVisus': 'OpenVisusSlice',
+                    'Volume Explorer': 'VolumeExplorer',
+                    'volume explorer': 'VolumeExplorer',
+                    'VolumeExplorer': 'VolumeExplorer',
                     'magicscan': 'magicscan',
                     'MagicScan Dashboard': 'magicscan',
                     'magicscan dashboard': 'magicscan',
@@ -622,14 +627,6 @@ class PublicDatasetManager {
                         : null);
 
                 if (mapped && viewers[mapped] !== undefined) {
-                    // If dataset is 4D, do not allow a non-4D preferred dashboard to override it.
-                    if (effectiveDimension === 4 && mapped !== 'S3Browser') {
-                        if (mapped === '4d_dashboard' || mapped === '4d_dashboardLite' || mapped === '4d_dashboardopt') {
-                            return mapped;
-                        }
-                        return select4D();
-                    }
-
                     return mapped;
                 }
             }

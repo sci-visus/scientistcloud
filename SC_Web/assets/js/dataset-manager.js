@@ -2954,6 +2954,9 @@ class DatasetManager {
                     'openvisus': 'OpenVisusSlice',
                     'OpenVisus': 'OpenVisusSlice',
                     'openvisusslice': 'OpenVisusSlice',
+                    'volume explorer': 'VolumeExplorer',
+                    'Volume Explorer': 'VolumeExplorer',
+                    'volumeexplorer': 'VolumeExplorer',
                     '3d_plotly': '3DPlotly',  // Map to ID, not display name
                     '3D Plotly': '3DPlotly',
                     'plotly': '3DPlotly',
@@ -3170,6 +3173,10 @@ class DatasetManager {
                     'openvisus slice dashboard': 'OpenVisusSlice',
                     'OpenVisus Slice': 'OpenVisusSlice',
                     'openvisus slice': 'OpenVisusSlice',
+                    'openvisus': 'OpenVisusSlice',
+                    'Volume Explorer': 'VolumeExplorer',
+                    'volume explorer': 'VolumeExplorer',
+                    'VolumeExplorer': 'VolumeExplorer',
                     'Dark Matter Dashboard': 'DarkMatter',
                     'dark matter dashboard': 'DarkMatter',
                     'Dark Matter': 'DarkMatter',
@@ -3287,6 +3294,10 @@ class DatasetManager {
                     'openvisus slice dashboard': 'OpenVisusSlice',
                     'OpenVisus Slice': 'OpenVisusSlice',
                     'openvisus slice': 'OpenVisusSlice',
+                    'openvisus': 'OpenVisusSlice',
+                    'Volume Explorer': 'VolumeExplorer',
+                    'volume explorer': 'VolumeExplorer',
+                    'VolumeExplorer': 'VolumeExplorer',
                     'Dark Matter Dashboard': 'DarkMatter',
                     'dark matter dashboard': 'DarkMatter',
                     'Dark Matter': 'DarkMatter',
@@ -3774,6 +3785,10 @@ class DatasetManager {
                     'openvisus slice dashboard': 'OpenVisusSlice',
                     'OpenVisus Slice': 'OpenVisusSlice',
                     'openvisus slice': 'OpenVisusSlice',
+                    'openvisus': 'OpenVisusSlice',
+                    'Volume Explorer': 'VolumeExplorer',
+                    'volume explorer': 'VolumeExplorer',
+                    'VolumeExplorer': 'VolumeExplorer',
                     'OpenVisusSlice': 'OpenVisusSlice',  // Direct ID match
                     'MagicScan Dashboard': 'magicscan',
                     'magicscan dashboard': 'magicscan',
@@ -3955,6 +3970,10 @@ class DatasetManager {
                     'openvisus slice dashboard': 'OpenVisusSlice',
                     'OpenVisus Slice': 'OpenVisusSlice',
                     'openvisus slice': 'OpenVisusSlice',
+                    'openvisus': 'OpenVisusSlice',
+                    'Volume Explorer': 'VolumeExplorer',
+                    'volume explorer': 'VolumeExplorer',
+                    'VolumeExplorer': 'VolumeExplorer',
                     'OpenVisusSlice': 'OpenVisusSlice',
                 };
                 
@@ -4112,6 +4131,7 @@ class DatasetManager {
                         '3dvtk': '3DVTK',
                         '4ddashboardlite': '4d_dashboardLite',
                         'openvisusslice': 'OpenVisusSlice',
+                        'volumeexplorer': 'VolumeExplorer',
                         'magicscan': 'magicscan'
                     };
                     const normalizedId = viewer.id.toLowerCase().replace(/[_-]/g, '');
@@ -4129,6 +4149,10 @@ class DatasetManager {
                         '4d dashboard': '4d_dashboard',
                         'openvisus slice dashboard': 'OpenVisusSlice',
                         'openvisus slice': 'OpenVisusSlice',
+                        'openvisus': 'OpenVisusSlice',
+                        'Volume Explorer': 'VolumeExplorer',
+                        'volume explorer': 'VolumeExplorer',
+                        'VolumeExplorer': 'VolumeExplorer',
                         'magicscan dashboard': 'magicscan',
                         'magicscan': 'magicscan'
                     };
@@ -4143,6 +4167,8 @@ class DatasetManager {
                             pathId = '3DVTK';
                         } else if (normalizedName.includes('4d') || normalizedName.includes('4 d')) {
                             pathId = '4d_dashboardLite';
+                        } else if (normalizedName.includes('volume explorer') || normalizedName.includes('volumeexplorer')) {
+                            pathId = 'VolumeExplorer';
                         } else if (normalizedName.includes('openvisus') || normalizedName.includes('slice')) {
                             pathId = 'OpenVisusSlice';
                         } else if (normalizedName.includes('magicscan') || normalizedName.includes('magic')) {

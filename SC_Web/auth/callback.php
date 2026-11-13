@@ -9,6 +9,7 @@ if (session_status() === PHP_SESSION_NONE) {
 require_once(__DIR__ . '/../config_auth0.php'); // Setup SDK
 require_once(__DIR__ . '/../includes/sclib_client.php'); // Includes getSCLibAuthClient()
 require_once(__DIR__ . '/../includes/auth.php');
+require_once(__DIR__ . '/../includes/new_account_notify.php');
 
 global $auth0;
 
@@ -128,6 +129,8 @@ try {
         ];
         
         logMessage('INFO', 'Attempting to create user in SCLib', ['email' => $user_email]);
+
+        $priorUser = $sclib->lookupUserByEmail($user_email);
         
         // Create or update user in SCLib
         $createResult = $sclib->createUser($userData);
@@ -145,6 +148,13 @@ try {
             'email' => $user_email,
             'user_id' => $createResult['user_id'] ?? $userId
         ]);
+
+        $isNewAccount = array_key_exists('created', $createResult)
+            ? !empty($createResult['created'])
+            : (!empty($priorUser['ok']) && empty($priorUser['found']));
+        if ($isNewAccount) {
+            scNotifyNewAccount($user_email, $user_name);
+        }
         
         // Use the user_id from SCLib if provided
         if (isset($createResult['user_id'])) {

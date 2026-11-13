@@ -4,7 +4,7 @@
   "port_range": {
     "start": 8050,
     "end": 8999,
-    "next_available": 8065
+    "next_available": 8066
   },
   "dashboards": {
     "3DPlotly": {
@@ -70,6 +70,14 @@
       "port": 8058,
       "nginx_path": "/dashboard/darkmatter",
       "config_file": "../dashboards/darkmatter.json"
+    },
+    "VolumeExplorer": {
+      "name": "VolumeExplorer",
+      "display_name": "Volume Explorer",
+      "enabled": true,
+      "port": 8065,
+      "nginx_path": "/dashboard/VolumeExplorer",
+      "config_file": "../dashboards/VolumeExplorer.json"
     },
     "ORNL_CHESS_strain": {
       "name": "ORNL_CHESS_strain",

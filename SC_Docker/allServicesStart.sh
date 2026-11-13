@@ -27,7 +27,7 @@
 #   -sw, --sclib-web          Both
 #   -x, --nginx-only          Nginx only (still runs git pull first)
 #   -z, --dozzle-only         Dozzle only (container log viewer at /dozzle/)
-#   -dm, -ovs, -vtk, -plotly, -strain  Single dashboard rebuild (build_dashboard.sh, then compose up)
+#   -dm, -ovs, -vtk, -plotly, -strain, -volume  Single dashboard rebuild (build_dashboard.sh, then compose up)
 #   --dashboards-only         Skip s/w; only dashboard pipeline (+ x if also passed)
 #
 # Examples:
@@ -124,6 +124,12 @@ for arg in "$@"; do
             DASHBOARD_ONLY_REGISTRY_KEY="3DPlotly"
             DASHBOARD_ONLY_SERVICE="3dplotly"
             DASHBOARD_ONLY_CONTAINER="dashboard_3dplotly"
+            ;;
+        -volume|--volume-only|--volumeexplorer-only)
+            GIT_PULL_ONLY=false; DO_DASHBOARDS=true
+            DASHBOARD_ONLY_REGISTRY_KEY="VolumeExplorer"
+            DASHBOARD_ONLY_SERVICE="volumeexplorer"
+            DASHBOARD_ONLY_CONTAINER="dashboard_volumeexplorer"
             ;;
         -strain|--strain-only|--ornl-chess-strain-only)
             GIT_PULL_ONLY=false; DO_DASHBOARDS=true

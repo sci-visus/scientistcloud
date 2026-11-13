@@ -71,6 +71,10 @@ function normalizeDashboardType($dashboardType) {
         '3d vtk' => '3DVTK',
         'openvisus slice dashboard' => 'OpenVisusSlice',
         'openvisus slice' => 'OpenVisusSlice',
+        'openvisus' => 'OpenVisusSlice',
+        'openvisusslice' => 'OpenVisusSlice',
+        'volume explorer' => 'VolumeExplorer',
+        'volumeexplorer' => 'VolumeExplorer',
         'magicscan dashboard' => 'magicscan',
         'magicscan' => 'magicscan',
         'magic scan dashboard' => 'magicscan',
@@ -212,6 +216,13 @@ function getDashboardConfig($dashboardType) {
             'supported_formats' => [],
             'description' => 'Interactive 3D volume rendering with OpenVisus'
         ],
+        'VolumeExplorer' => [
+            'name' => 'Volume Explorer',
+            'type' => 'dash',
+            'url_template' => '/dashboard/VolumeExplorer/?uuid={uuid}&server={server}&name={name}',
+            'supported_formats' => [],
+            'description' => 'Slice, transfer function, transect, and coarse 3D volume'
+        ],
         '3DPlotly' => [
             'name' => '3D Plotly Dashboard',
             'type' => 'plotly',
@@ -319,6 +330,7 @@ function getAllDashboards() {
     // Fallback to defaults (only actual dashboards from dashboards-list.json)
     return [
         ['id' => 'OpenVisusSlice', 'name' => 'OpenVisus Slice Dasbhoard', 'type' => 'dash', 'display_name' => 'OpenVisus Slice Dashboard'],
+        ['id' => 'VolumeExplorer', 'name' => 'Volume Explorer', 'type' => 'dash', 'display_name' => 'Volume Explorer'],
         ['id' => '3DPlotly', 'name' => '3D Plotly Dashboard', 'type' => 'plotly', 'display_name' => '3D Plotly Dashboard'],
         ['id' => '3DVTK', 'name' => '3D VTK Dashboard', 'type' => 'vtk', 'display_name' => '3D VTK Dashboard'],
         ['id' => '4D_Dashboard', 'name' => '4D Dashboard', 'type' => 'dash', 'display_name' => '4D Dashboard'],

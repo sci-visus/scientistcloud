@@ -397,6 +397,12 @@ server {
         proxy_set_header Host \$host;
         proxy_set_header X-Real-IP \$remote_addr;
     }
+
+    location /dashboard/VolumeExplorer/ {
+        proxy_pass http://localhost:8065/VolumeExplorer/;
+        proxy_set_header Host \$host;
+        proxy_set_header X-Real-IP \$remote_addr;
+    }
 }
 EOF
 

@@ -319,12 +319,28 @@ class SCLibClient {
      * Get user profile by email
      */
     public function getUserProfileByEmail($email) {
+        $lookup = $this->lookupUserByEmail($email);
+        return $lookup['user'] ?? null;
+    }
+
+    /**
+     * Lookup that distinguishes "no such user" from an API failure.
+     * Returns ['ok' => bool, 'found' => bool, 'user' => array|null].
+     */
+    public function lookupUserByEmail($email) {
         try {
             $response = $this->makeRequest('/api/auth/user-by-email', 'GET', null, ['email' => $email]);
-            return $response['user'] ?? null;
+            $found = array_key_exists('found', $response)
+                ? (bool) $response['found']
+                : !empty($response['user']);
+            return [
+                'ok' => true,
+                'found' => $found,
+                'user' => $response['user'] ?? null,
+            ];
         } catch (Exception $e) {
             error_log("Failed to get user profile by email: " . $e->getMessage());
-            return null;
+            return ['ok' => false, 'found' => false, 'user' => null];
         }
     }
     
@@ -342,10 +358,14 @@ class SCLibClient {
             error_log("Create user response: " . json_encode($response));
             
             if (isset($response['success']) && $response['success']) {
-                return [
+                $result = [
                     'success' => true,
                     'user_id' => $response['user_id'] ?? $response['user']['id'] ?? null
                 ];
+                if (array_key_exists('created', $response)) {
+                    $result['created'] = (bool) $response['created'];
+                }
+                return $result;
             }
             return ['success' => false, 'error' => $response['error'] ?? 'Unknown error'];
         } catch (Exception $e) {

@@ -78,6 +78,13 @@ services:
       # File paths (use existing volumes)
       - VISUS_DATASETS=${VISUS_DATASETS}
       - SC_PORTAL_ADMIN_EMAILS=${SC_PORTAL_ADMIN_EMAILS}
+      - SC_NEW_ACCOUNT_NOTIFY_EMAIL=${SC_NEW_ACCOUNT_NOTIFY_EMAIL:-amy@visus.net}
+      - SC_NOTIFY_FROM=${SC_NOTIFY_FROM:-info@visoar.net}
+      - SENDGRID_API_KEY=${SENDGRID_API_KEY:-}
+      - SC_SMTP_HOST=${SC_SMTP_HOST:-}
+      - SC_SMTP_PORT=${SC_SMTP_PORT:-587}
+      - SC_SMTP_USER=${SC_SMTP_USER:-}
+      - SC_SMTP_PASSWORD=${SC_SMTP_PASSWORD:-}
       
     networks:
       - docker_visstore_web

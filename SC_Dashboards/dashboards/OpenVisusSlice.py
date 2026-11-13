@@ -15,14 +15,22 @@ from utils_bokeh_mongodb import cleanup_mongodb
 # SCLib: shared OpenVisus load resolution (dashboards only pass uuid/server/name)
 try:
     from SCLib_Dashboards import (
+        apply_openvisus_view_prefs,
         create_header_banner,
+        load_dataset_view_prefs,
         openvisus_set_dataset,
         resolve_openvisus_load_target,
+        save_dataset_view_prefs,
+        user_owns_dataset,
     )
 except ImportError:
     from SCDash_openvisus_load import (
+        apply_openvisus_view_prefs,
+        load_dataset_view_prefs,
         openvisus_set_dataset,
         resolve_openvisus_load_target,
+        save_dataset_view_prefs,
+        user_owns_dataset,
     )
 
     def create_header_banner(dataset_name="", dashboard_type="Dashboard"):
@@ -217,6 +225,8 @@ if has_args:
     print(f"save_dir: {save_dir}")
 
 # Resolve load target via SCLib (Mongo, remote HTTPS, local idx — one policy for all dashboards)
+view_prefs = None
+can_save_view = False
 if SKIP_DATASET_LOAD:
     openvisus_load_target = None
     dataset_url = None
@@ -233,6 +243,18 @@ else:
         log=print,
     )
     dataset_url = openvisus_load_target.load_url
+    view_prefs = load_dataset_view_prefs(collection if 'collection' in globals() else None, portal_uuid_param or uuid)
+    try:
+        owner_doc = None
+        if 'collection' in globals() and collection is not None and (portal_uuid_param or uuid):
+            owner_doc = collection.find_one(
+                {"uuid": portal_uuid_param or uuid},
+                {"user": 1, "user_email": 1, "owner": 1, "user_id": 1},
+            )
+        can_save_view = user_owns_dataset(owner_doc, user_email if 'user_email' in globals() else None)
+    except Exception as owner_ex:
+        print(f"[OpenVisusSlice] owner check failed: {owner_ex}")
+        can_save_view = False
     try:
         from SCLib_Dashboards import redact_url_secrets as _redact_url
     except ImportError:
@@ -325,13 +347,69 @@ if __name__.startswith('bokeh'):
         ])
     else:
         view = Slices(doc=doc, is_panel=is_panel, cls=ProbeTool)
+
+    def _configure_slice_widgets(include_time):
+        top = ["datasets", "palette", "resolution", "view_dep", "num_refinements", "colormapper_type", "show_metadata"]
+        if include_time:
+            top.insert(1, "timestep")
         view.setShowOptions([
-            ["datasets", "palette", "resolution", "view_dep", "num_refinements", "colormapper_type", "show_metadata"],
+            top,
             ["datasets", "direction", "offset", "colormapper_type", "palette_range_mode", "palette_range_vmin",
-             "palette_range_vmax", "show-probe"]
+             "palette_range_vmax", "show-probe"],
         ])
 
+    def _has_multiple_timesteps(slice_view):
+        try:
+            start = int(slice_view.widgets.timestep.start)
+            end = int(slice_view.widgets.timestep.end)
+            return end > start
+        except Exception:
+            return False
+
+    def _capture_slice_prefs(slice_view):
+        children = getattr(slice_view, "children", None) or []
+        active = children[0] if children else slice_view
+        captured = {}
+        readers = (
+            ("direction", active, "getDirection", int),
+            ("offset", active, "getOffset", float),
+            ("timestep", slice_view, "getTimestep", int),
+            ("palette", slice_view, "getPalette", str),
+            ("colormap", slice_view, "getColorMapperType", str),
+            ("range_mode", active, "getPaletteRangeMode", str),
+            ("resolution", slice_view, "getResolution", int),
+            ("field", slice_view, "getField", str),
+            ("num_refinements", slice_view, "getNumberOfRefinements", int),
+        )
+        for key, obj, method, cast in readers:
+            fn = getattr(obj, method, None)
+            if not callable(fn):
+                continue
+            try:
+                captured[key] = cast(fn())
+            except Exception as ex:
+                print(f"[OpenVisusSlice] skip {key}: {ex}")
+        if hasattr(slice_view, "isViewDependent"):
+            try:
+                captured["auto_res"] = bool(slice_view.isViewDependent())
+            except Exception as ex:
+                print(f"[OpenVisusSlice] skip auto_res: {ex}")
+        if captured.get("range_mode") == "user" and hasattr(active, "getPaletteRange"):
+            try:
+                vmin, vmax = active.getPaletteRange()
+                captured["range_min"] = float(vmin)
+                captured["range_max"] = float(vmax)
+                captured["transfer_function"] = {
+                    "palette": captured.get("palette") or "Viridis256",
+                    "window": [float(vmin), float(vmax)],
+                    "opacity": [[0.0, 0.0], [0.15, 0.25], [1.0, 0.85]],
+                }
+            except Exception as ex:
+                print(f"[OpenVisusSlice] skip range: {ex}")
+        return captured
+
     if SKIP_DATASET_LOAD:
+        _configure_slice_widgets(False)
         placeholder = Div(
             text="<h3>OpenVisus Slice</h3><p>Open a dataset from the ScientistCloud portal.</p>",
             styles={'padding': '20px'},
@@ -342,11 +420,39 @@ if __name__.startswith('bokeh'):
         # Always LoadDataset the resolved URL (local upload/converted, or remote HTTPS idx).
         # Never POST openvisus-resolved-idx / create converted/visus.idx proxy stubs.
         s3_auth_panel = None
-        openvisus_set_dataset(view, openvisus_load_target, user_email=user_email, log=print)
+        openvisus_set_dataset(
+            view,
+            openvisus_load_target,
+            user_email=user_email,
+            view_prefs=view_prefs,
+            log=print,
+        )
+        _configure_slice_widgets(_has_multiple_timesteps(view))
 
     if not SKIP_DATASET_LOAD:
+        save_status = Div(text="")
+
+        def _save_default_view(_event):
+            ok, message = save_dataset_view_prefs(
+                collection if 'collection' in globals() else None,
+                portal_uuid_param or uuid,
+                _capture_slice_prefs(view),
+                user_email,
+            )
+            save_status.text = message
+            print(f"[OpenVisusSlice] save default view: {message}")
+
+        save_controls = None
+        if can_save_view:
+            save_button = Button(label="Save as default view", button_type="primary")
+            save_button.on_click(_save_default_view)
+            save_controls = row(save_button, save_status)
+
         if is_panel:
             main_layout = view.getMainLayout()
+            apply_openvisus_view_prefs(view, view_prefs, log=print)
+            if save_controls is not None:
+                main_layout = column(save_controls, main_layout)
             use_template = True
             if use_template:
                 template = pn.template.MaterialTemplate(title='ScientistCloud Dashboard')
@@ -360,6 +466,9 @@ if __name__.startswith('bokeh'):
                 main_layout.servable()
         else:
             main_layout = view.getMainLayout()
+            apply_openvisus_view_prefs(view, view_prefs, log=print)
+            if save_controls is not None:
+                main_layout = column(save_controls, main_layout, sizing_mode="stretch_width")
             if s3_auth_panel is not None:
                 doc.add_root(s3_auth_panel)
             doc.add_root(main_layout)

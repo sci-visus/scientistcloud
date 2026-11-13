@@ -99,6 +99,18 @@
       "config_file": "../dashboards/darkmatter.json"
     },
     {
+      "id": "VolumeExplorer",
+      "name": "Volume Explorer",
+      "type": "dash",
+      "display_name": "Volume Explorer",
+      "description": "Slice, transfer function, depth transect, and coarse 3D volume with optional streamlines",
+      "port": 8065,
+      "nginx_path": "/dashboard/VolumeExplorer",
+      "url_template": "/dashboard/VolumeExplorer/?uuid={uuid}&server={server}&name={name}",
+      "enabled": true,
+      "config_file": "../dashboards/VolumeExplorer.json"
+    },
+    {
       "id": "ORNL_CHESS_strain",
       "name": "ORNL CHESS Strain",
       "type": "bokeh",
