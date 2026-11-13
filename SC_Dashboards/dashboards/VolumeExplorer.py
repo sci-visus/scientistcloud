@@ -15,7 +15,7 @@ import traceback
 from urllib.parse import parse_qs, unquote
 
 import numpy as np
-from dash import Dash, Input, Output, State, dcc, html, no_update
+from dash import Dash, Input, Output, State, ctx, dcc, html, no_update
 from flask import Flask, jsonify, request
 import plotly.graph_objects as go
 
@@ -32,9 +32,13 @@ from SCLib_Dashboards.SCDash_volume_explorer import (
     downsample_2d,
     field_descriptors,
     find_velocity,
+    AXIS_NAMES,
+    PLANE_NAMES,
+    clamp_layer,
     finite_minmax,
     fraction_point,
     initial_window,
+    layer_count,
     logic_shape_from_db,
     map_offset,
     mask_to_window,
@@ -220,21 +224,21 @@ def _empty_figure(title):
     return fig
 
 
-def _heatmap(image, title, colorscale, vmin, vmax, height=460):
+def _heatmap(image, title, colorscale, vmin, vmax, height=460, x_title="column", y_title="row"):
     fig = go.Figure(data=go.Heatmap(
         z=image,
         colorscale=colorscale,
         zmin=vmin,
         zmax=vmax,
         colorbar=dict(title="value", len=0.8),
-        hovertemplate="row %{y}<br>col %{x}<br>%{z}<extra></extra>",
+        hovertemplate=f"{x_title} %{{x}}<br>{y_title} %{{y}}<br>%{{z}}<extra></extra>",
     ))
     fig.update_layout(
         title=title,
         margin=dict(l=40, r=20, t=40, b=30),
         height=height,
-        xaxis_title="column",
-        yaxis_title="row",
+        xaxis_title=x_title,
+        yaxis_title=y_title,
     )
     fig.update_yaxes(scaleanchor="x", scaleratio=1)
     return fig
@@ -329,8 +333,18 @@ app.layout = html.Div([
         ]),
         html.Div([
             html.Label("Offset"),
-            dcc.Slider(id="offset", min=0, max=1, step=1, value=0, tooltip={"placement": "bottom", "always_visible": False}),
-        ], style={"minWidth": "220px", "flex": "1"}),
+            dcc.Slider(
+                id="offset",
+                min=0,
+                max=1,
+                step=1,
+                value=0,
+                marks={0: "0", 1: "1"},
+                tooltip={"placement": "bottom", "always_visible": True},
+                updatemode="mouseup",
+            ),
+            html.Div(id="offset-caption", style={"color": "#666", "fontSize": "12px", "marginTop": "2px"}),
+        ], style={"minWidth": "240px", "flex": "1"}),
         html.Div([
             html.Label("Time"),
             dcc.Slider(id="time", min=0, max=0, step=1, value=0),
@@ -401,9 +415,6 @@ def check_auth():
     Output("banner", "children"),
     Output("status", "children"),
     Output("direction", "value"),
-    Output("offset", "min"),
-    Output("offset", "max"),
-    Output("offset", "value"),
     Output("time", "min"),
     Output("time", "max"),
     Output("time", "value"),
@@ -427,7 +438,7 @@ def load_dataset(search):
         banner = _banner("")
         return (
             None, banner, str(ex),
-            2, 0, 1, 0,
+            2,
             0, 0, 0, True,
             "Viridis",
             0, 1, 0.01, [0, 1],
@@ -437,9 +448,8 @@ def load_dataset(search):
     direction = int(prefs.get("direction", 2)) if int(prefs.get("direction", 2) or 2) in (0, 1, 2) else 2
     if len(CACHE.logic_shape) < 3:
         direction = 0
-    full_len = CACHE.logic_shape[direction] if len(CACHE.logic_shape) > direction else 1
-    offset = int(prefs.get("offset", (full_len - 1) / 2))
-    offset = int(np.clip(offset, 0, max(full_len - 1, 0)))
+    full_len = layer_count(CACHE.logic_shape, direction)
+    offset = clamp_layer(prefs.get("offset", (full_len - 1) / 2), full_len)
     timesteps = CACHE.timesteps
     timestep = int(prefs["timestep"]) if prefs.get("timestep") in timesteps else timesteps[0]
     family = palette_family(prefs.get("palette") or "Viridis")
@@ -472,6 +482,7 @@ def load_dataset(search):
         "uuid": uuid,
         "name": name,
         "logic_shape": list(CACHE.logic_shape),
+        "saved_offset": offset,
         "scalar_field": CACHE.scalar_field,
         "has_velocity": bool(CACHE.velocity),
         "can_save": can_save,
@@ -481,9 +492,6 @@ def load_dataset(search):
         _banner(name),
         "Click two points on the slice to sample depth along that line.",
         direction,
-        0,
-        max(full_len - 1, 0),
-        offset,
         timesteps[0],
         timesteps[-1],
         timestep,
@@ -496,6 +504,33 @@ def load_dataset(search):
         {} if can_save else hidden,
         velocity_note,
     )
+
+
+@app.callback(
+    Output("offset", "min"),
+    Output("offset", "max"),
+    Output("offset", "value"),
+    Output("offset", "marks"),
+    Output("offset-caption", "children"),
+    Input("meta", "data"),
+    Input("direction", "value"),
+    State("offset", "value"),
+)
+def sync_offset(meta, direction, current):
+    """Offset is the layer index on the chosen axis: 0 .. slices-1."""
+    direction = int(direction) if int(direction or 0) in (0, 1, 2) else 2
+    shape = (meta or {}).get("logic_shape") or []
+    length = layer_count(shape, direction)
+    last = length - 1
+    if ctx.triggered_id == "meta":
+        raw = (meta or {}).get("saved_offset", last // 2)
+    else:
+        raw = last // 2 if current is None else current
+    value = clamp_layer(raw, length)
+    axis = AXIS_NAMES[direction]
+    caption = f"{axis} layer {value} of 0–{last} · {PLANE_NAMES[direction]} plane"
+    marks = {0: "0", last: str(last)} if last else {0: "0"}
+    return 0, last, value, marks, caption
 
 
 @app.callback(
@@ -539,9 +574,12 @@ def render_views(meta, direction, offset, timestep, quality, palette, window, po
             _empty_figure("Scalar range"),
             html.Div("Load a dataset to render the volume."),
         )
-    direction = int(direction if direction is not None else 2)
+    direction = int(direction) if int(direction or 0) in (0, 1, 2) else 2
     timestep = int(timestep or 0)
     quality = int(quality if quality is not None else -6)
+    axis_u, axis_v = (0, 1) if direction == 2 else ((0, 2) if direction == 1 else (1, 2))
+    # Horizontal axis is the first in-plane axis (X when the cut is along Z).
+    x_title, y_title = AXIS_NAMES[axis_u], AXIS_NAMES[axis_v]
     vmin, vmax = (window or [0, 1])[:2]
     record = palette_record(palette)
     colorscale = record["plotly"]
@@ -561,13 +599,14 @@ def render_views(meta, direction, offset, timestep, quality, palette, window, po
             return slice_fig, transect, hist, volume
 
         volume, vectors = _get_volume(timestep, quality)
+        layer = clamp_layer(offset, layer_count(logic_shape, direction))
         plane = None
         try:
             plane = read_plane(
                 CACHE.db,
                 logic_shape,
                 direction,
-                int(offset or 0),
+                layer,
                 timestep,
                 field=CACHE.scalar_field,
                 quality=min(quality + 3, 0),
@@ -576,21 +615,30 @@ def render_views(meta, direction, offset, timestep, quality, palette, window, po
             print(f"[VolumeExplorer] plane query failed: {ex}")
             plane = None
         coarse_offset = map_offset(
-            float(offset or 0),
-            logic_shape[direction] if len(logic_shape) > direction else volume.shape[direction],
+            float(layer),
+            layer_count(logic_shape, direction),
             volume.shape[direction],
         )
         if plane is None:
             plane = slice_from_volume(volume, direction, coarse_offset)
-        shown, step = downsample_2d(mask_to_window(plane, vmin, vmax))
-        slice_fig = _heatmap(shown, f"Slice  direction {direction}  offset {int(offset or 0)}", colorscale, vmin, vmax)
+        # Rows of the original plane follow axis_u. Transpose so that axis is horizontal.
+        shown, step = downsample_2d(mask_to_window(np.asarray(plane).T, vmin, vmax))
+        slice_fig = _heatmap(
+            shown,
+            f"{PLANE_NAMES[direction]} plane · {AXIS_NAMES[direction]} = {layer}",
+            colorscale,
+            vmin,
+            vmax,
+            x_title=x_title,
+            y_title=y_title,
+        )
         _draw_line(slice_fig, points)
         hist = _histogram_figure(volume, vmin, vmax)
         transect = _transect_from_points(
             volume, points, step, colorscale, vmin, vmax,
-            depth=True, direction=direction, plane_shape=plane.shape,
+            depth=True, direction=direction, plane_shape=plane.shape, transposed=True,
         )
-        seeds = _seeds(volume.shape, direction, coarse_offset, points, step, plane.shape)
+        seeds = _seeds(volume.shape, direction, coarse_offset, points, step, plane.shape, transposed=True)
         volume_pane = _volume_view(volume, vectors, float(vmin), float(vmax), seeds, show_lines, record["vtk"])
         return slice_fig, transect, hist, volume_pane
     except Exception as ex:
@@ -620,20 +668,30 @@ def _draw_line(fig, points):
     ))
 
 
-def _plane_points(points, step, plane_shape):
+def _plane_points(points, step, plane_shape, transposed=False):
     if not points or not points.get("p0") or not points.get("p1"):
         return None
     step = max(int(step or 1), 1)
-    p0 = (float(points["p0"]["row"]) * step, float(points["p0"]["col"]) * step)
-    p1 = (float(points["p1"]["row"]) * step, float(points["p1"]["col"]) * step)
-    p0 = (min(max(p0[0], 0), plane_shape[0] - 1), min(max(p0[1], 0), plane_shape[1] - 1))
-    p1 = (min(max(p1[0], 0), plane_shape[0] - 1), min(max(p1[1], 0), plane_shape[1] - 1))
-    return p0, p1
+
+    def one(pt):
+        # The Z view is transposed so X runs horizontally. Clicks then have
+        # col = first in-plane axis and row = second.
+        if transposed:
+            along_u = float(pt["col"]) * step
+            along_v = float(pt["row"]) * step
+        else:
+            along_u = float(pt["row"]) * step
+            along_v = float(pt["col"]) * step
+        along_u = min(max(along_u, 0), plane_shape[0] - 1)
+        along_v = min(max(along_v, 0), plane_shape[1] - 1)
+        return along_u, along_v
+
+    return one(points["p0"]), one(points["p1"])
 
 
-def _transect_from_points(source, points, step, colorscale, vmin, vmax, depth, direction=2, plane_shape=None):
+def _transect_from_points(source, points, step, colorscale, vmin, vmax, depth, direction=2, plane_shape=None, transposed=False):
     plane_shape = plane_shape or getattr(source, "shape", (1, 1))
-    picked = _plane_points(points, step, plane_shape if not depth else plane_shape)
+    picked = _plane_points(points, step, plane_shape, transposed=transposed)
     if not picked:
         return _empty_figure("Depth transect — click two points on the slice")
     p0, p1 = picked
@@ -660,8 +718,8 @@ def _transect_from_points(source, points, step, colorscale, vmin, vmax, depth, d
     return fig
 
 
-def _seeds(volume_shape, direction, offset, points, step, plane_shape):
-    picked = _plane_points(points, step, plane_shape)
+def _seeds(volume_shape, direction, offset, points, step, plane_shape, transposed=False):
+    picked = _plane_points(points, step, plane_shape, transposed=transposed)
     if not picked:
         return seeds_for_streamlines(volume_shape, direction, offset)
     p0, p1 = picked
