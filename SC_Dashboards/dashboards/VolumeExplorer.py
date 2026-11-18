@@ -249,9 +249,18 @@ def _heatmap(image, title, colorscale, vmin, vmax, height=460, x_title="column",
         dragmode="zoom",
     )
     if zoom:
-        # zoom is a revision token. It stays put while the slice updates, and
-        # changes when the user hits Reset zoom or the plotly home button.
-        fig.update_layout(uirevision=str(zoom))
+        # Same data unit on X and Y. A long zoom box stays long; it is not
+        # stretched to fill the plot. uirevision keeps that view when a line
+        # point is added. It changes only for Reset zoom.
+        token = str(zoom)
+        fig.update_layout(uirevision=token)
+        fig.update_xaxes(uirevision=token, constrain="domain")
+        fig.update_yaxes(
+            uirevision=token,
+            scaleanchor="x",
+            scaleratio=1,
+            constrain="domain",
+        )
     return fig
 
 
@@ -436,7 +445,7 @@ app.layout = html.Div([
         dcc.Graph(
             id="slice-graph",
             figure=_empty_figure("Slice"),
-            config={"displaylogo": False, "scrollZoom": True},
+            config={"displaylogo": False, "scrollZoom": True, "doubleClick": False},
         ),
         html.Div(id="volume-pane"),
     ]),
