@@ -52,6 +52,7 @@ from SCLib_Dashboards.SCDash_volume_explorer import (
     scalar_histogram,
     seeds_for_streamlines,
     slice_from_volume,
+    transect_polyline,
     volume_mesh_state,
 )
 
@@ -77,6 +78,8 @@ except ImportError:
 
 
 PORT = int(os.environ.get("DASHBOARD_PORT", "8065"))
+# The 3D pane is one coarse IDX level of the whole dataset. The slice uses the quality slider.
+VOLUME_QUALITY = -9
 DEPLOY_SERVER = os.getenv("DEPLOY_SERVER") or ""
 DB_NAME = os.getenv("DB_NAME")
 COLLECTION = None
@@ -224,7 +227,7 @@ def _empty_figure(title):
     return fig
 
 
-def _heatmap(image, title, colorscale, vmin, vmax, height=460, x_title="column", y_title="row"):
+def _heatmap(image, title, colorscale, vmin, vmax, height=460, x_title="column", y_title="row", zoom=False):
     fig = go.Figure(data=go.Heatmap(
         z=image,
         colorscale=colorscale,
@@ -239,8 +242,11 @@ def _heatmap(image, title, colorscale, vmin, vmax, height=460, x_title="column",
         height=height,
         xaxis_title=x_title,
         yaxis_title=y_title,
+        dragmode="zoom",
     )
-    fig.update_yaxes(scaleanchor="x", scaleratio=1)
+    if zoom:
+        # Keep the user's box zoom and scroll zoom when the slice is redrawn.
+        fig.update_layout(uirevision="slice-plane")
     return fig
 
 
@@ -273,7 +279,8 @@ def _volume_view(volume, vectors, vmin, vmax, seeds, show_lines, preset):
             colorMapPreset=preset,
             colorDataRange=[float(vmin), float(vmax)],
             property={
-                "scalarOpacityUnitDistance": 1.0,
+                # A unit distance of 1 turns a coarse grid into a solid black box.
+                "scalarOpacityUnitDistance": max(float(np.mean(volume.shape[:3])) / 40.0, 1.0),
                 "scalarOpacity": opacity_nodes(nodata, vmin, vmax),
             },
         )
@@ -302,7 +309,11 @@ def _volume_view(volume, vectors, vmin, vmax, seeds, show_lines, preset):
     )
     return html.Div([
         html.Div(view, style={"height": "460px", "width": "100%"}),
-        html.Div(note, style={"color": "#666", "fontSize": "13px", "marginTop": "6px"}),
+        html.Div(
+            "Coarse 3D volume from the OpenVisus IDX. The value window hides scalars outside the selected range.",
+            style={"color": "#666", "fontSize": "13px", "marginTop": "6px"},
+        ),
+        html.Div(note, style={"color": "#666", "fontSize": "13px"}),
     ])
 
 
@@ -375,7 +386,11 @@ app.layout = html.Div([
         dcc.RangeSlider(id="window", min=0, max=1, value=[0, 1], step=0.01, allowCross=False),
     ]),
     html.Div(style={"display": "grid", "gridTemplateColumns": "1.3fr 1fr", "gap": "8px", "margin": "0 8px"}, children=[
-        dcc.Graph(id="slice-graph", figure=_empty_figure("Slice"), config={"displaylogo": False}),
+        dcc.Graph(
+            id="slice-graph",
+            figure=_empty_figure("Slice"),
+            config={"displaylogo": False, "scrollZoom": True},
+        ),
         html.Div(id="volume-pane"),
     ]),
     html.Div(style={"display": "grid", "gridTemplateColumns": "1fr 1fr", "gap": "8px", "margin": "0 8px"}, children=[
@@ -393,8 +408,9 @@ app.layout = html.Div([
             value=[],
         ),
         html.Div(id="stream-note", style={"color": "#666", "fontSize": "13px"}),
+        html.Button("Clear line", id="clear-line", n_clicks=0, style={"marginTop": "6px"}),
         html.Div(
-            "Click two points on the slice to draw a line. The lower-right image is the depth under that line.",
+            "Click to add corners. Each segment is a piece of the line, and the depth plot is the curtain under the whole path. Scroll or drag a box to zoom the slice.",
             style={"color": "#666", "fontSize": "13px", "marginTop": "4px"},
         ),
     ]),
@@ -496,7 +512,7 @@ def load_dataset(search):
     return (
         meta,
         _banner(name),
-        "Click two points on the slice to sample depth along that line.",
+        "Click to add corners of a line. The depth plot is the curtain under that path.",
         direction,
         timesteps[0],
         timesteps[-1],
@@ -583,22 +599,38 @@ def window_from_histogram(selected, lower, upper):
     return span
 
 
+def _line_vertices(points):
+    if not isinstance(points, dict):
+        return []
+    vertices = list(points.get("points") or [])
+    if len(vertices) < 2 and points.get("p0") and points.get("p1"):
+        vertices = [points["p0"], points["p1"]]
+    return [pt for pt in vertices if isinstance(pt, dict) and "row" in pt and "col" in pt]
+
+
 @app.callback(
     Output("transect-points", "data"),
     Input("slice-graph", "clickData"),
+    Input("clear-line", "n_clicks"),
     State("transect-points", "data"),
+    prevent_initial_call=True,
 )
-def collect_transect(click, current):
+def collect_transect(click, _clear_clicks, current):
+    if ctx.triggered_id == "clear-line":
+        return {"points": []}
     if not click or not click.get("points"):
-        return current or {}
+        return current or {"points": []}
     point = click["points"][0]
     if "x" not in point or "y" not in point:
-        return current or {}
+        return current or {"points": []}
     stored = {"row": float(point["y"]), "col": float(point["x"])}
-    current = current or {}
-    if not current.get("p0") or current.get("p1"):
-        return {"p0": stored, "p1": None}
-    return {"p0": current["p0"], "p1": stored}
+    vertices = _line_vertices(current)
+    if vertices:
+        last = vertices[-1]
+        if abs(last["row"] - stored["row"]) < 0.5 and abs(last["col"] - stored["col"]) < 0.5:
+            return {"points": vertices}
+    vertices.append(stored)
+    return {"points": vertices}
 
 
 @app.callback(
@@ -649,10 +681,10 @@ def render_views(meta, direction, offset, timestep, quality, palette, window, po
             volume = html.Div("This dataset is 2D, so there is no volume to raycast.")
             return slice_fig, transect, hist, volume
 
-        volume, vectors = _get_volume(timestep, quality)
         layer = clamp_layer(offset, layer_count(logic_shape, direction))
         plane = None
         try:
+            # One IDX plane at the quality slider. This is the interactive view.
             plane = read_plane(
                 CACHE.db,
                 logic_shape,
@@ -660,17 +692,15 @@ def render_views(meta, direction, offset, timestep, quality, palette, window, po
                 layer,
                 timestep,
                 field=CACHE.scalar_field,
-                quality=min(quality + 3, 0),
+                quality=quality,
             )
         except Exception as ex:
             print(f"[VolumeExplorer] plane query failed: {ex}")
             plane = None
-        coarse_offset = map_offset(
-            float(layer),
-            layer_count(logic_shape, direction),
-            volume.shape[direction],
-        )
+        volume = vectors = None
         if plane is None:
+            volume, vectors = _get_volume(timestep, VOLUME_QUALITY)
+            coarse_offset = map_offset(float(layer), layer_count(logic_shape, direction), volume.shape[direction])
             plane = slice_from_volume(volume, direction, coarse_offset)
         shown, step = downsample_2d(mask_to_window(np.asarray(plane), vmin, vmax))
         slice_fig = _heatmap(
@@ -681,15 +711,25 @@ def render_views(meta, direction, offset, timestep, quality, palette, window, po
             vmax,
             x_title=x_title,
             y_title=y_title,
+            zoom=True,
         )
         _draw_line(slice_fig, points)
-        hist = _histogram_figure(volume, vmin, vmax)
-        transect = _transect_from_points(
-            volume, points, step, colorscale, vmin, vmax,
-            depth=True, direction=direction, plane_shape=plane.shape,
-        )
-        seeds = _seeds(volume.shape, direction, coarse_offset, points, step, plane.shape)
-        volume_pane = _volume_view(volume, vectors, float(vmin), float(vmax), seeds, show_lines, record["vtk"])
+        hist = _histogram_figure(np.asarray(plane), vmin, vmax)
+        try:
+            if volume is None:
+                volume, vectors = _get_volume(timestep, VOLUME_QUALITY)
+            coarse_offset = map_offset(float(layer), layer_count(logic_shape, direction), volume.shape[direction])
+            transect = _transect_from_points(
+                volume, points, step, colorscale, vmin, vmax,
+                depth=True, direction=direction, plane_shape=plane.shape,
+            )
+            seeds = _seeds(volume.shape, direction, coarse_offset, points, step, plane.shape)
+            volume_pane = _volume_view(volume, vectors, float(vmin), float(vmax), seeds, show_lines, record["vtk"])
+        except Exception as ex:
+            print(f"[VolumeExplorer] coarse volume failed: {ex}")
+            traceback.print_exc()
+            transect = _empty_figure("Depth transect")
+            volume_pane = html.Div(str(ex), style={"color": "#a33", "padding": "12px"})
         return slice_fig, transect, hist, volume_pane
     except Exception as ex:
         print(f"[VolumeExplorer] render failed: {ex}")
@@ -703,13 +743,12 @@ def render_views(meta, direction, offset, timestep, quality, palette, window, po
 
 
 def _draw_line(fig, points):
-    if not points or not points.get("p0"):
+    vertices = _line_vertices(points)
+    if not vertices:
         return
-    p0 = points["p0"]
-    p1 = points.get("p1") or p0
     fig.add_trace(go.Scatter(
-        x=[p0["col"], p1["col"]],
-        y=[p0["row"], p1["row"]],
+        x=[pt["col"] for pt in vertices],
+        y=[pt["row"] for pt in vertices],
         mode="lines+markers",
         line=dict(color="white", width=2),
         marker=dict(color="white", size=8),
@@ -718,64 +757,61 @@ def _draw_line(fig, points):
     ))
 
 
-def _plane_points(points, step, plane_shape, transposed=False):
-    if not points or not points.get("p0") or not points.get("p1"):
-        return None
+def _polyline_uv(points, step, plane_shape, volume_shape, direction):
+    vertices = _line_vertices(points)
+    if len(vertices) < 2:
+        return []
     step = max(int(step or 1), 1)
-
-    def one(pt):
-        # The Z view is transposed so X runs horizontally. Clicks then have
-        # col = first in-plane axis and row = second.
-        if transposed:
-            along_u = float(pt["col"]) * step
-            along_v = float(pt["row"]) * step
-        else:
-            along_u = float(pt["row"]) * step
-            along_v = float(pt["col"]) * step
-        along_u = min(max(along_u, 0), plane_shape[0] - 1)
-        along_v = min(max(along_v, 0), plane_shape[1] - 1)
-        return along_u, along_v
-
-    return one(points["p0"]), one(points["p1"])
+    uv = []
+    for pt in vertices:
+        along_u = min(max(float(pt["row"]) * step, 0), plane_shape[0] - 1)
+        along_v = min(max(float(pt["col"]) * step, 0), plane_shape[1] - 1)
+        uv.append(fraction_point((along_u, along_v), plane_shape, volume_shape, direction))
+    return uv
 
 
-def _transect_from_points(source, points, step, colorscale, vmin, vmax, depth, direction=2, plane_shape=None, transposed=False):
+def _transect_from_points(source, points, step, colorscale, vmin, vmax, depth, direction=2, plane_shape=None):
     plane_shape = plane_shape or getattr(source, "shape", (1, 1))
-    picked = _plane_points(points, step, plane_shape, transposed=transposed)
-    if not picked:
-        return _empty_figure("Depth transect — click two points on the slice")
-    p0, p1 = picked
     if not depth:
-        count = 200
-        rows = np.linspace(p0[0], p1[0], count)
-        cols = np.linspace(p0[1], p1[1], count)
+        vertices = _line_vertices(points)
+        if len(vertices) < 2:
+            return _empty_figure("Depth transect — click to add corners of a line")
+        step = max(int(step or 1), 1)
         values = []
-        for row, col in zip(rows, cols):
-            r = int(np.clip(round(row), 0, source.shape[0] - 1))
-            c = int(np.clip(round(col), 0, source.shape[1] - 1))
-            values.append(source[r, c])
+        for start, end in zip(vertices, vertices[1:]):
+            p0 = (min(max(float(start["row"]) * step, 0), source.shape[0] - 1),
+                  min(max(float(start["col"]) * step, 0), source.shape[1] - 1))
+            p1 = (min(max(float(end["row"]) * step, 0), source.shape[0] - 1),
+                  min(max(float(end["col"]) * step, 0), source.shape[1] - 1))
+            count = max(2, int(round(np.hypot(p1[0] - p0[0], p1[1] - p0[1]))))
+            for row, col in zip(np.linspace(p0[0], p1[0], count), np.linspace(p0[1], p1[1], count)):
+                r = int(np.clip(round(row), 0, source.shape[0] - 1))
+                c = int(np.clip(round(col), 0, source.shape[1] - 1))
+                values.append(source[r, c])
         fig = go.Figure(data=go.Scatter(y=values, mode="lines", line=dict(color="#4E477F")))
         fig.update_layout(title="Line sample", margin=dict(l=40, r=20, t=40, b=30), height=280, yaxis_title="value")
         return fig
-    u0, v0 = fraction_point(p0, plane_shape, source.shape, direction)
-    u1, v1 = fraction_point(p1, plane_shape, source.shape, direction)
-    from SCLib_Dashboards.SCDash_volume_explorer import transect_image
-    image = transect_image(source, direction, (u0, v0), (u1, v1))
+    uv = _polyline_uv(points, step, plane_shape, source.shape, direction)
+    if len(uv) < 2:
+        return _empty_figure("Depth transect — click to add corners of a line")
+    image = transect_polyline(source, direction, uv)
+    if image is None:
+        return _empty_figure("Depth transect")
     image = mask_to_window(image, vmin, vmax)
     fig = _heatmap(image, "Depth under the line", colorscale, vmin, vmax, height=280)
-    fig.update_layout(xaxis_title="distance along line", yaxis_title="depth")
-    fig.update_yaxes(scaleanchor=None, autorange="reversed")
+    fig.update_layout(xaxis_title="distance along the line", yaxis_title="depth")
+    fig.update_yaxes(autorange="reversed")
     return fig
 
 
-def _seeds(volume_shape, direction, offset, points, step, plane_shape, transposed=False):
-    picked = _plane_points(points, step, plane_shape, transposed=transposed)
-    if not picked:
+def _seeds(volume_shape, direction, offset, points, step, plane_shape):
+    uv = _polyline_uv(points, step, plane_shape, volume_shape, direction)
+    if len(uv) < 2:
         return seeds_for_streamlines(volume_shape, direction, offset)
-    p0, p1 = picked
-    u0, v0 = fraction_point(p0, plane_shape, volume_shape, direction)
-    u1, v1 = fraction_point(p1, plane_shape, volume_shape, direction)
-    return seeds_for_streamlines(volume_shape, direction, offset, (u0, v0), (u1, v1))
+    seeds = []
+    for start, end in zip(uv, uv[1:]):
+        seeds.extend(seeds_for_streamlines(volume_shape, direction, offset, start, end, rake=3))
+    return seeds
 
 
 @app.callback(
