@@ -355,7 +355,8 @@ def _volume_view(volume, vectors, vmin, vmax, seeds, show_lines, preset, depth_a
     return html.Div([
         html.Div(view, style={"height": "460px", "width": "100%"}),
         html.Div(
-            "3D volume from the OpenVisus IDX at the selected quality. Color and opacity use the value range.",
+            f"One timestep from the Time slider. The vertical axis is {AXIS_NAMES[int(depth_axis) if int(depth_axis) in (0, 1, 2) else 2]} "
+            "depth, the same axis Offset moves through, not a stack of times. Color uses the value range.",
             style={"color": "#666", "fontSize": "13px", "marginTop": "6px"},
         ),
         html.Div(note, style={"color": "#666", "fontSize": "13px"}),
