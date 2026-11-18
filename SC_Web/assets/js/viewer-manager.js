@@ -405,16 +405,35 @@ class ViewerManager {
     /**
      * Handle viewer type change
      */
+    openDatasetRecord() {
+        const accountDataset = window.datasetManager && window.datasetManager.currentDataset;
+        if (accountDataset && (accountDataset.id || accountDataset.uuid)) {
+            return accountDataset;
+        }
+        if (this.currentDataset && (this.currentDataset.id || this.currentDataset.uuid)) {
+            return this.currentDataset;
+        }
+        const publicDataset = window.publicDatasetManager && window.publicDatasetManager.currentDataset;
+        if (publicDataset && (publicDataset.id || publicDataset.uuid)) {
+            return {
+                id: publicDataset.id || publicDataset.uuid,
+                name: publicDataset.name,
+                uuid: publicDataset.uuid || publicDataset.id,
+                server: publicDataset.server
+            };
+        }
+        return null;
+    }
+
     handleViewerTypeChange(viewerType) {
         console.log('Viewer type changed to:', viewerType);
-        
-        // Update dashboard based on viewer type
-        if (window.datasetManager && window.datasetManager.currentDataset) {
+        const dataset = this.openDatasetRecord();
+        if (dataset) {
             this.loadDashboard(
-                window.datasetManager.currentDataset.id,
-                window.datasetManager.currentDataset.name,
-                window.datasetManager.currentDataset.uuid,
-                window.datasetManager.currentDataset.server,
+                dataset.id,
+                dataset.name,
+                dataset.uuid,
+                dataset.server,
                 viewerType
             );
         }
@@ -427,13 +446,13 @@ class ViewerManager {
      */
     handleDashboardChange(dashboardType) {
         console.log('Dashboard changed to:', dashboardType);
-        
-        if (window.datasetManager && window.datasetManager.currentDataset) {
+        const dataset = this.openDatasetRecord();
+        if (dataset) {
             this.loadDashboard(
-                window.datasetManager.currentDataset.id,
-                window.datasetManager.currentDataset.name,
-                window.datasetManager.currentDataset.uuid,
-                window.datasetManager.currentDataset.server,
+                dataset.id,
+                dataset.name,
+                dataset.uuid,
+                dataset.server,
                 dashboardType
             );
         }

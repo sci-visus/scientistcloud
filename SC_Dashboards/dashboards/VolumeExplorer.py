@@ -53,7 +53,6 @@ from SCLib_Dashboards.SCDash_volume_explorer import (
     seeds_for_streamlines,
     slice_from_volume,
     volume_mesh_state,
-    window_from_selection,
 )
 
 try:
@@ -540,6 +539,36 @@ def sync_offset(meta, direction, current):
     return 0, last, value, marks, caption
 
 
+def _window_from_selection(selected, lower, upper):
+    """Local copy so the dashboard starts if the shared library is one commit behind."""
+    if not isinstance(selected, dict):
+        return None
+    span = (selected.get("range") or {}).get("x")
+    if not span or len(span) < 2:
+        xs = []
+        for point in selected.get("points") or []:
+            if isinstance(point, dict) and point.get("x") is not None:
+                try:
+                    xs.append(float(point["x"]))
+                except (TypeError, ValueError):
+                    continue
+        if not xs:
+            return None
+        span = [min(xs), max(xs)]
+    try:
+        lo = float(min(float(span[0]), float(span[1])))
+        hi = float(max(float(span[0]), float(span[1])))
+    except (TypeError, ValueError):
+        return None
+    if lower is not None:
+        lo = max(lo, float(lower))
+    if upper is not None:
+        hi = min(hi, float(upper))
+    if hi <= lo:
+        return None
+    return [lo, hi]
+
+
 @app.callback(
     Output("window", "value", allow_duplicate=True),
     Input("hist-graph", "selectedData"),
@@ -548,7 +577,7 @@ def sync_offset(meta, direction, current):
     prevent_initial_call=True,
 )
 def window_from_histogram(selected, lower, upper):
-    span = window_from_selection(selected, lower, upper)
+    span = _window_from_selection(selected, lower, upper)
     if span is None:
         return no_update
     return span
