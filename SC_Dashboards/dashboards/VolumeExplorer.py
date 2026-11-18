@@ -47,6 +47,7 @@ from SCLib_Dashboards.SCDash_volume_explorer import (
     palette_record,
     polydata_mesh_state,
     read_coarse_volume,
+    read_depth_columns,
     read_plane,
     read_vector_volume,
     scalar_histogram,
@@ -102,6 +103,7 @@ class _Cache:
         self.scalar_field = None
         self.volumes = {}
         self.vectors = {}
+        self.curtains = {}
 
 
 CACHE = _Cache()
@@ -180,6 +182,7 @@ def _open_dataset(search):
         CACHE.scalar_field = default_scalar_field(CACHE.fields, CACHE.velocity)
         CACHE.volumes = {}
         CACHE.vectors = {}
+        CACHE.curtains = {}
         print(
             f"[VolumeExplorer] loaded shape={CACHE.logic_shape} "
             f"timesteps={CACHE.timesteps} velocity={CACHE.velocity}"
@@ -271,7 +274,7 @@ def _histogram_figure(values, vmin, vmax):
     return fig
 
 
-def _volume_view(volume, vectors, vmin, vmax, seeds, show_lines, preset):
+def _volume_view(volume, vectors, vmin, vmax, seeds, show_lines, preset, depth_axis=2):
     if dash_vtk is None:
         return html.Div("vtk.js is not installed in this dashboard image.")
     data_min, data_max = finite_minmax(volume)
@@ -303,7 +306,7 @@ def _volume_view(volume, vectors, vmin, vmax, seeds, show_lines, preset):
         dash_vtk.VolumeRepresentation(
             [
                 dash_vtk.VolumeController(rescaleColorMap=False, size=[240, 72]),
-                dash_vtk.Volume(id=f"volume-data-{token}", state=volume_mesh_state(windowed)),
+                dash_vtk.Volume(id=f"volume-data-{token}", state=volume_mesh_state(windowed, depth_axis)),
             ],
             id=f"volume-rep-{token}",
             colorMapPreset=preset,
@@ -329,9 +332,16 @@ def _volume_view(volume, vectors, vmin, vmax, seeds, show_lines, preset):
                 print(f"[VolumeExplorer] streamlines failed: {ex}")
                 traceback.print_exc()
                 note = f"Streamlines failed: {ex}"
+    # Default camera looks straight down the thin axis, so the volume reads as a slice.
+    # An oblique position is reframed by vtk.js onto the dataset center.
+    up = [0.0, 0.0, 0.0]
+    up[int(depth_axis) if int(depth_axis) in (0, 1, 2) else 2] = 1.0
     view = dash_vtk.View(
-        children,
+        id=f"volume-view-{token}",
+        children=children,
         background=[0.04, 0.04, 0.06],
+        cameraPosition=[1.5, -1.7, 1.2],
+        cameraViewUp=up,
     )
     return html.Div([
         html.Div(view, style={"height": "460px", "width": "100%"}),
@@ -773,10 +783,12 @@ def render_views(meta, direction, offset, timestep, quality, palette, window, po
                 depth=True, direction=direction, plane_shape=plane.shape,
                 depth_axis=depth_axis, logic_shape=logic_shape,
                 zero_at_top=zero_at_top, slice_layer=layer,
-                volume_layer=coarse_offset,
+                volume_layer=coarse_offset, timestep=timestep,
             )
             seeds = _seeds(volume.shape, direction, coarse_offset, points, step, plane.shape)
-            volume_pane = _volume_view(volume, vectors, float(vmin), float(vmax), seeds, show_lines, record["vtk"])
+            volume_pane = _volume_view(
+                volume, vectors, float(vmin), float(vmax), seeds, show_lines, record["vtk"], depth_axis,
+            )
         except Exception as ex:
             print(f"[VolumeExplorer] coarse volume failed: {ex}")
             traceback.print_exc()
@@ -839,10 +851,88 @@ def _polyline_uv(points, step, plane_shape, volume_shape, direction):
     return uv
 
 
+def _logic_line(points, step, plane_shape, logic_shape, direction, slice_layer, count=72):
+    """Polyline corners in logic coordinates, resampled along the drawn path."""
+    vertices = _line_vertices(points)
+    if len(vertices) < 2 or len(logic_shape) < 3:
+        return []
+    axis_u, axis_v = orthogonal_axes(int(direction))
+    step = max(int(step or 1), 1)
+    corners = []
+    for pt in vertices:
+        row = min(max(float(pt["row"]) * step, 0.0), max(plane_shape[0] - 1, 0))
+        col = min(max(float(pt["col"]) * step, 0.0), max(plane_shape[1] - 1, 0))
+        point = [0.0, 0.0, 0.0]
+        point[axis_u] = row / max(plane_shape[0] - 1, 1) * max(logic_shape[axis_u] - 1, 0)
+        point[axis_v] = col / max(plane_shape[1] - 1, 1) * max(logic_shape[axis_v] - 1, 0)
+        point[int(direction)] = float(slice_layer)
+        corners.append(point)
+    lengths = [float(np.linalg.norm(np.subtract(b, a))) for a, b in zip(corners, corners[1:])]
+    total = float(sum(lengths))
+    if total < 1e-3:
+        return [tuple(corners[0]), tuple(corners[-1])]
+    budget = max(2, int(count))
+    samples = []
+    for (start, end), length in zip(zip(corners, corners[1:]), lengths):
+        steps = max(2, int(round(budget * max(length, 1e-6) / total)))
+        for index, t in enumerate(np.linspace(0.0, 1.0, steps)):
+            if samples and index == 0:
+                continue
+            point = [float(start[axis]) + (float(end[axis]) - float(start[axis])) * float(t) for axis in range(3)]
+            samples.append(tuple(point))
+    return samples
+
+
+def _full_depth_curtain(points, step, plane_shape, logic_shape, direction, slice_layer, depth_axis, timestep):
+    """Curtain from full-depth IDX columns. None when that read is unavailable."""
+    if CACHE.db is None or len(logic_shape) < 3:
+        return None, None
+    samples = _logic_line(points, step, plane_shape, logic_shape, direction, slice_layer, count=48)
+    if len(samples) < 2:
+        return None, None
+    key = (
+        int(timestep or 0),
+        CACHE.scalar_field,
+        int(depth_axis),
+        tuple(tuple(round(float(value), 1) for value in point) for point in samples),
+    )
+    if key not in CACHE.curtains:
+        try:
+            curtain = read_depth_columns(
+                CACHE.db,
+                logic_shape,
+                depth_axis,
+                samples,
+                int(timestep or 0),
+                field=CACHE.scalar_field,
+                quality=0,
+            )
+        except Exception as ex:
+            print(f"[VolumeExplorer] depth columns failed: {ex}")
+            curtain = None
+        CACHE.curtains[key] = curtain
+        if curtain is not None:
+            print(
+                f"[VolumeExplorer] depth columns shape={tuple(curtain.shape)} "
+                f"logic depth={layer_count(logic_shape, depth_axis)}"
+            )
+    image = CACHE.curtains.get(key)
+    if image is None:
+        return None, None
+    others = [axis for axis in range(3) if axis != int(depth_axis)]
+    distance = [0.0]
+    for start, end in zip(samples, samples[1:]):
+        step_len = float(np.hypot(end[others[0]] - start[others[0]], end[others[1]] - start[others[1]]))
+        distance.append(distance[-1] + step_len)
+    if len(distance) != image.shape[1]:
+        distance = np.linspace(0, distance[-1] if distance else 1, image.shape[1])
+    return image, np.asarray(distance, dtype=np.float32)
+
+
 def _transect_from_points(
     source, points, step, colorscale, vmin, vmax, depth,
     direction=2, plane_shape=None, depth_axis=2, logic_shape=(),
-    zero_at_top=True, slice_layer=0, volume_layer=None,
+    zero_at_top=True, slice_layer=0, volume_layer=None, timestep=0,
 ):
     plane_shape = plane_shape or getattr(source, "shape", (1, 1))
     if not depth:
@@ -869,10 +959,14 @@ def _transect_from_points(
     samples = _polyline_xyz(points, step, plane_shape, source.shape, direction, fixed)
     if len(samples) < 2:
         return _empty_figure("Depth transect — click to add corners of a line")
-    curtain = sample_curtain(source, depth_axis, samples)
-    if curtain is None:
-        return _empty_figure("Depth transect")
-    image, distance = curtain
+    image, distance = _full_depth_curtain(
+        points, step, plane_shape, logic_shape, direction, slice_layer, depth_axis, timestep,
+    )
+    if image is None:
+        curtain = sample_curtain(source, depth_axis, samples)
+        if curtain is None:
+            return _empty_figure("Depth transect")
+        image, distance = curtain
     shown = mask_to_window(image, vmin, vmax)
     if not np.isfinite(shown).any():
         data_min, data_max = finite_minmax(image)
