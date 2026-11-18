@@ -42,7 +42,6 @@ from SCLib_Dashboards.SCDash_volume_explorer import (
     logic_shape_from_db,
     map_offset,
     mask_to_window,
-    opacity_nodes,
     orthogonal_axes,
     palette_family,
     palette_record,
@@ -373,6 +372,16 @@ app.layout = html.Div([
             ),
         ]),
         html.Div([
+            html.Label("Depth axis"),
+            dcc.Dropdown(
+                id="depth-axis",
+                options=[{"label": "X", "value": 0}, {"label": "Y", "value": 1}, {"label": "Z", "value": 2}],
+                value=2,
+                clearable=False,
+                style={"width": "90px"},
+            ),
+        ]),
+        html.Div([
             html.Label("Offset"),
             dcc.Slider(
                 id="offset",
@@ -436,9 +445,16 @@ app.layout = html.Div([
             value=[],
         ),
         html.Div(id="stream-note", style={"color": "#666", "fontSize": "13px"}),
-        html.Button("Clear line", id="clear-line", n_clicks=0, style={"marginTop": "6px"}),
+        html.Button("Clear line", id="clear-line", n_clicks=0, style={"marginTop": "6px", "marginRight": "8px"}),
+        html.Button("Reset zoom", id="reset-zoom", n_clicks=0, style={"marginTop": "6px"}),
+        dcc.Checklist(
+            id="depth-zero-top",
+            options=[{"label": " Depth 0 at top", "value": "top"}],
+            value=["top"],
+            style={"marginTop": "6px"},
+        ),
         html.Div(
-            "Click to add corners. Each segment is a piece of the line, and the depth plot is the curtain under the whole path. Scroll or drag a box to zoom the slice.",
+            "Click to add corners. The depth plot runs from the start of the line on the left to the end on the right. Its vertical axis is the depth axis: offset 0 at the top when that box is checked, and the last offset at the bottom. Reset zoom clears a stuck slice view.",
             style={"color": "#666", "fontSize": "13px", "marginTop": "4px"},
         ),
     ]),
@@ -675,8 +691,11 @@ def collect_transect(click, _clear_clicks, current):
     Input("window", "value"),
     Input("transect-points", "data"),
     Input("streamlines", "value"),
+    Input("depth-axis", "value"),
+    Input("depth-zero-top", "value"),
+    Input("slice-revision", "data"),
 )
-def render_views(meta, direction, offset, timestep, quality, palette, window, points, streamlines):
+def render_views(meta, direction, offset, timestep, quality, palette, window, points, streamlines, depth_axis, zero_top, revision):
     if not meta or CACHE.db is None:
         return (
             _empty_figure("Slice"),
@@ -685,6 +704,8 @@ def render_views(meta, direction, offset, timestep, quality, palette, window, po
             html.Div("Load a dataset to render the volume."),
         )
     direction = int(direction) if int(direction or 0) in (0, 1, 2) else 2
+    depth_axis = int(depth_axis) if int(depth_axis if depth_axis is not None else direction) in (0, 1, 2) else direction
+    zero_at_top = "top" in (zero_top or [])
     timestep = int(timestep or 0)
     quality = int(quality if quality is not None else -6)
     axis_u, axis_v = (0, 1) if direction == 2 else ((0, 2) if direction == 1 else (1, 2))
@@ -739,7 +760,7 @@ def render_views(meta, direction, offset, timestep, quality, palette, window, po
             vmax,
             x_title=x_title,
             y_title=y_title,
-            zoom=True,
+            zoom=f"slice-{direction}-{int(revision or 0)}",
         )
         _draw_line(slice_fig, points)
         hist = _histogram_figure(np.asarray(plane), vmin, vmax)
@@ -750,6 +771,9 @@ def render_views(meta, direction, offset, timestep, quality, palette, window, po
             transect = _transect_from_points(
                 volume, points, step, colorscale, vmin, vmax,
                 depth=True, direction=direction, plane_shape=plane.shape,
+                depth_axis=depth_axis, logic_shape=logic_shape,
+                zero_at_top=zero_at_top, slice_layer=layer,
+                volume_layer=coarse_offset,
             )
             seeds = _seeds(volume.shape, direction, coarse_offset, points, step, plane.shape)
             volume_pane = _volume_view(volume, vectors, float(vmin), float(vmax), seeds, show_lines, record["vtk"])
@@ -785,6 +809,23 @@ def _draw_line(fig, points):
     ))
 
 
+def _polyline_xyz(points, step, plane_shape, volume_shape, direction, layer):
+    """Line vertices as volume indices. The slice offset is the fixed coordinate."""
+    uv = _polyline_uv(points, step, plane_shape, volume_shape, direction)
+    if len(uv) < 2:
+        return []
+    axis_u, axis_v = orthogonal_axes(int(direction))
+    fixed = float(np.clip(layer, 0, volume_shape[int(direction)] - 1))
+    samples = []
+    for u, v in uv:
+        point = [0.0, 0.0, 0.0]
+        point[axis_u] = float(u)
+        point[axis_v] = float(v)
+        point[int(direction)] = fixed
+        samples.append(tuple(point))
+    return samples
+
+
 def _polyline_uv(points, step, plane_shape, volume_shape, direction):
     vertices = _line_vertices(points)
     if len(vertices) < 2:
@@ -798,7 +839,11 @@ def _polyline_uv(points, step, plane_shape, volume_shape, direction):
     return uv
 
 
-def _transect_from_points(source, points, step, colorscale, vmin, vmax, depth, direction=2, plane_shape=None):
+def _transect_from_points(
+    source, points, step, colorscale, vmin, vmax, depth,
+    direction=2, plane_shape=None, depth_axis=2, logic_shape=(),
+    zero_at_top=True, slice_layer=0, volume_layer=None,
+):
     plane_shape = plane_shape or getattr(source, "shape", (1, 1))
     if not depth:
         vertices = _line_vertices(points)
@@ -819,12 +864,15 @@ def _transect_from_points(source, points, step, colorscale, vmin, vmax, depth, d
         fig = go.Figure(data=go.Scatter(y=values, mode="lines", line=dict(color="#4E477F")))
         fig.update_layout(title="Line sample", margin=dict(l=40, r=20, t=40, b=30), height=280, yaxis_title="value")
         return fig
-    uv = _polyline_uv(points, step, plane_shape, source.shape, direction)
-    if len(uv) < 2:
+    depth_axis = int(depth_axis) if int(depth_axis or 0) in (0, 1, 2) else int(direction)
+    fixed = slice_layer if volume_layer is None else volume_layer
+    samples = _polyline_xyz(points, step, plane_shape, source.shape, direction, fixed)
+    if len(samples) < 2:
         return _empty_figure("Depth transect — click to add corners of a line")
-    image = transect_polyline(source, direction, uv)
-    if image is None:
+    curtain = sample_curtain(source, depth_axis, samples)
+    if curtain is None:
         return _empty_figure("Depth transect")
+    image, distance = curtain
     shown = mask_to_window(image, vmin, vmax)
     if not np.isfinite(shown).any():
         data_min, data_max = finite_minmax(image)
@@ -832,9 +880,34 @@ def _transect_from_points(source, points, step, colorscale, vmin, vmax, depth, d
             f"Depth transect — no samples inside {float(vmin):.4g}–{float(vmax):.4g} "
             f"(line spans {data_min:.4g}–{data_max:.4g})"
         )
-    fig = _heatmap(shown, "Depth under the line", colorscale, vmin, vmax, height=280)
-    fig.update_layout(xaxis_title="distance along the line", yaxis_title="depth")
-    fig.update_yaxes(autorange="reversed")
+    length = layer_count(logic_shape, depth_axis) if logic_shape else image.shape[0]
+    last = max(int(length) - 1, 0)
+    offsets = np.linspace(0, last, image.shape[0])
+    fig = go.Figure(data=go.Heatmap(
+        z=shown,
+        x=np.asarray(distance),
+        y=offsets,
+        colorscale=colorscale,
+        zmin=vmin,
+        zmax=vmax,
+        colorbar=dict(title="value", len=0.8),
+        hovertemplate=(
+            "along line %{x:.0f}<br>"
+            f"{AXIS_NAMES[depth_axis]} offset %{{y:.0f}}<br>"
+            "%{z}<extra></extra>"
+        ),
+    ))
+    y_range = [float(offsets[-1]), float(offsets[0])] if zero_at_top else [float(offsets[0]), float(offsets[-1])]
+    fig.update_layout(
+        title=f"Depth under the line · {AXIS_NAMES[depth_axis]}",
+        margin=dict(l=40, r=20, t=40, b=30),
+        height=280,
+        xaxis_title="along the line (start → end)",
+        yaxis_title=f"{AXIS_NAMES[depth_axis]} offset",
+    )
+    fig.update_yaxes(range=y_range, autorange=False)
+    if depth_axis == int(direction):
+        fig.add_hline(y=float(slice_layer), line_width=1, line_dash="dot", line_color="white")
     return fig
 
 
@@ -846,6 +919,34 @@ def _seeds(volume_shape, direction, offset, points, step, plane_shape):
     for start, end in zip(uv, uv[1:]):
         seeds.extend(seeds_for_streamlines(volume_shape, direction, offset, start, end, rake=3))
     return seeds
+
+
+@app.callback(
+    Output("depth-axis", "value"),
+    Input("direction", "value"),
+)
+def follow_slice_axis(direction):
+    """The curtain starts on the same axis as the slice. The dropdown can override it."""
+    return int(direction) if int(direction or 0) in (0, 1, 2) else 2
+
+
+@app.callback(
+    Output("slice-revision", "data"),
+    Input("reset-zoom", "n_clicks"),
+    Input("slice-graph", "relayoutData"),
+    State("slice-revision", "data"),
+    prevent_initial_call=True,
+)
+def refresh_slice_zoom(n_clicks, relayout, revision):
+    """The plotly home button cannot clear a view that uirevision is holding."""
+    revision = int(revision or 0)
+    if ctx.triggered_id == "reset-zoom":
+        return revision + 1
+    if isinstance(relayout, dict) and (
+        relayout.get("xaxis.autorange") is True or relayout.get("yaxis.autorange") is True
+    ):
+        return revision + 1
+    return no_update
 
 
 @app.callback(
