@@ -53,6 +53,7 @@ from SCLib_Dashboards.SCDash_volume_explorer import (
     seeds_for_streamlines,
     slice_from_volume,
     volume_mesh_state,
+    window_from_selection,
 )
 
 try:
@@ -250,13 +251,15 @@ def _histogram_figure(values, vmin, vmax):
     fig = go.Figure(data=go.Bar(x=centers, y=counts.tolist(), marker_color="#6c63b5"))
     fig.add_vrect(x0=vmin, x1=vmax, fillcolor="rgba(255, 196, 64, 0.25)", line_width=0)
     fig.update_layout(
-        title="Scalar range",
+        title="Scalar range — drag across the bars to set the slice window",
         margin=dict(l=40, r=20, t=40, b=30),
         height=240,
         bargap=0,
         xaxis_title="value",
         yaxis_title="count",
         showlegend=False,
+        dragmode="select",
+        selectdirection="h",
     )
     return fig
 
@@ -369,7 +372,7 @@ app.layout = html.Div([
         ]),
     ]),
     html.Div(style={"margin": "0 16px 12px"}, children=[
-        html.Label("Value range — drag to hide scalars outside the window"),
+        html.Label("Value range — drag the slider, or brush a span on the scalar-range plot"),
         dcc.RangeSlider(id="window", min=0, max=1, value=[0, 1], step=0.01, allowCross=False),
     ]),
     html.Div(style={"display": "grid", "gridTemplateColumns": "1.3fr 1fr", "gap": "8px", "margin": "0 8px"}, children=[
@@ -377,7 +380,11 @@ app.layout = html.Div([
         html.Div(id="volume-pane"),
     ]),
     html.Div(style={"display": "grid", "gridTemplateColumns": "1fr 1fr", "gap": "8px", "margin": "0 8px"}, children=[
-        dcc.Graph(id="hist-graph", figure=_empty_figure("Scalar range"), config={"displaylogo": False}),
+        dcc.Graph(
+            id="hist-graph",
+            figure=_empty_figure("Scalar range"),
+            config={"displaylogo": False, "scrollZoom": False},
+        ),
         dcc.Graph(id="transect-graph", figure=_empty_figure("Depth transect"), config={"displaylogo": False}),
     ]),
     html.Div(style={"margin": "4px 16px 16px"}, children=[
@@ -534,6 +541,20 @@ def sync_offset(meta, direction, current):
 
 
 @app.callback(
+    Output("window", "value", allow_duplicate=True),
+    Input("hist-graph", "selectedData"),
+    State("window", "min"),
+    State("window", "max"),
+    prevent_initial_call=True,
+)
+def window_from_histogram(selected, lower, upper):
+    span = window_from_selection(selected, lower, upper)
+    if span is None:
+        return no_update
+    return span
+
+
+@app.callback(
     Output("transect-points", "data"),
     Input("slice-graph", "clickData"),
     State("transect-points", "data"),
@@ -578,8 +599,9 @@ def render_views(meta, direction, offset, timestep, quality, palette, window, po
     timestep = int(timestep or 0)
     quality = int(quality if quality is not None else -6)
     axis_u, axis_v = (0, 1) if direction == 2 else ((0, 2) if direction == 1 else (1, 2))
-    # Horizontal axis is the first in-plane axis (X when the cut is along Z).
-    x_title, y_title = AXIS_NAMES[axis_u], AXIS_NAMES[axis_v]
+    # The plane array is (axis_u, axis_v). Plotly draws columns across and rows up,
+    # so the horizontal axis is axis_v and the vertical axis is axis_u.
+    x_title, y_title = AXIS_NAMES[axis_v], AXIS_NAMES[axis_u]
     vmin, vmax = (window or [0, 1])[:2]
     record = palette_record(palette)
     colorscale = record["plotly"]
@@ -621,8 +643,7 @@ def render_views(meta, direction, offset, timestep, quality, palette, window, po
         )
         if plane is None:
             plane = slice_from_volume(volume, direction, coarse_offset)
-        # Rows of the original plane follow axis_u. Transpose so that axis is horizontal.
-        shown, step = downsample_2d(mask_to_window(np.asarray(plane).T, vmin, vmax))
+        shown, step = downsample_2d(mask_to_window(np.asarray(plane), vmin, vmax))
         slice_fig = _heatmap(
             shown,
             f"{PLANE_NAMES[direction]} plane · {AXIS_NAMES[direction]} = {layer}",
@@ -636,9 +657,9 @@ def render_views(meta, direction, offset, timestep, quality, palette, window, po
         hist = _histogram_figure(volume, vmin, vmax)
         transect = _transect_from_points(
             volume, points, step, colorscale, vmin, vmax,
-            depth=True, direction=direction, plane_shape=plane.shape, transposed=True,
+            depth=True, direction=direction, plane_shape=plane.shape,
         )
-        seeds = _seeds(volume.shape, direction, coarse_offset, points, step, plane.shape, transposed=True)
+        seeds = _seeds(volume.shape, direction, coarse_offset, points, step, plane.shape)
         volume_pane = _volume_view(volume, vectors, float(vmin), float(vmax), seeds, show_lines, record["vtk"])
         return slice_fig, transect, hist, volume_pane
     except Exception as ex:
