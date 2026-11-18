@@ -43,6 +43,7 @@ from SCLib_Dashboards.SCDash_volume_explorer import (
     map_offset,
     mask_to_window,
     opacity_nodes,
+    orthogonal_axes,
     palette_family,
     palette_record,
     polydata_mesh_state,
@@ -51,8 +52,8 @@ from SCLib_Dashboards.SCDash_volume_explorer import (
     read_vector_volume,
     scalar_histogram,
     seeds_for_streamlines,
+    sample_curtain,
     slice_from_volume,
-    transect_polyline,
     volume_mesh_state,
 )
 
@@ -246,8 +247,9 @@ def _heatmap(image, title, colorscale, vmin, vmax, height=460, x_title="column",
         dragmode="zoom",
     )
     if zoom:
-        # Keep the user's box zoom and scroll zoom when the slice is redrawn.
-        fig.update_layout(uirevision="slice-plane")
+        # zoom is a revision token. It stays put while the slice updates, and
+        # changes when the user hits Reset zoom or the plotly home button.
+        fig.update_layout(uirevision=str(zoom))
     return fig
 
 
@@ -286,7 +288,13 @@ def _volume_view(volume, vectors, vmin, vmax, seeds, show_lines, preset):
             f"This volume spans {data_min:.4g}–{data_max:.4g}.",
             style={"color": "#a33", "padding": "12px"},
         )
-    windowed, nodata = apply_opacity_window(volume, vmin, vmax)
+    windowed, _nodata = apply_opacity_window(volume, vmin, vmax)
+    # A new id makes vtk.js rebuild the view. Without it the pane stays on the
+    # first frame when the value range or the volume changes.
+    token = (
+        f"{volume.shape[0]}_{volume.shape[1]}_{volume.shape[2]}_"
+        f"{int(round(float(vmin) * 1000))}_{int(round(float(vmax) * 1000))}"
+    )
     # scalarOpacityUnitDistance is (component, distance). A bare float is ignored,
     # and the default distance of 1 paints the grid as a solid black box.
     # VolumeController installs an opacity curve on the actual scalars.
@@ -296,14 +304,12 @@ def _volume_view(volume, vectors, vmin, vmax, seeds, show_lines, preset):
         dash_vtk.VolumeRepresentation(
             [
                 dash_vtk.VolumeController(rescaleColorMap=False, size=[240, 72]),
-                dash_vtk.Volume(state=volume_mesh_state(windowed)),
+                dash_vtk.Volume(id=f"volume-data-{token}", state=volume_mesh_state(windowed)),
             ],
+            id=f"volume-rep-{token}",
             colorMapPreset=preset,
             colorDataRange=[float(vmin), float(vmax)],
-            property={
-                "scalarOpacityUnitDistance": [0, unit],
-                "scalarOpacity": opacity_nodes(nodata, vmin, vmax),
-            },
+            property={"scalarOpacityUnitDistance": [0, unit]},
         )
     ]
     note = ""
@@ -352,6 +358,7 @@ app.layout = html.Div([
     dcc.Location(id="url", refresh=False),
     dcc.Store(id="meta"),
     dcc.Store(id="transect-points"),
+    dcc.Store(id="slice-revision", data=0),
     html.Div(id="banner"),
     html.Div(id="status", style={"margin": "8px 16px", "color": "#444"}),
     html.Div(style={"display": "flex", "flexWrap": "wrap", "gap": "12px", "alignItems": "end", "margin": "0 16px 8px"}, children=[
