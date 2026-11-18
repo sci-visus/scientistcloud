@@ -78,8 +78,9 @@ except ImportError:
 
 
 PORT = int(os.environ.get("DASHBOARD_PORT", "8065"))
-# The 3D pane is one coarse IDX level of the whole dataset. The slice uses the quality slider.
-VOLUME_QUALITY = -9
+# The slice follows the quality slider. The 3D read stays at this level:
+# coarser than -6 collapses the depth axis and those samples miss the value window.
+VOLUME_QUALITY = -6
 DEPLOY_SERVER = os.getenv("DEPLOY_SERVER") or ""
 DB_NAME = os.getenv("DB_NAME")
 COLLECTION = None
@@ -272,15 +273,35 @@ def _histogram_figure(values, vmin, vmax):
 def _volume_view(volume, vectors, vmin, vmax, seeds, show_lines, preset):
     if dash_vtk is None:
         return html.Div("vtk.js is not installed in this dashboard image.")
+    data_min, data_max = finite_minmax(volume)
+    inside = np.isfinite(volume) & (volume >= vmin) & (volume <= vmax)
+    print(
+        f"[VolumeExplorer] volume shape={tuple(volume.shape)} "
+        f"data=[{data_min:.6g}, {data_max:.6g}] window=[{float(vmin):.6g}, {float(vmax):.6g}] "
+        f"inside={int(np.count_nonzero(inside))}"
+    )
+    if not np.any(inside):
+        return html.Div(
+            f"No voxels inside the value range {float(vmin):.4g}–{float(vmax):.4g}. "
+            f"This volume spans {data_min:.4g}–{data_max:.4g}.",
+            style={"color": "#a33", "padding": "12px"},
+        )
     windowed, nodata = apply_opacity_window(volume, vmin, vmax)
+    # scalarOpacityUnitDistance is (component, distance). A bare float is ignored,
+    # and the default distance of 1 paints the grid as a solid black box.
+    # VolumeController installs an opacity curve on the actual scalars.
+    # rescaleColorMap stays off so the color scale remains the value range.
+    unit = max(float(np.mean(volume.shape[:3])) / 40.0, 1.0)
     children = [
         dash_vtk.VolumeRepresentation(
-            [dash_vtk.Volume(state=volume_mesh_state(windowed))],
+            [
+                dash_vtk.VolumeController(rescaleColorMap=False, size=[240, 72]),
+                dash_vtk.Volume(state=volume_mesh_state(windowed)),
+            ],
             colorMapPreset=preset,
             colorDataRange=[float(vmin), float(vmax)],
             property={
-                # A unit distance of 1 turns a coarse grid into a solid black box.
-                "scalarOpacityUnitDistance": max(float(np.mean(volume.shape[:3])) / 40.0, 1.0),
+                "scalarOpacityUnitDistance": [0, unit],
                 "scalarOpacity": opacity_nodes(nodata, vmin, vmax),
             },
         )
@@ -310,7 +331,7 @@ def _volume_view(volume, vectors, vmin, vmax, seeds, show_lines, preset):
     return html.Div([
         html.Div(view, style={"height": "460px", "width": "100%"}),
         html.Div(
-            "Coarse 3D volume from the OpenVisus IDX. The value window hides scalars outside the selected range.",
+            "3D volume from the OpenVisus IDX at the selected quality. Color and opacity use the value range.",
             style={"color": "#666", "fontSize": "13px", "marginTop": "6px"},
         ),
         html.Div(note, style={"color": "#666", "fontSize": "13px"}),
@@ -797,8 +818,14 @@ def _transect_from_points(source, points, step, colorscale, vmin, vmax, depth, d
     image = transect_polyline(source, direction, uv)
     if image is None:
         return _empty_figure("Depth transect")
-    image = mask_to_window(image, vmin, vmax)
-    fig = _heatmap(image, "Depth under the line", colorscale, vmin, vmax, height=280)
+    shown = mask_to_window(image, vmin, vmax)
+    if not np.isfinite(shown).any():
+        data_min, data_max = finite_minmax(image)
+        return _empty_figure(
+            f"Depth transect — no samples inside {float(vmin):.4g}–{float(vmax):.4g} "
+            f"(line spans {data_min:.4g}–{data_max:.4g})"
+        )
+    fig = _heatmap(shown, "Depth under the line", colorscale, vmin, vmax, height=280)
     fig.update_layout(xaxis_title="distance along the line", yaxis_title="depth")
     fig.update_yaxes(autorange="reversed")
     return fig
