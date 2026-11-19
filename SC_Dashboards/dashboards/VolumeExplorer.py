@@ -40,12 +40,14 @@ from SCLib_Dashboards.SCDash_volume_explorer import (
     initial_window,
     layer_count,
     logic_shape_from_db,
+    logic_window_from_view,
     map_offset,
     mask_to_window,
     orthogonal_axes,
     palette_family,
     palette_record,
     polydata_mesh_state,
+    read_box_volume,
     read_coarse_volume,
     read_depth_columns,
     plane_from_volume,
@@ -284,7 +286,7 @@ def _histogram_figure(values, vmin, vmax):
     return fig
 
 
-def _volume_view(volume, vectors, vmin, vmax, seeds, show_lines, preset, depth_axis=2):
+def _volume_view(volume, vectors, vmin, vmax, seeds, show_lines, preset, depth_axis=2, caption=None, token_extra=""):
     if dash_vtk is None:
         return html.Div("vtk.js is not installed in this dashboard image.")
     data_min, data_max = finite_minmax(volume)
@@ -305,7 +307,7 @@ def _volume_view(volume, vectors, vmin, vmax, seeds, show_lines, preset, depth_a
     # first frame when the value range or the volume changes.
     token = (
         f"{volume.shape[0]}_{volume.shape[1]}_{volume.shape[2]}_"
-        f"{int(round(float(vmin) * 1000))}_{int(round(float(vmax) * 1000))}"
+        f"{int(round(float(vmin) * 1000))}_{int(round(float(vmax) * 1000))}_{token_extra}"
     )
     # scalarOpacityUnitDistance is (component, distance). A bare float is ignored,
     # and the default distance of 1 paints the grid as a solid black box.
@@ -356,12 +358,74 @@ def _volume_view(volume, vectors, vmin, vmax, seeds, show_lines, preset, depth_a
     return html.Div([
         html.Div(view, style={"height": "460px", "width": "100%"}),
         html.Div(
-            f"One timestep from the Time slider. The vertical axis is {AXIS_NAMES[int(depth_axis) if int(depth_axis) in (0, 1, 2) else 2]} "
-            "depth, the same axis Offset moves through, not a stack of times. Color uses the value range.",
+            caption or (
+                f"One timestep from the Time slider. The vertical axis is {AXIS_NAMES[int(depth_axis) if int(depth_axis) in (0, 1, 2) else 2]} "
+                "depth, the same axis Offset moves through, not a stack of times. Color uses the value range."
+            ),
             style={"color": "#666", "fontSize": "13px", "marginTop": "6px"},
         ),
         html.Div(note, style={"color": "#666", "fontSize": "13px"}),
     ])
+
+
+def _crop_xyz(volume, logic_shape, box):
+    """Crop an X,Y,Z volume with the same fractions as a logic box."""
+    data = np.asarray(volume)
+    slices = []
+    for axis in range(3):
+        length = int(data.shape[axis])
+        logic = max(int(logic_shape[axis]), 1)
+        i0 = int(np.clip(round(float(box[0][axis]) / float(logic) * length), 0, max(length - 1, 0)))
+        i1 = int(np.clip(round(float(box[1][axis]) / float(logic) * length), i0 + 1, length))
+        slices.append(slice(i0, i1))
+    return data[tuple(slices)]
+
+
+def _focused_volume_pane(
+    timestep, direction, depth_axis, logic_shape, vmin, vmax, palette,
+    show_lines, slice_box, depth_box, volume_quality,
+):
+    """Volume of the slice view through the depth view, at the chosen detail."""
+    requested = int(volume_quality if volume_quality is not None else -4)
+    direction = int(direction) if int(direction or 0) in (0, 1, 2) else 2
+    depth_axis = int(depth_axis) if int(depth_axis if depth_axis is not None else direction) in (0, 1, 2) else direction
+    box = logic_window_from_view(logic_shape, direction, depth_axis, slice_box, depth_box)
+    stride = 1
+    try:
+        volume, stride, used = read_box_volume(
+            CACHE.db, box, int(timestep), requested, field=CACHE.scalar_field,
+        )
+        vectors = None
+    except Exception as ex:
+        print(f"[VolumeExplorer] view volume failed: {ex}")
+        volume, vectors = _get_volume(int(timestep), min(requested, VOLUME_QUALITY))
+        volume = _crop_xyz(volume, logic_shape, box)
+        if vectors is not None:
+            vectors = _crop_xyz(vectors, logic_shape, box)
+            if tuple(vectors.shape[:3]) != tuple(volume.shape[:3]):
+                vectors = None
+        used = min(requested, VOLUME_QUALITY)
+    depth_name = AXIS_NAMES[depth_axis]
+    detail = f"detail {used}"
+    if used != requested:
+        detail += f" (the view is still large for {requested})"
+    if int(stride) > 1:
+        detail += f", thinned {int(stride)}×"
+    caption = (
+        f"One timestep. Vertical axis is {depth_name} depth "
+        f"{box[0][depth_axis]}–{max(box[1][depth_axis] - 1, box[0][depth_axis])}, "
+        f"the range on the depth plot. The other two axes are the top-left view. "
+        f"Volume {detail}. Color uses the value range."
+    )
+    token = f"{used}_{box[0][0]}_{box[1][0]}_{box[0][1]}_{box[1][1]}_{box[0][2]}_{box[1][2]}"
+    seeds = []
+    draw_lines = bool(show_lines and vectors is not None)
+    if draw_lines:
+        seeds = seeds_for_streamlines(volume.shape, depth_axis, max(volume.shape[depth_axis] // 2, 0))
+    return _volume_view(
+        volume, vectors, float(vmin), float(vmax), seeds, draw_lines,
+        palette_record(palette)["vtk"], depth_axis, caption=caption, token_extra=token,
+    )
 
 
 def _banner(name):
@@ -380,6 +444,8 @@ app.layout = html.Div([
     dcc.Store(id="transect-points"),
     dcc.Store(id="line-draw", data=0),
     dcc.Store(id="slice-revision", data=0),
+    dcc.Store(id="slice-box"),
+    dcc.Store(id="depth-box"),
     html.Div(id="banner"),
     html.Div(id="status", style={"margin": "8px 16px", "color": "#444"}),
     html.Div(style={"display": "flex", "flexWrap": "wrap", "gap": "12px", "alignItems": "end", "margin": "0 16px 8px"}, children=[
@@ -426,6 +492,19 @@ app.layout = html.Div([
             dcc.Slider(id="quality", min=-8, max=0, step=1, value=-6, marks={-8: "-8", -6: "-6", -3: "-3", 0: "0"}),
         ], style={"minWidth": "160px"}),
         html.Div([
+            html.Label("Volume detail"),
+            dcc.Slider(
+                id="volume-quality",
+                min=-8,
+                max=0,
+                step=1,
+                value=-4,
+                marks={-8: "coarse", -4: "-4", 0: "fine"},
+                tooltip={"placement": "bottom", "always_visible": True},
+                updatemode="mouseup",
+            ),
+        ], style={"minWidth": "180px"}),
+        html.Div([
             html.Label("Palette"),
             dcc.Dropdown(
                 id="palette",
@@ -458,7 +537,11 @@ app.layout = html.Div([
             figure=_empty_figure("Scalar range"),
             config={"displaylogo": False, "scrollZoom": False},
         ),
-        dcc.Graph(id="transect-graph", figure=_empty_figure("Depth transect"), config={"displaylogo": False}),
+        dcc.Graph(
+            id="transect-graph",
+            figure=_empty_figure("Depth transect"),
+            config={"displaylogo": False, "scrollZoom": True, "doubleClick": False},
+        ),
     ]),
     html.Div(style={"margin": "4px 16px 16px"}, children=[
         dcc.Checklist(
@@ -476,7 +559,7 @@ app.layout = html.Div([
             style={"marginTop": "6px"},
         ),
         html.Div(
-            "Click to add corners. The depth plot runs from the start of the line on the left to the end on the right. Its vertical axis is the depth axis: offset 0 at the top when that box is checked, and the last offset at the bottom. Reset zoom clears a stuck slice view.",
+            "Click to add corners. The depth plot runs from the start of the line on the left to the end on the right. Its vertical axis is the depth axis: offset 0 at the top when that box is checked, and the last offset at the bottom. The volume draws the top-left view through that depth. Volume detail sets how fine that box is. Reset zoom clears a stuck slice view.",
             style={"color": "#666", "fontSize": "13px", "marginTop": "4px"},
         ),
     ]),
@@ -702,23 +785,29 @@ def collect_transect(click, _clear_clicks, current):
 @app.callback(
     Output("slice-graph", "figure", allow_duplicate=True),
     Output("transect-graph", "figure", allow_duplicate=True),
-    Output("hist-graph", "figure"),
-    Output("volume-pane", "children"),
+    Output("hist-graph", "figure", allow_duplicate=True),
+    Output("volume-pane", "children", allow_duplicate=True),
     Input("meta", "data"),
     Input("direction", "value"),
     Input("offset", "value"),
     Input("time", "value"),
     Input("quality", "value"),
     Input("palette", "value"),
-    Input("window", "value"),
+    State("window", "value"),
     State("transect-points", "data"),
     Input("streamlines", "value"),
     Input("depth-axis", "value"),
     Input("depth-zero-top", "value"),
     Input("slice-revision", "data"),
+    State("slice-box", "data"),
+    State("depth-box", "data"),
+    State("volume-quality", "value"),
     prevent_initial_call="initial_duplicate",
 )
-def render_views(meta, direction, offset, timestep, quality, palette, window, points, streamlines, depth_axis, zero_top, revision):
+def render_views(
+    meta, direction, offset, timestep, quality, palette, window, points, streamlines, depth_axis, zero_top, revision,
+    slice_box, depth_box, volume_quality,
+):
     if not meta or CACHE.db is None:
         return (
             _empty_figure("Slice"),
@@ -746,7 +835,19 @@ def render_views(meta, direction, offset, timestep, quality, palette, window, po
             if image.ndim != 2:
                 raise RuntimeError(f"Expected a 2D dataset, got shape {image.shape}")
             data_min, data_max = finite_minmax(image)
-            shown, step = downsample_2d(mask_to_window(image, vmin, vmax))
+            display, step = downsample_2d(np.asarray(image))
+            shown = mask_to_window(display, vmin, vmax)
+            CACHE.plane = {
+                "direction": direction,
+                "layer": 0,
+                "timestep": timestep,
+                "quality": quality,
+                "step": int(step),
+                "plane_shape": tuple(int(v) for v in np.asarray(image).shape),
+                "logic_shape": tuple(logic_shape),
+                "display": display,
+                "values": np.asarray(image),
+            }
             slice_fig = _heatmap(shown, "Slice", colorscale, vmin, vmax)
             _draw_line(slice_fig, points)
             hist = _histogram_figure(image, vmin, vmax)
@@ -775,7 +876,8 @@ def render_views(meta, direction, offset, timestep, quality, palette, window, po
             volume, vectors = _get_volume(timestep, VOLUME_QUALITY)
             coarse_offset = map_offset(float(layer), layer_count(logic_shape, direction), volume.shape[direction])
             plane = plane_from_volume(volume, direction, coarse_offset)
-        shown, step = downsample_2d(mask_to_window(np.asarray(plane), vmin, vmax))
+        display, step = downsample_2d(np.asarray(plane))
+        shown = mask_to_window(display, vmin, vmax)
         CACHE.plane = {
             "direction": direction,
             "layer": int(layer),
@@ -784,6 +886,8 @@ def render_views(meta, direction, offset, timestep, quality, palette, window, po
             "step": int(step),
             "plane_shape": tuple(int(v) for v in np.asarray(plane).shape),
             "logic_shape": tuple(logic_shape),
+            "display": display,
+            "values": np.asarray(plane),
         }
         slice_fig = _heatmap(
             shown,
@@ -808,9 +912,9 @@ def render_views(meta, direction, offset, timestep, quality, palette, window, po
                 zero_at_top=zero_at_top, slice_layer=layer,
                 volume_layer=coarse_offset, timestep=timestep,
             )
-            seeds = _seeds(volume.shape, direction, coarse_offset, points, step, plane.shape)
-            volume_pane = _volume_view(
-                volume, vectors, float(vmin), float(vmax), seeds, show_lines, record["vtk"], depth_axis,
+            volume_pane = _focused_volume_pane(
+                timestep, direction, depth_axis, logic_shape, float(vmin), float(vmax), palette,
+                show_lines, slice_box, depth_box, volume_quality,
             )
         except Exception as ex:
             print(f"[VolumeExplorer] coarse volume failed: {ex}")
@@ -863,6 +967,80 @@ def draw_line_on_slice(points, seq):
     patch["data"][1]["x"] = xs
     patch["data"][1]["y"] = ys
     return patch, int(seq or 0) + 1
+
+
+@app.callback(
+    Output("slice-graph", "figure", allow_duplicate=True),
+    Output("transect-graph", "figure", allow_duplicate=True),
+    Output("hist-graph", "figure", allow_duplicate=True),
+    Output("volume-pane", "children", allow_duplicate=True),
+    Input("window", "value"),
+    State("meta", "data"),
+    State("direction", "value"),
+    State("offset", "value"),
+    State("time", "value"),
+    State("quality", "value"),
+    State("palette", "value"),
+    State("transect-points", "data"),
+    State("streamlines", "value"),
+    State("depth-axis", "value"),
+    State("depth-zero-top", "value"),
+    State("slice-box", "data"),
+    State("depth-box", "data"),
+    State("volume-quality", "value"),
+    prevent_initial_call=True,
+)
+def recolor_for_window(
+    window, meta, direction, offset, timestep, quality, palette, points, streamlines, depth_axis, zero_top,
+    slice_box, depth_box, volume_quality,
+):
+    """A range brush recolors the slice in place. The zoom box stays put."""
+    remembered = CACHE.plane or {}
+    display = remembered.get("display")
+    values = remembered.get("values")
+    if not meta or CACHE.db is None or display is None or values is None:
+        return no_update, no_update, no_update, no_update
+    direction = int(direction) if int(direction or 0) in (0, 1, 2) else 2
+    timestep = int(timestep or 0)
+    quality = int(quality if quality is not None else -6)
+    logic_shape = tuple(meta.get("logic_shape") or CACHE.logic_shape or ())
+    layer = clamp_layer(offset, layer_count(logic_shape, direction)) if len(logic_shape) >= 3 else 0
+    same = (
+        remembered.get("direction") == direction
+        and remembered.get("layer") == int(layer)
+        and remembered.get("timestep") == timestep
+        and remembered.get("quality") == quality
+        and tuple(remembered.get("logic_shape") or ()) == logic_shape
+    )
+    if not same:
+        return no_update, no_update, no_update, no_update
+    vmin, vmax = (window or [0, 1])[:2]
+    shown = mask_to_window(display, vmin, vmax)
+    patch = Patch()
+    patch["data"][0]["z"] = shown
+    patch["data"][0]["zmin"] = float(vmin)
+    patch["data"][0]["zmax"] = float(vmax)
+    hist = _histogram_figure(values, vmin, vmax)
+    try:
+        transect = _transect_for_line(
+            points, direction, offset, timestep, quality, palette, window, depth_axis, zero_top, logic_shape,
+        )
+    except Exception as ex:
+        print(f"[VolumeExplorer] depth recolor failed: {ex}")
+        traceback.print_exc()
+        transect = _empty_figure("Depth transect")
+    if len(logic_shape) < 3:
+        return patch, transect, hist, html.Div("This dataset is 2D, so there is no volume to raycast.")
+    try:
+        volume_pane = _focused_volume_pane(
+            timestep, direction, depth_axis, logic_shape, float(vmin), float(vmax), palette,
+            "on" in (streamlines or []), slice_box, depth_box, volume_quality,
+        )
+    except Exception as ex:
+        print(f"[VolumeExplorer] volume recolor failed: {ex}")
+        traceback.print_exc()
+        volume_pane = html.Div(str(ex), style={"color": "#a33", "padding": "12px"})
+    return patch, transect, hist, volume_pane
 
 
 @app.callback(
@@ -1124,8 +1302,9 @@ def _transect_from_points(
         height=280,
         xaxis_title="along the line (start → end)",
         yaxis_title=f"{AXIS_NAMES[depth_axis]} offset",
+        uirevision="depth-view",
     )
-    fig.update_yaxes(range=y_range, autorange=False)
+    fig.update_yaxes(range=y_range, autorange=False, uirevision="depth-view")
     if depth_axis == int(direction):
         fig.add_hline(y=float(slice_layer), line_width=1, line_dash="dot", line_color="white")
     return fig
@@ -1161,6 +1340,115 @@ def refresh_slice_zoom(n_clicks, revision):
     if not n_clicks:
         return no_update
     return int(revision or 0) + 1
+
+
+def _axis_range(relayout, axis):
+    if not isinstance(relayout, dict):
+        return None
+    if relayout.get(f"{axis}.autorange") is True:
+        return "full"
+    pair = relayout.get(f"{axis}.range")
+    if isinstance(pair, (list, tuple)) and len(pair) >= 2:
+        try:
+            return [float(pair[0]), float(pair[1])]
+        except (TypeError, ValueError):
+            return None
+    left, right = relayout.get(f"{axis}.range[0]"), relayout.get(f"{axis}.range[1]")
+    if left is None or right is None:
+        return None
+    try:
+        return [float(left), float(right)]
+    except (TypeError, ValueError):
+        return None
+
+
+def _fraction_pair(pair, length):
+    if pair is None:
+        return None
+    span = max(float(length) - 1.0, 1.0)
+    lo = float(np.clip(min(pair[0], pair[1]) / span, 0.0, 1.0))
+    hi = float(np.clip(max(pair[0], pair[1]) / span, 0.0, 1.0))
+    if hi <= lo:
+        hi = min(1.0, lo + 1.0 / span)
+    return [lo, hi]
+
+
+@app.callback(
+    Output("slice-box", "data"),
+    Input("slice-graph", "relayoutData"),
+    Input("reset-zoom", "n_clicks"),
+    State("slice-box", "data"),
+    prevent_initial_call=True,
+)
+def track_slice_view(relayout, _reset, current):
+    """Fractions of the top-left view. The volume uses this footprint."""
+    if ctx.triggered_id == "reset-zoom":
+        return None
+    x_range = _axis_range(relayout, "xaxis")
+    y_range = _axis_range(relayout, "yaxis")
+    if x_range == "full" or y_range == "full":
+        return None
+    if x_range is None and y_range is None:
+        return no_update
+    display = (CACHE.plane or {}).get("display")
+    if display is None:
+        return no_update
+    rows, cols = int(display.shape[0]), int(display.shape[1])
+    box = dict(current or {})
+    if x_range is not None:
+        box["x"] = _fraction_pair(x_range, cols)
+    if y_range is not None:
+        box["y"] = _fraction_pair(y_range, rows)
+    if "x" not in box or "y" not in box:
+        return no_update
+    return box
+
+
+@app.callback(
+    Output("depth-box", "data"),
+    Input("transect-graph", "relayoutData"),
+    prevent_initial_call=True,
+)
+def track_depth_view(relayout):
+    """Offset range visible on the depth plot. The volume stops at those layers."""
+    y_range = _axis_range(relayout, "yaxis")
+    if y_range == "full":
+        return None
+    if y_range is None:
+        return no_update
+    return y_range
+
+
+@app.callback(
+    Output("volume-pane", "children", allow_duplicate=True),
+    Input("slice-box", "data"),
+    Input("depth-box", "data"),
+    Input("volume-quality", "value"),
+    State("meta", "data"),
+    State("direction", "value"),
+    State("time", "value"),
+    State("palette", "value"),
+    State("window", "value"),
+    State("streamlines", "value"),
+    State("depth-axis", "value"),
+    prevent_initial_call=True,
+)
+def refresh_focused_volume(slice_box, depth_box, volume_quality, meta, direction, timestep, palette, window, streamlines, depth_axis):
+    if not meta or CACHE.db is None:
+        return no_update
+    logic_shape = tuple(meta.get("logic_shape") or CACHE.logic_shape or ())
+    if len(logic_shape) < 3:
+        return no_update
+    vmin, vmax = (window or [0, 1])[:2]
+    try:
+        return _focused_volume_pane(
+            int(timestep or 0), direction, depth_axis, logic_shape, float(vmin), float(vmax), palette,
+            "on" in (streamlines or []), slice_box, depth_box, volume_quality,
+        )
+    except Exception as ex:
+        print(f"[VolumeExplorer] focused volume failed: {ex}")
+        traceback.print_exc()
+        return html.Div(str(ex), style={"color": "#a33", "padding": "12px"})
 
 
 @app.callback(
