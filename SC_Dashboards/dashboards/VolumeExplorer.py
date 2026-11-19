@@ -15,7 +15,7 @@ import traceback
 from urllib.parse import parse_qs, unquote
 
 import numpy as np
-from dash import Dash, Input, Output, State, ctx, dcc, html, no_update
+from dash import Dash, Input, Output, Patch, State, ctx, dcc, html, no_update
 from flask import Flask, jsonify, request
 import plotly.graph_objects as go
 
@@ -48,12 +48,12 @@ from SCLib_Dashboards.SCDash_volume_explorer import (
     polydata_mesh_state,
     read_coarse_volume,
     read_depth_columns,
+    plane_from_volume,
     read_plane,
     read_vector_volume,
     scalar_histogram,
     seeds_for_streamlines,
     sample_curtain,
-    slice_from_volume,
     volume_mesh_state,
 )
 
@@ -104,6 +104,7 @@ class _Cache:
         self.volumes = {}
         self.vectors = {}
         self.curtains = {}
+        self.plane = None
 
 
 CACHE = _Cache()
@@ -377,6 +378,7 @@ app.layout = html.Div([
     dcc.Location(id="url", refresh=False),
     dcc.Store(id="meta"),
     dcc.Store(id="transect-points"),
+    dcc.Store(id="line-draw", data=0),
     dcc.Store(id="slice-revision", data=0),
     html.Div(id="banner"),
     html.Div(id="status", style={"margin": "8px 16px", "color": "#444"}),
@@ -698,8 +700,8 @@ def collect_transect(click, _clear_clicks, current):
 
 
 @app.callback(
-    Output("slice-graph", "figure"),
-    Output("transect-graph", "figure"),
+    Output("slice-graph", "figure", allow_duplicate=True),
+    Output("transect-graph", "figure", allow_duplicate=True),
     Output("hist-graph", "figure"),
     Output("volume-pane", "children"),
     Input("meta", "data"),
@@ -709,7 +711,7 @@ def collect_transect(click, _clear_clicks, current):
     Input("quality", "value"),
     Input("palette", "value"),
     Input("window", "value"),
-    Input("transect-points", "data"),
+    State("transect-points", "data"),
     Input("streamlines", "value"),
     Input("depth-axis", "value"),
     Input("depth-zero-top", "value"),
@@ -728,10 +730,10 @@ def render_views(meta, direction, offset, timestep, quality, palette, window, po
     zero_at_top = "top" in (zero_top or [])
     timestep = int(timestep or 0)
     quality = int(quality if quality is not None else -6)
-    axis_u, axis_v = (0, 1) if direction == 2 else ((0, 2) if direction == 1 else (1, 2))
-    # The plane array is (axis_u, axis_v). Plotly draws columns across and rows up,
-    # so the horizontal axis is axis_v and the vertical axis is axis_u.
-    x_title, y_title = AXIS_NAMES[axis_v], AXIS_NAMES[axis_u]
+    axis_u, axis_v = orthogonal_axes(direction)
+    # OpenVisus order: rows are axis_v, columns are axis_u. Plotly draws
+    # columns across and rows up, so the horizontal title is axis_u.
+    x_title, y_title = AXIS_NAMES[axis_u], AXIS_NAMES[axis_v]
     vmin, vmax = (window or [0, 1])[:2]
     record = palette_record(palette)
     colorscale = record["plotly"]
@@ -745,6 +747,7 @@ def render_views(meta, direction, offset, timestep, quality, palette, window, po
             data_min, data_max = finite_minmax(image)
             shown, step = downsample_2d(mask_to_window(image, vmin, vmax))
             slice_fig = _heatmap(shown, "Slice", colorscale, vmin, vmax)
+            _draw_line(slice_fig, points)
             hist = _histogram_figure(image, vmin, vmax)
             transect = _transect_from_points(image, points, step, colorscale, vmin, vmax, depth=False)
             volume = html.Div("This dataset is 2D, so there is no volume to raycast.")
@@ -770,8 +773,17 @@ def render_views(meta, direction, offset, timestep, quality, palette, window, po
         if plane is None:
             volume, vectors = _get_volume(timestep, VOLUME_QUALITY)
             coarse_offset = map_offset(float(layer), layer_count(logic_shape, direction), volume.shape[direction])
-            plane = slice_from_volume(volume, direction, coarse_offset)
+            plane = plane_from_volume(volume, direction, coarse_offset)
         shown, step = downsample_2d(mask_to_window(np.asarray(plane), vmin, vmax))
+        CACHE.plane = {
+            "direction": direction,
+            "layer": int(layer),
+            "timestep": timestep,
+            "quality": quality,
+            "step": int(step),
+            "plane_shape": tuple(int(v) for v in np.asarray(plane).shape),
+            "logic_shape": tuple(logic_shape),
+        }
         slice_fig = _heatmap(
             shown,
             f"{PLANE_NAMES[direction]} plane · {AXIS_NAMES[direction]} = {layer}",
@@ -816,19 +828,122 @@ def render_views(meta, direction, offset, timestep, quality, palette, window, po
         )
 
 
-def _draw_line(fig, points):
+def _line_xy(points):
     vertices = _line_vertices(points)
-    if not vertices:
-        return
+    return [pt["col"] for pt in vertices], [pt["row"] for pt in vertices]
+
+
+def _draw_line(fig, points):
+    """Trace 1 is always the line, so a later click can update it in place."""
+    xs, ys = _line_xy(points)
     fig.add_trace(go.Scatter(
-        x=[pt["col"] for pt in vertices],
-        y=[pt["row"] for pt in vertices],
+        x=xs,
+        y=ys,
         mode="lines+markers",
         line=dict(color="white", width=2),
         marker=dict(color="white", size=8),
         hoverinfo="skip",
         showlegend=False,
+        uid="slice-line",
     ))
+
+
+@app.callback(
+    Output("slice-graph", "figure", allow_duplicate=True),
+    Output("line-draw", "data"),
+    Input("transect-points", "data"),
+    State("line-draw", "data"),
+    prevent_initial_call=True,
+)
+def draw_line_on_slice(points, seq):
+    """Add the corner to the slice that is already on screen, zoom included."""
+    xs, ys = _line_xy(points)
+    patch = Patch()
+    patch["data"][1]["x"] = xs
+    patch["data"][1]["y"] = ys
+    return patch, int(seq or 0) + 1
+
+
+@app.callback(
+    Output("transect-graph", "figure", allow_duplicate=True),
+    Input("line-draw", "data"),
+    State("transect-points", "data"),
+    State("meta", "data"),
+    State("direction", "value"),
+    State("offset", "value"),
+    State("time", "value"),
+    State("quality", "value"),
+    State("palette", "value"),
+    State("window", "value"),
+    State("depth-axis", "value"),
+    State("depth-zero-top", "value"),
+    prevent_initial_call=True,
+)
+def update_depth_after_line(
+    _seq, points, meta, direction, offset, timestep, quality, palette, window, depth_axis, zero_top,
+):
+    """The depth plot follows the line. It runs after the line is on the slice."""
+    if not meta or CACHE.db is None:
+        return _empty_figure("Depth transect")
+    try:
+        return _transect_for_line(
+            points, direction, offset, timestep, quality, palette, window, depth_axis, zero_top,
+            tuple(meta.get("logic_shape") or CACHE.logic_shape or ()),
+        )
+    except Exception as ex:
+        print(f"[VolumeExplorer] depth update failed: {ex}")
+        traceback.print_exc()
+        return _empty_figure("Depth transect")
+
+
+def _transect_for_line(
+    points, direction, offset, timestep, quality, palette, window, depth_axis, zero_top, logic_shape,
+):
+    direction = int(direction) if int(direction or 0) in (0, 1, 2) else 2
+    depth_axis = int(depth_axis) if int(depth_axis if depth_axis is not None else direction) in (0, 1, 2) else direction
+    zero_at_top = "top" in (zero_top or [])
+    timestep = int(timestep or 0)
+    quality = int(quality if quality is not None else -6)
+    vmin, vmax = (window or [0, 1])[:2]
+    colorscale = palette_record(palette)["plotly"]
+    logic_shape = tuple(logic_shape or ())
+    if len(logic_shape) < 3:
+        image = np.squeeze(np.asarray(CACHE.db.read(time=timestep, quality=quality)))
+        _shown, step = downsample_2d(mask_to_window(image, vmin, vmax))
+        return _transect_from_points(image, points, step, colorscale, vmin, vmax, depth=False)
+
+    layer = clamp_layer(offset, layer_count(logic_shape, direction))
+    remembered = CACHE.plane or {}
+    same = (
+        remembered.get("direction") == direction
+        and remembered.get("layer") == int(layer)
+        and remembered.get("timestep") == timestep
+        and remembered.get("quality") == quality
+        and tuple(remembered.get("logic_shape") or ()) == logic_shape
+    )
+    if same:
+        step = int(remembered["step"])
+        plane_shape = remembered["plane_shape"]
+    else:
+        plane = read_plane(
+            CACHE.db, logic_shape, direction, layer, timestep,
+            field=CACHE.scalar_field, quality=quality,
+        )
+        if plane is None:
+            volume, _vectors = _get_volume(timestep, VOLUME_QUALITY)
+            coarse_offset = map_offset(float(layer), layer_count(logic_shape, direction), volume.shape[direction])
+            plane = plane_from_volume(volume, direction, coarse_offset)
+        _shown, step = downsample_2d(np.asarray(plane))
+        plane_shape = tuple(int(v) for v in np.asarray(plane).shape)
+    volume, _vectors = _get_volume(timestep, VOLUME_QUALITY)
+    coarse_offset = map_offset(float(layer), layer_count(logic_shape, direction), volume.shape[direction])
+    return _transect_from_points(
+        volume, points, step, colorscale, vmin, vmax,
+        depth=True, direction=direction, plane_shape=plane_shape,
+        depth_axis=depth_axis, logic_shape=logic_shape,
+        zero_at_top=zero_at_top, slice_layer=layer,
+        volume_layer=coarse_offset, timestep=timestep,
+    )
 
 
 def _polyline_xyz(points, step, plane_shape, volume_shape, direction, layer):
@@ -873,8 +988,8 @@ def _logic_line(points, step, plane_shape, logic_shape, direction, slice_layer, 
         row = min(max(float(pt["row"]) * step, 0.0), max(plane_shape[0] - 1, 0))
         col = min(max(float(pt["col"]) * step, 0.0), max(plane_shape[1] - 1, 0))
         point = [0.0, 0.0, 0.0]
-        point[axis_u] = row / max(plane_shape[0] - 1, 1) * max(logic_shape[axis_u] - 1, 0)
-        point[axis_v] = col / max(plane_shape[1] - 1, 1) * max(logic_shape[axis_v] - 1, 0)
+        point[axis_v] = row / max(plane_shape[0] - 1, 1) * max(logic_shape[axis_v] - 1, 0)
+        point[axis_u] = col / max(plane_shape[1] - 1, 1) * max(logic_shape[axis_u] - 1, 0)
         point[int(direction)] = float(slice_layer)
         corners.append(point)
     lengths = [float(np.linalg.norm(np.subtract(b, a))) for a, b in zip(corners, corners[1:])]
@@ -1037,20 +1152,14 @@ def follow_slice_axis(direction):
 @app.callback(
     Output("slice-revision", "data"),
     Input("reset-zoom", "n_clicks"),
-    Input("slice-graph", "relayoutData"),
     State("slice-revision", "data"),
     prevent_initial_call=True,
 )
-def refresh_slice_zoom(n_clicks, relayout, revision):
-    """The plotly home button cannot clear a view that uirevision is holding."""
-    revision = int(revision or 0)
-    if ctx.triggered_id == "reset-zoom":
-        return revision + 1
-    if isinstance(relayout, dict) and (
-        relayout.get("xaxis.autorange") is True or relayout.get("yaxis.autorange") is True
-    ):
-        return revision + 1
-    return no_update
+def refresh_slice_zoom(n_clicks, revision):
+    """Reset zoom rebuilds the slice. A click that adds a line corner does not."""
+    if not n_clicks:
+        return no_update
+    return int(revision or 0) + 1
 
 
 @app.callback(
