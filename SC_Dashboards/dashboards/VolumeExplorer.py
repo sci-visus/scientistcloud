@@ -716,6 +716,7 @@ def collect_transect(click, _clear_clicks, current):
     Input("depth-axis", "value"),
     Input("depth-zero-top", "value"),
     Input("slice-revision", "data"),
+    prevent_initial_call="initial_duplicate",
 )
 def render_views(meta, direction, offset, timestep, quality, palette, window, points, streamlines, depth_axis, zero_top, revision):
     if not meta or CACHE.db is None:
