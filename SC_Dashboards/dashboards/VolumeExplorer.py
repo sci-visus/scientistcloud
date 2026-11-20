@@ -274,8 +274,8 @@ def _histogram_figure(values, vmin, vmax):
     fig.add_vrect(x0=vmin, x1=vmax, fillcolor="rgba(255, 196, 64, 0.25)", line_width=0)
     fig.update_layout(
         title="Scalar range — drag across the bars to set the slice window",
-        margin=dict(l=40, r=20, t=40, b=30),
-        height=240,
+        margin=dict(l=40, r=20, t=32, b=24),
+        height=220,
         bargap=0,
         xaxis_title="value",
         yaxis_title="count",
@@ -448,21 +448,11 @@ app.layout = html.Div([
     dcc.Store(id="depth-box"),
     html.Div(id="banner"),
     html.Div(id="status", style={"margin": "8px 16px", "color": "#444"}),
-    html.Div(style={"display": "flex", "flexWrap": "wrap", "gap": "12px", "alignItems": "end", "margin": "0 16px 8px"}, children=[
+    html.Div(style={"display": "flex", "flexWrap": "wrap", "gap": "8px", "alignItems": "end", "margin": "4px 12px"}, children=[
         html.Div([
             html.Label("Direction"),
             dcc.Dropdown(
                 id="direction",
-                options=[{"label": "X", "value": 0}, {"label": "Y", "value": 1}, {"label": "Z", "value": 2}],
-                value=2,
-                clearable=False,
-                style={"width": "90px"},
-            ),
-        ]),
-        html.Div([
-            html.Label("Depth axis"),
-            dcc.Dropdown(
-                id="depth-axis",
                 options=[{"label": "X", "value": 0}, {"label": "Y", "value": 1}, {"label": "Z", "value": 2}],
                 value=2,
                 clearable=False,
@@ -492,19 +482,6 @@ app.layout = html.Div([
             dcc.Slider(id="quality", min=-8, max=0, step=1, value=-6, marks={-8: "-8", -6: "-6", -3: "-3", 0: "0"}),
         ], style={"minWidth": "160px"}),
         html.Div([
-            html.Label("Volume detail"),
-            dcc.Slider(
-                id="volume-quality",
-                min=-8,
-                max=0,
-                step=1,
-                value=-4,
-                marks={-8: "coarse", -4: "-4", 0: "fine"},
-                tooltip={"placement": "bottom", "always_visible": True},
-                updatemode="mouseup",
-            ),
-        ], style={"minWidth": "180px"}),
-        html.Div([
             html.Label("Palette"),
             dcc.Dropdown(
                 id="palette",
@@ -519,49 +496,83 @@ app.layout = html.Div([
             html.Span(id="save-status", style={"marginLeft": "8px"}),
         ]),
     ]),
-    html.Div(style={"margin": "0 16px 12px"}, children=[
+    html.Div(style={"margin": "0 12px 6px"}, children=[
         html.Label("Value range — drag the slider, or brush a span on the scalar-range plot"),
         dcc.RangeSlider(id="window", min=0, max=1, value=[0, 1], step=0.01, allowCross=False),
     ]),
-    html.Div(style={"display": "grid", "gridTemplateColumns": "1.3fr 1fr", "gap": "8px", "margin": "0 8px"}, children=[
-        dcc.Graph(
-            id="slice-graph",
-            figure=_empty_figure("Slice"),
-            config={"displaylogo": False, "scrollZoom": True, "doubleClick": False},
-        ),
-        html.Div(id="volume-pane"),
-    ]),
-    html.Div(style={"display": "grid", "gridTemplateColumns": "1fr 1fr", "gap": "8px", "margin": "0 8px"}, children=[
-        dcc.Graph(
-            id="hist-graph",
-            figure=_empty_figure("Scalar range"),
-            config={"displaylogo": False, "scrollZoom": False},
-        ),
-        dcc.Graph(
-            id="transect-graph",
-            figure=_empty_figure("Depth transect"),
-            config={"displaylogo": False, "scrollZoom": True, "doubleClick": False},
-        ),
-    ]),
-    html.Div(style={"margin": "4px 16px 16px"}, children=[
-        dcc.Checklist(
-            id="streamlines",
-            options=[{"label": " Streamlines from the drawn line (or a center rake)", "value": "on"}],
-            value=[],
-        ),
-        html.Div(id="stream-note", style={"color": "#666", "fontSize": "13px"}),
-        html.Button("Clear line", id="clear-line", n_clicks=0, style={"marginTop": "6px", "marginRight": "8px"}),
-        html.Button("Reset zoom", id="reset-zoom", n_clicks=0, style={"marginTop": "6px"}),
-        dcc.Checklist(
-            id="depth-zero-top",
-            options=[{"label": " Depth 0 at top", "value": "top"}],
-            value=["top"],
-            style={"marginTop": "6px"},
-        ),
-        html.Div(
-            "Click to add corners. The depth plot runs from the start of the line on the left to the end on the right. Its vertical axis is the depth axis: offset 0 at the top when that box is checked, and the last offset at the bottom. The volume draws the top-left view through that depth. Volume detail sets how fine that box is. Reset zoom clears a stuck slice view.",
-            style={"color": "#666", "fontSize": "13px", "marginTop": "4px"},
-        ),
+    html.Div(style={
+        "display": "grid",
+        "gridTemplateColumns": "1.15fr 1fr",
+        "gap": "8px",
+        "margin": "0 8px 12px",
+        "alignItems": "start",
+    }, children=[
+        html.Div([
+            dcc.Graph(
+                id="slice-graph",
+                figure=_empty_figure("Slice"),
+                config={"displaylogo": False, "scrollZoom": True, "doubleClick": False},
+            ),
+            dcc.Graph(
+                id="transect-graph",
+                figure=_empty_figure("Depth transect"),
+                config={"displaylogo": False, "scrollZoom": True, "doubleClick": False},
+            ),
+            html.Div(style={"display": "flex", "flexWrap": "wrap", "gap": "8px", "alignItems": "center", "margin": "0 8px 8px"}, children=[
+                html.Button("Clear line", id="clear-line", n_clicks=0),
+                html.Button("Reset zoom", id="reset-zoom", n_clicks=0),
+                dcc.Checklist(
+                    id="depth-zero-top",
+                    options=[{"label": " Depth 0 at top", "value": "top"}],
+                    value=["top"],
+                    style={"margin": "0"},
+                ),
+            ]),
+            html.Div(
+                "Click the slice to add corners. Depth under the line is the plot directly below: start at the left, end at the right, offset 0 at the top when that box is checked.",
+                style={"color": "#666", "fontSize": "12px", "margin": "0 8px 8px"},
+            ),
+        ]),
+        html.Div([
+            dcc.Graph(
+                id="hist-graph",
+                figure=_empty_figure("Scalar range"),
+                config={"displaylogo": False, "scrollZoom": False},
+            ),
+            html.Div(style={"display": "flex", "gap": "12px", "alignItems": "end", "margin": "0 8px 4px"}, children=[
+                html.Div([
+                    html.Label("Depth axis"),
+                    dcc.Dropdown(
+                        id="depth-axis",
+                        options=[{"label": "X", "value": 0}, {"label": "Y", "value": 1}, {"label": "Z", "value": 2}],
+                        value=2,
+                        clearable=False,
+                        style={"width": "88px"},
+                    ),
+                ]),
+                html.Div([
+                    html.Label("Volume detail"),
+                    dcc.Slider(
+                        id="volume-quality",
+                        min=-8,
+                        max=0,
+                        step=1,
+                        value=-4,
+                        marks={-8: "coarse", -4: "-4", 0: "fine"},
+                        tooltip={"placement": "bottom", "always_visible": False},
+                        updatemode="mouseup",
+                    ),
+                ], style={"flex": "1", "minWidth": "160px"}),
+            ]),
+            html.Div(id="volume-pane"),
+            dcc.Checklist(
+                id="streamlines",
+                options=[{"label": " Streamlines from the drawn line (or a center rake)", "value": "on"}],
+                value=[],
+                style={"margin": "4px 8px 0"},
+            ),
+            html.Div(id="stream-note", style={"color": "#666", "fontSize": "12px", "margin": "0 8px 8px"}),
+        ]),
     ]),
 ])
 
@@ -1298,8 +1309,8 @@ def _transect_from_points(
     y_range = [float(offsets[-1]), float(offsets[0])] if zero_at_top else [float(offsets[0]), float(offsets[-1])]
     fig.update_layout(
         title=f"Depth under the line · {AXIS_NAMES[depth_axis]}",
-        margin=dict(l=40, r=20, t=40, b=30),
-        height=280,
+        margin=dict(l=40, r=20, t=28, b=24),
+        height=260,
         xaxis_title="along the line (start → end)",
         yaxis_title=f"{AXIS_NAMES[depth_axis]} offset",
         uirevision="depth-view",
